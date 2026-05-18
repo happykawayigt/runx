@@ -111,6 +111,7 @@ describe("scafld issue-to-PR skill contract", () => {
     });
     expect(graph.steps.find((step) => step.id === "author-fix")?.instructions).toContain("fix_bundle.status: blocked");
     expect(graph.steps.find((step) => step.id === "author-fix")?.instructions).toContain("one scoped docs edit is possible");
+    expect(graph.steps.find((step) => step.id === "author-fix")?.instructions).toContain("repo_snapshot.recommended_files");
     expect(graph.steps.find((step) => step.id === "read-current-branch")).toMatchObject({
       tool: "git.current_branch",
     });

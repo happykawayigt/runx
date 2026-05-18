@@ -445,15 +445,26 @@ runners:
             unrelated sections, headings, prose, tables, links, setup
             instructions, and ordering exactly. Never replace an existing file
             with only the new section or a shortened summary. If a declared file
+            list is sparse but repo_snapshot.recommended_files contains
+            concrete repo-relative files, treat those recommended files as
+            actionable target evidence. Read the recommended file and the
+            nearest relevant test or spec before blocking. When the source
+            thread includes a runtime exception, backtrace, failing command, or
+            named behavior and a recommended file exists, prefer the smallest
+            conventional fix plus targeted regression coverage over an empty
+            bundle. If no fix is possible after inspecting the target paths, the
+            blocked reason must name the exact path and missing evidence. If a
+            declared file
             has exists: false and the approved spec intentionally creates it,
             write the new file when the desired contents are inferable from the
             spec and thread. Do not widen scope.
             Do not hand-edit scafld lifecycle files. Return
             fix_bundle.status: blocked with a reason and files: [] only when no
             concrete repo-relative target is declared, a required existing file
-            cannot be read, or the requested behavior cannot be inferred without
-            inventing requirements; name the missing evidence and path in the
-            reason because an empty bundle is a terminal policy denial.
+            cannot be read, or the requested behavior cannot be inferred after
+            inspecting the supplied target files without inventing requirements;
+            name the missing evidence and path in the reason because an empty
+            bundle is a terminal policy denial.
           allowed_tools:
             - fs.read
             - git.status

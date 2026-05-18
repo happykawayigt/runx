@@ -133,15 +133,23 @@ spec. For documentation or process changes, the approved spec, source thread,
 repo snapshot, repo context, and declared file contents are sufficient when they
 identify a narrow edit.
 
+When `repo_snapshot.recommended_files` contains concrete repo-relative files,
+treat those files as actionable target evidence even if the generated spec is
+worded conservatively. Read the recommended file and the nearest relevant test
+or spec before blocking. If the source thread includes a runtime exception,
+backtrace, failing command, or named behavior and the recommended file exists,
+prefer the smallest conventional fix plus targeted regression coverage over an
+empty bundle.
+
 If a declared file has `exists: false` and the approved spec intentionally
 creates it, write the new file when the desired contents are inferable from the
 spec and thread. Do not block solely because the file has no prior contents.
 
 Return `fix_bundle.status: blocked` with `files: []` only when no concrete
 repo-relative target is declared, a required existing file cannot be read, or
-the requested behavior cannot be inferred. The blocked reason must name the
-missing evidence and path because an empty file bundle is a terminal policy
-denial before `write-fix`.
+the requested behavior cannot be inferred after inspecting the supplied target
+files. The blocked reason must name the missing evidence and path because an
+empty file bundle is a terminal policy denial before `write-fix`.
 
 ## Inputs
 
