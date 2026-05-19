@@ -2,7 +2,7 @@
 spec_version: '2.0'
 task_id: rust-kernel-blocking-promotion
 created: '2026-05-17T00:30:00Z'
-updated: '2026-05-17T00:30:00Z'
+updated: '2026-05-20T00:00:00Z'
 status: draft
 harden_status: not_run
 size: medium
@@ -14,12 +14,17 @@ risk_level: high
 ## Current State
 
 Status: draft
-Current phase: none
-Next: approve
-Reason: draft created
-Blockers: `rust-kernel-port-orchestration` must complete first, and 5 clean
+Current phase: refresh only
+Next: implement evidence collection only after advisory-start evidence and
+kernel orchestration completion are available
+Reason: CI still marks Rust kernel parity advisory; no clean-PR counting script
+or five-PR evidence is present; current kernel orchestration draft has empty
+Phase Receipts
+Blockers: `rust-kernel-port-orchestration` must complete or be superseded with
+audited receipts; advisory start timestamp must be recorded; 5 clean
 kernel-touching PRs must land while Rust kernel parity checks are advisory
-Allowed follow-up command: `scafld harden rust-kernel-blocking-promotion`
+Allowed follow-up command: none during this refresh; do not run
+`scafld harden rust-kernel-blocking-promotion`.
 Latest runner update: none
 Review gate: not_started
 
@@ -37,6 +42,12 @@ merged after advisory CI lands. A clean kernel-touching PR touches
 Rust parity checks, and either passes them directly or includes an intentional
 fixture refresh that makes both TypeScript and Rust pass.
 
+Refresh note, 2026-05-20: current CI still contains
+`continue-on-error: true` on the `Advisory Rust kernel parity` step, so Phase A
+is still advisory. `scripts/count-clean-kernel-prs.ts` is not present, and the
+Evidence section below is still intentionally unfilled. This draft must not be
+treated as ready for CI promotion.
+
 ## Context
 
 CWD: `.`
@@ -44,6 +55,8 @@ CWD: `.`
 Packages:
 - `@runxhq/core`
 - `crates/runx-core`
+- `crates/runx-contracts`
+- `crates/runx-parser`
 
 Files impacted:
 - `.github/workflows/ci.yml`
@@ -63,6 +76,11 @@ Invariants:
 - The CLI feature-parity matrix remains required for any runtime or CLI
   cutover. Blocking kernel parity is not a runtime cutover.
 - If the 5-PR evidence is missing or ambiguous, this spec blocks.
+- Promotion does not make Rust authoritative. TypeScript remains the source of
+  truth until a separate cutover spec changes consumers.
+- Parser-only PRs are not counted toward the original 5-PR trigger unless this
+  spec is explicitly broadened and hardened again. The current trigger is
+  state-machine/policy soak evidence.
 
 Related docs:
 - `docs/rust-kernel-architecture.md`
@@ -104,8 +122,10 @@ Out of scope:
 
 ## Assumptions
 
-- The advisory start timestamp is recorded in
-  `rust-kernel-port-orchestration` Phase 5 receipt.
+- The advisory start timestamp should be recorded in
+  `rust-kernel-port-orchestration` Phase 5 receipt or in a replacement audited
+  evidence block. If neither exists, the script must refuse to infer it from
+  file timestamps or git history alone.
 - The CI workflow names for Rust kernel parity checks are stable enough for
   `scripts/count-clean-kernel-prs.ts` to identify them.
 - Some qualifying PRs may include fixture refreshes. That is acceptable only if
@@ -122,6 +142,77 @@ Out of scope:
 - Medium: CI promotion can accidentally affect existing launcher checks.
   Mitigated by limiting the workflow diff to the parity checks added by
   `rust-parity-ci-governance`.
+
+## 2026-05-20 Refresh Findings
+
+Observed current state:
+- `.github/workflows/ci.yml` has a blocking `Rust checks` step for cargo
+  fmt/clippy/test/package, followed by `Advisory Rust kernel parity` with
+  `continue-on-error: true`.
+- `package.json` maps `pnpm rust:check` to
+  `node scripts/check-rust-kernel-parity.mjs`.
+- `scripts/check-rust-kernel-parity.mjs` runs Cargo fmt, clippy, workspace
+  tests, crate-graph/style guards, cargo-deny, and the `runx-core` public API
+  snapshot unless `--api-only` is used.
+- `docs/trusted-kernel-package-truth.md` still says CI is advisory during
+  Phase A and becomes blocking only through this spec after five clean
+  kernel-touching PRs.
+- No `scripts/count-clean-kernel-prs.ts` file was found during this refresh.
+- Clean PR evidence remains `<to be filled at exec time>`.
+
+## Gate Classification
+
+Blocking before this spec may promote CI:
+- `rust-kernel-port-orchestration` must have valid completion evidence, or a
+  replacement audit must explicitly supersede it.
+- The advisory start point must be recorded as explicit evidence.
+- `scripts/count-clean-kernel-prs.ts` must exist, have fixture tests, and
+  verify at least five qualifying PRs.
+- `node scripts/check-rust-kernel-parity.mjs` must pass locally before the CI
+  `continue-on-error` line is removed.
+
+Advisory until those blockers clear:
+- Existing CI `Advisory Rust kernel parity`.
+- Cargo-deny and public API snapshot enforcement inside CI, because they are
+  currently inside the advisory parity step.
+- Rust-only maintenance PRs that do not exercise TypeScript kernel drift.
+
+Non-goals for this promotion:
+- Runtime, parser, receipt, adapter, MCP, SDK, or CLI cutover.
+- Making Rust policy authoritative for runtime-local execution.
+- Changing runtime payment code or payment rails.
+
+## Clean PR Evidence Rules
+
+The counting script must fail closed:
+- Qualifying PRs must merge after the recorded advisory start.
+- A qualifying PR must touch the authoritative TypeScript state-machine or
+  policy surface, or a deliberate kernel fixture/oracle refresh tied to that
+  surface.
+- A Rust-only `crates/runx-core` maintenance PR can be recorded as advisory
+  evidence, but it does not count toward the five-PR promotion trigger unless
+  this spec is explicitly broadened.
+- Fixture refresh PRs qualify only when both the TypeScript oracle and Rust
+  parity pass after refresh.
+- Missing, renamed, skipped, or failed parity checks make the PR non-qualifying
+  unless audited evidence is checked into the fixture mode.
+- Parser-only PRs remain out of the five-PR count for this draft, even though
+  parser is a pure TypeScript core domain and `runx-parser` now exists.
+
+## Next Executable Slices
+
+Execute these in order:
+- Evidence script slice: add `scripts/count-clean-kernel-prs.ts`, fixture
+  mode, and tests that cover clean PRs, missing checks, failed checks,
+  fixture-refresh PRs, Rust-only PRs, parser-only PRs, and renamed CI checks.
+- Advisory-start evidence slice: record the exact advisory start point from an
+  audited source before live PR counting is allowed.
+- Soak verification slice: run the script against live GitHub metadata or an
+  operator-provided audited fixture and fill the Evidence section.
+- CI flip slice: remove only the `continue-on-error: true` on the Rust kernel
+  parity step after all blockers pass.
+- Docs coherence slice: update docs to say Phase B is active only after the CI
+  flip is made. Until then, docs must keep Phase A/advisory language.
 
 ## Acceptance
 

@@ -2,9 +2,9 @@
 spec_version: '2.0'
 task_id: rust-cli-rust-cutover
 created: '2026-05-18T00:00:00Z'
-updated: '2026-05-19T12:11:22Z'
+updated: '2026-05-20T00:00:00Z'
 status: draft
-harden_status: passed
+harden_status: blocked
 size: extra_large
 risk_level: very_high
 ---
@@ -14,27 +14,36 @@ risk_level: very_high
 ## Current State
 
 Status: draft
-Current phase: hardened
-Next: approve
+Current phase: implementation gap review
+Next: implement remaining native CLI and packaging gates before approval
 Reason: hard cutover contract for moving the launcher/CLI boundary to Rust.
-Blockers: active Rust runtime, harness, registry, and journal work complete;
-`rust-aster-runtime-cutover` complete; `rust-nitrosend-dogfood` complete;
-`rust-cli-feature-parity-matrix` complete; `cargo test --workspace` and
-`cargo deny --manifest-path crates/Cargo.toml check bans licenses sources`
-green; binary distribution green; no legacy shape, no v2, no alias, and no JS
-fallback gates pass.
-Allowed follow-up command: `scafld review rust-cli-rust-cutover`
-Latest runner update: 2026-05-19T06:13:12Z
+Blockers: native Rust candidate dispatch exists for several command slices, but
+release authority still remains with the npm/TypeScript CLI. The Rust launcher
+still delegates by default through `npm exec` or `RUNX_JS_BIN`; native CLI
+dispatch is only reachable through `RUNX_RUST_CLI` and native harness replay is
+only reachable through `RUNX_RUST_HARNESS`. The npm package still points
+`bin.runx` at `./bin/runx.js`, ships `dist`/`tools`, and depends on TS
+workspace packages instead of platform native binary packages. Cutover-specific
+package/release verifier scripts named below do not exist yet. Do not approve
+until the release launcher, platform package pointers, full canonical Rust
+command surface, and no-JS-fallback gates are implemented and passing.
+Allowed follow-up command: implement missing blockers, then run validation;
+do not run `scafld review rust-cli-rust-cutover` until this state changes.
+Latest runner update: 2026-05-20T00:00:00Z
 Review gate: not_started
 
 ## Summary
 
 Flip the npm `@runxhq/cli` package from a Node CLI to a thin platform-aware
 native launcher that downloads, verifies, and executes the bundled Rust binary.
-Today `crates/runx-cli/src/launcher.rs` can delegate to TypeScript through
-`npm exec` or invoke a local `node` against a `js-bin` path. This spec removes
-that delegation from the release path and makes the Rust binary the
-authoritative `runx` invocation.
+Today `crates/runx-cli/src/launcher.rs` still delegates to TypeScript through
+`npm exec` or invokes a local `node` against a `RUNX_JS_BIN` path unless
+explicit candidate signals are set. `RUNX_RUST_CLI` currently routes native
+candidate implementations for `connect`, `config`, supported `doctor`, supported
+`list`, `new`, `init`, `history`, and `tool build|search|inspect`;
+`RUNX_RUST_HARNESS` separately routes `runx harness <fixture>` to the Rust
+runtime harness runner. This spec removes release-path delegation and makes the
+Rust binary the authoritative `runx` invocation.
 
 This is a hard cutover, not a compatibility bridge. The public CLI exposes
 simple canonical verbs implemented by Rust. The npm launcher must not parse,
@@ -56,7 +65,8 @@ Packages:
 Current TypeScript sources:
 - `packages/cli/src/index.ts`
 - `packages/cli/src/dispatch.ts`
-- `crates/runx-cli/src/launcher.rs` (today: delegate-to-TS launcher)
+- `crates/runx-cli/src/launcher.rs` (today: candidate native router plus
+  delegate-to-TS launcher)
 - `crates/runx-cli/src/main.rs`
 
 Files impacted:
@@ -67,8 +77,9 @@ Files impacted:
   exec; or even-thinner postinstall download)
 - `packages/cli/package.json` (optional platform-specific dependencies for
   the binary, or postinstall script)
-- `scripts/release-rust-cli.ts` (new: package the Rust binary per platform,
-  publish to the binary CDN, bump npm)
+- `scripts/package-rust-cli.ts`, `scripts/release-rust-cli.ts`, and
+  `scripts/check-rust-cli-release-artifacts.ts` (new: package the Rust binary
+  per platform, publish to the binary CDN, verify artifacts, bump npm)
 - `crates/runx-cli/build.rs` (if needed for embedding version metadata)
 
 Invariants:
@@ -93,6 +104,12 @@ Invariants:
 - If native command dispatch lands before this cutover, the cutover gate must
   prove it is not reachable from the released npm launcher except under an
   explicit operator-controlled candidate path.
+- As of the 2026-05-20 inspection, this guard is intentionally active:
+  `crates/runx-cli/tests/launcher.rs` proves packaged Node CLI files do not set
+  `RUNX_RUST_CLI`/`RUNX_RUST_HARNESS`, candidate commands delegate without
+  native signals, `RUNX_RUST_CLI=0` and empty signals still delegate, and
+  supported native routes only activate when the operator-controlled signal is
+  non-empty and non-zero.
 - The current TS command set includes `runx policy inspect|lint <policy.json>`;
   the Rust CLI parity matrix must include its exit codes, JSON shape, and
   redacted human readback.
@@ -136,6 +153,9 @@ Invariants:
 
 In scope:
 - Native CLI implementation for every canonical command in the cutover matrix.
+- Removing the current candidate-only dispatch guard at the cutover point, while
+  replacing it with a release launcher that execs the native binary directly
+  and has no TypeScript fallback.
 - Canonical command table, help, parser, JSON output, human output, exit codes,
   and release-note migration text for removed aliases.
 - Rust runtime harness execution/receipts and CLI integration for `harness`.
@@ -143,6 +163,10 @@ In scope:
 - Rust integration for history/journal projections through `rust-journal-local`.
 - Binary distribution pipeline, including checksums/signing, platform package
   resolution, and npm packaging.
+- Package manifest pointer changes for `@runxhq/cli`: `bin.runx` must point to
+  the native resolver/exec shim, the published package must declare or download
+  pinned platform native artifacts, and TS workspace dependencies/files must no
+  longer be required by the runtime launch path.
 - Launcher logic to fetch/locate, verify, and exec the native binary while
   preserving raw argv, stdin, stdout, stderr, exit code, and signal behavior.
 - Rollback and repair documentation.
@@ -177,6 +201,14 @@ Out of scope:
   tool catalogs, doctor, dev, resume, replay, diff, export-receipts, history,
   knowledge show or retirement, policy inspect/lint, mcp serve, and evolve
   disposition.
+- Current native command coverage is partial. `connect`, `config`, `new`,
+  `init`, `history`, `list`, supported `doctor`, supported `tool`, and harness
+  replay have Rust candidate paths and focused tests. The canonical matrix still
+  includes `skill.run`, `skill.search`, `skill.add`, `skill.publish`,
+  `skill.inspect`, `evolve`, `resume`, `replay`, `diff`,
+  `export-receipts.trainable`, `knowledge.show`, `policy.inspect`,
+  `policy.lint`, `dev`, and `mcp.serve`; those require Rust implementation,
+  explicit removal, or migration notes before cutover.
 - Binary distribution infrastructure: signing, CDN, version pinning.
 - Release engineering can publish a previous known-good npm package as a
   rollback, and can revoke or quarantine a bad native binary artifact.
@@ -206,6 +238,13 @@ The Rust CLI owns:
 - command dispatch and exit-code mapping
 - policy/config/registry/journal/history/tool command orchestration
 - all calls into `runx-runtime`
+
+As of the 2026-05-20 inspection, this ownership is only partially true in code.
+`crates/runx-cli/src/main.rs` invokes native Rust implementations for candidate
+branches selected by `RUNX_RUST_CLI`/`RUNX_RUST_HARNESS`, then falls back to
+`LauncherAction::Delegate` for unknown, unsupported, or unselected commands.
+That fallback is valid before cutover only; it is a release blocker for this
+spec.
 
 The Rust runtime owns:
 - skill and harness execution
@@ -265,10 +304,18 @@ Phase 2: native CLI and runtime integration.
 - Wire history/journal commands through `rust-journal-local`.
 - Ensure policy inspect/lint consumes the same operational policy validator and
   redacted readback as the rest of the runtime.
+- Remove candidate-only native routing after the canonical matrix is complete:
+  `RUNX_RUST_CLI` and `RUNX_RUST_HARNESS` may remain only as test or
+  development controls outside the published release path, not as the mechanism
+  that makes public commands native.
 
 Phase 3: launcher replacement and distribution.
 - Replace `packages/cli/bin/runx.js` with a native binary resolver/exec shim.
 - Remove npm-exec, js-bin, and Node CLI delegation from release code.
+- Replace the current `packages/cli/package.json` runtime shape. The cutover
+  package must not require `@runxhq/adapters`, `@runxhq/authoring`,
+  `@runxhq/contracts`, `@runxhq/core`, or `@runxhq/runtime-local` to execute
+  `runx`; it must point at the native resolver and platform artifacts instead.
 - Package per-platform binaries, checksums, signing metadata, and npm
   dependency or postinstall wiring.
 - Add install, offline/cache, checksum mismatch, unsupported platform, and
@@ -320,6 +367,10 @@ Phase 5: release and rollback drill.
   package becomes the default public `runx`.
 - Rollback has been drilled and documented as an npm release rollback plus bad
   artifact quarantine, not as a hidden runtime fallback.
+- Cutover commits/PRs follow repo contribution rules: keep changes focused,
+  use a conventional commit title such as `feat(cli): cut over npm launcher to
+  rust`, include DCO sign-off when committing, and include the validation
+  evidence below in the PR body.
 
 ## Validation Commands
 
@@ -341,6 +392,27 @@ pnpm exec tsx scripts/check-rust-cli-release-artifacts.ts --no-js-delegation --v
 ! rg -n "runx v2|--v2|RUNX_V2|schema_version.*v2|\"v2\"" fixtures/cli-parity fixtures/harness fixtures/runtime crates/runx-cli packages/cli
 ! rg -n "skill_execution|graph_execution|pre_spine|legacy_receipt|compat_receipt" fixtures/cli-parity fixtures/harness fixtures/runtime crates/runx-cli crates/runx-runtime
 ```
+
+Cutover validation script status from the 2026-05-20 inspection:
+- Existing and runnable today:
+  `pnpm exec tsx scripts/generate-cli-feature-parity.ts --check
+  --canonical-only`,
+  `pnpm exec tsx scripts/generate-cli-feature-parity.ts
+  --check-help-coverage --canonical-only`,
+  `cargo test --manifest-path crates/Cargo.toml -p runx-cli`,
+  `cargo test --manifest-path crates/Cargo.toml -p runx-runtime --test
+  harness_fixtures`, `cargo test --manifest-path crates/Cargo.toml -p
+  runx-runtime --test registry_client`, `cargo test --manifest-path
+  crates/Cargo.toml -p runx-runtime --test journal_history`, and the focused
+  connect runtime tests.
+- Missing and must be added before approval:
+  `scripts/check-rust-cli-cutover.ts`, `scripts/package-rust-cli.ts`,
+  `scripts/release-rust-cli.ts`, and
+  `scripts/check-rust-cli-release-artifacts.ts`.
+- `pnpm exec tsx scripts/check-cli-package-contract.mjs` is green for the
+  current TypeScript package contract only. It does not prove the native
+  package pointer, platform artifact, or no-JS-delegation contract required by
+  this cutover.
 
 ## Rollback And Repair
 
@@ -380,3 +452,8 @@ pnpm exec tsx scripts/check-rust-cli-release-artifacts.ts --no-js-delegation --v
   simple-verb rules, fallback sequencing, no legacy shape/no v2/no alias gates,
   validation commands, dependencies on active Rust harness/registry/journal
   work, and rollback/repair rules.
+- 2026-05-20: Reopened the current-state claims after code inspection. Native
+  command dispatch is a candidate path behind explicit environment signals,
+  `connect`/`list`/`harness`/`history` have focused Rust coverage, npm package
+  pointers still target the TypeScript CLI, and cutover packaging/verifier
+  scripts are still missing.

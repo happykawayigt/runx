@@ -2,7 +2,7 @@
 spec_version: '2.0'
 task_id: rust-kernel-port-orchestration
 created: '2026-05-17T00:00:00Z'
-updated: '2026-05-17T02:10:00Z'
+updated: '2026-05-20T00:00:00Z'
 status: draft
 harden_status: not_run
 size: large
@@ -14,11 +14,17 @@ risk_level: high
 ## Current State
 
 Status: draft
-Current phase: none
-Next: approve
-Reason: draft created
-Blockers: none
-Allowed follow-up command: `scafld harden rust-kernel-port-orchestration`
+Current phase: refresh only
+Next: do not approve as written; either backfill audited receipts or split the
+current codebase into new executable kernel/core slices
+Reason: current repo already contains the Rust crate graph and `runx-core`
+state-machine/policy code, but this draft still describes a pre-implementation
+orchestration and has no Phase Receipts or external review evidence
+Blockers: Phase Receipts remain empty; orchestrated sub-spec completion was not
+verified in this refresh; `rust-kernel-blocking-promotion` is still blocked by
+advisory-soak evidence
+Allowed follow-up command: none during this refresh; do not run
+`scafld harden rust-kernel-port-orchestration`.
 Latest runner update: none
 Review gate: not_started
 
@@ -45,6 +51,16 @@ failures visible across a multi-week port. It does not claim to complete the
 runtime, MCP, adapter, parser, receipt, or CLI cutover work. Those follow the
 kernel port and have their own specs.
 
+Refresh note, 2026-05-20: the codebase has advanced beyond the original draft.
+`crates/runx-core` exists at version `0.0.2` and currently exports
+state-machine and policy parity surfaces, including authority-proof,
+public-work, sandbox, connected-auth, graph-scope, retry, local admission, and
+payment-authority subset decisions. The Rust workspace also contains
+`runx-contracts`, `runx-parser`, `runx-receipts`, `runx-runtime`, `runx-sdk`,
+and `runx-cli`. This spec remains `draft` because those observations do not
+prove the scafld lifecycle completed; the Phase Receipts, review gate, and
+completion evidence are still empty.
+
 This spec depends on the architecture decisions in
 `oss/docs/rust-kernel-architecture.md` (sections 2 pure-kernel-scope, 3
 crate-graph ordering, and 12 dual-tree maintenance policy) and assumes
@@ -56,7 +72,13 @@ CWD: `.`
 
 Packages:
 - `@runxhq/core`
-- `crates/runx-core` (placeholder upgraded during the port)
+- `crates/runx-core` (implemented parity crate, not a placeholder)
+- `crates/runx-contracts`
+- `crates/runx-parser`
+- `crates/runx-receipts`
+- `crates/runx-runtime`
+- `crates/runx-sdk`
+- `crates/runx-cli`
 
 Files impacted:
 - `.scafld/specs/drafts/rust-kernel-parity-fixtures.md` (Phase 1
@@ -87,6 +109,16 @@ Invariants:
   not complete without a Receipt.
 - Cross-session resume reads Current State first; never re-derives port
   progress from git log or guesswork.
+- Refreshes to this draft must not mark draft work complete based on current
+  files alone. Completion still requires scafld status, external review, and
+  populated receipts.
+- `runx-core` remains a pure decision crate: no filesystem, network,
+  subprocess, MCP, adapter, runtime execution, or CLI presentation behavior.
+- TypeScript remains authoritative for trusted-kernel behavior until an
+  explicit cutover spec changes a consumer.
+- CI's `Advisory Rust kernel parity` step is advisory until
+  `rust-kernel-blocking-promotion` removes `continue-on-error: true` after the
+  five-clean-PR evidence gate.
 
 Related docs:
 - `docs/rust-kernel-architecture.md` (prerequisite reading)
@@ -113,6 +145,10 @@ Related docs:
 - Leave the Phase A advisory soak and promotion-to-blocking gate to
   `rust-kernel-blocking-promotion`, which runs only after this kernel port
   completes and 5 clean kernel-touching PRs have landed.
+- Record the refreshed state of the current Rust kernel/core surface without
+  converting observed files into completion evidence.
+- Identify small follow-up slices that can be executed safely from the current
+  codebase.
 
 ## Scope
 
@@ -138,8 +174,12 @@ Out of scope:
   orchestration specs (`rust-impure-domain-orchestration`,
   `rust-runtime-orchestration`, `rust-cli-cutover-orchestration` once they
   exist).
-- Authority-proof and public-work policy re-exports. Deferred to
-  `rust-policy-authority-proof-parity` per the policy spec.
+- Runtime payment execution, payment rails, and payment receipt work. Parent is
+  actively editing runtime payment files; this spec only notes that
+  `runx-core` has a pure payment-authority subset helper.
+- Treating authority-proof, public-work, or payment-authority code as completed
+  scafld work without an explicit audit. Current code contains these surfaces,
+  but the orchestration receipts here do not prove how they landed.
 - Direct code writing. This spec coordinates; the sub-specs write.
 
 ## Dependencies
@@ -171,6 +211,12 @@ Out of scope:
 - Self-eval threshold 9 is intentional and aggressive. This forces a
   second pass on anything 8 or below. Default of 7 is too permissive for
   a trust-boundary port.
+- `docs/trusted-kernel-package-truth.md` is the current local authority for the
+  advisory/blocking distinction: Phase A remains advisory in CI, TypeScript is
+  authoritative, and `pnpm rust:check` is the local Rust parity wrapper.
+- The package-boundary guardrail is executable through
+  `scripts/check-rust-crate-graph.mjs`; the purity/style guardrail is
+  executable through `scripts/check-rust-core-style.mjs`.
 
 ## Touchpoints
 
@@ -204,6 +250,96 @@ Out of scope:
   scafld config's `fallback_policy: warn` and dual provider support.
 - Low: cross-spec dependency confusion if sub-spec files are reordered or
   renamed during execution. Mitigated by final coherence verification.
+
+## 2026-05-20 Refresh Findings
+
+Observed current code and guardrails:
+- Rust workspace members are `runx-cli`, `runx-contracts`, `runx-core`,
+  `runx-parser`, `runx-receipts`, `runx-runtime`, and `runx-sdk`.
+- `runx-core` is no longer a placeholder. It exports state-machine decisions
+  and policy decisions from `crates/runx-core/src/lib.rs`.
+- Current policy modules include authority proof, connected auth, graph scope,
+  interpreter normalization, local admission, payment authority subset,
+  public-work policy, retry admission, sandbox admission, and scope helpers.
+- Kernel fixtures currently include 14 state-machine fixtures, 37 policy
+  fixtures, and 1 runner-ingestion fixture under `fixtures/kernel/`.
+- `package.json` exposes `pnpm rust:check`,
+  `pnpm rust:crate-graph`, `pnpm rust:style`, kernel fixture validate/check/key
+  scripts, and `pnpm verify:fast`.
+- `.github/workflows/ci.yml` runs general Rust checks as blocking CI, then runs
+  `Advisory Rust kernel parity` with `continue-on-error: true`.
+- `scripts/check-boundaries.mjs` still defines TypeScript pure core domains as
+  `parser`, `policy`, and `state-machine`.
+
+Stale assumptions corrected by this refresh:
+- The draft must not say `runx-core` is a future placeholder. It is an
+  implemented parity crate.
+- The draft must not claim authority-proof and public-work policy exports are
+  still absent from Rust. They are present in `runx-core`, though their scafld
+  lifecycle evidence is not recorded in this file.
+- Parser is no longer merely future architecture. `crates/runx-parser` exists
+  and is included in the Rust workspace/style guardrails, but parser cutover
+  remains outside this kernel orchestration.
+- Payment authority is present only as a pure subset decision in `runx-core`.
+  Runtime payment execution remains out of scope for this spec.
+
+## Gate Classification
+
+Blocking gates for completing this orchestration spec:
+- Each orchestrated sub-spec must have scafld status `completed` and external
+  review verdict `pass`.
+- Phase Receipts must be filled with commit SHA, review verdict, reviewer
+  model, self-eval score, artifacts, and deviations.
+- `pnpm verify:fast` must pass for the repo-level fast gate.
+- `pnpm rust:crate-graph`, `pnpm rust:style`, kernel fixture validation/checks,
+  and relevant Cargo tests must pass for kernel/core changes.
+
+Advisory gates until promotion:
+- CI `Advisory Rust kernel parity` remains advisory while
+  `continue-on-error: true` is present.
+- Cargo deny and `cargo public-api` are required by the local `pnpm rust:check`
+  wrapper, but their dedicated CI effect is advisory until
+  `rust-kernel-blocking-promotion` executes.
+- The five-clean-PR soak is an advisory-promotion gate, not evidence that this
+  orchestration spec completed.
+
+## Package Boundary And Purity
+
+Confirmed assumptions:
+- `runx-core` may depend on `runx-contracts`, serde, deterministic JSON/hash
+  support, and test-only proptest. It must not own filesystem, network,
+  subprocess, MCP, adapter, runtime execution, or CLI presentation behavior.
+- `runx-parser` may depend on `runx-contracts` and `runx-core` for typed
+  boundaries and sandbox normalization. Parser parity is pure, but parser
+  cutover is separate from this kernel orchestration.
+- `runx-runtime` is the impure boundary for filesystem, subprocess, network,
+  adapters, MCP, sandbox enforcement, and payment execution wiring.
+- `runx-sdk` v0 remains a CLI-backed client over `runx-contracts`; it must not
+  depend on `runx-core` before a separate SDK/runtime cutover changes that.
+- TypeScript `@runxhq/core` remains authoritative for state-machine, policy,
+  and parser behavior until explicit cutover specs change consumers.
+
+## Next Executable Kernel/Core Slices
+
+Use these as new or refreshed specs rather than marking this draft complete:
+- Authority-proof/public-work closure audit: reconcile the current Rust exports
+  and fixtures with stale docs/spec language, prove TS/Rust oracle parity, and
+  update only the docs/specs that still say those re-exports are deferred.
+- Payment-authority fixture parity: add TypeScript oracle generation and kernel
+  fixture JSON for `is_payment_authority_subset` before treating the Rust helper
+  as more than proptest/unit-test covered pure logic. Do not touch runtime
+  payment execution in this slice.
+- Parser pure-core parity hardening: because `parser` is in
+  `pureCoreDomains` and `runx-parser` now exists, run a parser-only acceptance
+  pass over fixture generation/checks, Rust parser fixtures, crate graph, and
+  style coverage without changing runtime consumers.
+- Kernel docs coherence: align `crates/runx-core/README.md`,
+  `fixtures/kernel/README.md`, and architecture/truth docs with the current
+  implemented Rust surfaces while preserving "TypeScript authoritative" and
+  "CI advisory until promotion" language.
+- Public API snapshot maintenance: any public `runx-core` API change must
+  regenerate `crates/runx-core/api-snapshot.txt` and pass
+  `node scripts/check-rust-kernel-parity.mjs --api-only`.
 
 ## Acceptance
 
@@ -680,10 +816,18 @@ Phase 4 receipt: <to be filled at exec time>
 - self_eval_score: <to be filled at exec time>
 - artifacts:
   - crates/runx-core/src/policy.rs
+  - crates/runx-core/src/policy/authority_proof.rs
+  - crates/runx-core/src/policy/connected_auth.rs
+  - crates/runx-core/src/policy/graph_scope.rs
+  - crates/runx-core/src/policy/interpreter.rs
+  - crates/runx-core/src/policy/local.rs
+  - crates/runx-core/src/policy/payment_authority.rs
   - crates/runx-core/src/policy/types.rs
   - crates/runx-core/src/policy/sandbox.rs
   - crates/runx-core/src/policy/scope.rs
   - crates/runx-core/src/policy/posix_basename.rs
+  - crates/runx-core/src/policy/public_work.rs
+  - crates/runx-core/src/policy/retry.rs
   - crates/runx-core/tests/policy_fixtures.rs
   - crates/runx-core/tests/policy_proptest.rs
   - scripts/check-rejection-variant-coverage.ts
