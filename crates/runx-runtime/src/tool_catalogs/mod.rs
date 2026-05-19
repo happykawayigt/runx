@@ -6,5 +6,5 @@ pub mod search;
 
 pub use build::{ToolBuildOptions, build_tool_catalogs};
 pub use error::ToolCatalogError;
-pub use inspect::{ToolInspectOptions, inspect_tool};
+pub use inspect::{LocalToolResolution, ToolInspectOptions, inspect_tool, resolve_local_tool};
 pub use search::{ToolSearchOptions, search_tools};

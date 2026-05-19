@@ -22,6 +22,12 @@ pub struct ToolInspectOptions {
     pub fixture_catalog_enabled: bool,
 }
 
+#[derive(Clone, Debug)]
+pub struct LocalToolResolution {
+    pub manifest_path: PathBuf,
+    pub tool: runx_parser::ValidatedTool,
+}
+
 pub fn inspect_tool(options: &ToolInspectOptions) -> Result<ToolInspectReport, ToolCatalogError> {
     match resolve_local_manifest(options) {
         Ok(manifest_path) => {
@@ -46,6 +52,17 @@ pub fn inspect_tool(options: &ToolInspectOptions) -> Result<ToolInspectReport, T
         "Tool '{}' was not found in configured tool roots.",
         options.tool_ref
     )))
+}
+
+pub fn resolve_local_tool(
+    options: &ToolInspectOptions,
+) -> Result<LocalToolResolution, ToolCatalogError> {
+    let manifest_path = resolve_local_manifest(options)?;
+    let tool = read_local_tool_manifest(&manifest_path)?;
+    Ok(LocalToolResolution {
+        manifest_path,
+        tool,
+    })
 }
 
 fn resolve_fixture_tool(options: &ToolInspectOptions) -> Option<FixtureTool> {
