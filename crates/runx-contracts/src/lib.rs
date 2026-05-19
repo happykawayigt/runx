@@ -14,6 +14,7 @@ pub mod harness;
 pub mod host_protocol;
 pub mod json;
 pub mod links;
+pub mod operational_policy;
 pub mod receipts;
 pub mod redaction;
 pub mod reference;
@@ -74,6 +75,20 @@ pub use host_protocol::{
 };
 pub use json::{JsonNumber, JsonObject, JsonValue};
 pub use links::{DuplicateCandidate, Links};
+pub use operational_policy::{
+    OperationalPolicy, OperationalPolicyAction, OperationalPolicyAutomationPermissions,
+    OperationalPolicyDedupePolicy, OperationalPolicyDedupeStrategy,
+    OperationalPolicyDuplicateBehavior, OperationalPolicyError, OperationalPolicyMissingBehavior,
+    OperationalPolicyOutcomeCloseMode, OperationalPolicyOutcomePolicy, OperationalPolicyOwnerRoute,
+    OperationalPolicyPublishMode, OperationalPolicyReadback, OperationalPolicyRunnerKind,
+    OperationalPolicyRunnerReadback, OperationalPolicyRunnerRule, OperationalPolicyRunnerState,
+    OperationalPolicySchema, OperationalPolicySentryPolicy, OperationalPolicySourceProvider,
+    OperationalPolicySourceReadback, OperationalPolicySourceRule,
+    OperationalPolicySourceThreadPolicy, OperationalPolicyTargetReadback,
+    OperationalPolicyTargetRule, OperationalPolicyValidationFinding,
+    lint_operational_policy_contract, project_operational_policy_readback,
+    validate_operational_policy_contract, validate_operational_policy_semantics,
+};
 pub use redaction::{HashAlgorithm, HashCommitment, REDACTION_SCHEMA, Redaction, RedactionSchema};
 pub use reference::{ActRef, Reference, ReferenceType};
 pub use signal::{

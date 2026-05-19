@@ -1,5 +1,6 @@
 use runx_cli::config::{ConfigAction, ConfigPlan};
 use runx_cli::connect::{ConnectAction, ConnectAuthorityKind, ConnectPlan};
+use runx_cli::policy::{PolicyAction, PolicyPlan};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -69,6 +70,12 @@ fn pre_cutover_candidate_commands_delegate_without_native_signals() {
     for args in [
         vec!["connect".into(), "list".into(), "--json".into()],
         vec!["config".into(), "list".into(), "--json".into()],
+        vec![
+            "policy".into(),
+            "inspect".into(),
+            "fixtures/operational-policy/nitrosend-like.json".into(),
+            "--json".into(),
+        ],
         vec!["doctor".into(), "--json".into()],
         vec!["list".into(), "tools".into(), "--json".into()],
         vec!["new".into(), "docs-demo".into(), "--json".into()],
@@ -390,6 +397,72 @@ fn config_delegates_without_rust_cli_signal() {
                 "--json".into(),
             ],
         })
+    );
+}
+
+#[test]
+fn policy_routes_supported_shapes_to_native_cli() {
+    let action = plan_with_rust_cli_and_js(vec![
+        "policy".into(),
+        "inspect".into(),
+        "fixtures/operational-policy/nitrosend-like.json".into(),
+        "--json".into(),
+    ]);
+
+    assert_eq!(
+        action,
+        LauncherAction::RunPolicy(PolicyPlan {
+            action: PolicyAction::Inspect,
+            path: PathBuf::from("fixtures/operational-policy/nitrosend-like.json"),
+            json: true,
+        })
+    );
+}
+
+#[test]
+fn policy_lint_routes_to_native_cli() {
+    let action = plan_with_rust_cli(vec![
+        "policy".into(),
+        "lint".into(),
+        "fixtures/operational-policy/nitrosend-like.json".into(),
+    ]);
+
+    assert_eq!(
+        action,
+        LauncherAction::RunPolicy(PolicyPlan {
+            action: PolicyAction::Lint,
+            path: PathBuf::from("fixtures/operational-policy/nitrosend-like.json"),
+            json: false,
+        })
+    );
+}
+
+#[test]
+fn policy_unsupported_subcommand_still_delegates() {
+    let action = plan_with_rust_cli_and_js(vec!["policy".into(), "apply".into()]);
+
+    assert_eq!(
+        action,
+        LauncherAction::Delegate(CommandPlan {
+            program: node_command().into(),
+            args: vec![
+                "/repo/oss/packages/cli/bin/runx.js".into(),
+                "policy".into(),
+                "apply".into(),
+            ],
+        })
+    );
+}
+
+#[test]
+fn policy_rejects_invalid_native_shape() {
+    let action = plan_with_rust_cli(vec!["policy".into(), "inspect".into(), "--json".into()]);
+
+    assert_eq!(
+        action,
+        LauncherAction::Error(
+            "runx policy inspect|lint requires exactly one policy path".to_owned()
+        )
     );
 }
 

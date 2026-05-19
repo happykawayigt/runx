@@ -40,6 +40,7 @@ fn main() -> ExitCode {
         LauncherAction::RunHarness(plan) => run_native_harness(PathBuf::from(plan.fixture_path)),
         LauncherAction::RunConnect(plan) => run_native_connect(plan),
         LauncherAction::RunConfig(plan) => run_native_config(plan),
+        LauncherAction::RunPolicy(plan) => runx_cli::policy::run_native_policy(plan),
         LauncherAction::RunDoctor(plan) => runx_cli::doctor::run_native_doctor(plan),
         LauncherAction::RunTool(plan) => runx_cli::tool::run_native_tool(plan),
         LauncherAction::Delegate(command) => match run_command(command) {

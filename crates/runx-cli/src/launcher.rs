@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use crate::config::ConfigPlan;
 use crate::connect::ConnectPlan;
+use crate::policy::{PolicyAction, PolicyPlan};
 
 pub const DEFAULT_NPM_PACKAGE: &str = "@runxhq/cli@latest";
 
@@ -19,6 +20,7 @@ pub enum LauncherAction {
     RunHarness(HarnessPlan),
     RunConnect(ConnectPlan),
     RunConfig(ConfigPlan),
+    RunPolicy(PolicyPlan),
     RunTool(ToolPlan),
     PrintHelp,
     PrintVersion,
@@ -157,6 +159,11 @@ pub fn plan_launcher_with_native_options(
                 .map_or_else(LauncherAction::Error, LauncherAction::RunConfig);
         }
 
+        if first_arg_is(&args, "policy") && policy_subcommand_is_native(&args) {
+            return parse_policy_plan(&args)
+                .map_or_else(LauncherAction::Error, LauncherAction::RunPolicy);
+        }
+
         if first_arg_is(&args, "doctor") {
             if doctor_deferred_to_js(&args) {
                 return delegate_plan(args, npm_package, js_bin);
@@ -251,6 +258,7 @@ Native commands:
   runx list [tools|skills|graphs|packets|overlays] [--ok-only|--invalid-only] [--json]
   runx connect list|revoke <grant-id>|<provider> [--scope scope] [--scope-family family] [--authority-kind read_only|constructive|destructive] [--target-repo owner/repo] [--target-locator locator] [--json]
   runx config set|get|list [agent.provider|agent.model|agent.api_key] [value] [--json]
+  runx policy inspect|lint <policy.json> [--json]
   runx doctor [path] [--json]
   runx tool build <tool-dir>|--all [--json]
   runx tool search <query> [--source source] [--json]
@@ -536,6 +544,55 @@ fn tool_subcommand_is_native(args: &[OsString]) -> bool {
         args.get(1).and_then(|arg| arg.to_str()),
         Some("build" | "search" | "inspect")
     )
+}
+
+fn policy_subcommand_is_native(args: &[OsString]) -> bool {
+    matches!(
+        args.get(1).and_then(|arg| arg.to_str()),
+        Some("inspect" | "lint")
+    )
+}
+
+fn parse_policy_plan(args: &[OsString]) -> Result<PolicyPlan, String> {
+    let subcommand = os_arg(args, 1, "policy")?;
+    let action = match subcommand {
+        "inspect" => PolicyAction::Inspect,
+        "lint" => PolicyAction::Lint,
+        _ => return Err(format!("unknown policy subcommand {subcommand}")),
+    };
+    let mut json = false;
+    let mut positionals = Vec::new();
+    let mut index = 2;
+
+    while index < args.len() {
+        let token = os_arg(args, index, "policy")?;
+        if !token.starts_with("--") {
+            positionals.push(PathBuf::from(token));
+            index += 1;
+            continue;
+        }
+
+        let (flag, inline_value) = split_flag(token);
+        match flag {
+            "--json" => {
+                if inline_value.is_some() {
+                    return Err("--json does not take a value".to_owned());
+                }
+                json = true;
+                index += 1;
+            }
+            _ => return Err(format!("unknown policy flag {flag}")),
+        }
+    }
+
+    let [path] = positionals.as_slice() else {
+        return Err("runx policy inspect|lint requires exactly one policy path".to_owned());
+    };
+    Ok(PolicyPlan {
+        action,
+        path: path.clone(),
+        json,
+    })
 }
 
 fn parse_tool_plan(args: &[OsString]) -> Result<ToolPlan, String> {

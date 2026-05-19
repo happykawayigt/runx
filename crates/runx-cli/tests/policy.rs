@@ -1,0 +1,170 @@
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+#[test]
+fn policy_inspect_json_redacts_raw_locators() -> Result<(), Box<dyn std::error::Error>> {
+    let output = runx_command()
+        .args([
+            "policy",
+            "inspect",
+            "fixtures/operational-policy/nitrosend-like.json",
+            "--json",
+        ])
+        .output()?;
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout)?;
+    assert!(stdout.contains(r#""action": "inspect""#));
+    assert!(stdout.contains(r#""status": "success""#));
+    assert!(stdout.contains(r#""policy_id": "nitrosend-issue-flow""#));
+    assert!(stdout.contains(r#""locator_count": 1"#));
+    assert!(!stdout.contains("slack://nitrosend"));
+    assert_eq!(String::from_utf8(output.stderr)?, "");
+    Ok(())
+}
+
+#[test]
+fn policy_lint_json_reports_semantic_failure() -> Result<(), Box<dyn std::error::Error>> {
+    let output = runx_command()
+        .args([
+            "policy",
+            "lint",
+            "fixtures/operational-policy/invalid-no-available-runner.json",
+            "--json",
+        ])
+        .output()?;
+
+    assert_eq!(output.status.code(), Some(1));
+    let stdout = String::from_utf8(output.stdout)?;
+    assert!(stdout.contains(r#""action": "lint""#));
+    assert!(stdout.contains(r#""status": "failure""#));
+    assert!(stdout.contains(r#""code": "target_action_without_runner""#));
+    assert_eq!(String::from_utf8(output.stderr)?, "");
+    Ok(())
+}
+
+#[test]
+fn policy_inspect_human_output_is_stable() -> Result<(), Box<dyn std::error::Error>> {
+    let output = runx_command()
+        .args([
+            "policy",
+            "inspect",
+            "fixtures/operational-policy/minimal-single-repo.json",
+        ])
+        .output()?;
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout)?;
+    assert!(stdout.contains("policy inspect  success"));
+    assert!(stdout.contains("policy    single-repo-review-flow"));
+    assert!(stdout.contains("sources"));
+    assert!(stdout.contains("github-issues: github; locators=1; thread=comment"));
+    assert!(stdout.contains("targets"));
+    assert!(stdout.contains("example/project: runners=local-review; available=1; owners=1"));
+    assert_eq!(String::from_utf8(output.stderr)?, "");
+    Ok(())
+}
+
+#[test]
+fn policy_missing_path_exits_usage() -> Result<(), Box<dyn std::error::Error>> {
+    let output = runx_command()
+        .args(["policy", "inspect", "--json"])
+        .output()?;
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(
+        String::from_utf8(output.stderr)?
+            .contains("runx policy inspect|lint requires exactly one policy path",)
+    );
+    Ok(())
+}
+
+#[test]
+fn policy_json_exposes_redacted_readback_surface() -> Result<(), Box<dyn std::error::Error>> {
+    let output = runx_command()
+        .args([
+            "policy",
+            "inspect",
+            "fixtures/operational-policy/nitrosend-like.json",
+            "--json",
+        ])
+        .output()?;
+
+    let actual = String::from_utf8(output.stdout)?;
+    assert_json_subset(
+        &actual,
+        repo_root()?.join("fixtures/operational-policy/nitrosend-like.json"),
+    )?;
+    Ok(())
+}
+
+#[test]
+fn policy_rejects_invalid_created_at_contract_value() -> Result<(), Box<dyn std::error::Error>> {
+    let policy_path = write_invalid_created_at_policy()?;
+    let policy_arg = policy_path.to_string_lossy().into_owned();
+    let output = runx_command()
+        .args(["policy", "inspect", policy_arg.as_str(), "--json"])
+        .output()?;
+
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr)?;
+    assert!(stderr.contains("/created_at failed validation (date_time)"));
+    Ok(())
+}
+
+fn runx_command() -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_runx"));
+    command.env("NO_COLOR", "1");
+    command.env("RUNX_RUST_CLI", "1");
+    if let Ok(root) = repo_root() {
+        command.env("RUNX_CWD", root);
+    }
+    command
+}
+
+fn repo_root() -> Result<PathBuf, Box<dyn std::error::Error>> {
+    Ok(Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()?)
+}
+
+fn assert_json_subset(
+    actual: &str,
+    fixture_path: PathBuf,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let repo = repo_root()?;
+    let display_path = fixture_path
+        .strip_prefix(&repo)
+        .unwrap_or(&fixture_path)
+        .to_string_lossy()
+        .replace('\\', "/");
+
+    assert!(actual.contains(r#""schema_version": "runx.operational_policy.v1""#));
+    assert!(actual.contains(r#""sources""#));
+    assert!(actual.contains(r#""runners""#));
+    assert!(actual.contains(r#""targets""#));
+    assert!(actual.contains(&format!(r#""path": "{}""#, display_path)));
+    Ok(())
+}
+
+fn write_invalid_created_at_policy() -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "runx-policy-cli-{}-{}",
+        std::process::id(),
+        SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
+    ));
+    fs::create_dir_all(&temp_dir)?;
+    let path = temp_dir.join("invalid-created-at.json");
+    let raw =
+        fs::read_to_string(repo_root()?.join("fixtures/operational-policy/nitrosend-like.json"))?;
+    fs::write(
+        &path,
+        raw.replace(
+            r#""created_at": "2026-05-19T00:00:00.000Z""#,
+            r#""created_at": "not-a-date""#,
+        ),
+    )?;
+    Ok(path)
+}
