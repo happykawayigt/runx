@@ -1,0 +1,87 @@
+{
+  "advisory_start": {
+    "source": "security-advisory",
+    "evidence": "local fixture marks the start of the clean-kernel promotion window"
+  },
+  "prs": [
+    {
+      "number": 101,
+      "title": "state-machine: preserve fanout branch decisions",
+      "files": [
+        "packages/core/src/state-machine/index.ts",
+        "packages/core/src/state-machine/index.test.ts"
+      ],
+      "evidence": {
+        "verdict": "pass",
+        "checks": [
+          {
+            "name": "test:fast",
+            "conclusion": "success"
+          }
+        ]
+      }
+    },
+    {
+      "number": 102,
+      "title": "policy: tighten public work admission",
+      "files": [
+        "packages/core/src/policy/public-work.ts",
+        "packages/core/src/policy/index.test.ts"
+      ],
+      "evidence": {
+        "status": "passed"
+      }
+    },
+    {
+      "number": 103,
+      "title": "fixtures: refresh kernel parity oracles",
+      "files": [
+        "fixtures/kernel/policy/public-work-denies-cold-comment.json",
+        "fixtures/kernel/state-machine/fanout-plan-conflict-escalates.json"
+      ],
+      "deliberate_kernel_fixture_refresh": true,
+      "evidence": {
+        "result": "clean"
+      }
+    },
+    {
+      "number": 104,
+      "title": "rust: port kernel policy scope matching",
+      "files": [
+        "crates/runx-core/src/policy/scope.rs",
+        "crates/runx-core/tests/policy_fixtures.rs"
+      ],
+      "evidence": {
+        "conclusion": "success"
+      }
+    },
+    {
+      "number": 105,
+      "title": "parser: reject malformed graph policy yaml",
+      "files": [
+        "packages/core/src/parser/graph.ts",
+        "crates/runx-parser/src/graph/policy.rs"
+      ],
+      "evidence": {
+        "verdict": "pass"
+      }
+    },
+    {
+      "number": 106,
+      "title": "state-machine: draft transition cleanup without evidence",
+      "files": [
+        "packages/core/src/state-machine/index.ts"
+      ]
+    },
+    {
+      "number": 107,
+      "title": "fixtures: incidental kernel snapshot churn",
+      "files": [
+        "fixtures/kernel/policy/sandbox-normalize-defaults.json"
+      ],
+      "evidence": {
+        "status": "passed"
+      }
+    }
+  ]
+}
