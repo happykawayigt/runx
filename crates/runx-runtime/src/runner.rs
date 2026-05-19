@@ -787,6 +787,99 @@ fn is_payment_rail_proof_ref(reference: &runx_contracts::Reference) -> bool {
         && reference.label.as_deref() == Some("payment rail proof")
 }
 
+fn enforce_payment_rail_admission_inputs(
+    step: &GraphStep,
+    inputs: &JsonObject,
+) -> Result<(), RuntimeError> {
+    if !payment_spend_step(step) {
+        return Ok(());
+    }
+    require_object_input(step, inputs, "reserved_payment_authority")?;
+    require_non_empty_string_input(step, inputs, "spend_capability_ref")?;
+    let idempotency = require_object_input(step, inputs, "idempotency")?;
+    require_non_empty_string_field(step, idempotency, "idempotency.key")?;
+    Ok(())
+}
+
+fn require_object_input<'a>(
+    step: &GraphStep,
+    inputs: &'a JsonObject,
+    field: &str,
+) -> Result<&'a JsonObject, RuntimeError> {
+    match inputs.get(field) {
+        Some(JsonValue::Object(object)) => Ok(object),
+        Some(_) => Err(payment_authority_denied(
+            step,
+            format!("{field} must be an object before payment rail execution"),
+        )),
+        None => Err(payment_authority_denied(
+            step,
+            format!("{field} is required before payment rail execution"),
+        )),
+    }
+}
+
+fn require_non_empty_string_input(
+    step: &GraphStep,
+    inputs: &JsonObject,
+    field: &str,
+) -> Result<(), RuntimeError> {
+    let Some(value) = inputs.get(field) else {
+        return Err(payment_authority_denied(
+            step,
+            format!("{field} is required before payment rail execution"),
+        ));
+    };
+    require_non_empty_string_value(step, value, field)
+}
+
+fn require_non_empty_string_field(
+    step: &GraphStep,
+    object: &JsonObject,
+    field_path: &str,
+) -> Result<(), RuntimeError> {
+    let Some((_, field)) = field_path.rsplit_once('.') else {
+        return Err(payment_authority_denied(
+            step,
+            format!("{field_path} is not a valid payment admission field"),
+        ));
+    };
+    let Some(value) = object.get(field) else {
+        return Err(payment_authority_denied(
+            step,
+            format!("{field_path} is required before payment rail execution"),
+        ));
+    };
+    require_non_empty_string_value(step, value, field_path)
+}
+
+fn require_non_empty_string_value(
+    step: &GraphStep,
+    value: &JsonValue,
+    field_path: &str,
+) -> Result<(), RuntimeError> {
+    let JsonValue::String(value) = value else {
+        return Err(payment_authority_denied(
+            step,
+            format!("{field_path} must be a string before payment rail execution"),
+        ));
+    };
+    if value.trim().is_empty() {
+        return Err(payment_authority_denied(
+            step,
+            format!("{field_path} must not be empty before payment rail execution"),
+        ));
+    }
+    Ok(())
+}
+
+fn payment_authority_denied(step: &GraphStep, reason: String) -> RuntimeError {
+    RuntimeError::PaymentAuthorityDenied {
+        step_id: step.id.clone(),
+        reason,
+    }
+}
+
 fn output_error(run: &StepRun) -> String {
     if run.output.stderr.is_empty() {
         "cli-tool failed without stderr".to_owned()
@@ -808,6 +901,7 @@ where
     A: SkillAdapter,
 {
     let inputs = resolve_inputs(step, prior_runs)?;
+    enforce_payment_rail_admission_inputs(step, &inputs)?;
     if step.run.is_some() {
         return run_native_step(runtime, graph_name, step, attempt, inputs, caller);
     }

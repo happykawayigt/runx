@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use runx_contracts::{
     ExecutionEvent, JsonObject, JsonValue, ResolutionRequest, ResolutionResponse,
@@ -152,8 +153,94 @@ fn payment_spend_success_without_rail_proof_is_denied_before_graph_success()
     Ok(())
 }
 
+#[test]
+fn payment_spend_missing_reserved_payment_authority_blocks_before_adapter_invocation()
+-> Result<(), Box<dyn std::error::Error>> {
+    assert_payment_admission_denied_before_adapter(
+        FulfillAdmission::MissingReservedPaymentAuthority,
+        "reserved_payment_authority",
+    )
+}
+
+#[test]
+fn payment_spend_missing_spend_capability_ref_blocks_before_adapter_invocation()
+-> Result<(), Box<dyn std::error::Error>> {
+    assert_payment_admission_denied_before_adapter(
+        FulfillAdmission::MissingSpendCapabilityRef,
+        "spend_capability_ref",
+    )
+}
+
+#[test]
+fn payment_spend_missing_idempotency_key_blocks_before_adapter_invocation()
+-> Result<(), Box<dyn std::error::Error>> {
+    assert_payment_admission_denied_before_adapter(
+        FulfillAdmission::MissingIdempotencyKey,
+        "idempotency.key",
+    )
+}
+
+#[test]
+fn non_payment_step_without_rail_admission_inputs_invokes_adapter()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture =
+        GraphFixture::with_fulfill_options(FulfillAdmission::MissingAll, FulfillScope::None)?;
+    let adapter = RecordingAdapter::default();
+    let invocations = adapter.invocations();
+    let runtime = Runtime::new(adapter, RuntimeOptions::default());
+    let mut caller = ApprovalCaller::approved(true);
+
+    let run = runtime.run_graph_file_with_caller(fixture.graph_path(), &mut caller)?;
+
+    assert_eq!(run.state.status, GraphStatus::Succeeded);
+    assert_eq!(
+        invocations.borrow().as_slice(),
+        &["fulfill".to_owned()],
+        "non-payment steps should not require payment rail admission inputs"
+    );
+    Ok(())
+}
+
+fn assert_payment_admission_denied_before_adapter(
+    admission: FulfillAdmission,
+    expected_reason_fragment: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = GraphFixture::with_fulfill_options(admission, FulfillScope::PaymentSpend)?;
+    let adapter = RecordingAdapter::default();
+    let invocations = adapter.invocations();
+    let runtime = Runtime::new(adapter, RuntimeOptions::default());
+    let mut caller = ApprovalCaller::approved(true);
+
+    let result = runtime.run_graph_file_with_caller(fixture.graph_path(), &mut caller);
+
+    match result {
+        Err(RuntimeError::PaymentAuthorityDenied { step_id, reason }) => {
+            assert_eq!(step_id, "fulfill");
+            assert!(
+                reason.contains(expected_reason_fragment),
+                "payment authority denial should name the missing admission input"
+            );
+        }
+        Ok(run) => {
+            return Err(std::io::Error::other(format!(
+                "expected fulfill to be denied, ran steps {:?}",
+                step_ids(&run.steps)
+            ))
+            .into());
+        }
+        Err(error) => {
+            return Err(std::io::Error::other(format!("unexpected runtime error: {error}")).into());
+        }
+    }
+    assert!(
+        invocations.borrow().is_empty(),
+        "payment rail admission must deny before invoking the adapter"
+    );
+    Ok(())
+}
+
 struct RecordingAdapter {
-    invocations: RefCell<Vec<String>>,
+    invocations: Rc<RefCell<Vec<String>>>,
     stdout: String,
 }
 
@@ -174,9 +261,13 @@ impl RecordingAdapter {
 
     fn with_stdout(stdout: &str) -> Self {
         Self {
-            invocations: RefCell::new(Vec::new()),
+            invocations: Rc::new(RefCell::new(Vec::new())),
             stdout: stdout.to_owned(),
         }
+    }
+
+    fn invocations(&self) -> Rc<RefCell<Vec<String>>> {
+        Rc::clone(&self.invocations)
     }
 }
 
@@ -239,6 +330,13 @@ struct GraphFixture {
 
 impl GraphFixture {
     fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        Self::with_fulfill_options(FulfillAdmission::Valid, FulfillScope::PaymentSpend)
+    }
+
+    fn with_fulfill_options(
+        admission: FulfillAdmission,
+        scope: FulfillScope,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let temp = tempfile::tempdir()?;
         let fulfill_dir = temp.path().join("fulfill");
         fs::create_dir(&fulfill_dir)?;
@@ -256,7 +354,7 @@ Fulfill the approved payment.
 "#,
         )?;
         let graph_path = temp.path().join("graph.yaml");
-        fs::write(&graph_path, graph_yaml())?;
+        fs::write(&graph_path, graph_yaml(admission, scope))?;
         Ok(Self {
             _temp: temp,
             graph_path,
@@ -268,8 +366,24 @@ Fulfill the approved payment.
     }
 }
 
-fn graph_yaml() -> &'static str {
-    r#"
+#[derive(Clone, Copy)]
+enum FulfillAdmission {
+    Valid,
+    MissingReservedPaymentAuthority,
+    MissingSpendCapabilityRef,
+    MissingIdempotencyKey,
+    MissingAll,
+}
+
+#[derive(Clone, Copy)]
+enum FulfillScope {
+    PaymentSpend,
+    None,
+}
+
+fn graph_yaml(admission: FulfillAdmission, scope: FulfillScope) -> String {
+    format!(
+        r#"
 name: payment-execution
 steps:
   - id: approve-spend
@@ -285,14 +399,61 @@ steps:
       wrap_as: payment_approval
   - id: fulfill
     skill: ./fulfill
-    scopes:
-      - payment:spend
+{scope_yaml}{inputs_yaml}
 policy:
   transitions:
     - to: fulfill
       field: approve-spend.payment_approval.data.approved
       equals: true
+"#,
+        scope_yaml = fulfill_scope_yaml(scope),
+        inputs_yaml = fulfill_inputs_yaml(admission),
+    )
+}
+
+fn fulfill_scope_yaml(scope: FulfillScope) -> &'static str {
+    match scope {
+        FulfillScope::PaymentSpend => "    scopes:\n      - payment:spend\n",
+        FulfillScope::None => "",
+    }
+}
+
+fn fulfill_inputs_yaml(admission: FulfillAdmission) -> &'static str {
+    match admission {
+        FulfillAdmission::Valid => {
+            r#"    inputs:
+      reserved_payment_authority:
+        authority_ref: payment-authority:payment-execution-001
+      spend_capability_ref: spend-capability:payment-execution-001
+      idempotency:
+        key: payment:payment-execution-001
 "#
+        }
+        FulfillAdmission::MissingReservedPaymentAuthority => {
+            r#"    inputs:
+      spend_capability_ref: spend-capability:payment-execution-001
+      idempotency:
+        key: payment:payment-execution-001
+"#
+        }
+        FulfillAdmission::MissingSpendCapabilityRef => {
+            r#"    inputs:
+      reserved_payment_authority:
+        authority_ref: payment-authority:payment-execution-001
+      idempotency:
+        key: payment:payment-execution-001
+"#
+        }
+        FulfillAdmission::MissingIdempotencyKey => {
+            r#"    inputs:
+      reserved_payment_authority:
+        authority_ref: payment-authority:payment-execution-001
+      spend_capability_ref: spend-capability:payment-execution-001
+      idempotency: {}
+"#
+        }
+        FulfillAdmission::MissingAll => "",
+    }
 }
 
 fn step_ids(steps: &[runx_runtime::StepRun]) -> Vec<&str> {
