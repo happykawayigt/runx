@@ -7,12 +7,14 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use runx_contracts::{HARNESS_RECEIPT_SCHEMA, HarnessReceipt};
+use runx_receipts::verify_harness_receipt_proof;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::receipt_paths::{
     ReceiptStoreLabel, ReceiptStorePublicProjection, safe_receipt_store_projection,
 };
+use crate::receipts::{LocalHarnessSignatureVerifier, proof_context};
 
 const RECEIPT_STORE_INDEX_SCHEMA: &str = "runx.receipt_store_index.v1";
 const INDEX_FILE_NAME: &str = "index.json";
@@ -65,6 +67,7 @@ impl LocalReceiptStore {
                     source,
                 })?;
             if existing == contents {
+                verify_receipt_proof(&receipt_path, receipt)?;
                 return Ok(());
             }
             return Err(ReceiptStoreError::ReceiptAlreadyExists {
@@ -72,6 +75,7 @@ impl LocalReceiptStore {
             });
         }
 
+        verify_receipt_proof(&receipt_path, receipt)?;
         write_atomic(&self.root, &file_name, &contents)?;
         match self.rebuild_index() {
             Ok(_) => Ok(()),
@@ -292,6 +296,12 @@ pub enum ReceiptStoreError {
         receipt_id: String,
         file_stem: String,
     },
+    #[error("receipt proof is invalid for {receipt_id}: {message}")]
+    ReceiptProofInvalid {
+        path: PathBuf,
+        receipt_id: String,
+        message: String,
+    },
     #[error("receipt already exists with different content: {receipt_id}")]
     ReceiptAlreadyExists { receipt_id: String },
     #[error("receipt store index is malformed: {message}")]
@@ -329,6 +339,9 @@ impl ReceiptStoreError {
             }
             Self::IdFilenameMismatch { .. } => {
                 format!("receipt id does not match file name in store {store_label}")
+            }
+            Self::ReceiptProofInvalid { .. } => {
+                format!("receipt proof is invalid in store {store_label}")
             }
             Self::ReceiptAlreadyExists { .. } => {
                 format!("receipt already exists with different content in store {store_label}")
@@ -407,12 +420,28 @@ fn parse_receipt_contents(
             file_stem: expected_id.to_owned(),
         });
     }
+    verify_receipt_proof(path, &receipt)?;
     Ok(receipt)
 }
 
 #[derive(Debug, Deserialize)]
 struct ReceiptSchemaProbe {
     schema: Option<String>,
+}
+
+fn verify_receipt_proof(path: &Path, receipt: &HarnessReceipt) -> Result<(), ReceiptStoreError> {
+    let verifier = LocalHarnessSignatureVerifier;
+    let context = proof_context(&verifier, receipt);
+    let verification = verify_harness_receipt_proof(receipt, &context);
+    if verification.valid {
+        Ok(())
+    } else {
+        Err(ReceiptStoreError::ReceiptProofInvalid {
+            path: path.to_path_buf(),
+            receipt_id: receipt.id.clone(),
+            message: format!("{:?}", verification.findings),
+        })
+    }
 }
 
 fn write_atomic(dir: &Path, file_name: &str, contents: &[u8]) -> Result<(), ReceiptStoreError> {

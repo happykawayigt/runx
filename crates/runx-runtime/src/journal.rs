@@ -10,12 +10,13 @@ use runx_contracts::{
     ClosureDisposition, ExecutionEvent, HarnessReceipt, HarnessState, JsonObject, JsonValue,
     Reference, ReferenceType,
 };
-use runx_receipts::verify_harness_receipt;
+use runx_receipts::verify_harness_receipt_proof;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::receipt_paths::safe_receipt_store_label;
 use crate::receipt_store::{LocalReceiptStore, ReceiptStoreError};
+use crate::receipts::{LocalHarnessSignatureVerifier, proof_context};
 
 pub const JOURNAL_PROJECTION_SCHEMA: &str = "runx.journal_projection.v1";
 pub const JOURNAL_PROJECTOR_ID: &str = "runx-runtime.local-journal.v1";
@@ -431,7 +432,9 @@ fn normalized(value: &Option<String>) -> Option<String> {
 }
 
 fn verification_status(receipt: &HarnessReceipt) -> String {
-    if verify_harness_receipt(receipt).valid {
+    let verifier = LocalHarnessSignatureVerifier;
+    let context = proof_context(&verifier, receipt);
+    if verify_harness_receipt_proof(receipt, &context).valid {
         "verified".to_owned()
     } else {
         "failed".to_owned()

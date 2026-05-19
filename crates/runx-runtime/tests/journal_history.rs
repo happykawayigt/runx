@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -5,19 +6,15 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use runx_contracts::HarnessReceipt;
-use runx_runtime::LocalReceiptStore;
 use runx_runtime::journal::{
     HARNESS_RECEIPT_REF_PREFIX, HISTORY_PROJECTOR_ID, HistoryFilter, JOURNAL_PROJECTOR_ID,
     JournalProjectionError, PausedRunCheckpoint, exact_receipt_id, harness_receipt_ref,
     list_local_history, list_local_history_with_checkpoints, project_journal_for_receipt,
     project_receipt_journal,
 };
+use runx_runtime::{InvocationStatus, LocalReceiptStore, SkillOutput};
 use serde_json::json;
 
-const SUCCESS_FIXTURE: &str =
-    include_str!("../../../fixtures/contracts/harness-spine/harness-receipt-success.json");
-const ABNORMAL_FIXTURE: &str =
-    include_str!("../../../fixtures/contracts/harness-spine/harness-receipt-abnormal.json");
 const JOURNAL_ORACLE: &str = include_str!("../../../fixtures/journal/history-oracle.json");
 
 #[test]
@@ -49,7 +46,7 @@ fn history_lists_receipts_newest_first_with_safe_refs_and_filters()
     let project_runx_dir = workspace.join(".runx");
     let store = LocalReceiptStore::new(project_runx_dir.join("receipts"));
     store.write_receipt(&receipt_with_metadata(
-        success_receipt()?,
+        InvocationStatus::Success,
         "hrn_rcpt_old",
         "2026-05-18T00:00:00Z",
         "Revision Skill",
@@ -57,7 +54,7 @@ fn history_lists_receipts_newest_first_with_safe_refs_and_filters()
         "runner-a",
     )?)?;
     store.write_receipt(&receipt_with_metadata(
-        success_receipt()?,
+        InvocationStatus::Success,
         "hrn_rcpt_new",
         "2026-05-19T00:00:00Z",
         "Deploy Skill",
@@ -125,7 +122,7 @@ fn history_filter_matches_actor_status_skill_and_date() -> Result<(), Box<dyn st
     let project_runx_dir = workspace.join(".runx");
     let store = LocalReceiptStore::new(project_runx_dir.join("receipts"));
     store.write_receipt(&receipt_with_metadata(
-        success_receipt()?,
+        InvocationStatus::Success,
         "hrn_rcpt_revision",
         "2026-05-18T00:01:00Z",
         "Revision Skill",
@@ -133,7 +130,7 @@ fn history_filter_matches_actor_status_skill_and_date() -> Result<(), Box<dyn st
         "runner-a",
     )?)?;
     store.write_receipt(&receipt_with_metadata(
-        abnormal_receipt()?,
+        InvocationStatus::Failure,
         "hrn_rcpt_deploy",
         "2026-05-19T00:01:00Z",
         "Deploy Skill",
@@ -279,7 +276,7 @@ fn history_does_not_double_list_paused_ledger_with_terminal_receipt()
         "2026-04-28T01:00:00.000Z",
     )?;
     store.write_receipt(&receipt_with_metadata(
-        success_receipt()?,
+        InvocationStatus::Success,
         "gx_paused_terminal",
         "2026-04-28T02:00:00Z",
         "Terminal Skill",
@@ -323,11 +320,102 @@ fn malformed_history_store_remains_typed_error() -> Result<(), Box<dyn std::erro
 }
 
 #[test]
+fn history_projection_fails_structurally_valid_stale_receipt_digest()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = TestDir::new()?;
+    let workspace = temp.path().join("workspace");
+    let project_runx_dir = workspace.join(".runx");
+    let store = LocalReceiptStore::new(project_runx_dir.join("receipts"));
+    let mut receipt = generated_runtime_receipt()?;
+    receipt.seal.digest = "sha256:stale".to_owned();
+    if let Some(seal) = receipt.harness.seal.as_mut() {
+        seal.digest = "sha256:stale".to_owned();
+    }
+    assert!(runx_receipts::verify_harness_receipt(&receipt).valid);
+    write_receipt_json(store.root(), &receipt)?;
+
+    let result = list_local_history(
+        &store,
+        &workspace,
+        &project_runx_dir,
+        &HistoryFilter::default(),
+    );
+
+    assert!(matches!(
+        result,
+        Err(JournalProjectionError::ReceiptStore(
+            runx_runtime::ReceiptStoreError::ReceiptProofInvalid { .. }
+        ))
+    ));
+    Ok(())
+}
+
+#[test]
+fn history_projection_fails_structurally_valid_tampered_receipt_signature()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = TestDir::new()?;
+    let workspace = temp.path().join("workspace");
+    let project_runx_dir = workspace.join(".runx");
+    let store = LocalReceiptStore::new(project_runx_dir.join("receipts"));
+    let mut receipt = generated_runtime_receipt()?;
+    receipt.signature.value = "sig:sha256:tampered".to_owned();
+    assert!(runx_receipts::verify_harness_receipt(&receipt).valid);
+    write_receipt_json(store.root(), &receipt)?;
+
+    let result = list_local_history(
+        &store,
+        &workspace,
+        &project_runx_dir,
+        &HistoryFilter::default(),
+    );
+
+    assert!(matches!(
+        result,
+        Err(JournalProjectionError::ReceiptStore(
+            runx_runtime::ReceiptStoreError::ReceiptProofInvalid { .. }
+        ))
+    ));
+    Ok(())
+}
+
+#[test]
+fn runtime_generated_receipts_project_verified() -> Result<(), Box<dyn std::error::Error>> {
+    let temp = TestDir::new()?;
+    let workspace = temp.path().join("workspace");
+    let project_runx_dir = workspace.join(".runx");
+    let store = LocalReceiptStore::new(project_runx_dir.join("receipts"));
+    let receipt = generated_runtime_receipt()?;
+    store.write_receipt(&receipt)?;
+
+    let history = list_local_history(
+        &store,
+        &workspace,
+        &project_runx_dir,
+        &HistoryFilter::default(),
+    )?;
+    let journal = project_receipt_journal(&receipt);
+
+    assert_eq!(history.receipts[0].verification.status, "verified");
+    assert_eq!(
+        receipt_journal_verification_status(&journal),
+        Some("verified")
+    );
+    Ok(())
+}
+
+#[test]
 fn journal_projection_uses_exact_refs_and_reprojects_deterministically()
 -> Result<(), Box<dyn std::error::Error>> {
     let temp = TestDir::new()?;
     let store = LocalReceiptStore::new(temp.path().join("receipts"));
-    let receipt: HarnessReceipt = serde_json::from_value(success_receipt()?)?;
+    let receipt = receipt_with_metadata(
+        InvocationStatus::Success,
+        "hrn_rcpt_123",
+        "2026-05-18T00:00:00Z",
+        "Journal Skill",
+        "local",
+        "runner-a",
+    )?;
     store.write_receipt(&receipt)?;
 
     let direct = project_journal_for_receipt(&store, "hrn_rcpt_123")?;
@@ -367,7 +455,14 @@ fn journal_projection_uses_exact_refs_and_reprojects_deterministically()
 fn journal_lookup_does_not_use_suffix_matching() -> Result<(), Box<dyn std::error::Error>> {
     let temp = TestDir::new()?;
     let store = LocalReceiptStore::new(temp.path().join("receipts"));
-    let receipt: HarnessReceipt = serde_json::from_value(success_receipt()?)?;
+    let receipt = receipt_with_metadata(
+        InvocationStatus::Success,
+        "hrn_rcpt_123",
+        "2026-05-18T00:00:00Z",
+        "Journal Skill",
+        "local",
+        "runner-a",
+    )?;
     store.write_receipt(&receipt)?;
 
     let result = project_journal_for_receipt(&store, "123");
@@ -390,63 +485,97 @@ fn journal_lookup_does_not_use_suffix_matching() -> Result<(), Box<dyn std::erro
 }
 
 fn receipt_with_metadata(
-    mut value: serde_json::Value,
+    status: InvocationStatus,
     id: &str,
     created_at: &str,
     skill_name: &str,
     source_type: &str,
     actor: &str,
 ) -> Result<HarnessReceipt, Box<dyn std::error::Error>> {
-    set_string(&mut value, &["id"], id)?;
-    set_string(&mut value, &["created_at"], created_at)?;
-    value["metadata"] = json!({
+    let mut receipt = generated_runtime_receipt_with(id, status, created_at)?;
+    receipt.metadata = Some(json_object(json!({
         "skill_name": skill_name,
         "source_type": source_type,
         "runner": {
             "provider": actor
         }
-    });
-    serde_json::from_value(value).map_err(Into::into)
+    }))?);
+    reseal_receipt(&mut receipt)?;
+    Ok(receipt)
 }
 
-fn set_string(
-    value: &mut serde_json::Value,
-    path: &[&str],
-    replacement: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut current = value;
-    for key in &path[..path.len().saturating_sub(1)] {
-        current = current.get_mut(*key).ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("missing object key {key}"),
-            )
-        })?;
+fn generated_runtime_receipt() -> Result<HarnessReceipt, Box<dyn std::error::Error>> {
+    generated_runtime_receipt_with(
+        "hrn_rcpt_journal-history_strict-proof",
+        InvocationStatus::Success,
+        "2026-05-18T00:00:00Z",
+    )
+}
+
+fn generated_runtime_receipt_with(
+    id: &str,
+    status: InvocationStatus,
+    created_at: &str,
+) -> Result<HarnessReceipt, Box<dyn std::error::Error>> {
+    let succeeded = status == InvocationStatus::Success;
+    let output = SkillOutput {
+        status: status.clone(),
+        stdout: format!(
+            r#"{{"artifact":{{"artifact_id":"artifact_{id}","artifact_type":"artifact"}}}}"#
+        ),
+        stderr: String::new(),
+        exit_code: Some(if succeeded { 0 } else { 1 }),
+        duration_ms: 10,
+        metadata: BTreeMap::new(),
+    };
+    let mut receipt = runx_runtime::receipts::step_receipt(
+        "journal-history",
+        "strict-proof",
+        1,
+        &output,
+        created_at,
+    )?;
+    receipt.id = id.to_owned();
+    reseal_receipt(&mut receipt)?;
+    Ok(receipt)
+}
+
+fn reseal_receipt(receipt: &mut HarnessReceipt) -> Result<(), Box<dyn std::error::Error>> {
+    let digest = runx_receipts::canonical_receipt_body_digest(receipt)?;
+    receipt.seal.digest = digest.clone();
+    if let Some(seal) = receipt.harness.seal.as_mut() {
+        seal.digest = digest.clone();
     }
-    let key = path
-        .last()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "empty path"))?;
-    current[*key] = serde_json::Value::String(replacement.to_owned());
+    receipt.signature.value = format!("sig:{digest}");
     Ok(())
 }
 
-fn success_receipt() -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-    fixture_expected(SUCCESS_FIXTURE)
+fn receipt_journal_verification_status(
+    projection: &runx_runtime::journal::JournalProjection,
+) -> Option<&str> {
+    projection
+        .rows
+        .iter()
+        .find(|row| row.event_kind == "harness_receipt_sealed")
+        .and_then(|row| row.verification.as_ref())
+        .map(|verification| verification.status.as_str())
 }
 
-fn abnormal_receipt() -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-    fixture_expected(ABNORMAL_FIXTURE)
+fn json_object(value: serde_json::Value) -> Result<runx_contracts::JsonObject, io::Error> {
+    serde_json::from_value(value)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string()))
 }
 
-fn fixture_expected(source: &str) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-    let fixture: serde_json::Value = serde_json::from_str(source)?;
-    fixture.get("expected").cloned().ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            "fixture is missing expected receipt",
-        )
-        .into()
-    })
+fn write_receipt_json(
+    dir: &Path,
+    receipt: &HarnessReceipt,
+) -> Result<(), Box<dyn std::error::Error>> {
+    fs::create_dir_all(dir)?;
+    fs::write(
+        dir.join(format!("{}.json", receipt.id)),
+        serde_json::to_string(receipt)?,
+    )?;
+    Ok(())
 }
 
 fn write_paused_ledger(
