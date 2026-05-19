@@ -14,3 +14,12 @@ runx new my-skill
 
 This package is intentionally thin. It delegates to `@runxhq/cli` so the
 scaffolding logic stays in one place.
+
+## Rust takeover boundary
+
+`@runxhq/create-skill` remains a thin npm bootstrapper. After the Rust CLI
+cutover it continues to wrap `runx new` through the bundled CLI rather than
+reimplementing scaffolding logic.
+
+See the [TypeScript interop boundary](../../docs/ts-interop-boundary.md) for
+the package disposition and ownership rules.

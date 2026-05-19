@@ -1,0 +1,11 @@
+# @runxhq/contracts
+
+Published TypeScript package for runx machine-facing JSON contracts.
+
+After the Rust takeover this package remains the TypeScript view of
+`runx-contracts`. Contract drift is controlled through fixture
+cross-validation, and consumers should treat this package as the stable
+TypeScript import surface for host protocol and other public wire shapes.
+
+See the [TypeScript interop boundary](../../docs/ts-interop-boundary.md) for
+the package disposition and ownership rules.

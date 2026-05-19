@@ -7,6 +7,15 @@ Optional LangChain bridge for `runx`.
 
 `runx` remains the kernel for policy, receipts, and execution. This package is an ecosystem bridge, not a second runtime.
 
+## Rust takeover boundary
+
+`@runxhq/langchain` remains an optional bridge after the Rust takeover. It
+continues to invoke governed runx workflows through the `runx` CLI boundary
+rather than becoming a runtime.
+
+See the [TypeScript interop boundary](../../docs/ts-interop-boundary.md) for
+the package disposition and ownership rules.
+
 ## APIs
 
 - `createLangChainToolCatalogAdapter(...)`

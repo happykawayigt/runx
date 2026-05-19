@@ -2,8 +2,8 @@
 spec_version: '2.0'
 task_id: rust-ts-interop-boundary
 created: '2026-05-18T00:00:00Z'
-updated: '2026-05-18T00:00:00Z'
-status: draft
+updated: '2026-05-19T01:26:57Z'
+status: completed
 harden_status: not_run
 size: medium
 risk_level: high
@@ -13,21 +13,14 @@ risk_level: high
 
 ## Current State
 
-Status: draft
-Current phase: none
-Next: approve
-Reason: draft created under `plans/rust-takeover.md`. This is the single
-source of truth for every TS package's disposition during and after the
-Rust takeover. Every other spec defers to this document for fate
-decisions; no other spec re-decides what stays, sunsets, or becomes a
-bridge.
-Blockers: none. This is a documentation / governance spec that lands
-early so every downstream spec can cite it. It does not wait on
-`rust-runtime-skeleton`; the boundary it documents is intent, and the
-package list it covers is already true.
-Allowed follow-up command: `scafld harden rust-ts-interop-boundary`
-Latest runner update: none
-Review gate: not_started
+Status: completed
+Current phase: final
+Next: done
+Reason: task completed
+Blockers: none
+Allowed follow-up command: `none`
+Latest runner update: 2026-05-19T01:26:57Z
+Review gate: pass
 
 ## Summary
 
@@ -320,3 +313,21 @@ Out of scope:
 - Contracts codegen from Rust: future spec, not blocking this one.
 - Whether `@runxhq/host-adapters` ever gets a Rust sibling crate. Today
   it has none; not blocking.
+
+## Review
+
+Status: completed
+Verdict: pass
+Mode: discover
+Provider: command
+Output: command.stdout
+Summary: Documentation-only TS interop boundary is coherent: canonical docs page added, bridge package READMEs point to it, and no runtime code changed.
+
+Attack log:
+- `scope`: Checked changed paths against docs-only spec scope -> clean (Changes are docs/README/spec lifecycle files only for this task.)
+- `package dispositions`: Compared documented package list with packages directory -> clean (All surviving package dispositions are named in docs/ts-interop-boundary.md.)
+- `risk`: Checked for code/runtime/config changes -> clean (No package source code or public API behavior changed.)
+
+Findings:
+- none
+
