@@ -3,7 +3,7 @@
 // stays adjacent until the cross-language oracle splits validation tracks.
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::types::{
+use super::{
     OperationalPolicy, OperationalPolicyAction, OperationalPolicyAdmission,
     OperationalPolicyAdmissionRequest, OperationalPolicyAdmissionStatus,
     OperationalPolicyAutomationPermissions, OperationalPolicyDedupePolicy, OperationalPolicyError,

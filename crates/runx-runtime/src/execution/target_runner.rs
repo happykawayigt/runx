@@ -716,6 +716,7 @@ fn receipt_harness(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn receipt_seal(
     disposition: TargetRepoRunnerPullRequestDisposition,
     summary: &str,
