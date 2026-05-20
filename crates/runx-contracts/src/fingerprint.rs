@@ -1,3 +1,4 @@
+//! Fingerprint contracts: content hashing identifiers.
 use serde::{Deserialize, Serialize};
 
 use crate::Reference;

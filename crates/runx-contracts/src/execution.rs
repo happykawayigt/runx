@@ -1,3 +1,4 @@
+//! Execution semantics contracts: governed disposition, outcome state, and receipt outcome.
 use serde::{Deserialize, Serialize};
 
 use crate::{JsonObject, JsonValue};

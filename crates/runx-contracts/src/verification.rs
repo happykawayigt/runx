@@ -1,3 +1,4 @@
+//! Verification contracts: checks and statuses for governed verification.
 use serde::{Deserialize, Serialize};
 
 use crate::Reference;

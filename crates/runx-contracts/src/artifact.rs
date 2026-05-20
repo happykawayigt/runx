@@ -1,3 +1,4 @@
+//! Artifact contract: emitted artifacts and their producer attribution.
 use serde::{Deserialize, Serialize};
 
 use crate::{ActRef, HashCommitment, JsonObject, Reference};

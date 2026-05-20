@@ -1,3 +1,4 @@
+//! Redaction contracts: redacted-field markers and hash commitments.
 use serde::{Deserialize, Serialize};
 
 use crate::Reference;

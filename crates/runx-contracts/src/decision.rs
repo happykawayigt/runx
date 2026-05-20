@@ -1,3 +1,4 @@
+//! Decision contracts: choices, justifications, and closure dispositions.
 use serde::{Deserialize, Serialize};
 
 use crate::{Intent, Reference};

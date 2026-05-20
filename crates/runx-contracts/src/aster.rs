@@ -1,3 +1,4 @@
+//! Aster operator contracts: targets, opportunities, selections, feed entries, reflections.
 use serde::{Deserialize, Serialize};
 
 use crate::{ActForm, ActRef, AuthorityResourceFamily, Closure, Fingerprint, Links, Reference};

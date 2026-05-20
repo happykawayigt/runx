@@ -1,3 +1,4 @@
+//! Doctor diagnostic report contracts: diagnostics, repairs, summaries.
 use std::fmt;
 use std::marker::PhantomData;
 

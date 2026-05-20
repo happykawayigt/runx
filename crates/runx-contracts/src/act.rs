@@ -1,3 +1,4 @@
+//! Act algebra: intents, governed acts, success criteria, and verification details.
 use serde::{Deserialize, Serialize};
 
 use crate::{ActRef, Closure, Reference, Verification};

@@ -1,3 +1,4 @@
+//! Host protocol contracts: execution events, resolution requests, host-run lifecycle.
 use serde::{Deserialize, Serialize};
 
 use crate::{JsonObject, JsonValue};

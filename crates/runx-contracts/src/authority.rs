@@ -1,3 +1,4 @@
+//! Authority algebra: terms, capabilities, verbs, attenuation, and payment bounds.
 use serde::{Deserialize, Serialize};
 
 use crate::{JsonNumber, JsonObject, Reference};

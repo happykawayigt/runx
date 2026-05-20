@@ -1,3 +1,4 @@
+//! Harness spine contracts: receipts, seals, sandbox declarations, fanout sync, signatures.
 use serde::{Deserialize, Serialize};
 
 use crate::{

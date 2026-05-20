@@ -1,3 +1,4 @@
+//! Act assignment envelope: host kind, actor, intent key, and idempotency hashing.
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};

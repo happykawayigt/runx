@@ -1,3 +1,4 @@
+//! Reference contracts: typed references to receipts, acts, and external surfaces.
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

@@ -1,3 +1,4 @@
+//! Receipt link contracts: duplicate candidates and reference linking.
 use serde::{Deserialize, Serialize};
 
 use crate::{JsonNumber, Reference};

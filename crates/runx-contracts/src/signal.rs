@@ -1,3 +1,4 @@
+//! Signal contracts: trust-tagged events that enter the act lifecycle.
 use serde::{Deserialize, Serialize};
 
 use crate::{Fingerprint, JsonObject, Links, Reference};

@@ -1,3 +1,4 @@
+//! Boundary JSON model: deterministic value, object, and number types for cross-language contracts.
 use std::collections::BTreeMap;
 use std::fmt;
 
