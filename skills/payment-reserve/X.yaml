@@ -1,0 +1,164 @@
+skill: payment-reserve
+version: "0.1.0"
+
+catalog:
+  kind: skill
+  audience: operator
+  visibility: public
+
+harness:
+  cases:
+    - name: payment-reserve-selected
+      runner: reserve
+      inputs:
+        payment_quote_packet:
+          payment_quote:
+            quote_id: quote_demo_001
+            amount_minor: 125
+            currency: USD
+            rails:
+              - mock
+            counterparty: merchant:demo
+            operation: search.paid
+          requested_payment_authority:
+            term_id: authority-term:payment:quote-demo-001
+            principal_ref:
+              type: host
+              uri: principal:operator:test
+            resource_ref:
+              type: surface
+              uri: merchant:demo
+            resource_family: payment
+            verbs:
+              - reserve
+              - spend
+            bounds:
+              payment:
+                currency: USD
+                max_per_call_minor: 125
+                rails:
+                  - mock
+                realm: test
+                counterparty: merchant:demo
+                operation: search.paid
+            conditions: []
+            approvals: []
+            capabilities: []
+            issued_by_ref:
+              type: host
+              uri: authority:payment:test
+        parent_payment_authority:
+          authority_ref: authority:payment:test
+        idempotency_seed: demo-search-001
+      caller:
+        answers:
+          agent_step.payment-reserve.output:
+            payment_decision:
+              decision_id: decision_payment_demo_001
+              choice: continue
+              selected: true
+              amount_minor: 125
+              currency: USD
+            reserved_payment_authority:
+              term_id: authority-term:payment:reserve-demo-001
+              principal_ref:
+                type: host
+                uri: principal:operator:test
+              resource_ref:
+                type: surface
+                uri: merchant:demo
+              resource_family: payment
+              verbs:
+                - spend
+              capabilities:
+                - payment_single_use_spend
+              bounds:
+                payment:
+                  currency: USD
+                  max_per_call_minor: 125
+                  rails:
+                    - mock
+                  realm: test
+                  counterparty: merchant:demo
+                  operation: search.paid
+                  idempotency_required: true
+                  recovery_required: true
+                  receipt_before_success: true
+                  single_use_spend: true
+                  credential_form: single_use_spend_capability
+              conditions: []
+              approvals: []
+              issued_by_ref:
+                type: host
+                uri: authority:payment:test
+            idempotency:
+              key: payment:demo-search-001
+              recovery_required: true
+            spend_capability_ref: capability:payment:demo-search-001
+            approval:
+              required: false
+              status: not_required
+            core_requirements:
+              - payment_authority_subset
+              - reserve_before_rail
+              - receipt_before_success
+            open_questions: []
+      expect:
+        status: sealed
+        receipt:
+          schema: runx.harness_receipt.v1
+          state: sealed
+          disposition: closed
+          reason_code: payment_reservation_closed
+
+runners:
+  reserve:
+    default: true
+    type: agent-step
+    agent: operator
+    task: payment-reserve
+    mutating: true
+    outputs:
+      payment_decision: object
+      reserved_payment_authority: object
+      spend_capability_ref: string
+      idempotency: object
+      approval: object
+      core_requirements: array
+      open_questions: array
+    artifacts:
+      wrap_as: payment_reservation_packet
+      packet: runx.payment.reservation.v1
+    runx:
+      payment_authority:
+        phase: reserve
+        resource_family: payment
+        verbs:
+          - reserve
+        core_owned:
+          - authority_subset_proof
+          - atomic_budget_hold
+          - idempotency_key
+        mutates_rail: false
+        receives_funding_material: false
+    inputs:
+      payment_quote_packet:
+        type: object
+        required: true
+        description: "Output from payment-quote."
+      parent_payment_authority:
+        type: object
+        required: true
+        description: "Parent payment authority term or authority reference."
+      spend_policy:
+        type: object
+        required: false
+        description: "Policy limits, period caps, and approval thresholds."
+      approval_context:
+        type: object
+        required: false
+        description: "Operator, system, or prior approval evidence."
+      idempotency_seed:
+        type: string
+        required: false
+        description: "Stable seed if not already supplied by the quote."

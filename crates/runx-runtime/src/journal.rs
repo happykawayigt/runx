@@ -765,7 +765,7 @@ fn paused_run_from_checkpoint(checkpoint: &PausedRunCheckpoint) -> PausedRunSumm
         id: checkpoint.id.clone(),
         name: checkpoint.name.clone(),
         kind: checkpoint.kind.clone(),
-        status: "needs_agent".to_owned(),
+        status: "paused".to_owned(),
         started_at: checkpoint.started_at.clone(),
         selected_runner: checkpoint.selected_runner.clone(),
         step_ids: checkpoint.step_ids.clone(),
@@ -920,7 +920,7 @@ fn paused_run_from_events(run_id: &str, events: &[LedgerRunEvent]) -> Option<Pau
                     .clone()
                     .unwrap_or_else(|| run_id.to_owned()),
                 kind: run_kind(run_id),
-                status: "needs_agent".to_owned(),
+                status: "paused".to_owned(),
                 started_at: started_at.or_else(|| event.created_at.clone()),
                 selected_runner: event
                     .selected_runner
@@ -943,7 +943,7 @@ fn invalid_paused_run(run_id: &str, reason: String) -> PausedRunSummary {
         id: run_id.to_owned(),
         name: run_id.to_owned(),
         kind: run_kind(run_id),
-        status: "needs_agent".to_owned(),
+        status: "paused".to_owned(),
         started_at: None,
         selected_runner: None,
         step_ids: Vec::new(),

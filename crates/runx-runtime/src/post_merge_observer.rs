@@ -202,10 +202,14 @@ fn require_source_thread_metadata(
 
 fn public_reply_body(projection: &PostMergeObserverPublicationProjection) -> String {
     sanitize_public_text(&format!(
-        "Post-merge observer: {}. Closure: {}. Verification: {}. Receipt: {}.",
+        "Post-merge observer: {}. Closure: {}. Verification: {}. Proof: {}. Receipt: {}.",
         projection.summary,
         projection.reason_code,
-        projection.verification_criterion_id,
+        projection
+            .verification_criterion_id
+            .as_deref()
+            .unwrap_or("not_required"),
+        projection.proof_criterion_id,
         projection.harness_receipt_ref.uri
     ))
 }

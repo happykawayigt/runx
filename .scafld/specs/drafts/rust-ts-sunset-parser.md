@@ -17,12 +17,15 @@ Status: draft
 Current phase: blocked
 Next: wait for parser importer migration specs to remove live TS consumers.
 Reason: draft created under `plans/rust-takeover.md`. Third TS sunset. On
-2026-05-20 this draft was rechecked and the deletion objective is not currently
-valid because live TypeScript consumers still import `@runxhq/core/parser` and
-relative `packages/core/src/parser` modules.
+2026-05-20 this draft was rechecked again and the deletion objective is not
+currently valid because 56 live files still import `@runxhq/core/parser`,
+relative `packages/core/src/parser` modules, or runtime-local parser type
+surfaces.
 Blockers: parser importers still live after `rust-ts-sunset-policy` completion.
 Allowed follow-up command: `scafld harden rust-ts-sunset-parser`
-Latest runner update: none
+Latest runner update: 2026-05-20 importer census refreshed; deletion remains
+blocked and no harden/build should run for this draft until owning importer
+migration specs clear the census.
 Review gate: blocked
 
 ## Summary
@@ -34,6 +37,11 @@ consumer reads from `@runxhq/core/parser`.
 2026-05-20 validation update: this precondition is false in the current
 checkout. Do not approve or execute the deletion phase until the importer census
 below is clean.
+
+2026-05-20 second validation update: the importer census still finds 56 files.
+The largest surviving groups are runtime-local execution/parser-type surfaces,
+CLI command readers, fixture/oracle generators, and tests. This update is
+inspection evidence only; it does not make deletion executable.
 
 ## Context
 

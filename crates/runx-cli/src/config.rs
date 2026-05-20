@@ -1,6 +1,5 @@
-// rust-style-allow: large-file because the first native config slice keeps
-// parse, execute, render, and parity tests together while command routing is
-// still gated behind RUNX_RUST_CLI.
+// rust-style-allow: large-file because the native config slice keeps parse,
+// execute, render, and parity tests together for one audited CLI surface.
 use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::fmt;

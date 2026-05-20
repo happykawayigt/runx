@@ -26,7 +26,12 @@ Blockers: advisory start timestamp recorded; 5 clean kernel-touching PRs landed
 while Rust kernel parity checks are advisory
 Allowed follow-up command: run the evidence script against audited evidence; do
 not run `scafld harden rust-kernel-blocking-promotion`.
-Latest runner update: 2026-05-20 clean-kernel counter semantics slice landed
+Latest runner update: 2026-05-20 clean-kernel counter live-GitHub mode now
+requires parseable advisory-start timestamps for timestamped PR metadata,
+requires live GitHub records to include post-advisory merge times, and requires
+the Rust kernel parity check itself to pass. A read-only live probe from
+`2026-05-20T00:00:00Z` found zero qualifying kernel PRs; the checked-in fixture
+still has four qualifying records, so the CI promotion remains blocked.
 Local evidence update: 2026-05-20 reran the clean-kernel counter fixture tests,
 reran fixture mode, refreshed the stale `runx-core` public API snapshot, and
 verified `node scripts/check-rust-kernel-parity.mjs --api-only` passes. This
@@ -167,8 +172,10 @@ Observed current state:
 - `docs/trusted-kernel-package-truth.md` still says CI is advisory during
   Phase A and becomes blocking only through this spec after five clean
   kernel-touching PRs.
-- `scripts/count-clean-kernel-prs.ts` exists with fixture-mode tests and
-  fails closed without advisory-start evidence.
+- `scripts/count-clean-kernel-prs.ts` exists with fixture-mode and live GitHub
+  metadata modes, and fails closed without advisory-start evidence. Timestamped
+  PR metadata also requires a parseable advisory-start timestamp so live
+  counting cannot infer the soak window from prose.
 - Clean PR evidence remains `<to be filled at exec time>`.
 - 2026-05-20 local API evidence: `node scripts/check-rust-kernel-parity.mjs
   --api-only` initially failed because `crates/runx-core/api-snapshot.txt` was
@@ -219,7 +226,8 @@ Execute these in order:
 - Advisory-start evidence slice: record the exact advisory start point from an
   audited source before live PR counting is allowed.
 - Soak verification slice: run the script against live GitHub metadata or an
-  operator-provided audited fixture and fill the Evidence section.
+  operator-provided audited fixture and fill the Evidence section only after
+  the minimum is met.
 - CI flip slice: remove only the `continue-on-error: true` on the Rust kernel
   parity step after all blockers pass.
 - Docs coherence slice: update docs to say Phase B is active only after the CI
@@ -272,16 +280,17 @@ Dependencies: none
 Changes:
 - `scripts/count-clean-kernel-prs.ts` (all, exclusive) - Count merged PRs that
   touch `packages/core/src/state-machine/` or `packages/core/src/policy/` and
-  have passing Rust kernel parity checks.
+  have passing Rust kernel parity checks, from either audited fixture evidence
+  or live GitHub PR metadata.
 - `tests/count-clean-kernel-prs.test.ts` (all, exclusive) - Fixture tests for
-  clean PRs, non-kernel PRs, missing CI checks, failed CI checks, and fixture
-  refresh PRs.
+  clean PRs, non-kernel PRs, missing CI checks, failed CI checks, fixture
+  refresh PRs, and live GitHub response normalization.
 
 Acceptance:
 - [x] `ac1_1` command - script tests pass.
   - Command: `pnpm exec vitest run --config vitest.config.ts tests/count-clean-kernel-prs.test.ts`
   - Expected kind: `exit_code_zero`
-  - Status: passed 2026-05-20
+  - Status: passed 2026-05-20, 10 tests
 - [x] `ac1_2` command - script exposes fixture mode.
   - Command: `pnpm exec tsx scripts/count-clean-kernel-prs.ts --fixture tests/fixtures/clean-kernel-prs.json --min 1`
   - Expected kind: `exit_code_zero`
@@ -412,6 +421,17 @@ Local non-promoting evidence, 2026-05-20:
   live five-PR soak evidence.
 - `node scripts/check-rust-kernel-parity.mjs --api-only` passed after
   regenerating `crates/runx-core/api-snapshot.txt`.
+- `pnpm exec vitest run --config vitest.config.ts tests/count-clean-kernel-prs.test.ts`
+  passed, 7 tests, after adding live GitHub response normalization coverage.
+- `pnpm exec vitest run --config vitest.config.ts tests/count-clean-kernel-prs.test.ts`
+  passed, 10 tests, after adding advisory-window enforcement and live parity
+  check selection coverage.
+- `pnpm exec tsx scripts/count-clean-kernel-prs.ts --fixture tests/fixtures/clean-kernel-prs.json --min 5`
+  failed closed with 4 qualifying fixture records, below the required 5.
+- `pnpm exec tsx scripts/count-clean-kernel-prs.ts --from-github --repo runxhq/runx --advisory-start 2026-05-20T00:00:00Z --min 5 --limit 20`
+  failed closed with 0 qualifying records in the probed live merged-PR window.
+  The live records were outside the post-advisory window for this probe. This
+  is live non-promoting evidence; the CI flip remains blocked.
 
 ## Metadata
 

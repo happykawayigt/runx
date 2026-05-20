@@ -85,7 +85,7 @@ expect:
     harness_id: "hrn_reply-only-question_reply-only-question"
     state: "sealed"
     disposition: "closed"
-    reason_code: "reply-only-question_closed"
+    reason_code: "process_closed"
     act_ids:
       - "act_reply-only-question"
     decision_ids:

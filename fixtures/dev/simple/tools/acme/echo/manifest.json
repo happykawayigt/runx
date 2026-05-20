@@ -1,0 +1,20 @@
+{
+  "name": "acme.echo",
+  "source": {
+    "type": "cli-tool",
+    "command": "sh",
+    "args": [
+      "-c",
+      "printf '{\"message\":\"%s\",\"cwd\":\"%s\"}\\n' \"$GREETING\" \"$RUNX_CWD\""
+    ]
+  },
+  "runtime": {
+    "command": "sh",
+    "args": [
+      "-c",
+      "printf '{\"message\":\"%s\",\"cwd\":\"%s\"}\\n' \"$GREETING\" \"$RUNX_CWD\""
+    ]
+  },
+  "inputs": {},
+  "output": {}
+}

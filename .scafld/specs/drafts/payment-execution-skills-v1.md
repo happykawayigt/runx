@@ -2,8 +2,8 @@
 spec_version: '2.0'
 task_id: payment-execution-skills-v1
 created: '2026-05-20T00:00:00Z'
-updated: '2026-05-20T00:00:00Z'
-status: draft
+updated: '2026-05-20T12:55:31Z'
+status: completed
 harden_status: not_run
 size: medium
 risk_level: high
@@ -13,14 +13,16 @@ risk_level: high
 
 ## Current State
 
-Status: draft
-Current phase: none
-Next: approve
-Reason: define the first human-readable payment execution skills and X.yaml
-flows that exercise the new payment authority term.
+Status: completed
+Current phase: final
+Next: harden
+Reason: first-party payment skill skeletons and X.yaml profiles now exercise
+the payment authority term through quote, reserve, approval, deterministic mock
+rail fulfillment, and recovery inspection without claiming live runtime payment
+behavior.
 Allowed follow-up command: `scafld harden payment-execution-skills-v1`
-Latest runner update: none
-Review gate: not_started
+Latest runner update: 2026-05-20T12:55:31Z
+Review gate: pass
 
 ## Summary
 

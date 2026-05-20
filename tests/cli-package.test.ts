@@ -1,88 +1,71 @@
 import { execFile } from "node:child_process";
-import { readFile, rename, stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { beforeAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 const execFileAsync = promisify(execFile);
 const workspaceRoot = process.cwd();
 const cliPackageRoot = path.join(workspaceRoot, "packages", "cli");
-const cliDistEntry = path.join(cliPackageRoot, "dist", "index.js");
-const cliBinEntry = path.join(cliPackageRoot, "bin", "runx.js");
-const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+const cliBinEntry = path.join(cliPackageRoot, "bin", "runx");
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 
-// This file rebuilds the workspace dist in beforeAll and renames
-// cli/dist/index.js mid-test. Both mutate state that other test files
-// concurrently spawn child processes against; running them in the same
-// vitest invocation produces sporadic ENOENT/signature-mismatch flakes.
-// scripts/test-workspace.mjs handles segregation by setting
-// RUNX_VITEST_BATCH=cli-package for a dedicated second pass; plain
-// `pnpm exec vitest run` skips this file with describe.skip and prints a
-// hint. Targeted runs can override via RUNX_VITEST_BATCH=cli-package.
-const isCliPackageBatch = process.env.RUNX_VITEST_BATCH === "cli-package";
-const describeIfBatched = isCliPackageBatch ? describe : describe.skip;
-
-if (!isCliPackageBatch) {
-  // eslint-disable-next-line no-console
-  console.warn(
-    "[cli-package.test.ts] skipped: rebuild + dist mutation race with concurrent tests. " +
-    "Run via `pnpm test` or set RUNX_VITEST_BATCH=cli-package to include this file.",
-  );
-}
-
-describeIfBatched("Node CLI package", () => {
-  beforeAll(async () => {
-    await execFileAsync(pnpm, ["build"], {
-      cwd: workspaceRoot,
-      timeout: 120_000,
-      maxBuffer: 8 * 1024 * 1024,
-    });
-  }, 130_000);
-
-  it("emits an executable dist CLI entrypoint and launches through the real bin", async () => {
-    const entry = await stat(cliDistEntry);
+describe("CLI package", () => {
+  it("ships an executable selector without a TypeScript command backend", async () => {
+    const entry = await stat(cliBinEntry);
     expect(entry.isFile()).toBe(true);
     expect(entry.mode & 0o111).not.toBe(0);
-    await expect(readFile(cliDistEntry, "utf8")).resolves.not.toContain(".build/runtime");
 
-    const { stdout } = await execFileAsync(process.execPath, [cliBinEntry, "config", "list", "--json"], {
+    const selector = await readFile(cliBinEntry, "utf8");
+    expect(selector).toContain("#!/usr/bin/env node");
+    expect(selector).toContain("spawnSync(binaryPath, process.argv.slice(2)");
+    for (const token of ["packages/cli/src", "packages/cli/dist", "RUNX_JS_BIN", "npm exec"]) {
+      expect(selector, `selector contains ${token}`).not.toContain(token);
+    }
+
+    await expect(execFileAsync(cliBinEntry, ["config", "list", "--json"], {
       cwd: workspaceRoot,
       timeout: 30_000,
       maxBuffer: 1024 * 1024,
-    });
-
-    expect(JSON.parse(stdout)).toMatchObject({
-      status: "success",
-      config: {
-        action: "list",
-      },
+    })).rejects.toMatchObject({
+      stderr: expect.stringContaining(`runx native package ${currentNativePackageName()} is not installed`),
     });
   });
 
-  it("falls back to the source entry when dist is absent in a linked workspace", async () => {
-    const parkedDist = `${cliDistEntry}.bak`;
-    await rename(cliDistEntry, parkedDist);
-    try {
-      const { stdout } = await execFileAsync(process.execPath, [cliBinEntry, "config", "list", "--json"], {
-        cwd: workspaceRoot,
-        timeout: 30_000,
-        maxBuffer: 1024 * 1024,
-      });
+  it("records selector topology for every supported native package", async () => {
+    const [topologyText, packageText] = await Promise.all([
+      readFile(path.join(cliPackageRoot, "native", "supported-platforms.json"), "utf8"),
+      readFile(path.join(cliPackageRoot, "package.json"), "utf8"),
+    ]);
+    const topology = JSON.parse(topologyText) as {
+      readonly schema: string;
+      readonly selectorPackage: string;
+      readonly nativePackages: Record<string, { readonly package: string; readonly binary: string }>;
+    };
+    const packageJson = JSON.parse(packageText) as {
+      readonly name: string;
+      readonly optionalDependencies: Record<string, string>;
+    };
 
-      expect(JSON.parse(stdout)).toMatchObject({
-        status: "success",
-        config: {
-          action: "list",
-        },
-      });
-    } finally {
-      await rename(parkedDist, cliDistEntry);
+    expect(topology).toMatchObject({
+      schema: "runx.rust_cli_selector_topology.v1",
+      selectorPackage: "@runxhq/cli",
+    });
+    expect(Object.keys(topology.nativePackages).sort()).toEqual([
+      "darwin-arm64",
+      "darwin-x64",
+      "linux-arm64",
+      "linux-x64",
+      "win32-x64",
+    ]);
+    for (const [platform, entry] of Object.entries(topology.nativePackages)) {
+      expect(entry.package).toBe(`@runxhq/cli-${platform}`);
+      expect(packageJson.optionalDependencies[entry.package]).toBeDefined();
     }
   });
 
-  it("packs @runxhq/cli with the emitted dist files", async () => {
+  it("packs @runxhq/cli as selector artifacts only", async () => {
     const { stdout } = await execFileAsync(npm, ["pack", "--dry-run", "--json"], {
       cwd: cliPackageRoot,
       timeout: 30_000,
@@ -99,31 +82,40 @@ describeIfBatched("Node CLI package", () => {
     expect(pack.name).toBe("@runxhq/cli");
     expect(pack.version).not.toBe("0.0.0");
     const files = pack.files.map((file) => file.path);
-    expect(files).toContain("bin/runx.js");
-    expect(files).toContain("dist/index.js");
-    expect(files).toContain("dist/index.d.ts");
-    expect(files).toContain("dist/src/index.js");
-    expect(files).toContain("dist/src/official-skills.lock.json");
-    expect(files).not.toContain("dist/packages/runtime-local/src/runner-local/index.js");
-    expect(files).toContain("skills/scafld/run.mjs");
-    expect(files).toContain("tools/outbox/build_pull_request/manifest.json");
-    expect(files).toContain("tools/outbox/build_pull_request/run.mjs");
-    expect(files).toContain("tools/spec/normalize_scafld_frontmatter/manifest.json");
-    expect(files).toContain("tools/spec/normalize_scafld_frontmatter/run.mjs");
-    expect(files).toContain("tools/spec/read_declared_files/manifest.json");
-    expect(files).toContain("tools/spec/read_declared_files/run.mjs");
-    expect(files).toContain("tools/sourcey/build/manifest.json");
-    expect(files).toContain("tools/sourcey/build/run.mjs");
-    expect(files).toContain("tools/sourcey/package/manifest.json");
-    expect(files).toContain("tools/sourcey/package/run.mjs");
-    expect(files).toContain("tools/sourcey/verify/manifest.json");
-    expect(files).toContain("tools/thread/push_outbox/manifest.json");
-    expect(files).toContain("tools/thread/push_outbox/run.mjs");
-    expect(files).toContain("tools/thread/handoff_state/manifest.json");
-    expect(files).toContain("tools/thread/handoff_state/run.mjs");
-    expect(files).not.toContain("skills/evolve/SKILL.md");
-    expect(files).not.toContain("skills/evolve/X.yaml");
-    expect(files).not.toContain("skills/sourcey/SKILL.md");
-    expect(files).not.toContain("skills/sourcey/X.yaml");
+    expect(files).toEqual(expect.arrayContaining([
+      `bin/${path.basename(cliBinEntry)}`,
+      "native/supported-platforms.json",
+      "package.json",
+      "LICENSE",
+    ]));
+    expect(files.some((file) => /^(dist|src|tools|node_modules|\.runx)\//u.test(file))).toBe(false);
+    expect(files.some((file) => /^bin\/runx\.(?:js|mjs|cjs)$/u.test(file))).toBe(false);
+
+    const textFiles = files.filter((file) => /\.(?:json|md|txt|js|mjs|cjs|ts|tsx)$/u.test(file));
+    const forbiddenTokens = [
+      "RUNX_JS_BIN",
+      "RUNX_NPM_PACKAGE",
+      "RUNX_RUST_CLI",
+      "RUNX_RUST_HARNESS",
+      "npm exec",
+      "packages/cli/src",
+      "packages/cli/dist",
+      "process.execPath",
+      "skill_execution",
+      "graph_execution",
+      "legacy_receipt",
+      "compat_receipt",
+      "pre_spine",
+    ];
+    for (const file of textFiles) {
+      const contents = await readFile(path.join(cliPackageRoot, file), "utf8");
+      for (const token of forbiddenTokens) {
+        expect(contents, `${file} contains ${token}`).not.toContain(token);
+      }
+    }
   }, 60_000);
 });
+
+function currentNativePackageName(): string {
+  return `@runxhq/cli-${process.platform}-${process.arch}`;
+}

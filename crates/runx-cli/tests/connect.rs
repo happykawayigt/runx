@@ -104,7 +104,6 @@ fn rejects_invalid_connect_shapes() {
 fn connect_missing_service_config_fails_before_network() -> Result<(), Box<dyn std::error::Error>> {
     let output = Command::new(env!("CARGO_BIN_EXE_runx"))
         .args(["connect", "list"])
-        .env("RUNX_RUST_CLI", "1")
         .env_remove("RUNX_CONNECT_BASE_URL")
         .env_remove("RUNX_CONNECT_ACCESS_TOKEN")
         .output()?;
@@ -345,7 +344,6 @@ fn run_connect_command<const N: usize>(
 ) -> Result<std::process::Output, Box<dyn std::error::Error>> {
     Ok(Command::new(env!("CARGO_BIN_EXE_runx"))
         .args(args)
-        .env("RUNX_RUST_CLI", "1")
         .env("RUNX_CONNECT_BASE_URL", base_url)
         .env(
             "RUNX_CONNECT_ACCESS_TOKEN",

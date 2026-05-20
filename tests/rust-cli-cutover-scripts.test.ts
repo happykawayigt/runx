@@ -68,10 +68,13 @@ describe("Rust CLI cutover scripts", () => {
       expect(JSON.parse(packageResult.stdout)).toMatchObject({
         status: "passed",
         mode: "write",
+        selector_package: "@runxhq/cli",
+        native_package: nativePackageName(platformKey(process.platform, process.arch)),
         signature_manifest: "native/signatures.json",
       });
 
       const packageDir = path.join(outDir, platformKey(process.platform, process.arch));
+      const selectorDir = path.join(outDir, "selector");
       const checkResult = runTsx("scripts/check-rust-cli-release-artifacts.ts", [
         "--artifact-dir",
         outDir,
@@ -86,10 +89,87 @@ describe("Rust CLI cutover scripts", () => {
       await expect(readFile(path.join(packageDir, "native", "signatures.json"), "utf8")).resolves.toContain(
         "runx.rust_cli_artifact_signatures.v1",
       );
+      await expect(readFile(path.join(packageDir, "package.json"), "utf8")).resolves.toContain(
+        `"name": "${nativePackageName(platformKey(process.platform, process.arch))}"`,
+      );
+      await expect(readFile(path.join(selectorDir, "package.json"), "utf8")).resolves.toContain(
+        '"@runxhq/cli-linux-x64": "0.5.22"',
+      );
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
   });
+
+  it("accepts multi-platform selector artifacts through release dry-run publish", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-rust-cli-release-multi-"));
+
+    try {
+      const currentPlatform = platformKey(process.platform, process.arch);
+      const otherPlatform = alternatePlatform(currentPlatform);
+      const currentBinary = path.join(tempDir, executableName("runx-current"));
+      const otherBinary = path.join(tempDir, executableName("runx-other"));
+      const currentSignature = path.join(tempDir, "current-signatures.json");
+      const otherSignature = path.join(tempDir, "other-signatures.json");
+      const outDir = path.join(tempDir, "artifacts");
+
+      await writeExecutable(currentBinary, exitScript(64));
+      await writeExecutable(otherBinary, exitScript(64));
+      await writeFile(
+        currentSignature,
+        `${JSON.stringify(await fixtureSignatureManifest(currentBinary, currentPlatform), null, 2)}\n`,
+        "utf8",
+      );
+      await writeFile(
+        otherSignature,
+        `${JSON.stringify(await fixtureSignatureManifest(otherBinary, otherPlatform), null, 2)}\n`,
+        "utf8",
+      );
+
+      const otherPackage = runTsx("scripts/package-rust-cli.ts", [
+        "--binary",
+        otherBinary,
+        "--out-dir",
+        outDir,
+        "--platform",
+        otherPlatform,
+        "--signature-manifest",
+        otherSignature,
+      ]);
+      expect(otherPackage.status).toBe(0);
+
+      const result = runTsx("scripts/release-rust-cli.ts", [
+        "--binary",
+        currentBinary,
+        "--artifact-dir",
+        outDir,
+        "--platform",
+        currentPlatform,
+        "--signature-manifest",
+        currentSignature,
+        "--publish",
+      ]);
+
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toContain('"status": "dry_run_published"');
+
+      const checkResult = runTsx("scripts/check-rust-cli-release-artifacts.ts", [
+        "--artifact-dir",
+        outDir,
+        "--no-js-delegation",
+        "--verify-signatures",
+      ]);
+      expect(checkResult.status).toBe(0);
+      const targets = await Promise.all([
+        readFile(path.join(outDir, "selector", "package.json"), "utf8"),
+        readFile(path.join(outDir, currentPlatform, "package.json"), "utf8"),
+        readFile(path.join(outDir, otherPlatform, "package.json"), "utf8"),
+      ]);
+      expect(targets.join("\n")).toContain(`"name": "${nativePackageName(currentPlatform)}"`);
+      expect(targets.join("\n")).toContain(`"name": "${nativePackageName(otherPlatform)}"`);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  }, 120_000);
 
   it("fails closed for empty and malformed release artifact directories", async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-rust-cli-artifact-check-"));
@@ -173,17 +253,17 @@ function ruleIds(payload: { readonly findings: readonly { readonly rule: string 
   return payload.findings.map((finding) => finding.rule);
 }
 
-async function fixtureSignatureManifest(binaryPath: string): Promise<unknown> {
+async function fixtureSignatureManifest(binaryPath: string, platform = platformKey(process.platform, process.arch)): Promise<unknown> {
   const manifest = JSON.parse(await readFile(path.join(workspaceRoot, "packages", "cli", "package.json"), "utf8")) as {
     readonly name: string;
     readonly version: string;
   };
   return {
     schema: "runx.rust_cli_artifact_signatures.v1",
-    package: manifest.name,
+    package: `${manifest.name}-${platform}`,
     version: manifest.version,
-    platform: platformKey(process.platform, process.arch),
-    binary: process.platform === "win32" ? "bin/runx.exe" : "bin/runx",
+    platform,
+    binary: platform.startsWith("win32-") ? "bin/runx.exe" : "bin/runx",
     sha256: sha256(await readFile(binaryPath)),
     signatures: [
       {
@@ -226,6 +306,14 @@ function platformKey(platform: NodeJS.Platform, arch: string): string {
   if (platform === "linux" && arch === "x64") return "linux-x64";
   if (platform === "win32" && arch === "x64") return "win32-x64";
   throw new Error(`unsupported Rust CLI package platform: ${platform}/${arch}`);
+}
+
+function alternatePlatform(platform: string): string {
+  return platform === "linux-x64" ? "darwin-arm64" : "linux-x64";
+}
+
+function nativePackageName(platform: string): string {
+  return `@runxhq/cli-${platform}`;
 }
 
 function sha256(bytes: Buffer): string {

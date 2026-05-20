@@ -122,7 +122,7 @@ expect:
     harness_id: "hrn_feature-needs-decomposition_feature-needs-decomposition"
     state: "sealed"
     disposition: "closed"
-    reason_code: "feature-needs-decomposition_closed"
+    reason_code: "process_closed"
     act_ids:
       - "act_feature-needs-decomposition"
     decision_ids:

@@ -208,6 +208,9 @@ async function checkDeclaredWorkspaceImport(rel, packageName, specifier) {
   if (!manifest || manifest.name === dependencyName) {
     return;
   }
+  if (packageName === "cli" && isNativeCliArtifactManifest(manifest)) {
+    return;
+  }
 
   const declared = {
     ...manifest.dependencies,
@@ -218,6 +221,18 @@ async function checkDeclaredWorkspaceImport(rel, packageName, specifier) {
   if (!Object.hasOwn(declared, dependencyName)) {
     findings.push(`${rel} imports ${specifier}; ${manifest.name} must declare ${dependencyName} in package.json.`);
   }
+}
+
+function isNativeCliArtifactManifest(manifest) {
+  const bin = typeof manifest.bin === "string" ? manifest.bin : manifest.bin?.runx;
+  const files = Array.isArray(manifest.files) ? manifest.files : [];
+  return manifest.name === "@runxhq/cli"
+    && bin === "./bin/runx"
+    && files.includes("bin")
+    && files.includes("native")
+    && !files.includes("src")
+    && !files.includes("dist")
+    && !files.includes("tools");
 }
 
 function extractSpecifiers(source) {

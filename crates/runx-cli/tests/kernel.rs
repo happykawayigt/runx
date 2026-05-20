@@ -136,7 +136,6 @@ fn kernel_eval_unknown_kind_returns_structured_error() -> Result<(), Box<dyn std
 fn runx_command() -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_runx"));
     command.env("NO_COLOR", "1");
-    command.env("RUNX_RUST_CLI", "1");
     if let Ok(root) = repo_root() {
         command.env("RUNX_CWD", root);
     }

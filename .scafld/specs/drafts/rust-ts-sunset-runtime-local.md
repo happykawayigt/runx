@@ -17,7 +17,9 @@ Status: draft
 Current phase: none
 Next: approve
 Reason: refreshed against the current spec archive. This is a deletion/cutover
-spec, not a compatibility-bridge spec.
+spec, not a compatibility-bridge spec. A 2026-05-20 importer census still finds
+127 files with runtime-local/adapters package references, imports, direct
+source imports, or docs/API-surface entries.
 Blockers: not currently executable. `rust-harness`,
 `rust-runtime-skill-execution`, `rust-runtime-adapters-agent`,
 `rust-runtime-adapters-a2a`, `rust-runtime-adapters-catalog`, and
@@ -31,7 +33,8 @@ journal-local, connect, scaffold, tool-catalogs, doctor, registry, receipt
 path, package boundary retargeting, and all surviving local callers must be
 Rust-routed or explicitly sunset before deletion starts.
 Allowed follow-up command: `none`
-Latest runner update: none
+Latest runner update: 2026-05-20T22:55:00+10:00 importer census refreshed; the
+deletion remains blocked, not merely unhardened.
 Review gate: not_started
 
 ## Summary
@@ -74,6 +77,9 @@ Current reality as of this refresh:
   removal are required.
 - Root, CLI, IDE core, host-adapters, langchain, and many tests still import or
   depend on `@runxhq/runtime-local`, `@runxhq/adapters`, or their subpaths.
+- The 2026-05-20 importer census finds 127 files with runtime-local/adapters
+  references across manifests, tsconfig paths, docs/API surface, CLI,
+  runtime-local/adapters source, scripts, plugins, and tests.
 - Existing TS oracle generators remain useful before deletion. They are not
   a post-sunset execution path.
 

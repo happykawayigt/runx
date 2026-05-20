@@ -89,7 +89,7 @@
       "expect": {
         "pendingRuns": 1,
         "firstPendingRunId": "gx_needs_agent_oracle",
-        "firstPendingRunStatus": "needs_agent"
+        "firstPendingRunStatus": "paused"
       },
       "stdoutIncludes": [
         "\"pendingRuns\"",

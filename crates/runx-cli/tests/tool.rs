@@ -140,7 +140,6 @@ fn tool_inspect_matches_missing_oracle_bytes() -> Result<(), Box<dyn std::error:
 fn runx_command() -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_runx"));
     command.env("NO_COLOR", "1");
-    command.env("RUNX_RUST_CLI", "1");
     command
 }
 

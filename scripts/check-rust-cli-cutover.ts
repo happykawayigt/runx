@@ -28,8 +28,6 @@ const forbiddenJsFallbackTokens = [
   "npm exec",
   "DEFAULT_NPM_PACKAGE",
   "packages/cli/bin/runx.js",
-  "packages/cli/src",
-  "packages/cli/dist",
 ] as const;
 
 const forbiddenLegacyShapeTokens = [

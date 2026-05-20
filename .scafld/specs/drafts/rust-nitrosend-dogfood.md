@@ -14,15 +14,19 @@ risk_level: medium
 ## Current State
 
 Status: draft
-Current phase: external-shaped fixture contract added; external replay pending
+Current phase: actual Nitrosend dogfood wrapper consumes the Rust contract;
+external replay pending
 Next: add Rust runtime replay only after target execution and observer runtime
 gates are ready
-Reason: refreshed against the current local OSS checkout. This is a plan spec,
-with no remaining safe local Nitrosend policy fixture work found.
+Reason: refreshed against the current local OSS checkout and the actual
+Nitrosend repo. Nitrosend now uses `runx.operational_policy.v1` for its
+repo-local issue-intake policy and the Rust harness receipt contract in its
+dogfood fixtures.
 Blockers: `runx-target-repo-runners` and
-`runx-post-merge-outcome-observer` are still draft for live execution. A
-sanitized external-shaped fixture contract now exists, but no Rust runtime
-replay fixture exists yet.
+`runx-post-merge-outcome-observer` are still draft for live external replay.
+A sanitized external-shaped fixture contract exists and Nitrosend local wrapper
+fixtures replay through the Rust binary, but no live target-runner/observer
+external replay has been added.
 Allowed follow-up command: none during this refresh; do not run
 `scafld harden rust-nitrosend-dogfood`.
 Latest runner update: 2026-05-20 added Rust contract request-admission coverage
@@ -236,6 +240,44 @@ git diff --check -- .scafld/specs/drafts/rust-nitrosend-dogfood.md
   Nitrosend-like target repos plus unknown-target and missing-source-thread
   fail-closed cases.
 - `cargo test --manifest-path crates/Cargo.toml -p runx-contracts` passed.
+
+2026-05-20 actual Nitrosend dogfood integration verification:
+
+- Nitrosend `config/runx-issue-flow.json` now uses
+  `runx.operational_policy.v1` directly for `nitrosend/nitrosend`,
+  `nitrosend/api`, and `nitrosend/app`.
+- Nitrosend issue-intake derives target workspaces from the operational policy
+  `targets` list instead of the retired repo-local target-repository shape.
+- Nitrosend harness fixtures now expect sealed `runx.harness_receipt.v1`
+  receipts from the Rust binary.
+- The actual Rust binary replayed the Nitrosend onboarding, segment, and
+  issue-intake harness fixtures through `RUNX_BIN=.../crates/target/debug/runx`
+  with no TypeScript fallback knobs.
+- The generic runx `issue-intake` runtime fixtures were refreshed to the
+  current Rust receipt closure reason (`process_closed`) and replay green.
+
+Validation:
+
+- `/Users/kam/dev/runx/runx/oss/crates/target/debug/runx policy lint config/runx-issue-flow.json --json`
+  passed in the Nitrosend repo with no findings.
+- `/Users/kam/dev/runx/runx/oss/crates/target/debug/runx policy inspect config/runx-issue-flow.json --json`
+  passed in the Nitrosend repo and redacted raw locators via counts.
+- `RUNX_BIN=/Users/kam/dev/runx/runx/oss/crates/target/debug/runx node --test scripts/onboarding.test.mjs scripts/segment-from-prose.test.mjs scripts/issue-intake.test.mjs scripts/github-issue-thread.test.mjs scripts/post-issue-intake-comments.test.mjs scripts/runx-target-outcome.test.mjs scripts/scafld-command-review.test.mjs scripts/runx-harness.test.mjs`
+  passed in the Nitrosend repo: 127 tests, 0 skipped.
+- `cargo test --manifest-path crates/Cargo.toml -p runx-contracts` passed in
+  runx OSS.
+- `! rg -n "needs_resolution|runx\\.issue_to_pr_outcome\\.v1|issue_to_pr_outcome|verification[_-]report|target[_-]?effect|\"effect\"\\s*:|RUNX_JS_BIN|RUNX_NPM_PACKAGE|target_repositories|allowed_repositories|route_hints" scripts config fixtures/runx .github/workflows/issue-intake.yml .github/workflows/wrapper-ci.yml`
+  passed in the Nitrosend repo.
+- `! rg -n "runx\\.issue_to_pr_outcome\\.v1|issue_to_pr_outcome|verification[_-]report|target[_-]?effect|\"effect\"\\s*:" fixtures/runtime fixtures/operational-policy fixtures/external skills crates/runx-runtime`
+  passed in runx OSS.
+- `git diff --check` passed in Nitrosend; `git diff --check -- fixtures/runtime/skills/issue-intake/cases .scafld/specs/drafts/rust-nitrosend-dogfood.md`
+  passed in runx OSS.
+
+Remaining blocker:
+
+- Live target PR creation and final post-merge/provider observation still depend
+  on the reusable `runx-target-repo-runners` and
+  `runx-post-merge-outcome-observer` work. No external replay was added here.
 
 2026-05-20 narrow policy-fixture slice verification:
 

@@ -1,0 +1,12 @@
+name: echo-success
+lane: deterministic
+target:
+  kind: tool
+  ref: acme.echo
+env:
+  GREETING: hello
+expect:
+  status: success
+  output:
+    subset:
+      message: hello

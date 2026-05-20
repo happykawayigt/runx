@@ -11,6 +11,7 @@ interface Options {
   readonly artifactDir: string;
   readonly binary: string;
   readonly dryRun: boolean;
+  readonly platform: string | null;
   readonly publish: boolean;
   readonly signatureManifest: string | null;
   readonly tag: string;
@@ -30,6 +31,7 @@ run(pnpm, [
   options.binary,
   "--out-dir",
   options.artifactDir,
+  ...(options.platform ? ["--platform", options.platform] : []),
   "--signature-manifest",
   options.signatureManifest,
 ]);
@@ -75,6 +77,7 @@ function parseArgs(argv: readonly string[]): Options {
   let artifactDir = ".runx/rust-cli-artifacts";
   let binary = "target/debug/runx";
   let dryRun = true;
+  let platform: string | null = null;
   let publish = false;
   let signatureManifest: string | null = null;
   let tag = "next";
@@ -97,6 +100,11 @@ function parseArgs(argv: readonly string[]): Options {
     }
     if (arg === "--signature-manifest") {
       signatureManifest = argv[index + 1] ?? "";
+      index += 1;
+      continue;
+    }
+    if (arg === "--platform") {
+      platform = argv[index + 1] ?? "";
       index += 1;
       continue;
     }
@@ -125,13 +133,16 @@ function parseArgs(argv: readonly string[]): Options {
   if (signatureManifest === "") {
     throw new Error("--signature-manifest requires a path");
   }
+  if (platform === "") {
+    throw new Error("--platform requires a value");
+  }
   if (!publish && !dryRun) {
     throw new Error("--no-dry-run requires --publish");
   }
   if (!tag) {
     throw new Error("--tag requires a value");
   }
-  return { artifactDir, binary, dryRun, publish, signatureManifest, tag };
+  return { artifactDir, binary, dryRun, platform, publish, signatureManifest, tag };
 }
 
 function packageDirs(root: string): readonly string[] {
@@ -179,5 +190,5 @@ function run(command: string, args: readonly string[], options: { readonly cwd?:
 }
 
 function printUsage(): void {
-  console.log("Usage: pnpm exec tsx scripts/release-rust-cli.ts [--artifact-dir .runx/rust-cli-artifacts] [--binary target/debug/runx] --signature-manifest native/signatures.json [--publish] [--no-dry-run] [--tag next]");
+  console.log("Usage: pnpm exec tsx scripts/release-rust-cli.ts [--artifact-dir .runx/rust-cli-artifacts] [--binary target/debug/runx] [--platform darwin-arm64|darwin-x64|linux-arm64|linux-x64|win32-x64] --signature-manifest native/signatures.json [--publish] [--no-dry-run] [--tag next]");
 }

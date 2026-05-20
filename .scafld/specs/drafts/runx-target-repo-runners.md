@@ -26,9 +26,11 @@ create/update, outbox pushers for source issue/thread publication, and Aster
 scheduling/readback are not implemented in this target-runner path.
 Allowed follow-up command: `scafld harden runx-target-repo-runners --mark-passed`
 only after the live execution blockers are resolved or explicitly descoped.
-Latest runner update: 2026-05-20 added explicit same-repo contract coverage on
-top of the existing cross-repo runtime fixture boundary. Remaining target-runner
-work is provider/git/outbox/Aster integration rather than contract drift.
+Latest runner update: 2026-05-20 added canonical local PR receipt dedupe
+metadata for created versus reused PR paths on top of explicit same-repo
+contract coverage and the existing cross-repo runtime fixture boundary.
+Remaining target-runner work is provider/git/outbox/Aster integration rather
+than contract drift.
 Review gate: not_started
 
 ## Summary
@@ -158,9 +160,13 @@ Required behavior:
   creating another PR through provider lookup execution.
 - [x] Runtime fixture boundary chooses create versus reuse from provider dedupe
   observations without live network/git calls.
+- [x] Local pull-request receipt metadata records whether the PR path was
+  created or reused for the dedupe key using canonical `metadata.dedupe.result`
+  values.
 - [ ] Pull-request outbox metadata and the sealed pull-request harness receipt
-  record whether the PR path was created or reused for the dedupe key. Contract
-  receipt metadata is present; live outbox/sealed-harness integration remains.
+  record whether the PR path was created or reused for the dedupe key. Local
+  contract receipt metadata is present; live outbox/sealed-harness integration
+  remains.
 - [ ] Source GitHub issue receives the target PR link.
 - [ ] Source Slack thread metadata survives through all outbox receipt nodes.
 - [x] Public output excludes local checkout paths and env-secret values.
@@ -223,8 +229,8 @@ Acceptance:
 - [x] Provider lookup execution reuses an open PR only when dedupe markers and
   source issue/thread refs match.
 - [x] PR receipt metadata records `metadata.dedupe.strategy`,
-  `metadata.dedupe.key`, `metadata.dedupe.result`, disposition, target PR URL,
-  and source-thread URI.
+  `metadata.dedupe.key`, canonical `metadata.dedupe.result` (`created` or
+  `reused`), disposition, target PR URL, and source-thread URI.
 - [x] Runtime fixture execution chooses create when provider lookup has no
   matching open PR and reuse when provider lookup returns a matching PR.
 - [x] Duplicate fixture reuses the existing PR and produces no new branch.

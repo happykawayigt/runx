@@ -272,6 +272,10 @@ fn sealed_harness_receipt_projects_publication_and_close_authority()
     assert_eq!(projection.reason_code, "merged_verified");
     assert_eq!(
         projection.verification_criterion_id,
+        Some("post_merge.verification_passed".to_owned())
+    );
+    assert_eq!(
+        projection.proof_criterion_id,
         "post_merge.verification_passed"
     );
     assert_eq!(
@@ -294,6 +298,31 @@ fn sealed_harness_receipt_projects_publication_and_close_authority()
         projection.harness_receipt_ref.uri,
         "runx:harness_receipt:hrn_rcpt_post_merge_nitrosend_77_188"
     );
+    Ok(())
+}
+
+#[test]
+fn sealed_closed_unmerged_receipt_projects_without_verification_or_close()
+-> Result<(), Box<dyn std::error::Error>> {
+    let receipt = closed_unmerged_receipt()?;
+    let projection = project_post_merge_observer_publication_from_receipt(&receipt)?;
+
+    assert_eq!(projection.reason_code, "closed_unmerged");
+    assert_eq!(projection.proof_criterion_id, "post_merge.provider_state");
+    assert_eq!(projection.verification_criterion_id, None);
+    assert_eq!(
+        projection.source_issue_disposition,
+        PostMergeSourceIssueDisposition::KeepOpen
+    );
+    assert!(!projection.close_authorized);
+    assert_eq!(
+        projection
+            .source_thread_ref
+            .as_ref()
+            .map(|reference| reference.reference_type.clone()),
+        Some(ReferenceType::SlackThread)
+    );
+    assert!(!projection.summary.contains("shipped"));
     Ok(())
 }
 
@@ -387,6 +416,35 @@ fn post_merge_observer_receipt() -> Result<HarnessReceipt, serde_json::Error> {
 
     let fixture: Fixture = serde_json::from_str(POST_MERGE_OBSERVER_FIXTURE)?;
     serde_json::from_value(fixture.expected)
+}
+
+fn closed_unmerged_receipt() -> Result<HarnessReceipt, serde_json::Error> {
+    let mut receipt = post_merge_observer_receipt()?;
+    receipt.seal.reason_code = "closed_unmerged".to_owned();
+    receipt.seal.summary =
+        "Target PR was closed without merge; source issue remains unresolved.".to_owned();
+    receipt.seal.disposition = ClosureDisposition::Closed;
+    receipt.seal.criteria.retain(|criterion| {
+        matches!(
+            criterion.criterion_id.as_str(),
+            "post_merge.provider_state"
+                | "post_merge.human_gate"
+                | "post_merge.source_thread_target_present"
+        )
+    });
+    for criterion in &mut receipt.seal.criteria {
+        if criterion.criterion_id == "post_merge.provider_state" {
+            criterion.summary = Some("Provider reported closed without merge.".to_owned());
+        }
+    }
+    receipt
+        .harness
+        .acts
+        .retain(|act| act.form == ActForm::Observation || act.form == ActForm::Reply);
+    receipt.harness.idempotency.content_hash =
+        "sha256:post-merge-closure-closed-unmerged-nitrosend".to_owned();
+    receipt.harness.seal = Some(receipt.seal.clone());
+    Ok(receipt)
 }
 
 fn observer_request(

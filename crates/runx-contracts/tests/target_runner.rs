@@ -437,6 +437,40 @@ fn pull_request_receipt_metadata_records_dedupe_and_source_thread()
 }
 
 #[test]
+fn created_pull_request_receipt_metadata_records_created_dedupe_result()
+-> Result<(), Box<dyn std::error::Error>> {
+    let policy: OperationalPolicy = serde_json::from_str(NITROSEND_LIKE)?;
+    let plan = plan_target_repo_runner(&policy, &nitrosend_request("nitrosend/api", None))?;
+    let receipt = plan_target_repo_runner_pull_request_receipt(
+        &plan,
+        Some(&TargetRepoRunnerExistingPullRequest {
+            url: "https://github.com/nitrosend/api/pull/145".to_owned(),
+            number: Some(145),
+            branch: Some("runx/source-482-new".to_owned()),
+        }),
+    )?;
+
+    assert_eq!(receipt.act_form, ActForm::Revision);
+    assert_eq!(
+        receipt.disposition,
+        TargetRepoRunnerPullRequestDisposition::Create
+    );
+    assert_eq!(
+        nested_string(&receipt.metadata, &["dedupe", "result"]),
+        Some("created")
+    );
+    assert_eq!(
+        receipt.metadata.get("disposition"),
+        Some(&JsonValue::String("created".to_owned()))
+    );
+    assert_eq!(
+        nested_string(&receipt.metadata, &["source", "thread_uri"]),
+        Some("slack://nitrosend/C0APFMY0V8Q/1778834840.485629")
+    );
+    Ok(())
+}
+
+#[test]
 fn source_publication_receipt_carries_original_thread_and_target_pr()
 -> Result<(), Box<dyn std::error::Error>> {
     let policy: OperationalPolicy = serde_json::from_str(NITROSEND_LIKE)?;

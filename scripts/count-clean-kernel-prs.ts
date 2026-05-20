@@ -1,9 +1,12 @@
 import { readFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
 import path from "node:path";
+import { promisify } from "node:util";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const workspaceRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const defaultFixturePath = path.join(workspaceRoot, "tests", "fixtures", "clean-kernel-prs.json");
+const execFileAsync = promisify(execFile);
 
 export type CleanKernelPrReason =
   | "ts_kernel"
@@ -11,6 +14,7 @@ export type CleanKernelPrReason =
   | "rust_only"
   | "parser_only"
   | "missing_passing_evidence"
+  | "outside_advisory_window"
   | "outside_kernel_promotion_scope";
 
 export interface CleanKernelPrReportEntry {
@@ -19,6 +23,7 @@ export interface CleanKernelPrReportEntry {
   readonly reason: CleanKernelPrReason;
   readonly files: readonly string[];
   readonly passing_evidence: boolean;
+  readonly merged_at?: string;
 }
 
 export interface CleanKernelPrReport {
@@ -33,8 +38,11 @@ export interface CleanKernelPrReport {
 
 interface CliOptions {
   readonly fixturePath: string;
+  readonly source: "fixture" | "github";
   readonly advisoryStart?: string;
   readonly minimum: number;
+  readonly repo?: string;
+  readonly limit: number;
 }
 
 interface CliRunOptions {
@@ -53,7 +61,9 @@ export async function runCountCleanKernelPrsCli(
 ): Promise<CliRunResult> {
   try {
     const parsed = parseCliArgs(args, options.cwd ?? workspaceRoot);
-    const fixture = await readJsonFile(parsed.fixturePath);
+    const fixture = parsed.source === "github"
+      ? await readGitHubFixture(parsed)
+      : await readJsonFile(parsed.fixturePath);
     const report = analyzeCleanKernelPrs(fixture, {
       advisoryStart: parsed.advisoryStart,
       minimum: parsed.minimum,
@@ -86,12 +96,13 @@ export function analyzeCleanKernelPrs(
   const advisory = resolveAdvisoryStart(fixtureObject, options.advisoryStart);
   const prs = readPullRequests(fixtureObject);
   const minimum = options.minimum ?? readFixtureMinimum(fixtureObject) ?? 1;
+  const advisoryStartInstant = resolveAdvisoryStartInstant(advisory.value, prs);
 
   if (!Number.isInteger(minimum) || minimum < 0) {
     throw new Error(`--min must be a non-negative integer`);
   }
 
-  const entries = prs.map(classifyPullRequest);
+  const entries = prs.map((pr) => classifyPullRequest(pr, advisoryStartInstant));
   const counting = entries.filter((entry) => entry.reason === "ts_kernel" || entry.reason === "kernel_fixture_refresh");
   const nonCounting = entries.filter((entry) => !counting.includes(entry));
 
@@ -106,17 +117,25 @@ export function analyzeCleanKernelPrs(
   };
 }
 
-function classifyPullRequest(rawPr: unknown): CleanKernelPrReportEntry {
+function classifyPullRequest(
+  rawPr: unknown,
+  advisoryStartInstant?: number,
+): CleanKernelPrReportEntry {
   const pr = asRecord(rawPr, "pull request");
   const files = readFiles(pr);
   const passingEvidence = hasPassingEvidence(pr);
+  const mergedAt = readMergedAt(pr);
   const base = {
     number: readNumber(pr),
     title: readTitle(pr),
     files,
     passing_evidence: passingEvidence,
+    ...(mergedAt ? { merged_at: mergedAt } : {}),
   };
 
+  if (!isInsideAdvisoryWindow(pr, advisoryStartInstant)) {
+    return { ...base, reason: "outside_advisory_window" };
+  }
   if (isParserOnly(files)) {
     return { ...base, reason: "parser_only" };
   }
@@ -137,11 +156,32 @@ function classifyPullRequest(rawPr: unknown): CleanKernelPrReportEntry {
 
 function parseCliArgs(args: readonly string[], cwd: string): CliOptions {
   let fixturePath = defaultFixturePath;
+  let source: "fixture" | "github" = "fixture";
   let advisoryStart: string | undefined;
   let minimum = 1;
+  let repo: string | undefined;
+  let limit = 50;
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
+    if (arg === "--from-github") {
+      source = "github";
+      continue;
+    }
+    if (arg === "--repo") {
+      repo = requiredArgValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg === "--limit") {
+      const value = requiredArgValue(args, index, arg);
+      limit = Number(value);
+      if (!Number.isInteger(limit) || limit <= 0) {
+        throw new Error(`--limit must be a positive integer`);
+      }
+      index += 1;
+      continue;
+    }
     if (arg === "--fixture") {
       fixturePath = requiredArgValue(args, index, arg);
       index += 1;
@@ -162,15 +202,101 @@ function parseCliArgs(args: readonly string[], cwd: string): CliOptions {
       continue;
     }
     if (arg === "--help" || arg === "-h") {
-      throw new Error("usage: tsx scripts/count-clean-kernel-prs.ts [--fixture path] [--advisory-start evidence] [--min count]");
+      throw new Error("usage: tsx scripts/count-clean-kernel-prs.ts [--fixture path | --from-github [--repo owner/name] [--limit count]] [--advisory-start evidence] [--min count]");
     }
     throw new Error(`unsupported argument: ${arg}`);
   }
 
   return {
     fixturePath: path.resolve(cwd, fixturePath),
+    source,
     advisoryStart,
     minimum,
+    repo,
+    limit,
+  };
+}
+
+async function readGitHubFixture(options: CliOptions): Promise<unknown> {
+  if (!hasExplicitValue(options.advisoryStart)) {
+    throw new Error("--from-github requires --advisory-start so live evidence has an audited start point");
+  }
+
+  const args = [
+    "pr",
+    "list",
+    "--state",
+    "merged",
+    "--limit",
+    String(options.limit),
+    "--json",
+    "number,title,mergedAt,files,statusCheckRollup",
+  ];
+  if (options.repo) {
+    args.splice(2, 0, "--repo", options.repo);
+  }
+
+  const { stdout } = await execFileAsync("gh", args, {
+    cwd: workspaceRoot,
+    maxBuffer: 20 * 1024 * 1024,
+  });
+  const pullRequests = JSON.parse(stdout) as unknown;
+  return {
+    advisory_start: options.advisoryStart,
+    prs: normalizeGitHubPullRequests(pullRequests),
+  };
+}
+
+export function normalizeGitHubPullRequests(value: unknown): readonly Record<string, unknown>[] {
+  if (!Array.isArray(value)) {
+    throw new Error("GitHub PR response must be an array");
+  }
+  return value.map((item) => {
+    const pr = asRecord(item, "GitHub pull request");
+    const files = pr.files;
+    const statusCheckRollup = pr.statusCheckRollup;
+    return {
+      number: readNumber(pr),
+      title: readTitle(pr),
+      merged_at: typeof pr.mergedAt === "string" ? pr.mergedAt : undefined,
+      metadata_source: "github",
+      files: Array.isArray(files)
+        ? files.map((file) => normalizeGitHubFilePath(file))
+        : [],
+      evidence: {
+        require_rust_kernel_parity: true,
+        checks: Array.isArray(statusCheckRollup)
+          ? statusCheckRollup.map(normalizeGitHubCheck)
+          : [],
+      },
+    };
+  });
+}
+
+function normalizeGitHubFilePath(value: unknown): string {
+  if (typeof value === "string") {
+    return normalizePath(value);
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("GitHub file entry must be a path string or object");
+  }
+  const record = value as Record<string, unknown>;
+  const pathValue = record.path;
+  if (typeof pathValue !== "string" || pathValue.trim().length === 0) {
+    throw new Error("GitHub file entry must include path");
+  }
+  return normalizePath(pathValue);
+}
+
+function normalizeGitHubCheck(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { conclusion: "unknown" };
+  }
+  const record = value as Record<string, unknown>;
+  const conclusion = record.conclusion ?? record.state ?? record.status;
+  return {
+    name: record.name ?? record.context ?? record.workflowName,
+    conclusion: typeof conclusion === "string" ? conclusion.toLowerCase() : "unknown",
   };
 }
 
@@ -248,6 +374,67 @@ function readNumber(pr: Record<string, unknown>): number | undefined {
   return typeof value === "number" && Number.isInteger(value) ? value : undefined;
 }
 
+function readMergedAt(pr: Record<string, unknown>): string | undefined {
+  const value = pr.merged_at ?? pr.mergedAt;
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}
+
+function isLiveGitHubMetadata(pr: Record<string, unknown>): boolean {
+  return pr.metadata_source === "github" || pr.metadataSource === "github";
+}
+
+function isInsideAdvisoryWindow(
+  pr: Record<string, unknown>,
+  advisoryStartInstant?: number,
+): boolean {
+  const mergedAt = readMergedAt(pr);
+  if (!mergedAt) {
+    return !isLiveGitHubMetadata(pr);
+  }
+  const mergedAtInstant = Date.parse(mergedAt);
+  if (Number.isNaN(mergedAtInstant) || advisoryStartInstant === undefined) {
+    return false;
+  }
+  return mergedAtInstant > advisoryStartInstant;
+}
+
+function resolveAdvisoryStartInstant(value: unknown, prs: readonly unknown[]): number | undefined {
+  const hasMergeTimes = prs.some((rawPr) => {
+    const pr = asRecord(rawPr, "pull request");
+    return readMergedAt(pr) !== undefined || isLiveGitHubMetadata(pr);
+  });
+  if (!hasMergeTimes) {
+    return undefined;
+  }
+
+  const timestamp = extractAdvisoryStartTimestamp(value);
+  if (!timestamp) {
+    throw new Error("advisory start must include a parseable timestamp when PR merge times are present");
+  }
+  const instant = Date.parse(timestamp);
+  if (Number.isNaN(instant)) {
+    throw new Error(`advisory start timestamp is not parseable: ${timestamp}`);
+  }
+  return instant;
+}
+
+function extractAdvisoryStartTimestamp(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  for (const key of ["timestamp", "advisory_start", "advisoryStart", "merged_after", "mergedAfter", "start", "at"]) {
+    const candidate = record[key];
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
 function hasPassingEvidence(pr: Record<string, unknown>): boolean {
   if (pr.passing_evidence === true || pr.passingEvidence === true) {
     return true;
@@ -266,14 +453,28 @@ function evidenceContainsPass(evidence: Record<string, unknown>): boolean {
 
   const checks = evidence.checks ?? evidence.required_checks ?? evidence.requiredChecks;
   if (Array.isArray(checks) && checks.length > 0) {
-    const allChecksPass = checks.every((check) => {
+    const normalizedChecks = checks.map((check) => {
       if (!check || typeof check !== "object" || Array.isArray(check)) {
-        return false;
+        return { name: "", passed: false };
       }
       const record = check as Record<string, unknown>;
-      return [record.status, record.verdict, record.conclusion, record.result].some(isPassingToken);
+      return {
+        name: [record.name, record.context, record.workflowName]
+          .filter((value): value is string => typeof value === "string")
+          .join(" ")
+          .toLowerCase(),
+        passed: [record.status, record.verdict, record.conclusion, record.result].some(isPassingToken),
+      };
     });
-    return allChecksPass && (directEvidence.length === 0 || hasDirectPass);
+    const requiredParityChecks = normalizedChecks.filter((check) =>
+      check.name.includes("rust") && check.name.includes("kernel") && check.name.includes("parity"),
+    );
+    if (evidence.require_rust_kernel_parity === true && requiredParityChecks.length === 0) {
+      return false;
+    }
+    const checksToRequire = requiredParityChecks.length > 0 ? requiredParityChecks : normalizedChecks;
+    return checksToRequire.every((check) => check.passed)
+      && (directEvidence.length === 0 || hasDirectPass);
   }
   return hasDirectPass;
 }

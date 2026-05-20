@@ -2,8 +2,8 @@
 spec_version: '2.0'
 task_id: rust-cli-rust-cutover
 created: '2026-05-18T00:00:00Z'
-updated: '2026-05-20T00:00:00Z'
-status: draft
+updated: '2026-05-20T13:16:20Z'
+status: review
 harden_status: not_run
 size: extra_large
 risk_level: very_high
@@ -13,27 +13,14 @@ risk_level: very_high
 
 ## Current State
 
-Status: draft
-Current phase: executable package/release cutover slice
-Next: replace the npm package/bin/release artifacts with the Rust binary release
-shape, then rerun the cutover and artifact gates before any review.
-Reason: hard cutover contract for moving the published `runx` package boundary
-to the Rust binary without a TypeScript compatibility backend.
-Blockers: native skill run foundation has landed and passed, but release
-authority still remains with the npm/TypeScript CLI. `packages/cli/package.json`
-still points `bin.runx` at `./bin/runx.js`, ships `dist`/`tools`, and depends
-on TS workspace packages instead of platform native binary artifacts. The
-current Node bin still imports packaged `dist/index.js` or falls back through
-`node --import tsx packages/cli/src/index.ts`. The Rust candidate binary also
-still contains pre-cutover JS fallback/candidate-selection tokens and legacy
-shape tokens, so it is not a release artifact yet. Do not approve until the
-npm package, bin path, packaged artifacts, candidate binary, no-JS-fallback,
-no-shim, no-alias, and no-legacy-shape gates are implemented and passing.
-Allowed follow-up command: implement the package/bin/artifact hard cutover, then
-run validation; do not run `scafld review rust-cli-rust-cutover` until the
-acceptance checks below are green.
-Latest runner update: 2026-05-20T20:45:00+10:00
-Review gate: not_started
+Status: review
+Current phase: final
+Next: repair
+Reason: review gate fail: 4 finding(s), 3 completion blocker(s)
+Blockers: none
+Allowed follow-up command: `scafld handoff rust-cli-rust-cutover`
+Latest runner update: 2026-05-20T13:19:50Z
+Review gate: fail
 
 ## Summary
 
@@ -462,3 +449,45 @@ Cutover validation script status from the 2026-05-20 inspection:
   scripts now exist; the remaining blockers are the npm package/bin/artifact
   shape and candidate-binary fallback/legacy tokens, not missing verifier
   scripts.
+
+## Review
+
+Status: completed
+Verdict: fail
+Mode: discover
+Provider: claude:claude-opus-4-7
+Output: claude.mcp_submit_review
+Summary: The cutover ships a single-platform (darwin-arm64) binary inside `packages/cli/` with no platform detection, no `optionalDependencies`, no `postinstall`, no `os`/`cpu` filter, and no launcher shim. The spec invariant explicitly requires the published `@runxhq/cli` to install `runx` on macOS x86_64/arm64, Linux x86_64/arm64, and Windows x86_64. Today, installing on any non-darwin-arm64 platform either fails (exec-format error on Linux, missing `.exe` on Windows) or runs a binary for the wrong architecture, with no typed launcher error path because there is no launcher script. The release pipeline cannot work around this: `scripts/release-rust-cli.ts` rejects duplicate `name@version` publish targets while `scripts/package-rust-cli.ts` stages every platform under `@runxhq/cli@0.5.22`, so a multi-platform release crashes before it can publish anything. The cutover also deletes `packages/cli/bin/runx.js` but leaves `tests/cli-package.test.ts` asserting that exact file plus `dist/index.js`, and `scripts/test-workspace.mjs` forces that test to run on every `pnpm --dir oss test` — turning the standard test gate into a regression. A stray legacy `skill_execution` receipt is also committed under `packages/cli/.runx/receipts/` (not packaged, but contradicts the no-legacy-shape stance for the cutover package). Together these block completion.
+
+Attack log:
+- `packages/cli/package.json + bin/runx + native/*.json`: Verify multi-platform shape: optionalDependencies, postinstall, os/cpu filter, launcher shim -> finding (Single darwin-arm64 binary committed; no platform resolution exists. Spec invariant L73-77 + acceptance L344 violated.)
+- `scripts/release-rust-cli.ts + scripts/package-rust-cli.ts`: Trace whether release pipeline can publish multiple platforms end-to-end -> finding (release-rust-cli.ts:152-164 throws on duplicate name@version, but package-rust-cli.ts uses fixed manifest.name across platforms.)
+- `tests/cli-package.test.ts + scripts/test-workspace.mjs`: Find callers of deleted packages/cli/bin/runx.js that the cutover missed -> finding (Test references deleted bin/runx.js + dist/index.js; test-workspace.mjs forces it to run on every pnpm test.)
+- `packages/cli/bin/runx (Mach-O arm64) + crates/runx-cli/src/main.rs`: Check for residual RUNX_RUST_CLI / RUNX_JS_BIN / npm exec / packages/cli/src delegation in candidate binary and crates -> clean (No matches via grep across crates/runx-cli for forbidden tokens; main.rs invokes only native runners.)
+- `crates/runx-cli/src/launcher.rs + tests/launcher.rs`: Confirm no alias/v2/legacy-shape spellings in canonical command table or test expectations -> clean (help_text + plan_launcher route canonical verbs only; launcher tests assert shim flags fail closed and package.json must not contain workspace:/runtime-local strings.)
+- `packages/cli/.runx/receipts/`: Hunt for retired skill_execution/graph_execution receipts in the cli package tree -> finding (Stray rx_50447baa…json with kind: skill_execution committed; not packaged but stale and contradicts negative gate.)
+- `scripts/check-rust-cli-release-artifacts.ts + check-rust-cli-cutover.ts + check-rust-cli-cutover-negative.mjs`: Validate the cutover gate scripts actually enforce no-JS / no-v2 / no-aliases / no-legacy-shape -> clean (Scripts implement the documented checks (token scans, manifest pack inspection, canonical matrix alias check).)
+- `crates/runx-cli/tests/launcher.rs::package_manifest_is_native_binary_shaped`: Check whether the launcher test gate would catch single-platform package shape -> finding (Test only asserts bin.runx=./bin/runx and files=['LICENSE','bin','native']; says nothing about optionalDependencies / postinstall / os filter — single-platform package passes today.)
+
+Findings:
+- [critical/blocks completion] `cli-cutover-1` Published @runxhq/cli only supports darwin-arm64; spec invariant requires 5 platforms
+  - Location: `packages/cli/package.json:20`
+  - Evidence: packages/cli/package.json declares `bin.runx: "./bin/runx"` and `files: ["LICENSE", "bin", "native"]` with no `os`, `cpu`, `optionalDependencies`, `postinstall`, or launcher shim. `packages/cli/bin/runx` is a Mach-O 64-bit arm64 executable; `packages/cli/native/checksums.json:5` and `signatures.json:5` both declare `"platform": "darwin-arm64"`. There is no platform-resolution code anywhere — `bin/runx` is the binary itself, not a launcher script.
+  - Impact: Installing `@runxhq/cli` on Linux x86_64, Linux arm64, Windows x86_64, or macOS x86_64 either silently runs a binary for the wrong CPU/OS (exec format error on Linux, no .exe on Windows) or fails without the typed launcher error the spec promises. The spec's `Invariants` section (lines 73-77) requires support for darwin x86_64/arm64, linux x86_64/arm64, and win32 x86_64; the `Launcher And CLI Boundary` section (lines 199-205) mandates platform detection, artifact resolution, checksum/signature verification, and exec; Acceptance Criteria (line 344) requires "Unsupported platform, missing binary, checksum mismatch, signature failure, and exec permission failure produce typed launcher errors without JS fallback." None of that exists.
+  - Validation: Inspect `packages/cli/package.json` for `optionalDependencies`/`postinstall`/`os`/`cpu` — absent. Run `file packages/cli/bin/runx` — single-architecture Mach-O arm64. Attempt `npm install @runxhq/cli` on linux/x64 in a sandbox — installation succeeds but `runx` invocation fails with `exec format error` and no typed message.
+- [high/blocks completion] `cli-cutover-2` release-rust-cli.ts rejects multi-platform publish via duplicate name@version guard
+  - Location: `scripts/release-rust-cli.ts:152`
+  - Evidence: `scripts/release-rust-cli.ts:152-164` (`assertPublishTargets`) throws `duplicate npm publish target` if it sees two staged directories with the same `name@version`. `scripts/package-rust-cli.ts:34-36,79-101` writes every platform's `package.json` with `name: manifest.name` (always `@runxhq/cli`) and `version: manifest.version` (always `0.5.22`) into `${outDir}/${platform}/`. So when the release pipeline materializes more than one platform under `.runx/rust-cli-artifacts/`, it crashes before npm publish runs.
+  - Impact: There is no path to publish multi-platform Rust CLI artifacts through the documented release script — either every release is single-platform (already violating the invariant) or the second-platform publish blows up. The spec explicitly calls out `Phase 3: Package per-platform binaries, ... and npm dependency or postinstall wiring` (L298-301) and Phase 5 canary publication of native packages across supported platforms.
+  - Validation: Stage two platforms via `pnpm exec tsx scripts/package-rust-cli.ts --binary <darwin-arm64-runx> --out-dir .runx/rust-cli-artifacts --signature-manifest packages/cli/native/signatures.json` and `... <linux-x64-runx> ...`, then run `pnpm exec tsx scripts/release-rust-cli.ts --artifact-dir .runx/rust-cli-artifacts --publish`. The script throws `duplicate npm publish target: @runxhq/cli@0.5.22`.
+- [high/blocks completion] `cli-cutover-3` tests/cli-package.test.ts still asserts deleted packages/cli/bin/runx.js and forces pnpm test to fail
+  - Location: `tests/cli-package.test.ts:12`
+  - Evidence: Git status shows `D packages/cli/bin/runx.js`. `tests/cli-package.test.ts:11-12` declares `cliDistEntry = packages/cli/dist/index.js` and `cliBinEntry = packages/cli/bin/runx.js`. Tests at L44-83 `stat` and `execFile` `cliBinEntry` through `process.execPath`; L99-127 assert that `npm pack --dry-run` includes `bin/runx.js`, `dist/index.js`, `dist/src/index.js`, `dist/src/official-skills.lock.json`, etc. — but the new `packages/cli/package.json` `files` is `["LICENSE", "bin", "native"]` (no `dist`, no `src`), and `bin/runx.js` is gone. `scripts/test-workspace.mjs:34-35` unconditionally runs this test under `RUNX_VITEST_BATCH=cli-package` for every workspace test invocation.
+  - Impact: `pnpm --dir oss test` (a CLAUDE.md-listed standard command and a workspace parity gate) will fail in `beforeAll`/`stat` once the previously-deleted bin is gone. The same test also embeds explicit assertions (`expect(files).toContain('bin/runx.js')`, `dist/index.js`, etc.) that contradict the cutover's `files` shape. Either the cutover is incomplete (forgot to remove or rewrite this test) or the workspace test gate is silently broken.
+  - Validation: Run `pnpm --dir oss test` (or `RUNX_VITEST_BATCH=cli-package pnpm --dir oss exec vitest run tests/cli-package.test.ts`). The first `stat(cliDistEntry)`/`execFile(cliBinEntry, ...)` call ENOENTs, and the `expect(files).toContain('bin/runx.js')` assertion fails against the post-cutover pack output.
+- [low/non-blocking] `cli-cutover-4` Stale skill_execution receipt committed under packages/cli/.runx/receipts/
+  - Location: `packages/cli/.runx/receipts/rx_50447baa803d4cdc88e909983746a9ec.json:3`
+  - Evidence: `packages/cli/.runx/receipts/rx_50447baa803d4cdc88e909983746a9ec.json` has `"kind": "skill_execution"` — the retired pre-spine receipt kind the cutover's negative gates forbid (`scripts/check-rust-cli-cutover.ts:34-38` lists `skill_execution`/`graph_execution`/`pre_spine`/`legacy_receipt`/`compat_receipt` as forbidden binary tokens; spec L107-108 explicitly forbids emitting these).
+  - Impact: Not shipped (package.json `files` excludes `.runx/`), so no consumer-facing impact, but it contradicts the cutover's no-legacy-receipt-in-the-cli-package stance and may trip future repo-wide negative scans.
+  - Validation: `grep -rn skill_execution packages/cli/` returns this receipt.
+

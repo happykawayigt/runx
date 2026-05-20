@@ -39,7 +39,6 @@ fn doctor_failure_json_exits_one_and_matches_fixture() -> Result<(), Box<dyn std
 fn runx_command() -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_runx"));
     command.env("NO_COLOR", "1");
-    command.env("RUNX_RUST_CLI", "1");
     command
 }
 

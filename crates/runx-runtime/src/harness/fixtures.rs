@@ -272,7 +272,7 @@ fn default_harness_receipt_schema() -> HarnessReceiptSchema {
 mod tests {
     use super::{
         HarnessFixtureError, HarnessFixtureKind, HarnessReceiptSchema, HarnessState,
-        parse_harness_fixture,
+        parse_harness_fixture, retired_execution_receipt_field,
     };
 
     #[test]

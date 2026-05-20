@@ -8,14 +8,15 @@ description: Govern a paid agent action from payment-required signal to sealed r
 Run the first seamless agent-payment graph.
 
 The graph turns a payment-required signal into a quote, selects and reserves a
-payment decision, routes approval when required, fulfills the chosen rail under
+payment decision, routes approval when required, fulfills the mock rail under
 attenuated authority, and leaves recovery evidence if the rail result is
 ambiguous.
 
-This skill is the user-facing payment execution surface. It is deliberately a
-graph, not a hidden runtime shortcut, because payment authority must be visible:
-quote, reserve, approval, rail act, and receipt proof each need their own place
-in the harness.
+This skill is the first human-readable payment execution surface. It is
+deliberately a graph, not a hidden runtime shortcut, because payment authority
+must be visible: quote, reserve, approval, rail act, and receipt proof each need
+their own place in the harness. The v1 profile demonstrates deterministic mock
+rail discipline only; it does not claim live runtime payment behavior.
 
 ## Quality Profile
 

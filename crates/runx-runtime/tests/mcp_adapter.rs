@@ -613,7 +613,7 @@ fn normalize_metadata_value(value: &JsonValue, repo_root: &str) -> JsonValue {
 
 fn status_text(status: &InvocationStatus) -> &'static str {
     match status {
-        InvocationStatus::Success => "success",
+        InvocationStatus::Success => "sealed",
         InvocationStatus::Failure => "failure",
     }
 }

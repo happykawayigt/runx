@@ -106,7 +106,6 @@ fn registry_local_publish_search_resolve_install_json() -> Result<(), Box<dyn st
 fn runx_command() -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_runx"));
     command.env("NO_COLOR", "1");
-    command.env("RUNX_RUST_CLI", "1");
     command
 }
 

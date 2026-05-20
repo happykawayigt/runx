@@ -169,7 +169,7 @@ runners:
       name: payment-execute
       steps:
         - id: quote
-          skill: ../payment-quote-preflight
+          skill: ../payment-quote
           runner: quote
           scopes:
             - payment:quote
@@ -181,7 +181,7 @@ runners:
             wrap_as: payment_quote_packet
             packet: runx.payment.quote.v1
         - id: reserve
-          skill: ../payment-authorize-reserve
+          skill: ../payment-reserve
           runner: reserve
           scopes:
             - payment:reserve
@@ -210,7 +210,7 @@ runners:
             wrap_as: payment_approval
             packet: runx.payment.approval.v1
         - id: fulfill
-          skill: ../payment-fulfill-rail
+          skill: ../payment-rail-mock
           runner: mock
           scopes:
             - payment:spend

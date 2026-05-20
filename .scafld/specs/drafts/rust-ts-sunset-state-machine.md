@@ -20,9 +20,9 @@ orchestration transition/planning consumers before approval.
 Reason: the deletion remains blocked, but a prerequisite slice is executable
 against the current tree and is already present: runtime-local sequential graph
 state creation now goes through the existing Rust kernel bridge. A fresh
-2026-05-20 source scan still finds live runtime-local imports of
-`@runxhq/core/state-machine`, fixture generators still use the TS source as the
-oracle, and
+2026-05-20 source scan still finds 26 files with live runtime-local imports of
+`@runxhq/core/state-machine` or state-machine surfaces, fixture generators
+still use the TS source as the oracle, and
 `packages/core/package.json` still exposes `./state-machine`.
 `crates/runx-core` has state-machine fixture parity, but TypeScript remains the
 source of truth for the remaining synchronous transition/planning consumers
@@ -43,11 +43,10 @@ Blockers:
   to keep the TS import path alive.
 Allowed follow-up command: none while blocked; do not run `scafld harden` for
 this draft.
-Latest runner update: 2026-05-20T03:15:00Z - prerequisite slice identified:
-runtime-local initial sequential graph state creation now routes through
-`packages/runtime-local/src/runner-local/kernel-bridge.ts`; deletion remains
-blocked by the remaining transition/planning consumers and fixture-oracle
-ownership.
+Latest runner update: 2026-05-20T22:55:00+10:00 - importer census refreshed:
+26 files still reference state-machine surfaces. The completed kernel bridge
+slice remains useful, but deletion remains blocked by transition/planning
+consumers and fixture-oracle ownership.
 Review gate: not_started
 
 ## Summary

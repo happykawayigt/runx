@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -45,6 +45,9 @@ export function readCliDependencyVersion(packageName: string): string {
     ?? raw.devDependencies?.[packageName]
     ?? raw.optionalDependencies?.[packageName]
     ?? raw.peerDependencies?.[packageName];
+  if (!declaredVersion || declaredVersion.startsWith("workspace:")) {
+    return normalizePackageVersion(resolveWorkspacePackageVersion(packageRoot, packageName));
+  }
   return normalizeDependencyVersion(packageName, declaredVersion);
 }
 
@@ -100,4 +103,38 @@ function normalizeDependencyVersion(packageName: string, value: string | undefin
     throw new Error(`Expected ${cliPackageName} dependency ${packageName} to declare a publishable version, received ${value ?? "undefined"}.`);
   }
   return match[0];
+}
+
+function resolveWorkspacePackageVersion(packageRoot: string, packageName: string): string | undefined {
+  const workspaceRoot = findWorkspaceRoot(packageRoot);
+  for (const parent of ["packages", "plugins"]) {
+    const parentPath = path.join(workspaceRoot, parent);
+    if (!existsSync(parentPath)) {
+      continue;
+    }
+    for (const entry of readdirSync(parentPath, { withFileTypes: true })) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+      const manifest = parseManifest(path.join(parentPath, entry.name, "package.json"));
+      if (manifest?.name === packageName) {
+        return manifest.version;
+      }
+    }
+  }
+  return undefined;
+}
+
+function findWorkspaceRoot(startDir: string): string {
+  let current = startDir;
+  for (;;) {
+    if (existsSync(path.join(current, "pnpm-workspace.yaml"))) {
+      return current;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) {
+      return startDir;
+    }
+    current = parent;
+  }
 }

@@ -1,0 +1,36 @@
+{
+  "schema": "runx.rust_cli_selector_topology.v1",
+  "selectorPackage": "@runxhq/cli",
+  "nativePackages": {
+    "darwin-arm64": {
+      "package": "@runxhq/cli-darwin-arm64",
+      "os": "darwin",
+      "cpu": "arm64",
+      "binary": "bin/runx"
+    },
+    "darwin-x64": {
+      "package": "@runxhq/cli-darwin-x64",
+      "os": "darwin",
+      "cpu": "x64",
+      "binary": "bin/runx"
+    },
+    "linux-arm64": {
+      "package": "@runxhq/cli-linux-arm64",
+      "os": "linux",
+      "cpu": "arm64",
+      "binary": "bin/runx"
+    },
+    "linux-x64": {
+      "package": "@runxhq/cli-linux-x64",
+      "os": "linux",
+      "cpu": "x64",
+      "binary": "bin/runx"
+    },
+    "win32-x64": {
+      "package": "@runxhq/cli-win32-x64",
+      "os": "win32",
+      "cpu": "x64",
+      "binary": "bin/runx.exe"
+    }
+  }
+}

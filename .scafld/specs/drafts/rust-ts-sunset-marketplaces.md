@@ -18,11 +18,12 @@ Current phase: discovery refresh
 Next: unblock registry ownership and reroute marketplace consumers before
 approval.
 Reason: this draft describes a future deletion, not work that can be executed
-against the current tree. A fresh 2026-05-20 source scan still finds live
-imports of `@runxhq/core/marketplaces` across CLI, runtime-local, registry
-fallback, SDK, and tests. The prerequisite `rust-ts-sunset-registry` is also
-archived as failed, not completed. Deleting `packages/core/src/marketplaces/**`
-now would break current package exports and live consumers.
+against the current tree. A fresh 2026-05-20 source scan still finds 14 files
+with live imports of `@runxhq/core/marketplaces` or marketplace surfaces across
+CLI, runtime-local, registry fallback, SDK, and tests. The prerequisite
+`rust-ts-sunset-registry` is also archived as failed, not completed. Deleting
+`packages/core/src/marketplaces/**` now would break current package exports and
+live consumers.
 Blockers:
 - `rust-ts-sunset-registry` is archived with `status: failed`; the original
   dependency is not satisfied.
@@ -38,8 +39,9 @@ Blockers:
 - `packages/core/package.json` still exposes `./marketplaces`; remove it only
   after all importers are rerouted or retired by owning specs.
 Allowed follow-up command: none while blocked; do not run `scafld harden rust-ts-sunset-marketplaces`.
-Latest runner update: 2026-05-20T00:00:00Z - refreshed source scan confirmed
-the deletion remains blocked.
+Latest runner update: 2026-05-20T22:55:00+10:00 - refreshed source scan
+confirmed 14 files still reference marketplace surfaces; deletion remains
+blocked.
 Review gate: not_started
 
 ## Summary

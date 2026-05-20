@@ -803,7 +803,7 @@ fn pull_request_receipt_metadata(
     );
     metadata.insert(
         "dedupe".to_owned(),
-        JsonValue::Object(dedupe_metadata(&plan.dedupe)),
+        JsonValue::Object(dedupe_receipt_metadata(&plan.dedupe, disposition)),
     );
     metadata.insert(
         "disposition".to_owned(),
@@ -838,7 +838,10 @@ fn source_publication_receipt_metadata(
     metadata
 }
 
-fn dedupe_metadata(dedupe: &TargetRepoRunnerDedupePlan) -> JsonObject {
+fn dedupe_receipt_metadata(
+    dedupe: &TargetRepoRunnerDedupePlan,
+    disposition: TargetRepoRunnerPullRequestDisposition,
+) -> JsonObject {
     let mut metadata = JsonObject::new();
     metadata.insert(
         "strategy".to_owned(),
@@ -848,7 +851,10 @@ fn dedupe_metadata(dedupe: &TargetRepoRunnerDedupePlan) -> JsonObject {
     metadata.insert(
         "result".to_owned(),
         static_string(match dedupe.result {
-            TargetRepoRunnerDedupeResult::LookupRequired => "lookup_required",
+            TargetRepoRunnerDedupeResult::LookupRequired => match disposition {
+                TargetRepoRunnerPullRequestDisposition::Create => "created",
+                TargetRepoRunnerPullRequestDisposition::Reuse => "reused",
+            },
             TargetRepoRunnerDedupeResult::Reused => "reused",
         }),
     );

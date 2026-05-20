@@ -14,16 +14,16 @@ risk_level: high
 ## Current State
 
 Status: draft
-Current phase: plan-refresh
-Next: approve
-Reason: refreshed against the current local OSS checkout. This is a plan spec,
-not an implementation pass.
+Current phase: external-runtime-fixture
+Next: cloud-tree binding pass when a checkout with `cloud/**` is available
+Reason: added an OSS-local external Aster agent-step replay fixture grounded in
+the Aster repo's current Rust bridge scripts and README contract.
 Blockers: the cloud tree is not present in this OSS checkout, so hosted/cloud
-binding details cannot be verified locally. Runtime external replay fixtures
-for Aster are also absent.
+binding details cannot be verified locally.
 Allowed follow-up command: none during this refresh; do not run
 `scafld harden rust-aster-runtime-cutover`.
-Latest runner update: none
+Latest runner update: `fixtures/external/aster/agent-step/rust-bridge-sealed-skill.yaml`
+and `crates/runx-runtime/tests/external/aster_agent_step.rs` added.
 Review gate: not_started
 
 ## Summary
@@ -45,11 +45,20 @@ Current local facts:
   `crates/runx-contracts/src/lib.rs`.
 - A structural Aster control fixture exists at
   `fixtures/contracts/aster-control/public-feed-proof.json`.
-- No runtime external fixture exists for Aster:
-  `fixtures/external/aster/**` and
-  `crates/runx-runtime/tests/external/aster_agent_step.rs` are absent.
+- A runtime external fixture now exists for the local Aster Rust bridge shape:
+  `fixtures/external/aster/agent-step/rust-bridge-sealed-skill.yaml`.
+- A focused runtime test now exists at
+  `crates/runx-runtime/tests/external/aster_agent_step.rs`, wired through
+  `crates/runx-runtime/tests/external.rs`.
 - The local checkout has no `cloud/` directory and no
   `crates/runx-runtime/src/cloud_client.rs`.
+- The readable Aster checkout at `/Users/kam/dev/runx/aster` currently routes
+  Rust execution through `scripts/aster-core.mjs` into
+  `scripts/runx-agent-bridge.mjs`; the accepted terminal skill report is
+  `runx.skill_run.v1` with `status: "sealed"` and a stored
+  `runx.harness_receipt.v1` receipt id.
+- `cargo test --manifest-path crates/Cargo.toml -p runx-runtime --test external
+  aster_agent_step` passes for the new fixture replay.
 
 The cutover remains preservation-oriented: Aster should consume the Rust
 runtime through a documented boundary and canonical contracts, but this draft
@@ -81,8 +90,7 @@ Surfaces not present in this checkout:
 - `cloud/packages/receipts-store/**`
 - `cloud/packages/ui/**`
 - `crates/runx-runtime/src/cloud_client.rs`
-- `fixtures/external/aster/agent-step/**`
-- `crates/runx-runtime/tests/external/aster_agent_step.rs`
+- `cloud/**`
 
 ## Invariants
 
@@ -124,7 +132,7 @@ Surfaces not present in this checkout:
 In scope:
 
 - OSS-local plan for Aster contract preservation.
-- Missing external runtime fixture definition.
+- External Aster runtime fixture definition.
 - Hosted boundary notes grounded in `hosted_http.rs`.
 - Dependency sequencing for target-runner and post-merge observer flows.
 
@@ -153,19 +161,19 @@ Out of scope:
 
 ## Acceptance Criteria
 
-- [ ] Existing Aster contract fixture coverage remains green for
+- [x] Existing Aster contract fixture coverage remains green for
   `fixtures/contracts/aster-control/public-feed-proof.json`.
-- [ ] The runtime external fixture
+- [x] The runtime external fixture
   `fixtures/external/aster/agent-step/**` exists before any Aster runtime
   replay test is claimed.
-- [ ] The replay test
+- [x] The replay test
   `crates/runx-runtime/tests/external/aster_agent_step.rs` is added only after
   the external fixture exists.
-- [ ] The OSS-hosted boundary is documented against
+- [x] The OSS-hosted boundary is documented against
   `crates/runx-runtime/src/hosted_http.rs` or a reviewed replacement.
-- [ ] Cloud binding details are marked deferred until `cloud/**` is available
+- [x] Cloud binding details are marked deferred until `cloud/**` is available
   locally; no acceptance depends on absent cloud paths.
-- [ ] Aster contract and runtime artifacts use harness receipt closure and
+- [x] Aster contract and runtime artifacts use harness receipt closure and
   `proof.verification`, not retired peer terminal artifacts or legacy
   outcome/effect packet fields.
 - [ ] Aster final publication and issue-to-PR completion, once implemented, use
@@ -181,16 +189,29 @@ test ! -d cloud
 test -f crates/runx-runtime/src/hosted_http.rs
 test -f crates/runx-contracts/src/aster.rs
 test -f fixtures/contracts/aster-control/public-feed-proof.json
-test ! -d fixtures/external/aster
+test -f fixtures/external/aster/agent-step/rust-bridge-sealed-skill.yaml
+test -f crates/runx-runtime/tests/external/aster_agent_step.rs
 cargo test --manifest-path crates/Cargo.toml -p runx-contracts aster
+cargo test --manifest-path crates/Cargo.toml -p runx-runtime --test external aster_agent_step
 ! rg -n "runx\\.issue_to_pr_outcome\\.v1|issue_to_pr_outcome|verification[_-]report|target[_-]?effect|\"effect\"\\s*:" crates/runx-contracts/src/aster.rs fixtures/contracts/aster-control
+! rg -n "runId|receiptId|issue_to_pr_outcome|verification[_-]report|verificationReport|target[_-]?effect|\"effect\"\\s*:|\"outcome\"\\s*:|/Users/kam" fixtures/external/aster/agent-step/rust-bridge-sealed-skill.yaml
 git diff --check -- .scafld/specs/drafts/rust-aster-runtime-cutover.md
 ```
 
-Future validation once the external runtime fixture and cloud binding exist:
+Latest local validation:
 
 ```sh
-cargo test --manifest-path crates/Cargo.toml -p runx-runtime aster_agent_step
+cargo test --manifest-path crates/Cargo.toml -p runx-contracts aster
+# passed: aster_control_fixture_roundtrips
+
+cargo test --manifest-path crates/Cargo.toml -p runx-runtime --test external aster_agent_step
+# passed: 2 tests
+
+ruby -ryaml -e 'YAML.load_file("fixtures/external/aster/agent-step/rust-bridge-sealed-skill.yaml"); puts "yaml ok"'
+# passed: yaml ok
+
+! rg -n "runId|receiptId|issue_to_pr_outcome|verification[_-]report|verificationReport|target[_-]?effect|\"effect\"\\s*:|\"outcome\"\\s*:|/Users/kam" fixtures/external/aster/agent-step/rust-bridge-sealed-skill.yaml
+# passed: no matches
 ```
 
 ## Rollback And Repair

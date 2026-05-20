@@ -5,9 +5,9 @@ use std::env;
 use std::ffi::OsString;
 use std::io::{self, Write};
 use std::path::PathBuf;
-use std::process::{Command, ExitCode, Stdio};
+use std::process::ExitCode;
 
-use runx_cli::launcher::{LauncherAction, shim_help};
+use runx_cli::launcher::{LauncherAction, help_text};
 use runx_runtime::connect::{ConnectGrantStatus, ConnectReadyStatus, ConnectRevokeStatus};
 use runx_runtime::{
     HttpConnectGrant, HttpConnectListResponse, HttpConnectReadyResponse, HttpConnectRevokeResponse,
@@ -16,20 +16,12 @@ use runx_runtime::{
 fn main() -> ExitCode {
     let args: Vec<OsString> = env::args_os().skip(1).collect();
 
-    match runx_cli::launcher::plan_launcher_with_native_options(
-        args,
-        env::var_os("RUNX_NPM_PACKAGE"),
-        env::var_os("RUNX_JS_BIN"),
-        runx_cli::launcher::NativeLauncherOptions {
-            rust_cli: env::var_os("RUNX_RUST_CLI"),
-            rust_harness: env::var_os("RUNX_RUST_HARNESS"),
-        },
-    ) {
+    match runx_cli::launcher::plan_launcher(args) {
         LauncherAction::Error(message) => {
             let _ignored = write_stderr_line(&format!("runx: {message}"));
             ExitCode::from(64)
         }
-        LauncherAction::PrintHelp => write_stdout(&shim_help()),
+        LauncherAction::PrintHelp => write_stdout(&help_text()),
         LauncherAction::PrintVersion => {
             write_stdout_line(&format!("runx-cli {}", env!("CARGO_PKG_VERSION")))
         }
@@ -47,13 +39,6 @@ fn main() -> ExitCode {
         LauncherAction::RunSkill(plan) => runx_cli::skill::run_native_skill(plan),
         LauncherAction::RunDoctor(plan) => runx_cli::doctor::run_native_doctor(plan),
         LauncherAction::RunTool(plan) => runx_cli::tool::run_native_tool(plan),
-        LauncherAction::Delegate(command) => match run_command(command) {
-            Ok(code) => ExitCode::from(code),
-            Err(error) => {
-                let _ignored = write_stderr_line(&format!("runx: {error}"));
-                ExitCode::from(1)
-            }
-        },
     }
 }
 
@@ -409,37 +394,4 @@ fn write_stderr_line(message: &str) -> ExitCode {
     } else {
         ExitCode::from(1)
     }
-}
-
-fn run_command(plan: runx_cli::launcher::CommandPlan) -> Result<u8, String> {
-    let status = Command::new(&plan.program)
-        .args(plan.args)
-        .stdin(Stdio::inherit())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .status()
-        .map_err(|error| {
-            format!(
-                "failed to launch {}: {error}",
-                plan.program.to_string_lossy()
-            )
-        })?;
-
-    Ok(exit_code(status))
-}
-
-fn exit_code(status: std::process::ExitStatus) -> u8 {
-    if let Some(code) = status.code() {
-        return code.clamp(0, 255) as u8;
-    }
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::ExitStatusExt;
-        if let Some(signal) = status.signal() {
-            return (128 + signal).clamp(1, 255) as u8;
-        }
-    }
-
-    1
 }

@@ -1,6 +1,6 @@
 use runx_contracts::{
-    HarnessReceipt, PostMergeObserverRuntimeDecision, PostMergeObserverRuntimeDedupePlan,
-    PostMergeObserverSignalSource, Reference, ReferenceType,
+    ActForm, ClosureDisposition, HarnessReceipt, PostMergeObserverRuntimeDecision,
+    PostMergeObserverRuntimeDedupePlan, PostMergeObserverSignalSource, Reference, ReferenceType,
 };
 use runx_runtime::post_merge_observer::{
     PostMergeObserverPublicationCommand, PostMergeObserverPublicationLedger,
@@ -121,6 +121,51 @@ fn public_command_text_redacts_local_paths_and_env_secrets()
     Ok(())
 }
 
+#[test]
+fn closed_unmerged_projection_publishes_without_source_issue_close()
+-> Result<(), Box<dyn std::error::Error>> {
+    let receipt = closed_unmerged_receipt()?;
+    let dedupe = dedupe_plan(&receipt, PostMergeObserverSignalSource::Webhook);
+    let mut ledger = PostMergeObserverPublicationLedger::new();
+
+    let runtime = project_post_merge_observer_publication_commands(&dedupe, &receipt, &mut ledger)?;
+
+    assert_eq!(
+        runtime.decision,
+        PostMergeObserverPublicationRuntimeDecision::Publish
+    );
+    assert_eq!(runtime.commands.len(), 2);
+    assert!(matches!(
+        &runtime.commands[0],
+        PostMergeObserverPublicationCommand::SourceIssueComment { .. }
+    ));
+    assert!(matches!(
+        &runtime.commands[1],
+        PostMergeObserverPublicationCommand::SourceThreadReply { .. }
+    ));
+    assert!(runtime.commands.iter().all(|command| {
+        !matches!(
+            command,
+            PostMergeObserverPublicationCommand::SourceIssueClose { .. }
+        )
+    }));
+    let bodies = runtime
+        .commands
+        .iter()
+        .filter_map(|command| match command {
+            PostMergeObserverPublicationCommand::SourceIssueComment { body, .. }
+            | PostMergeObserverPublicationCommand::SourceThreadReply { body, .. } => Some(body),
+            PostMergeObserverPublicationCommand::SourceIssueClose { .. } => None,
+        })
+        .collect::<Vec<_>>();
+    for body in bodies {
+        assert!(body.contains("Verification: not_required"));
+        assert!(body.contains("Proof: post_merge.provider_state"));
+        assert!(!body.contains("shipped"));
+    }
+    Ok(())
+}
+
 fn post_merge_observer_receipt() -> Result<HarnessReceipt, serde_json::Error> {
     #[derive(serde::Deserialize)]
     struct Fixture {
@@ -128,6 +173,30 @@ fn post_merge_observer_receipt() -> Result<HarnessReceipt, serde_json::Error> {
     }
 
     serde_json::from_str::<Fixture>(POST_MERGE_OBSERVER_FIXTURE).map(|fixture| fixture.expected)
+}
+
+fn closed_unmerged_receipt() -> Result<HarnessReceipt, serde_json::Error> {
+    let mut receipt = post_merge_observer_receipt()?;
+    receipt.seal.reason_code = "closed_unmerged".to_owned();
+    receipt.seal.summary =
+        "Target PR was closed without merge; source issue remains unresolved.".to_owned();
+    receipt.seal.disposition = ClosureDisposition::Closed;
+    receipt.seal.criteria.retain(|criterion| {
+        matches!(
+            criterion.criterion_id.as_str(),
+            "post_merge.provider_state"
+                | "post_merge.human_gate"
+                | "post_merge.source_thread_target_present"
+        )
+    });
+    receipt
+        .harness
+        .acts
+        .retain(|act| act.form == ActForm::Observation || act.form == ActForm::Reply);
+    receipt.harness.idempotency.content_hash =
+        "sha256:post-merge-closure-closed-unmerged-nitrosend".to_owned();
+    receipt.harness.seal = Some(receipt.seal.clone());
+    Ok(receipt)
 }
 
 fn dedupe_plan(

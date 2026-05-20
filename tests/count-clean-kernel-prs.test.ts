@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   analyzeCleanKernelPrs,
+  normalizeGitHubPullRequests,
   runCountCleanKernelPrsCli,
 } from "../scripts/count-clean-kernel-prs.js";
 
@@ -161,5 +162,143 @@ describe("clean kernel PR counter", () => {
       minimum: 5,
       meets_minimum: false,
     });
+  });
+
+  it("normalizes GitHub PR list output into the audited fixture shape", () => {
+    const prs = normalizeGitHubPullRequests([
+      {
+        number: 301,
+        title: "policy: enforce local admission",
+        mergedAt: "2026-05-20T00:00:00Z",
+        files: [
+          { path: "packages/core/src/policy/index.ts" },
+          { path: "packages/core/src/policy/index.test.ts" },
+        ],
+        statusCheckRollup: [
+          { name: "test:fast", conclusion: "SUCCESS" },
+          { name: "rust:kernel-parity", conclusion: "SUCCESS" },
+        ],
+      },
+    ]);
+
+    expect(prs).toEqual([
+      {
+        number: 301,
+        title: "policy: enforce local admission",
+        merged_at: "2026-05-20T00:00:00Z",
+        metadata_source: "github",
+        files: [
+          "packages/core/src/policy/index.ts",
+          "packages/core/src/policy/index.test.ts",
+        ],
+        evidence: {
+          require_rust_kernel_parity: true,
+          checks: [
+            { name: "test:fast", conclusion: "success" },
+            { name: "rust:kernel-parity", conclusion: "success" },
+          ],
+        },
+      },
+    ]);
+
+    const report = analyzeCleanKernelPrs({
+      advisory_start: "2026-05-19T00:00:00Z",
+      prs,
+    });
+    expect(report.counting).toEqual([
+      expect.objectContaining({
+        number: 301,
+        reason: "ts_kernel",
+        passing_evidence: true,
+      }),
+    ]);
+  });
+
+  it("requires a parseable advisory timestamp for PRs with merge times", () => {
+    expect(() => analyzeCleanKernelPrs({
+      advisory_start: "manual live metadata probe",
+      prs: [
+        {
+          number: 401,
+          title: "policy: merged after unknown start",
+          merged_at: "2026-05-20T01:00:00Z",
+          files: ["packages/core/src/policy/index.ts"],
+          evidence: { status: "passed" },
+        },
+      ],
+    })).toThrow(/not parseable/);
+  });
+
+  it("fails closed for PRs outside or missing the live advisory window", () => {
+    const report = analyzeCleanKernelPrs({
+      advisory_start: {
+        timestamp: "2026-05-20T01:00:00Z",
+        source: "manual audited advisory start",
+      },
+      prs: [
+        {
+          number: 501,
+          title: "policy: before advisory start",
+          merged_at: "2026-05-20T00:59:59Z",
+          files: ["packages/core/src/policy/index.ts"],
+          evidence: { status: "passed" },
+        },
+        {
+          number: 502,
+          title: "policy: live metadata without merge time",
+          metadata_source: "github",
+          files: ["packages/core/src/policy/index.ts"],
+          evidence: { status: "passed" },
+        },
+        {
+          number: 503,
+          title: "policy: after advisory start",
+          merged_at: "2026-05-20T01:00:01Z",
+          files: ["packages/core/src/policy/index.ts"],
+          evidence: { status: "passed" },
+        },
+      ],
+    });
+
+    expect(report.counting.map((entry) => entry.number)).toEqual([503]);
+    expect(report.non_counting).toEqual(expect.arrayContaining([
+      expect.objectContaining({ number: 501, reason: "outside_advisory_window" }),
+      expect.objectContaining({ number: 502, reason: "outside_advisory_window" }),
+    ]));
+  });
+
+  it("requires passing Rust kernel parity checks without letting unrelated checks block live evidence", () => {
+    const report = analyzeCleanKernelPrs({
+      advisory_start: "2026-05-20T01:00:00Z",
+      prs: normalizeGitHubPullRequests([
+        {
+          number: 601,
+          title: "policy: unrelated check failure after parity pass",
+          mergedAt: "2026-05-20T01:01:00Z",
+          files: ["packages/core/src/policy/index.ts"],
+          statusCheckRollup: [
+            { name: "lint", conclusion: "FAILURE" },
+            { name: "Advisory Rust kernel parity", conclusion: "SUCCESS" },
+          ],
+        },
+        {
+          number: 602,
+          title: "policy: missing parity check",
+          mergedAt: "2026-05-20T01:02:00Z",
+          files: ["packages/core/src/policy/index.ts"],
+          statusCheckRollup: [
+            { name: "lint", conclusion: "SUCCESS" },
+          ],
+        },
+      ]),
+    });
+
+    expect(report.counting.map((entry) => entry.number)).toEqual([601]);
+    expect(report.non_counting).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        number: 602,
+        reason: "missing_passing_evidence",
+      }),
+    ]));
   });
 });

@@ -1,7 +1,7 @@
 {
   "name": "@runxhq/cli",
   "version": "0.5.22",
-  "description": "Runx CLI — governed runtime for agent skills, tools, graphs, and packets.",
+  "description": "Runx CLI - native governed runtime for agent skills, tools, graphs, and packets.",
   "private": false,
   "license": "MIT",
   "type": "module",
@@ -17,40 +17,32 @@
   "publishConfig": {
     "access": "public"
   },
-  "engines": {
-    "node": ">=20"
-  },
   "bin": {
-    "runx": "./bin/runx.js"
+    "runx": "./bin/runx"
+  },
+  "runx": {
+    "nativeSelector": {
+      "schema": "runx.rust_cli_selector_topology.v1",
+      "supportedPlatforms": [
+        "darwin-arm64",
+        "darwin-x64",
+        "linux-arm64",
+        "linux-x64",
+        "win32-x64"
+      ],
+      "nativePackagePattern": "@runxhq/cli-${platform}"
+    }
+  },
+  "optionalDependencies": {
+    "@runxhq/cli-darwin-arm64": "0.5.22",
+    "@runxhq/cli-darwin-x64": "0.5.22",
+    "@runxhq/cli-linux-arm64": "0.5.22",
+    "@runxhq/cli-linux-x64": "0.5.22",
+    "@runxhq/cli-win32-x64": "0.5.22"
   },
   "files": [
     "LICENSE",
-    "bin",
-    "dist",
-    "tools",
-    "skills/VOICE.md",
-    "skills/run.mjs",
-    "skills/scafld/run.mjs"
-  ],
-  "scripts": {
-    "runx": "tsx src/index.ts"
-  },
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    },
-    "./metadata": {
-      "types": "./dist/src/metadata.d.ts",
-      "import": "./dist/src/metadata.js"
-    }
-  },
-  "dependencies": {
-    "@runxhq/adapters": "workspace:^0.1.5",
-    "@runxhq/authoring": "workspace:^0.1.4",
-    "@runxhq/contracts": "workspace:^0.2.4",
-    "@runxhq/core": "workspace:^0.1.5",
-    "@runxhq/runtime-local": "workspace:^0.1.1",
-    "yaml": "^2.8.3"
-  }
+    "bin/runx",
+    "native/supported-platforms.json"
+  ]
 }

@@ -89,7 +89,7 @@ fn runtime_creates_pull_request_when_provider_dedupe_has_no_match()
             &execution.pull_request_receipt.metadata,
             &["dedupe", "result"]
         ),
-        Some("lookup_required")
+        Some("created")
     );
     assert_eq!(
         nested_string(

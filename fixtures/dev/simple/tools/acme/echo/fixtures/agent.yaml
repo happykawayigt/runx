@@ -1,0 +1,7 @@
+name: echo-agent
+lane: agent
+target:
+  kind: tool
+  ref: acme.echo
+expect:
+  status: success

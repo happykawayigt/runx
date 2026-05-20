@@ -1,0 +1,86 @@
+#!/usr/bin/env node
+import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import path from "node:path";
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
+
+const require = createRequire(import.meta.url);
+const selectorRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
+
+const supportedPlatforms = {
+  "darwin-arm64": { packageName: "@runxhq/cli-darwin-arm64", binary: "bin/runx" },
+  "darwin-x64": { packageName: "@runxhq/cli-darwin-x64", binary: "bin/runx" },
+  "linux-arm64": { packageName: "@runxhq/cli-linux-arm64", binary: "bin/runx" },
+  "linux-x64": { packageName: "@runxhq/cli-linux-x64", binary: "bin/runx" },
+  "win32-x64": { packageName: "@runxhq/cli-win32-x64", binary: "bin/runx.exe" },
+};
+
+const platformKey = `${process.platform}-${process.arch}`;
+const target = supportedPlatforms[platformKey];
+if (!target) {
+  fail(`runx does not provide a native binary for ${process.platform}/${process.arch}`);
+}
+
+const packageJsonPath = resolvePackageJson(target.packageName);
+const packageRoot = path.dirname(packageJsonPath);
+const binaryPath = path.join(packageRoot, target.binary);
+verifyNativePackage(target.packageName, packageJsonPath, platformKey, target.binary, binaryPath);
+
+const result = spawnSync(binaryPath, process.argv.slice(2), { stdio: "inherit" });
+if (result.error) {
+  fail(`failed to start ${target.packageName}: ${result.error.message}`);
+}
+if (result.signal) {
+  process.kill(process.pid, result.signal);
+}
+process.exit(result.status ?? 1);
+
+function resolvePackageJson(packageName) {
+  try {
+    return require.resolve(`${packageName}/package.json`, { paths: [selectorRoot] });
+  } catch {
+    fail(`runx native package ${packageName} is not installed`);
+  }
+}
+
+function verifyNativePackage(packageName, packageJsonPath, expectedPlatform, expectedBinary, binaryPath) {
+  const manifest = readJson(packageJsonPath);
+  if (manifest.name !== packageName) {
+    fail(`runx native package mismatch: expected ${packageName}, found ${manifest.name ?? "<missing>"}`);
+  }
+  if (!existsSync(binaryPath)) {
+    fail(`runx native binary is missing: ${binaryPath}`);
+  }
+  const binary = statSync(binaryPath);
+  if (!binary.isFile() || (process.platform !== "win32" && (binary.mode & 0o111) === 0)) {
+    fail(`runx native binary is not executable: ${binaryPath}`);
+  }
+
+  const checksumPath = path.join(path.dirname(packageJsonPath), "native", "checksums.json");
+  const checksum = readJson(checksumPath);
+  if (checksum.platform !== expectedPlatform) {
+    fail(`runx checksum platform mismatch: expected ${expectedPlatform}, found ${checksum.platform ?? "<missing>"}`);
+  }
+  if (checksum.binary !== expectedBinary) {
+    fail(`runx checksum binary mismatch: expected ${expectedBinary}, found ${checksum.binary ?? "<missing>"}`);
+  }
+  const digest = createHash("sha256").update(readFileSync(binaryPath)).digest("hex");
+  if (checksum.sha256 !== digest) {
+    fail("runx native binary checksum verification failed");
+  }
+}
+
+function readJson(filePath) {
+  try {
+    return JSON.parse(readFileSync(filePath, "utf8"));
+  } catch (error) {
+    fail(`failed to read ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function fail(message) {
+  process.stderr.write(`${message}\n`);
+  process.exit(1);
+}

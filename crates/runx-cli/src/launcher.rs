@@ -10,11 +10,8 @@ use crate::policy::{PolicyAction, PolicyPlan};
 use crate::registry::{RegistryAction, RegistryPlan};
 use crate::skill::SkillPlan;
 
-pub const DEFAULT_NPM_PACKAGE: &str = "@runxhq/cli@latest";
-
 #[derive(Debug, PartialEq)]
 pub enum LauncherAction {
-    Delegate(CommandPlan),
     Error(String),
     RunDoctor(DoctorPlan),
     RunInit(InitPlan),
@@ -32,12 +29,6 @@ pub enum LauncherAction {
     RunTool(ToolPlan),
     PrintHelp,
     PrintVersion,
-}
-
-#[derive(Debug, Eq, PartialEq)]
-pub struct CommandPlan {
-    pub program: OsString,
-    pub args: Vec<OsString>,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -105,189 +96,99 @@ pub enum ToolAction {
     Inspect,
 }
 
-pub fn plan_launcher(
-    args: Vec<OsString>,
-    npm_package: Option<OsString>,
-    js_bin: Option<OsString>,
-) -> LauncherAction {
-    plan_launcher_with_native_options(args, npm_package, js_bin, NativeLauncherOptions::default())
-}
-
-pub fn plan_launcher_with_rust_harness(
-    args: Vec<OsString>,
-    npm_package: Option<OsString>,
-    js_bin: Option<OsString>,
-    rust_harness: Option<OsString>,
-) -> LauncherAction {
-    plan_launcher_with_native_options(
-        args,
-        npm_package,
-        js_bin,
-        NativeLauncherOptions {
-            rust_cli: None,
-            rust_harness,
-        },
-    )
-}
-
-#[derive(Default)]
-pub struct NativeLauncherOptions {
-    pub rust_cli: Option<OsString>,
-    pub rust_harness: Option<OsString>,
-}
-
 // rust-style-allow: long-function because launcher routing is the cutover gate:
-// every native command branch and fallback delegation decision is reviewed here.
-pub fn plan_launcher_with_native_options(
-    args: Vec<OsString>,
-    npm_package: Option<OsString>,
-    js_bin: Option<OsString>,
-    native: NativeLauncherOptions,
-) -> LauncherAction {
-    if has_arg(&args, "--shim-version") {
-        return LauncherAction::PrintVersion;
-    }
-
-    if has_arg(&args, "--shim-help") {
+// every native command branch and fail-closed decision is reviewed here.
+pub fn plan_launcher(args: Vec<OsString>) -> LauncherAction {
+    if args.is_empty() || single_arg_is(&args, "--help") || single_arg_is(&args, "-h") {
         return LauncherAction::PrintHelp;
     }
 
-    if native_signal_requested(native.rust_harness.as_deref()) && first_arg_is(&args, "harness") {
+    if single_arg_is(&args, "--version") || single_arg_is(&args, "-V") {
+        return LauncherAction::PrintVersion;
+    }
+
+    if first_arg_is(&args, "harness") {
         return native_harness_plan(&args);
     }
 
-    if native_signal_requested(native.rust_cli.as_deref()) {
-        if first_arg_is(&args, "connect") {
-            return crate::connect::parse_connect_plan(&args)
-                .map_or_else(LauncherAction::Error, LauncherAction::RunConnect);
-        }
-
-        if first_arg_is(&args, "config") {
-            return crate::config::parse_config_plan(&args)
-                .map_or_else(LauncherAction::Error, LauncherAction::RunConfig);
-        }
-
-        if first_arg_is(&args, "policy") && policy_subcommand_is_native(&args) {
-            return parse_policy_plan(&args)
-                .map_or_else(LauncherAction::Error, LauncherAction::RunPolicy);
-        }
-
-        if first_arg_is(&args, "kernel") && kernel_subcommand_is_native(&args) {
-            return parse_kernel_plan(&args)
-                .map_or_else(LauncherAction::Error, LauncherAction::RunKernel);
-        }
-
-        if first_arg_is(&args, "doctor") {
-            if doctor_deferred_to_js(&args) {
-                return delegate_plan(args, npm_package, js_bin);
-            }
-            return parse_doctor_plan(&args)
-                .map_or_else(LauncherAction::Error, LauncherAction::RunDoctor);
-        }
-
-        if first_arg_is(&args, "list") {
-            if !list_shape_is_native(&args) {
-                return delegate_plan(args, npm_package, js_bin);
-            }
-            return parse_list_plan(&args)
-                .map_or_else(LauncherAction::Error, LauncherAction::RunList);
-        }
-
-        if first_arg_is(&args, "new") {
-            return parse_new_plan(&args)
-                .map_or_else(LauncherAction::Error, LauncherAction::RunNew);
-        }
-
-        if first_arg_is(&args, "init") {
-            return parse_init_plan(&args)
-                .map_or_else(LauncherAction::Error, LauncherAction::RunInit);
-        }
-
-        if first_arg_is(&args, "history") {
-            return LauncherAction::RunHistory(HistoryPlan { args });
-        }
-
-        if first_arg_is(&args, "mcp") {
-            if mcp_subcommand_is_native(&args) {
-                return crate::mcp::parse_mcp_plan(&args)
-                    .map_or_else(LauncherAction::Error, LauncherAction::RunMcp);
-            }
-            if mcp_args_request_runner_selection(&args) {
-                return LauncherAction::Error(
-                    "runx mcp --runner requires canonical form: runx mcp serve <skill-ref...> --runner <runner>"
-                        .to_owned(),
-                );
-            }
-        }
-
-        if first_arg_is(&args, "tool") && tool_subcommand_is_native(&args) {
-            return parse_tool_plan(&args)
-                .map_or_else(LauncherAction::Error, LauncherAction::RunTool);
-        }
-
-        if first_arg_is(&args, "registry") && registry_subcommand_is_native(&args) {
-            return parse_registry_plan(&args)
-                .map_or_else(LauncherAction::Error, LauncherAction::RunRegistry);
-        }
-
-        if first_arg_is(&args, "skill") {
-            return crate::skill::parse_skill_plan(&args)
-                .map_or_else(LauncherAction::Error, LauncherAction::RunSkill);
-        }
+    if first_arg_is(&args, "connect") {
+        return crate::connect::parse_connect_plan(&args)
+            .map_or_else(LauncherAction::Error, LauncherAction::RunConnect);
     }
 
-    delegate_plan(args, npm_package, js_bin)
-}
-
-fn delegate_plan(
-    args: Vec<OsString>,
-    npm_package: Option<OsString>,
-    js_bin: Option<OsString>,
-) -> LauncherAction {
-    if let Some(js_bin) = non_empty_os(js_bin) {
-        let mut planned_args = Vec::with_capacity(args.len() + 1);
-        planned_args.push(js_bin);
-        planned_args.extend(args);
-        return LauncherAction::Delegate(CommandPlan {
-            program: node_command().into(),
-            args: planned_args,
-        });
+    if first_arg_is(&args, "config") {
+        return crate::config::parse_config_plan(&args)
+            .map_or_else(LauncherAction::Error, LauncherAction::RunConfig);
     }
 
-    let package = non_empty_os(npm_package).unwrap_or_else(|| DEFAULT_NPM_PACKAGE.into());
-    let mut planned_args = vec![
-        "exec".into(),
-        "--yes".into(),
-        "--package".into(),
-        package,
-        "--".into(),
-        "runx".into(),
-    ];
-    planned_args.extend(args);
+    if first_arg_is(&args, "policy") {
+        return parse_policy_plan(&args)
+            .map_or_else(LauncherAction::Error, LauncherAction::RunPolicy);
+    }
 
-    LauncherAction::Delegate(CommandPlan {
-        program: npm_command().into(),
-        args: planned_args,
-    })
+    if first_arg_is(&args, "kernel") {
+        return parse_kernel_plan(&args)
+            .map_or_else(LauncherAction::Error, LauncherAction::RunKernel);
+    }
+
+    if first_arg_is(&args, "doctor") {
+        return parse_doctor_plan(&args)
+            .map_or_else(LauncherAction::Error, LauncherAction::RunDoctor);
+    }
+
+    if first_arg_is(&args, "list") {
+        return parse_list_plan(&args).map_or_else(LauncherAction::Error, LauncherAction::RunList);
+    }
+
+    if first_arg_is(&args, "new") {
+        return parse_new_plan(&args).map_or_else(LauncherAction::Error, LauncherAction::RunNew);
+    }
+
+    if first_arg_is(&args, "init") {
+        return parse_init_plan(&args).map_or_else(LauncherAction::Error, LauncherAction::RunInit);
+    }
+
+    if first_arg_is(&args, "history") {
+        return LauncherAction::RunHistory(HistoryPlan { args });
+    }
+
+    if first_arg_is(&args, "mcp") {
+        return crate::mcp::parse_mcp_plan(&args)
+            .map_or_else(LauncherAction::Error, LauncherAction::RunMcp);
+    }
+
+    if first_arg_is(&args, "tool") {
+        return parse_tool_plan(&args).map_or_else(LauncherAction::Error, LauncherAction::RunTool);
+    }
+
+    if first_arg_is(&args, "registry") {
+        return parse_registry_plan(&args)
+            .map_or_else(LauncherAction::Error, LauncherAction::RunRegistry);
+    }
+
+    if first_arg_is(&args, "skill") {
+        return crate::skill::parse_skill_plan(&args)
+            .map_or_else(LauncherAction::Error, LauncherAction::RunSkill);
+    }
+
+    LauncherAction::Error(format!(
+        "unknown command {}",
+        args.first()
+            .and_then(|arg| arg.to_str())
+            .unwrap_or("<non-utf8>")
+    ))
 }
 
-pub fn shim_help() -> String {
-    format!(
-        "\
-runx Cargo launcher
+pub fn help_text() -> String {
+    "\
+runx
 
 Usage:
-  runx [runx CLI args]
-  runx --shim-version
-  runx --shim-help
+  runx <command> [args]
+  runx --help
+  runx --version
 
-Environment:
-  RUNX_NPM_PACKAGE  npm package spec to execute, defaults to {DEFAULT_NPM_PACKAGE}
-  RUNX_JS_BIN       local JavaScript runx entrypoint to execute with node
-  RUNX_RUST_CLI     opt into native Rust candidate commands before the CLI cutover
-  RUNX_RUST_HARNESS opt into native Rust `runx harness <fixture>` replay
-
-Native commands:
+Commands:
   runx new <name> [--directory dir] [--json]
   runx init [-g|--global] [--prefetch official] [--json]
   runx history [query] [--skill s] [--status s] [--source s] [--actor a] [--artifact-type t] [--since iso] [--until iso] [--receipt-dir dir] [--json]
@@ -303,31 +204,15 @@ Native commands:
   runx tool inspect <ref> [--source source] [--json]
   runx registry search|read|resolve|install|publish ... --json
 "
-    )
+    .to_owned()
 }
 
-pub fn npm_command() -> &'static str {
-    if cfg!(windows) { "npm.cmd" } else { "npm" }
-}
-
-pub fn node_command() -> &'static str {
-    if cfg!(windows) { "node.exe" } else { "node" }
-}
-
-fn has_arg(args: &[OsString], expected: &str) -> bool {
-    args.iter().any(|arg| arg == OsStr::new(expected))
+fn single_arg_is(args: &[OsString], expected: &str) -> bool {
+    args.len() == 1 && first_arg_is(args, expected)
 }
 
 fn first_arg_is(args: &[OsString], expected: &str) -> bool {
     args.first().is_some_and(|arg| arg == OsStr::new(expected))
-}
-
-fn non_empty_os(value: Option<OsString>) -> Option<OsString> {
-    value.filter(|value| !value.is_empty())
-}
-
-fn native_signal_requested(value: Option<&OsStr>) -> bool {
-    value.is_some_and(|value| !value.is_empty() && value != OsStr::new("0"))
 }
 
 fn native_harness_plan(args: &[OsString]) -> LauncherAction {
@@ -342,8 +227,7 @@ fn native_harness_plan(args: &[OsString]) -> LauncherAction {
         if !token.starts_with("--") {
             if fixture_path.is_some() {
                 return LauncherAction::Error(
-                    "runx harness requires exactly one fixture path when RUNX_RUST_HARNESS is set"
-                        .to_owned(),
+                    "runx harness requires exactly one fixture path".to_owned(),
                 );
             }
             fixture_path = Some(args[index].clone());
@@ -364,10 +248,7 @@ fn native_harness_plan(args: &[OsString]) -> LauncherAction {
     }
 
     let Some(fixture_path) = fixture_path else {
-        return LauncherAction::Error(
-            "runx harness requires exactly one fixture path when RUNX_RUST_HARNESS is set"
-                .to_owned(),
-        );
+        return LauncherAction::Error("runx harness requires exactly one fixture path".to_owned());
     };
 
     LauncherAction::RunHarness(HarnessPlan { fixture_path })
@@ -478,19 +359,6 @@ fn parse_init_plan(args: &[OsString]) -> Result<InitPlan, String> {
     })
 }
 
-fn doctor_deferred_to_js(args: &[OsString]) -> bool {
-    args.iter().skip(1).any(|arg| {
-        let Some(token) = arg.to_str() else {
-            return false;
-        };
-        let (flag, _inline_value) = split_flag(token);
-        matches!(
-            flag,
-            "--fix" | "--explain" | "--listDiagnostics" | "--list-diagnostics"
-        )
-    })
-}
-
 fn parse_doctor_plan(args: &[OsString]) -> Result<DoctorPlan, String> {
     let mut path = None;
     let mut json = false;
@@ -521,34 +389,6 @@ fn parse_doctor_plan(args: &[OsString]) -> Result<DoctorPlan, String> {
     }
 
     Ok(DoctorPlan { path, json })
-}
-
-fn list_shape_is_native(args: &[OsString]) -> bool {
-    let mut positionals = 0;
-    for arg in args.iter().skip(1) {
-        let Some(token) = arg.to_str() else {
-            return true;
-        };
-        if !token.starts_with("--") {
-            positionals += 1;
-            if positionals > 1 || parse_list_kind(token).is_none() {
-                return false;
-            }
-            continue;
-        }
-
-        let (flag, inline_value) = split_flag(token);
-        if inline_value.is_some() {
-            return false;
-        }
-        if !matches!(
-            flag,
-            "--json" | "--ok-only" | "--okOnly" | "--invalid-only" | "--invalidOnly"
-        ) {
-            return false;
-        }
-    }
-    true
 }
 
 fn parse_list_plan(args: &[OsString]) -> Result<ListPlan, String> {
@@ -607,46 +447,6 @@ fn parse_list_kind(value: &str) -> Option<ListKind> {
         "overlays" => Some(ListKind::Overlays),
         _ => None,
     }
-}
-
-fn tool_subcommand_is_native(args: &[OsString]) -> bool {
-    matches!(
-        args.get(1).and_then(|arg| arg.to_str()),
-        Some("build" | "search" | "inspect")
-    )
-}
-
-fn mcp_subcommand_is_native(args: &[OsString]) -> bool {
-    matches!(args.get(1).and_then(|arg| arg.to_str()), Some("serve"))
-}
-
-fn mcp_args_request_runner_selection(args: &[OsString]) -> bool {
-    args.iter().skip(1).any(|arg| {
-        arg.to_str()
-            .map(|token| {
-                let (flag, _inline_value) = split_flag(token);
-                flag == "--runner"
-            })
-            .unwrap_or(false)
-    })
-}
-
-fn policy_subcommand_is_native(args: &[OsString]) -> bool {
-    matches!(
-        args.get(1).and_then(|arg| arg.to_str()),
-        Some("inspect" | "lint")
-    )
-}
-
-fn kernel_subcommand_is_native(args: &[OsString]) -> bool {
-    matches!(args.get(1).and_then(|arg| arg.to_str()), Some("eval"))
-}
-
-fn registry_subcommand_is_native(args: &[OsString]) -> bool {
-    matches!(
-        args.get(1).and_then(|arg| arg.to_str()),
-        Some("search" | "read" | "resolve" | "install" | "publish")
-    )
 }
 
 fn parse_kernel_plan(args: &[OsString]) -> Result<KernelPlan, String> {

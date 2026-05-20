@@ -10,6 +10,7 @@ pub mod approval;
 pub mod caller;
 pub mod config;
 pub mod connect;
+pub mod dev;
 pub mod doctor;
 pub mod error;
 mod fanout;
@@ -60,6 +61,15 @@ pub use connect::{
     HttpConnectGrant, HttpConnectListResponse, HttpConnectPreprovisionRequest,
     HttpConnectReadyResponse, HttpConnectRevokeResponse, ProcessConnectOpener,
     load_connect_options_from_env,
+};
+pub use dev::{
+    DEFAULT_DEV_WATCH_DEBOUNCE_MS, DevError, DevFixtureAssertion, DevFixtureAssertionKind,
+    DevFixtureExecutionRoots, DevFixtureExecutor, DevFixtureResult, DevFixtureStatus, DevLane,
+    DevLoopOptions, DevRenderTheme, DevReport, DevReportStatus, DevWatchError, DevWatchEvent,
+    DevWatchEventKind, DevWatchOptions, DevWatchSnapshot, DevWatchTrigger, LocalDevFixtureExecutor,
+    ParsedDevFixture, PollingDevWatcher, PreparedDevFixtureWorkspace, collect_watch_snapshot,
+    dev_receipt_metadata, discover_fixture_paths, render_dev_result, render_dev_result_with_theme,
+    run_dev_once, run_dev_once_with_executor, should_ignore_dev_watch_path,
 };
 pub use doctor::{DoctorOptions, default_doctor_options, run_doctor};
 pub use error::RuntimeError;

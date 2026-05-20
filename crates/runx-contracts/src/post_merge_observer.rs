@@ -207,7 +207,9 @@ pub struct PostMergeObserverPublicationProjection {
     pub source_thread_ref: Option<Reference>,
     pub reason_code: String,
     pub summary: String,
-    pub verification_criterion_id: String,
+    pub proof_criterion_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verification_criterion_id: Option<String>,
     pub source_issue_disposition: PostMergeSourceIssueDisposition,
     pub close_authorized: bool,
 }
@@ -397,7 +399,7 @@ pub fn project_post_merge_observer_publication_from_receipt(
     receipt: &HarnessReceipt,
 ) -> Result<PostMergeObserverPublicationProjection, PostMergeObserverPlanError> {
     let final_state = require_projectable_post_merge_receipt(receipt)?;
-    let verification_criterion_id = require_publication_criteria(receipt, final_state)?;
+    let publication_criteria = require_publication_criteria(receipt, final_state)?;
     let source_issue_ref =
         required_receipt_reference(receipt, ReferenceType::GithubIssue, "source issue")?;
     let source_thread_ref =
@@ -410,10 +412,18 @@ pub fn project_post_merge_observer_publication_from_receipt(
         source_thread_ref: Some(source_thread_ref),
         reason_code: receipt.seal.reason_code.clone(),
         summary: receipt.seal.summary.clone(),
-        verification_criterion_id: verification_criterion_id.to_owned(),
+        proof_criterion_id: publication_criteria.proof_criterion_id.to_owned(),
+        verification_criterion_id: publication_criteria
+            .verification_criterion_id
+            .map(str::to_owned),
         source_issue_disposition: source_issue_disposition(close_authorized),
         close_authorized,
     })
+}
+
+struct PostMergeObserverPublicationCriteria {
+    proof_criterion_id: &'static str,
+    verification_criterion_id: Option<&'static str>,
 }
 
 fn require_projectable_post_merge_receipt(
@@ -431,22 +441,23 @@ fn require_projectable_post_merge_receipt(
 fn require_publication_criteria(
     receipt: &HarnessReceipt,
     final_state: PostMergeObserverClosureState,
-) -> Result<&'static str, PostMergeObserverPlanError> {
+) -> Result<PostMergeObserverPublicationCriteria, PostMergeObserverPlanError> {
     require_receipt_criterion(receipt, "post_merge.provider_state")?;
     require_receipt_criterion(receipt, "post_merge.human_gate")?;
-    let verification_criterion_id = verification_criterion_id(final_state).ok_or(
-        PostMergeObserverPlanError::ReceiptPublicationNotAuthorized(
-            "closed-unmerged publication does not carry verification criteria".to_owned(),
-        ),
-    )?;
-    let verification_criterion = require_receipt_criterion(receipt, verification_criterion_id)?;
-    if verification_criterion.verification_refs.is_empty() {
-        return Err(PostMergeObserverPlanError::ReceiptPublicationNotAuthorized(
-            "final publication requires proof-bound verification refs".to_owned(),
-        ));
+    let verification_criterion_id = verification_criterion_id(final_state);
+    if let Some(verification_criterion_id) = verification_criterion_id {
+        let verification_criterion = require_receipt_criterion(receipt, verification_criterion_id)?;
+        if verification_criterion.verification_refs.is_empty() {
+            return Err(PostMergeObserverPlanError::ReceiptPublicationNotAuthorized(
+                "final publication requires proof-bound verification refs".to_owned(),
+            ));
+        }
     }
     require_receipt_criterion(receipt, "post_merge.source_thread_target_present")?;
-    Ok(verification_criterion_id)
+    Ok(PostMergeObserverPublicationCriteria {
+        proof_criterion_id: verification_criterion_id.unwrap_or("post_merge.provider_state"),
+        verification_criterion_id,
+    })
 }
 
 fn receipt_close_authorized(receipt: &HarnessReceipt) -> Result<bool, PostMergeObserverPlanError> {

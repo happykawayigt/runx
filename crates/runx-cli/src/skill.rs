@@ -19,57 +19,48 @@ pub struct SkillPlan {
 }
 
 pub fn parse_skill_plan(args: &[OsString]) -> Result<SkillPlan, String> {
-    let mut skill_path = None;
-    let mut receipt_dir = None;
-    let mut run_id = None;
-    let mut answers = None;
-    let mut json = false;
-    let mut inputs = BTreeMap::new();
+    let mut state = SkillParseState::default();
     let mut index = 1;
 
     while index < args.len() {
-        index = parse_skill_arg(
-            args,
-            index,
-            &mut skill_path,
-            &mut receipt_dir,
-            &mut run_id,
-            &mut answers,
-            &mut json,
-            &mut inputs,
-        )?;
+        index = parse_skill_arg(args, index, &mut state)?;
         index += 1;
     }
 
-    let Some(skill_path) = skill_path else {
+    let Some(skill_path) = state.skill_path else {
         return Err("runx skill requires a skill package path".to_owned());
     };
-    if answers.is_some() && run_id.is_none() {
+    if state.answers.is_some() && state.run_id.is_none() {
         return Err("runx skill --answers requires --run-id".to_owned());
     }
-    if run_id.is_some() && answers.is_none() {
+    if state.run_id.is_some() && state.answers.is_none() {
         return Err("runx skill --run-id requires --answers".to_owned());
     }
 
     Ok(SkillPlan {
         skill_path,
-        receipt_dir,
-        run_id,
-        answers,
-        json,
-        inputs,
+        receipt_dir: state.receipt_dir,
+        run_id: state.run_id,
+        answers: state.answers,
+        json: state.json,
+        inputs: state.inputs,
     })
+}
+
+#[derive(Default)]
+struct SkillParseState {
+    skill_path: Option<PathBuf>,
+    receipt_dir: Option<PathBuf>,
+    run_id: Option<String>,
+    answers: Option<PathBuf>,
+    json: bool,
+    inputs: BTreeMap<String, JsonValue>,
 }
 
 fn parse_skill_arg(
     args: &[OsString],
     mut index: usize,
-    skill_path: &mut Option<PathBuf>,
-    receipt_dir: &mut Option<PathBuf>,
-    run_id: &mut Option<String>,
-    answers: &mut Option<PathBuf>,
-    json: &mut bool,
-    inputs: &mut BTreeMap<String, JsonValue>,
+    state: &mut SkillParseState,
 ) -> Result<usize, String> {
     let token = string_arg(args, index)?;
     if is_retired_skill_option(&token) {
@@ -79,36 +70,36 @@ fn parse_skill_arg(
     }
     match token.as_str() {
         value if value.starts_with("--receipt-dir=") => {
-            *receipt_dir = Some(PathBuf::from(value.trim_start_matches("--receipt-dir=")));
+            state.receipt_dir = Some(PathBuf::from(value.trim_start_matches("--receipt-dir=")));
         }
         "--receipt-dir" => {
             index += 1;
-            *receipt_dir = Some(PathBuf::from(string_arg(args, index)?));
+            state.receipt_dir = Some(PathBuf::from(string_arg(args, index)?));
         }
         value if value.starts_with("--run-id=") => {
-            *run_id = Some(value.trim_start_matches("--run-id=").to_owned());
+            state.run_id = Some(value.trim_start_matches("--run-id=").to_owned());
         }
         "--run-id" => {
             index += 1;
-            *run_id = Some(string_arg(args, index)?);
+            state.run_id = Some(string_arg(args, index)?);
         }
         value if value.starts_with("--answers=") => {
-            *answers = Some(PathBuf::from(value.trim_start_matches("--answers=")));
+            state.answers = Some(PathBuf::from(value.trim_start_matches("--answers=")));
         }
         "--answers" => {
             index += 1;
-            *answers = Some(PathBuf::from(string_arg(args, index)?));
+            state.answers = Some(PathBuf::from(string_arg(args, index)?));
         }
-        "--json" => *json = true,
+        "--json" => state.json = true,
         "--non-interactive" => {}
         value if value.starts_with("--") => {
-            index = parse_skill_input_arg(args, index, value, inputs)?;
+            index = parse_skill_input_arg(args, index, value, &mut state.inputs)?;
         }
         value => {
-            if skill_path.is_some() {
+            if state.skill_path.is_some() {
                 return Err(format!("unexpected runx skill argument {value}"));
             }
-            *skill_path = Some(PathBuf::from(value));
+            state.skill_path = Some(PathBuf::from(value));
         }
     }
     Ok(index)
@@ -141,10 +132,10 @@ fn is_retired_skill_option(token: &str) -> bool {
         return false;
     };
     let name = flag.split_once('=').map_or(flag, |(name, _value)| name);
-    name == "receipt" || name == legacy_receipt_dir_option_name()
+    name == "receipt" || name == retired_receipt_dir_option_name()
 }
 
-fn legacy_receipt_dir_option_name() -> String {
+fn retired_receipt_dir_option_name() -> String {
     ["receipt", "Dir"].concat()
 }
 

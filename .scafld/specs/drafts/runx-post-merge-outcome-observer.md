@@ -26,13 +26,15 @@ source-thread ref, target PR ref, merge SHA, runner verification hook/deploy
 context, and cross-repo dedupe identity; policy source configuration from
 `runx-operational-policy-config` for source-thread publication and close mode.
 Allowed follow-up command: `scafld harden runx-post-merge-outcome-observer --mark-passed`
-Latest runner update: 2026-05-20 added Rust contract-level repeated observer
-signal idempotency proof for duplicate local provider observations, tightened
-missing source-thread routing to fail before provider-state classification in
-the pure planner, added a stable webhook/scheduler runtime dedupe plan and a
-sealed harness-receipt publication projection gate, then added the local runtime
-command projection boundary for source issue comments, source-thread replies,
-and policy-authorized source issue close commands. Provider adapters remain
+Latest runner update: 2026-05-20 added closed-unmerged sealed receipt
+publication projection without fabricating verification proof or issuing a
+source issue close command. Earlier local slices added Rust contract-level
+repeated observer signal idempotency proof for duplicate local provider
+observations, missing source-thread fail-closed routing before provider-state
+classification, stable webhook/scheduler runtime dedupe planning, sealed
+harness-receipt publication projection gates, and local runtime command
+projection for source issue comments, source-thread replies, and
+policy-authorized source issue close commands. Provider adapters remain
 pending.
 Review gate: not_started
 
@@ -158,8 +160,9 @@ Required behavior:
 - [ ] Merged PR with failing verification posts a final reply projected from a
   failed verification act and leaves the source issue open unless policy
   explicitly says otherwise.
-- [ ] Closed-unmerged PR posts a distinct observation closure and does not claim
-  a fix shipped.
+- [x] Closed-unmerged PR projects a distinct sealed observation closure and
+  local source issue/source-thread publication commands without claiming a fix
+  shipped or closing the source issue. Live provider posting remains pending.
 - [x] Repeated observer signal is idempotent at the Rust contract planning
   layer; webhook and scheduler signals share one runtime dedupe receipt
   identity before publication.
@@ -170,10 +173,12 @@ Required behavior:
   metadata is missing. Live provider adapters remain pending.
 - [ ] Final publication is backed by a sealed harness receipt containing issue
   link, PR link, merge sha when available, verification summary, closure reason,
-  and next human action.
+  and next human action. Local projection now distinguishes proof criteria from
+  optional verification criteria for closed-unmerged receipts; live publication
+  remains pending.
 - [x] Final publication validates by reading the sealed harness receipt and
-  `proof.verification` criteria before it is published or used to close the
-  source issue.
+  required closure/proof criteria before publication; source issue close still
+  requires proof-bound verification criteria.
 - [x] Final publication excludes absolute local paths, raw env vars, secrets,
   and excessive logs at the local runtime command-projection boundary.
 - [ ] No fixture, emitted artifact, schema id, or persisted receipt uses a
