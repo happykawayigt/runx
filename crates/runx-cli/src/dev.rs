@@ -1,6 +1,6 @@
 use std::env;
 use std::io::{self, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use runx_runtime::dev::DevLane;
@@ -9,15 +9,20 @@ use runx_runtime::{DevLoopOptions, DevReportStatus, render_dev_result, run_dev_o
 use crate::launcher::DevPlan;
 
 pub fn run_native_dev(plan: DevPlan) -> ExitCode {
-    let root = match resolve_root(&plan) {
-        Ok(root) => root,
+    let current_dir = match env::current_dir() {
+        Ok(path) => path,
         Err(error) => {
-            let _ignored = write_stderr(&format!("runx: {error}\n"));
+            let _ignored = write_stderr(&format!("runx: failed to resolve cwd: {error}\n"));
             return ExitCode::from(1);
         }
     };
+    let root = resolve_root(&current_dir);
 
     let mut options = DevLoopOptions::new(&root);
+    options.unit_path = plan
+        .root
+        .as_ref()
+        .map(|path| resolve_unit_path(&root, path));
     if let Some(lane) = &plan.lane {
         options.lane = DevLane::from(lane.as_str());
     }
@@ -53,11 +58,19 @@ pub fn run_native_dev(plan: DevPlan) -> ExitCode {
     ExitCode::from(exit_code)
 }
 
-fn resolve_root(plan: &DevPlan) -> Result<PathBuf, String> {
-    if let Some(root) = &plan.root {
-        return Ok(root.clone());
+fn resolve_root(current_dir: &Path) -> PathBuf {
+    env::var("RUNX_PROJECT_DIR")
+        .or_else(|_| env::var("RUNX_CWD"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| current_dir.to_path_buf())
+}
+
+fn resolve_unit_path(root: &Path, path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        root.join(path)
     }
-    env::current_dir().map_err(|error| format!("failed to resolve cwd: {error}"))
 }
 
 fn write_stdout(value: &str) -> io::Result<()> {

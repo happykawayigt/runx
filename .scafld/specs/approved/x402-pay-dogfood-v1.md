@@ -1,7 +1,7 @@
 ---
 spec_version: '2.0'
 task_id: x402-pay-dogfood-v1
-created: '2026-05-21T00:00:00Z'
+created: '2026-05-20T00:00:00Z'
 updated: '2026-05-20T16:58:42Z'
 status: approved
 harden_status: passed
@@ -41,9 +41,10 @@ work can claim dogfood coverage.
   `runx skill inspect` CLI surfaces. Receipt state is observed through
   `runx history`, explicit receipt files, and ledger projection files written
   by the harness under test.
-- Current implemented payment skill directories are `payment-execute`,
-  `payment-quote`, `payment-reserve`, `payment-rail-mock`,
-  `payment-fulfill-rail`, and `payment-recover`.
+- Current implemented payment skill directories are `payment-authorize-reserve`,
+  `payment-execute`, `payment-fulfill-rail`, `payment-quote`,
+  `payment-quote-preflight`, `payment-rail-mock`, `payment-recover`,
+  `payment-recover-inspect`, and `payment-reserve`.
 - There is no concrete `x402-pay`, `mock-pay`, `stripe-pay`, or `mpp-pay`
   skill directory yet. Those names remain product intent and are explicitly
   deferred from this v1 dogfood gate.
@@ -56,7 +57,7 @@ work can claim dogfood coverage.
 
 This v1 is a mock-only dogfood hardening contract. Build agents may touch:
 
-- `.scafld/specs/drafts/x402-pay-dogfood-v1.md`
+- `.scafld/specs/approved/x402-pay-dogfood-v1.md`
 - `scripts/dogfood-core-skills.mjs`
 - `tests/payment-skill-profile-validation.test.ts`
 - `tests/external-skill-proving-ground.test.ts`
@@ -340,27 +341,27 @@ Summary: Manual hardening narrowed the draft to an executable v1 mock-rail dogfo
 
 Checks:
 - scope/migration audit
-  - Grounded in: code:.scafld/specs/drafts/x402-pay-dogfood-v1.md:55
+  - Grounded in: code:.scafld/specs/approved/x402-pay-dogfood-v1.md:55
   - Result: passed
   - Evidence: Scope And Touchpoints declares a mock-only v1 surface, allowed paths, and explicit non-goals.
 - path audit
-  - Grounded in: code:.scafld/specs/drafts/x402-pay-dogfood-v1.md:59
+  - Grounded in: code:.scafld/specs/approved/x402-pay-dogfood-v1.md:59
   - Result: passed
   - Evidence: Build-time touchpoints are explicit paths or one named optional Phase 1 test path.
 - command audit
-  - Grounded in: code:.scafld/specs/drafts/x402-pay-dogfood-v1.md:300
+  - Grounded in: code:.scafld/specs/approved/x402-pay-dogfood-v1.md:300
   - Result: passed
   - Evidence: Acceptance is pinned to current local commands that exist in this checkout.
 - acceptance timing audit
-  - Grounded in: code:.scafld/specs/drafts/x402-pay-dogfood-v1.md:108
+  - Grounded in: code:.scafld/specs/approved/x402-pay-dogfood-v1.md:108
   - Result: passed
   - Evidence: Stripe test-mode scenarios are explicitly deferred and do not block v1 approval or completion.
 - rollback/repair audit
-  - Grounded in: code:.scafld/specs/drafts/x402-pay-dogfood-v1.md:317
+  - Grounded in: code:.scafld/specs/approved/x402-pay-dogfood-v1.md:317
   - Result: passed
   - Evidence: Rollback is limited to declared spec/test/fixture touchpoints and same-key mock recovery classification.
 - design challenge
-  - Grounded in: code:.scafld/specs/drafts/x402-pay-dogfood-v1.md:27
+  - Grounded in: code:.scafld/specs/approved/x402-pay-dogfood-v1.md:27
   - Result: passed
   - Evidence: The design proves current payment skills through current CLI surfaces and avoids bundling future product work.
 
