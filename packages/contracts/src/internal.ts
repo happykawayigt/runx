@@ -39,7 +39,6 @@ export const RUNX_CONTRACT_IDS = {
   handoffState: `${RUNX_SCHEMA_BASE_URL}/runx/handoff-state/v1.json`,
   suppressionRecord: `${RUNX_SCHEMA_BASE_URL}/runx/suppression-record/v1.json`,
   operationalPolicy: `${RUNX_SCHEMA_BASE_URL}/runx/operational-policy/v1.json`,
-  issueToPrOutcome: `${RUNX_SCHEMA_BASE_URL}/runx/issue-to-pr-outcome/v1.json`,
 } as const;
 
 export const RUNX_LOGICAL_SCHEMAS = {
@@ -76,7 +75,6 @@ export const RUNX_LOGICAL_SCHEMAS = {
   handoffState: "runx.handoff_state.v1",
   suppressionRecord: "runx.suppression_record.v1",
   operationalPolicy: "runx.operational_policy.v1",
-  issueToPrOutcome: "runx.issue_to_pr_outcome.v1",
 } as const;
 
 export const RUNX_CONTROL_SCHEMA_REFS = {

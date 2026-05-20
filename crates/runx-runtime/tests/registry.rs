@@ -2,10 +2,14 @@ use std::path::PathBuf;
 
 use runx_contracts::{JsonNumber, JsonValue};
 use runx_runtime::registry::{
-    AcquiredRegistrySkill, InstallCandidate, InstallLocalSkillResult, InstallStatus,
-    RegistryPublisher, TrustTier,
+    AcquiredRegistrySkill, FileRegistryStore, IngestSkillOptions, InstallCandidate,
+    InstallLocalSkillResult, InstallStatus, PublishSkillMarkdownOptions, PublishStatus,
+    RegistryPublisher, RegistryResolveOptions, RegistrySearchOptions, TrustTier,
+    create_local_registry_client, ingest_skill_markdown, publish_skill_markdown,
+    read_registry_skill, resolve_registry_skill, resolve_runx_link, search_registry_with_options,
 };
 use runx_runtime::{RegistryInstallMetadataInput, registry_install_receipt_metadata};
+use tempfile::tempdir;
 
 #[test]
 fn registry_install_metadata_records_installed_digest() {
@@ -73,6 +77,193 @@ fn registry_install_metadata_omits_absent_remote_fields() {
     assert!(!metadata.contains_key("profile_digest"));
     assert!(!metadata.contains_key("publisher"));
     assert!(!metadata.contains_key("install_count"));
+}
+
+#[test]
+fn file_registry_store_covers_profiled_skill_surface() -> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempdir()?;
+    let store = FileRegistryStore::new(temp.path());
+    let markdown = include_str!("../../../skills/sourcey/SKILL.md");
+    let profile_document = include_str!("../../../skills/sourcey/X.yaml");
+
+    let version = ingest_skill_markdown(
+        &store,
+        markdown,
+        IngestSkillOptions {
+            owner: Some("acme".to_owned()),
+            version: Some("1.0.0".to_owned()),
+            created_at: Some("2026-04-10T00:00:00.000Z".to_owned()),
+            profile_document: Some(profile_document.to_owned()),
+            ..IngestSkillOptions::default()
+        },
+    )?;
+
+    assert_eq!(version.skill_id, "acme/sourcey");
+    assert_eq!(version.source_type, "agent");
+    assert_eq!(version.runner_names, vec!["agent", "sourcey"]);
+    assert_eq!(version.profile_document.as_deref(), Some(profile_document));
+    assert_eq!(version.profile_digest.as_ref().map(String::len), Some(64));
+    assert_eq!(version.markdown, markdown);
+
+    let versions = store.list_versions("acme/sourcey")?;
+    assert_eq!(versions.len(), 1);
+    assert_eq!(versions[0].created_at, "2026-04-10T00:00:00.000Z");
+
+    let skills = store.list_skills()?;
+    assert_eq!(skills.len(), 1);
+    assert_eq!(skills[0].latest_version, "1.0.0");
+    assert_eq!(skills[0].versions[0].skill_id, "acme/sourcey");
+
+    let search_results = search_registry_with_options(
+        &store,
+        "sourcey",
+        RegistrySearchOptions {
+            registry_url: Some("https://runx.example.test".to_owned()),
+            ..RegistrySearchOptions::default()
+        },
+    )?;
+    assert_eq!(search_results.len(), 1);
+    assert_eq!(search_results[0].skill_id, "acme/sourcey");
+    assert_eq!(search_results[0].source.as_deref(), Some("runx-registry"));
+    assert_eq!(
+        search_results[0].source_label.as_deref(),
+        Some("runx registry")
+    );
+    assert_eq!(
+        search_results[0].profile_mode,
+        runx_runtime::registry::ProfileMode::Profiled
+    );
+    assert_eq!(search_results[0].profile_digest, version.profile_digest);
+    assert_eq!(
+        search_results[0].install_command,
+        "runx skill add acme/sourcey@1.0.0 --registry https://runx.example.test"
+    );
+    assert!(
+        search_results[0]
+            .trust_signals
+            .iter()
+            .any(|signal| signal.id == "runner_metadata" && signal.status == "verified")
+    );
+
+    let link = resolve_runx_link(&store, "acme/sourcey", Some("1.0.0"), None)?
+        .ok_or_else(|| std::io::Error::other("missing runx link"))?;
+    assert_eq!(link.skill_id, "acme/sourcey");
+    assert_eq!(link.version, "1.0.0");
+    assert_eq!(link.digest, version.digest);
+
+    let detail = read_registry_skill(&store, "acme/sourcey", Some("1.0.0"), None)?
+        .ok_or_else(|| std::io::Error::other("missing registry detail"))?;
+    assert_eq!(detail.markdown, markdown);
+    assert_eq!(detail.profile_digest, version.profile_digest);
+
+    let resolved = resolve_registry_skill(
+        &store,
+        "registry:sourcey",
+        RegistryResolveOptions::default(),
+    )?
+    .ok_or_else(|| std::io::Error::other("missing registry resolution"))?;
+    assert_eq!(resolved.skill_id, "acme/sourcey");
+    assert_eq!(resolved.profile_document.as_deref(), Some(profile_document));
+    assert_eq!(resolved.runner_names, vec!["agent", "sourcey"]);
+
+    Ok(())
+}
+
+#[test]
+fn local_registry_publish_rejects_changed_duplicate() -> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempdir()?;
+    let store = FileRegistryStore::new(temp.path());
+    let client = create_local_registry_client(store);
+    let markdown = include_str!("../../../fixtures/skills/echo/SKILL.md");
+
+    let first = publish_skill_markdown(
+        &client,
+        markdown,
+        PublishSkillMarkdownOptions {
+            ingest: IngestSkillOptions {
+                owner: Some("acme".to_owned()),
+                version: Some("1.0.0".to_owned()),
+                created_at: Some("2026-04-10T00:00:00.000Z".to_owned()),
+                ..IngestSkillOptions::default()
+            },
+            registry_url: Some("https://runx.example.test".to_owned()),
+        },
+    )?;
+    let second = publish_skill_markdown(
+        &client,
+        markdown,
+        PublishSkillMarkdownOptions {
+            ingest: IngestSkillOptions {
+                owner: Some("acme".to_owned()),
+                version: Some("1.0.0".to_owned()),
+                ..IngestSkillOptions::default()
+            },
+            registry_url: Some("https://runx.example.test".to_owned()),
+        },
+    )?;
+
+    assert_eq!(first.status, PublishStatus::Published);
+    assert_eq!(first.skill_id, "acme/echo");
+    assert_eq!(first.source_type, "cli-tool");
+    assert_eq!(first.digest.len(), 64);
+    assert_eq!(
+        first.link.install_command,
+        "runx skill add acme/echo@1.0.0 --registry https://runx.example.test"
+    );
+    assert_eq!(first.link.run_command, "runx skill echo");
+    assert_eq!(second.status, PublishStatus::Unchanged);
+    assert_eq!(second.digest, first.digest);
+    assert!(second.runner_names.is_empty());
+
+    let changed = markdown.replace("Echo the provided message.", "Echo the changed message.");
+    let conflict = publish_skill_markdown(
+        &client,
+        &changed,
+        PublishSkillMarkdownOptions {
+            ingest: IngestSkillOptions {
+                owner: Some("acme".to_owned()),
+                version: Some("1.0.0".to_owned()),
+                ..IngestSkillOptions::default()
+            },
+            registry_url: None,
+        },
+    );
+    assert!(conflict.is_err_and(|error| error.to_string().contains("different digest")));
+
+    Ok(())
+}
+
+#[test]
+fn file_registry_store_rejects_path_traversal_skill_ids() -> Result<(), Box<dyn std::error::Error>>
+{
+    let temp = tempdir()?;
+    let store = FileRegistryStore::new(temp.path().join("registry"));
+    let markdown = include_str!("../../../fixtures/skills/echo/SKILL.md");
+
+    for skill_id in ["../echo", "acme/..", "./echo", "acme/."] {
+        let versions = store.list_versions(skill_id);
+        assert!(
+            versions.is_err_and(|error| error.to_string().contains("path component")),
+            "{skill_id} should be rejected before registry path resolution"
+        );
+    }
+
+    let result = publish_skill_markdown(
+        &create_local_registry_client(store),
+        markdown,
+        PublishSkillMarkdownOptions {
+            ingest: IngestSkillOptions {
+                owner: Some("..".to_owned()),
+                version: Some("1.0.0".to_owned()),
+                ..IngestSkillOptions::default()
+            },
+            registry_url: None,
+        },
+    );
+    assert!(result.is_err_and(|error| error.to_string().contains("path component")));
+    assert!(!temp.path().join("echo").exists());
+
+    Ok(())
 }
 
 fn install_candidate() -> InstallCandidate {

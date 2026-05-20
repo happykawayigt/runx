@@ -1,6 +1,3 @@
-import { type GraphReceiptSyncPoint } from "@runxhq/core/receipts";
-import { type SequentialGraphState } from "@runxhq/core/state-machine";
-
 import type { GraphStepOutput } from "../graph-context.js";
 import { loadGraphStepExecutables, resolveGraphExecution } from "../execution-targets.js";
 import {
@@ -11,6 +8,8 @@ import {
 } from "../context.js";
 import { loadRunxWorkspacePolicy } from "@runxhq/core/config";
 import { normalizeExecutionSemantics } from "../execution-semantics.js";
+import type { GraphReceiptSyncPoint } from "../graph-governance.js";
+import type { SequentialGraphState } from "../kernel-bridge.js";
 import { defaultLocalGraphGrant } from "../runner-helpers.js";
 import type { GraphStepRun, RunLocalGraphOptions, RunLocalGraphResult } from "../index.js";
 

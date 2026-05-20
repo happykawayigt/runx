@@ -1,9 +1,215 @@
 import type {
-  HostBoundaryResolver,
-  HostBridge,
-  HostRunOptions,
-  HostRunResult,
-} from "@runxhq/runtime-local/sdk";
+  ResolutionRequestContract as ResolutionRequest,
+  ResolutionResponseContract as ResolutionResponse,
+} from "@runxhq/contracts";
+
+export interface HostExecutionEvent {
+  readonly type:
+    | "skill_loaded"
+    | "inputs_resolved"
+    | "auth_resolved"
+    | "resolution_requested"
+    | "resolution_resolved"
+    | "admitted"
+    | "executing"
+    | "step_started"
+    | "step_waiting_resolution"
+    | "step_completed"
+    | "warning"
+    | "completed";
+  readonly message: string;
+  readonly data?: unknown;
+}
+
+export interface HostCaller {
+  readonly resolve: (request: ResolutionRequest) => Promise<ResolutionResponse | undefined>;
+  readonly report: (event: HostExecutionEvent) => void | Promise<void>;
+}
+
+export interface HostAuthResolver {
+  readonly resolveGrants: (request: any) => Promise<any>;
+  readonly resolveCredential: (request: any) => Promise<any>;
+}
+
+export interface HostRunOptions {
+  readonly skillPath: string;
+  readonly inputs?: Readonly<Record<string, unknown>>;
+  readonly answersPath?: string;
+  readonly runner?: string;
+  readonly receiptDir?: string;
+  readonly runxHome?: string;
+  readonly parentReceipt?: string;
+  readonly contextFrom?: readonly string[];
+  readonly caller?: HostCaller;
+  readonly authResolver?: HostAuthResolver;
+  readonly allowedSourceTypes?: readonly string[];
+  readonly resumeFromRunId?: string;
+}
+
+export interface HostBoundaryContext {
+  readonly request: ResolutionRequest;
+  readonly events: readonly HostExecutionEvent[];
+}
+
+export type HostBoundaryReply =
+  | ResolutionResponse
+  | {
+      readonly actor?: "agent" | "human";
+      readonly payload: unknown;
+    }
+  | boolean
+  | string
+  | number
+  | Readonly<Record<string, unknown>>
+  | undefined;
+
+export type HostBoundaryResolver = (
+  context: HostBoundaryContext,
+) => Promise<HostBoundaryReply> | HostBoundaryReply;
+
+export interface HostPausedResult {
+  readonly status: "paused";
+  readonly skillName: string;
+  readonly runId: string;
+  readonly requests: readonly ResolutionRequest[];
+  readonly stepIds?: readonly string[];
+  readonly stepLabels?: readonly string[];
+  readonly events: readonly HostExecutionEvent[];
+}
+
+export interface HostCompletedResult {
+  readonly status: "completed";
+  readonly skillName: string;
+  readonly receiptId: string;
+  readonly output: string;
+  readonly events: readonly HostExecutionEvent[];
+}
+
+export interface HostFailedResult {
+  readonly status: "failed";
+  readonly skillName: string;
+  readonly receiptId?: string;
+  readonly error: string;
+  readonly events: readonly HostExecutionEvent[];
+}
+
+export interface HostEscalatedResult {
+  readonly status: "escalated";
+  readonly skillName: string;
+  readonly receiptId: string;
+  readonly error: string;
+  readonly events: readonly HostExecutionEvent[];
+}
+
+export interface HostDeniedResult {
+  readonly status: "denied";
+  readonly skillName: string;
+  readonly reasons: readonly string[];
+  readonly receiptId?: string;
+  readonly events: readonly HostExecutionEvent[];
+}
+
+export type HostRunResult =
+  | HostPausedResult
+  | HostCompletedResult
+  | HostFailedResult
+  | HostEscalatedResult
+  | HostDeniedResult;
+
+export interface HostRunVerification {
+  readonly status: "verified" | "unverified" | "invalid";
+  readonly reason?: string;
+}
+
+export interface HostRunLineage {
+  readonly kind: "rerun";
+  readonly sourceRunId: string;
+  readonly sourceReceiptId?: string;
+}
+
+export interface HostRunApproval {
+  readonly gateId?: string;
+  readonly gateType?: string;
+  readonly decision?: "approved" | "denied";
+  readonly reason?: string;
+}
+
+export interface HostInspectOptions {
+  readonly receiptDir?: string;
+  readonly runxHome?: string;
+}
+
+export interface HostPausedState {
+  readonly status: "paused";
+  readonly skillName: string;
+  readonly runId: string;
+  readonly requestedPath?: string;
+  readonly resolvedPath?: string;
+  readonly selectedRunner?: string;
+  readonly requests: readonly ResolutionRequest[];
+  readonly stepIds?: readonly string[];
+  readonly stepLabels?: readonly string[];
+  readonly lineage?: HostRunLineage;
+}
+
+interface HostTerminalState {
+  readonly skillName: string;
+  readonly runId: string;
+  readonly receiptId: string;
+  readonly verification: HostRunVerification;
+  readonly sourceType?: string;
+  readonly startedAt?: string;
+  readonly completedAt?: string;
+  readonly disposition?: string;
+  readonly outcomeState?: string;
+  readonly actors?: readonly string[];
+  readonly artifactTypes?: readonly string[];
+  readonly runnerProvider?: string;
+  readonly approval?: HostRunApproval;
+  readonly lineage?: HostRunLineage;
+}
+
+export interface HostCompletedState extends HostTerminalState {
+  readonly status: "completed";
+}
+
+export interface HostFailedState extends HostTerminalState {
+  readonly status: "failed";
+}
+
+export interface HostEscalatedState extends HostTerminalState {
+  readonly status: "escalated";
+}
+
+export interface HostDeniedState extends HostTerminalState {
+  readonly status: "denied";
+}
+
+export type HostRunState =
+  | HostPausedState
+  | HostCompletedState
+  | HostFailedState
+  | HostEscalatedState
+  | HostDeniedState;
+
+export interface HostBridge {
+  readonly run: (
+    options: HostRunOptions & {
+      readonly resolver?: HostBoundaryResolver;
+    },
+  ) => Promise<HostRunResult>;
+  readonly resume: (
+    runId: string,
+    options: Omit<HostRunOptions, "resumeFromRunId" | "skillPath"> & {
+      readonly skillPath?: string;
+      readonly resolver?: HostBoundaryResolver;
+    },
+  ) => Promise<HostRunResult>;
+  readonly inspect: (
+    referenceId: string,
+    options?: HostInspectOptions,
+  ) => Promise<HostRunState>;
+}
 
 export interface OpenAIHostResponse {
   readonly role: "tool";

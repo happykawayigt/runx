@@ -4,14 +4,35 @@ import { buildReceiptViewModel } from "../plugins/ide-core/src/index.js";
 import { receiptTreeItems } from "../plugins/antigravity/src/views.js";
 
 describe("ide receipt view", () => {
-  it("renders graph receipt graph metadata without raw output bodies", () => {
+  it("renders harness receipt metadata without raw output bodies", () => {
     const receipt = {
-      id: "gx_1",
-      kind: "graph_execution",
-      status: "success",
+      id: "hrn_rcpt_fanout-docs",
+      schema: "runx.harness_receipt.v1",
       output_hash: "hash-output",
       raw_output: "secret full output body",
-      graph_name: "fanout-docs",
+      harness: {
+        harness_id: "hrn_fanout-docs_graph",
+        harness_ref: {
+          type: "harness",
+          uri: "runx:harness:fanout-docs_graph",
+          label: "fanout-docs",
+        },
+        child_harness_receipt_refs: [
+          {
+            type: "harness_receipt",
+            uri: "runx:harness_receipt:hrn_rcpt_fanout-docs_research-a",
+          },
+          {
+            type: "harness_receipt",
+            uri: "runx:harness_receipt:hrn_rcpt_fanout-docs_synthesize",
+          },
+        ],
+      },
+      seal: {
+        disposition: "closed",
+        reason_code: "quorum_met",
+        digest: "sha256:receipt",
+      },
       steps: [
         {
           step_id: "research-a",
@@ -57,11 +78,12 @@ describe("ide receipt view", () => {
 
     const model = buildReceiptViewModel(receipt);
     expect(model.title).toBe("fanout-docs");
-    expect(model.nodes.map((node) => node.kind)).toEqual(expect.arrayContaining(["receipt", "step", "retry", "sync"]));
+    expect(model.nodes.map((node) => node.kind)).toEqual(expect.arrayContaining(["receipt", "step", "retry", "sync", "harness-ref"]));
     expect(JSON.stringify(model)).toContain("quorum_met");
     expect(JSON.stringify(model)).toContain("hash-output");
     expect(JSON.stringify(model)).not.toContain("secret full output body");
 
     expect(receiptTreeItems(receipt).map((item) => item.label)).toContain("sync research");
+    expect(receiptTreeItems(receipt).map((item) => item.label)).toContain("child runx:harness_receipt:hrn_rcpt_fanout-docs_research-a");
   });
 });

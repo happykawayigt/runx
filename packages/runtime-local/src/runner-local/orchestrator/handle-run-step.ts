@@ -1,7 +1,7 @@
 import {
   materializeArtifacts,
 } from "@runxhq/core/artifacts";
-import { admitRetryPolicy } from "@runxhq/core/policy";
+import { errorMessage } from "@runxhq/core/util";
 import {
   transitionSequentialGraph,
   type SequentialGraphPlan,
@@ -28,9 +28,16 @@ import {
   graphStepAuthorityProofMetadata,
   graphStepScopeAdmission,
   governanceReceiptMetadata,
+  runnerReceiptDisposition,
+  runnerReceiptEvidenceRefs,
+  runnerReceiptInputContext,
+  runnerReceiptOutcome,
+  runnerReceiptOutcomeState,
+  runnerReceiptSurfaceRefs,
   writePolicyDeniedGraphReceipt,
 } from "../graph-governance.js";
 import { admitGraphTransition } from "../graph-hydration.js";
+import { admitRetryPolicyViaKernel } from "../kernel-bridge.js";
 import { resolveGraphStepExecution } from "../execution-targets.js";
 import { materializeDeclaredInputs } from "../inputs.js";
 import {
@@ -72,7 +79,7 @@ export async function handleRunStepPlan(
     ...materializeStepInputs(step.inputs, options.inputs ?? {}),
     ...Object.fromEntries(context.map((edge) => [edge.input, edge.value])),
   });
-  const governance = buildGraphStepGovernance(step, ctx.graphGrant);
+  const governance = await buildGraphStepGovernance(step, ctx.graphGrant, { env: options.env });
   const transitionGate = admitGraphTransition(ctx.graph.policy, step.id, ctx.outputs);
   if (transitionGate.status === "deny") {
     const deniedRun = buildDeniedGraphStepRun({
@@ -97,7 +104,7 @@ export async function handleRunStepPlan(
       executionSemantics: ctx.executionSemantics,
       receiptMetadata: mergeMetadata(
         ctx.inheritedReceiptMetadata,
-        graphStepAuthorityProofMetadata({ graphId: ctx.graphId, step, stepSkill, governance }),
+        await graphStepAuthorityProofMetadata({ graphId: ctx.graphId, step, stepSkill, governance, env: options.env }),
       ),
     });
     return {
@@ -135,7 +142,7 @@ export async function handleRunStepPlan(
       executionSemantics: ctx.executionSemantics,
       receiptMetadata: mergeMetadata(
         ctx.inheritedReceiptMetadata,
-        graphStepAuthorityProofMetadata({ graphId: ctx.graphId, step, stepSkill, governance }),
+        await graphStepAuthorityProofMetadata({ graphId: ctx.graphId, step, stepSkill, governance, env: options.env }),
       ),
     });
     return {
@@ -153,12 +160,20 @@ export async function handleRunStepPlan(
   }
   const effectiveRetry = step.retry ?? stepSkill.retry;
   const retryContext = buildRetryReceiptContext(step, stepInputs, plan.attempt, stepSkill, effectiveRetry);
-  const retryAdmission = admitRetryPolicy({
-    stepId: step.id,
-    retry: effectiveRetry,
-    mutating: step.mutating || stepSkill.mutating === true,
-    idempotencyKey: retryContext.idempotencyKey,
-  });
+  let retryAdmission;
+  try {
+    retryAdmission = await admitRetryPolicyViaKernel({
+      stepId: step.id,
+      retry: effectiveRetry,
+      mutating: step.mutating || stepSkill.mutating === true,
+      idempotencyKey: retryContext.idempotencyKey,
+    }, { env: options.env });
+  } catch (error) {
+    retryAdmission = {
+      status: "deny" as const,
+      reasons: [`retry admission failed closed: ${errorMessage(error)}`],
+    };
+  }
   if (retryAdmission.status === "deny") {
     const deniedRun = buildDeniedGraphStepRun({
       step,
@@ -182,7 +197,7 @@ export async function handleRunStepPlan(
       executionSemantics: ctx.executionSemantics,
       receiptMetadata: mergeMetadata(
         ctx.inheritedReceiptMetadata,
-        graphStepAuthorityProofMetadata({ graphId: ctx.graphId, step, stepSkill, governance }),
+        await graphStepAuthorityProofMetadata({ graphId: ctx.graphId, step, stepSkill, governance, env: options.env }),
       ),
     });
     return {
@@ -219,6 +234,7 @@ export async function handleRunStepPlan(
     skill: stepSkill,
     skillDirectory: graphStepExecutionDirectory(step, stepSkillPath, ctx.graphDirectory),
     requestedSkillPath: resolvedStep.reference,
+    runId: options.stepRunIds?.[step.id],
     inputs: stepInputs,
     caller: options.caller,
     env: options.env,
@@ -342,12 +358,12 @@ export async function handleRunStepPlan(
     retry: retryContext.receipt,
     governance,
     artifactIds: artifactResult.envelopes.map((envelope) => envelope.meta.artifact_id),
-    disposition: stepResult.receipt.disposition,
-    inputContext: stepResult.receipt.input_context,
-    outcomeState: stepResult.receipt.outcome_state,
-    outcome: stepResult.receipt.outcome,
-    surfaceRefs: stepResult.receipt.surface_refs,
-    evidenceRefs: stepResult.receipt.evidence_refs,
+    disposition: runtimeDisposition(runnerReceiptDisposition(stepResult.receipt)),
+    inputContext: runnerReceiptInputContext(stepResult.receipt),
+    outcomeState: runtimeOutcomeState(runnerReceiptOutcomeState(stepResult.receipt)),
+    outcome: runnerReceiptOutcome(stepResult.receipt),
+    surfaceRefs: runnerReceiptSurfaceRefs(stepResult.receipt),
+    evidenceRefs: runnerReceiptEvidenceRefs(stepResult.receipt),
     contextFrom: context.map((edge) => ({
       input: edge.input,
       fromStep: edge.fromStep,
@@ -402,4 +418,15 @@ export async function handleRunStepPlan(
   });
 
   return { kind: "continue" };
+}
+
+function runtimeDisposition(disposition: ReturnType<typeof runnerReceiptDisposition>): GraphStepRun["disposition"] {
+  if (disposition === "declined") return "policy_denied";
+  if (disposition === "deferred") return "needs_resolution";
+  if (disposition === "blocked") return "escalated";
+  return disposition === "closed" ? "completed" : "completed";
+}
+
+function runtimeOutcomeState(value: string | undefined): GraphStepRun["outcomeState"] {
+  return value === "pending" || value === "expired" || value === "complete" ? value : "complete";
 }

@@ -1,13 +1,16 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { appendLedgerEntries, createArtifactEnvelope } from "@runxhq/core/artifacts";
-import { writeLocalReceipt } from "@runxhq/core/receipts";
-import { diffLocalRuns } from "@runxhq/runtime-local";
+import { diffLocalRuns, runLocalSkill, type Caller, type RunLineageMetadata, type SkillAdapter } from "@runxhq/runtime-local";
 import { runCli } from "../packages/cli/src/index.js";
+
+const caller: Caller = {
+  resolve: async () => undefined,
+  report: () => undefined,
+};
 
 describe("run diff", () => {
   it("diffs receipt and ledger summaries without a second state store", async () => {
@@ -16,43 +19,37 @@ describe("run diff", () => {
     const runxHome = path.join(tempDir, "home");
 
     try {
-      await seedReceipt({
+      const left = await seedReceipt({
+        tempDir,
         receiptDir,
         runxHome,
-        receiptId: "rx_diff_left_0001",
         skillName: "sourcey",
-        sourceType: "cli-tool",
         artifactType: "docs_site",
         runnerProvider: "openai",
       });
-      await seedReceipt({
+      const right = await seedReceipt({
+        tempDir,
         receiptDir,
         runxHome,
-        receiptId: "rx_diff_right_0001",
         skillName: "sourcey",
-        sourceType: "agent-step",
         artifactType: "review_note",
         runnerProvider: "anthropic",
         approvalDecision: "approved",
         lineage: {
           kind: "rerun",
-          source_run_id: "rx_diff_left_0001",
-          source_receipt_id: "rx_diff_left_0001",
+          sourceRunId: left,
+          sourceReceiptId: left,
         },
       });
 
       await expect(diffLocalRuns({
-        left: "rx_diff_left_0001",
-        right: "rx_diff_right_0001",
+        left,
+        right,
         receiptDir,
         runxHome,
       })).resolves.toMatchObject({
         changed: true,
         fields: {
-          source_type: {
-            left: "cli-tool",
-            right: "agent-step",
-          },
           runner_provider: {
             left: "openai",
             right: "anthropic",
@@ -65,7 +62,7 @@ describe("run diff", () => {
           lineage: {
             right: {
               kind: "rerun",
-              sourceRunId: "rx_diff_left_0001",
+              sourceRunId: left,
             },
           },
         },
@@ -77,7 +74,7 @@ describe("run diff", () => {
 
       const stdout = createMemoryStream();
       const exit = await runCli(
-        ["diff", "rx_diff_left_0001", "rx_diff_right_0001", "--receipt-dir", receiptDir, "--json"],
+        ["diff", left, right, "--receipt-dir", receiptDir, "--json"],
         { stdin: process.stdin, stdout, stderr: createMemoryStream() },
         {
           ...process.env,
@@ -99,33 +96,40 @@ describe("run diff", () => {
 });
 
 async function seedReceipt(options: {
+  readonly tempDir: string;
   readonly receiptDir: string;
   readonly runxHome: string;
-  readonly receiptId: string;
   readonly skillName: string;
-  readonly sourceType: string;
   readonly artifactType: string;
   readonly runnerProvider: string;
   readonly approvalDecision?: "approved" | "denied";
-  readonly lineage?: Readonly<Record<string, unknown>>;
-}): Promise<void> {
-  const artifact = createArtifactEnvelope({
-    type: options.artifactType,
-    data: { ok: true },
-    runId: options.receiptId,
-    producer: { skill: options.skillName, runner: options.sourceType },
-  });
-  await writeLocalReceipt({
-    receiptId: options.receiptId,
-    receiptDir: options.receiptDir,
-    runxHome: options.runxHome,
-    skillName: options.skillName,
-    sourceType: options.sourceType,
-    inputs: { project: "." },
-    stdout: JSON.stringify({ ok: true }),
-    stderr: "",
-    execution: {
+  readonly lineage?: RunLineageMetadata;
+}): Promise<string> {
+  const skillDir = path.join(options.tempDir, "skills", `${options.skillName}-${options.artifactType}`);
+  await mkdir(skillDir, { recursive: true });
+  await writeFile(
+    path.join(skillDir, "SKILL.md"),
+    `---
+name: ${options.skillName}
+description: Test run diff projections.
+source:
+  type: agent-step
+  agent: codex
+  task: ${options.artifactType}
+inputs: {}
+runx:
+  artifacts:
+    wrap_as: ${options.artifactType}
+---
+Emit a diff projection artifact.
+`,
+  );
+  const adapter: SkillAdapter = {
+    type: "agent-step",
+    invoke: async () => ({
       status: "success",
+      stdout: JSON.stringify({ ok: true }),
+      stderr: "",
       exitCode: 0,
       signal: null,
       durationMs: 3,
@@ -147,16 +151,26 @@ async function seedReceipt(options: {
             }
           : undefined,
       },
-    },
-    artifactIds: [artifact.meta.artifact_id],
-    startedAt: "2026-04-24T00:00:00Z",
-    completedAt: "2026-04-24T00:00:01Z",
-  });
-  await appendLedgerEntries({
+    }),
+  };
+  const result = await runLocalSkill({
+    skillPath: skillDir,
+    inputs: { project: "." },
+    caller,
+    adapters: [adapter],
     receiptDir: options.receiptDir,
-    runId: options.receiptId,
-    entries: [artifact],
+    runxHome: options.runxHome,
+    lineage: options.lineage,
+    env: {
+      ...process.env,
+      RUNX_CWD: options.tempDir,
+    },
   });
+  expect(result.status).toBe("success");
+  if (result.status !== "success") {
+    throw new Error("diff seed run failed");
+  }
+  return result.receipt.id;
 }
 
 function createMemoryStream(): NodeJS.WriteStream & { contents: () => string } {

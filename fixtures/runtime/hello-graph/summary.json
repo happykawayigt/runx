@@ -10,10 +10,10 @@
     "hello from graph\n\n"
   ],
   "createdAt": "2026-05-18T00:00:00Z",
-  "graphSealDigest": "sha256:9ea2f1c2fc9625f5079bc8766f764b17ccf2f450877b96dbccedff96e756c101",
+  "graphSealDigest": "sha256:18549e6bc7715839a054002e59f80e02b7c4b0a620413e823f70f06dc03dcffa",
   "childSealDigests": [
-    "sha256:7f28ae136574bd08c3d8c8d747a70fedcce069eb61b2f76049121b0634d99d44",
-    "sha256:967f9559c1eef477dae0cbce1abfd2067786468b60521017601a2419e9ea6542"
+    "sha256:cdddbc4e12cc45e544333789c233b593ccb40fc2496f49b35178659a1f1c92d1",
+    "sha256:0c8ec5d75d21cbc493f4ce736784b478e12fc49f4376f26c90e9b958e3e12492"
   ],
   "sandboxProfile": "process-boundary",
   "graphReceiptId": "hrn_rcpt_hello-graph",

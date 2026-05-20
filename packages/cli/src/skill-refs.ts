@@ -8,7 +8,6 @@ import {
   resolveRunxGlobalHomeDir,
   resolveRunxOfficialSkillsDir,
   resolveRunxProjectDir,
-  resolveRunxRegistryTarget,
   resolveSkillInstallRoot,
 } from "@runxhq/core/config";
 import {
@@ -16,11 +15,6 @@ import {
   searchMarketplaceAdapters,
   type SkillSearchResult,
 } from "@runxhq/core/marketplaces";
-import {
-  createFileRegistryStore,
-  searchRemoteRegistry,
-  searchRegistry,
-} from "@runxhq/core/registry";
 import {
   ensureOfficialSkillCached,
   type OfficialSkillLockEntry,
@@ -30,6 +24,8 @@ import {
 
 import { asRecord, errorMessage } from "@runxhq/core/util";
 
+import { nativeRegistrySearchRequested, searchRegistryViaRustCli } from "./native-registry.js";
+import { searchRegistryFallback } from "./registry-fallback.js";
 import { ensureRunxInstallState } from "./runx-state.js";
 
 let cachedBundledSkillsDir: string | undefined | null = null;
@@ -49,17 +45,10 @@ export async function runSkillSearch(
   const normalizedSource = sourceFilter?.trim().toLowerCase();
 
   if (!normalizedSource || normalizedSource === "registry" || normalizedSource === "runx-registry") {
-    const registryTarget = resolveRunxRegistryTarget(env, { registry: registryOverride });
-    if (registryTarget.mode === "remote") {
-      results.push(...(await searchRemoteRegistry(query, {
-        baseUrl: registryTarget.registryUrl,
-      })));
+    if (nativeRegistrySearchRequested(env)) {
+      results.push(...(await searchRegistryViaRustCli(query, { env, registryOverride })));
     } else {
-      results.push(
-        ...(await searchRegistry(createFileRegistryStore(registryTarget.registryPath), query, {
-          registryUrl: registryTarget.registryUrl,
-        })),
-      );
+      results.push(...(await searchRegistryFallback(query, env, registryOverride)));
     }
   }
 

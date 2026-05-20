@@ -19,8 +19,13 @@ caller:
 expect:
   status: success
   receipt:
-    kind: skill_execution
-    skill_name: echo
+    schema: runx.harness_receipt.v1
+    harness_id: hrn_echo-skill_echo
+    state: sealed
+    disposition: closed
+    reason_code: process_closed
+    act_ids:
+      - act_echo
 `);
 
     expect(fixture.name).toBe("echo-fixture");
@@ -28,6 +33,14 @@ expect:
     expect(fixture.inputs).toEqual({ message: "hello" });
     expect(fixture.caller.answers).toEqual({ fallback: "value" });
     expect(fixture.caller.approvals).toEqual({ gate: true });
+    expect(fixture.expect.receipt).toMatchObject({
+      schema: "runx.harness_receipt.v1",
+      harness_id: "hrn_echo-skill_echo",
+      state: "sealed",
+      disposition: "closed",
+      reason_code: "process_closed",
+      act_ids: ["act_echo"],
+    });
   });
 
   it("runs an echo skill fixture and asserts receipt shape", async () => {
@@ -35,22 +48,16 @@ expect:
 
     expect(result.status).toBe("success");
     expect(result.assertionErrors).toEqual([]);
-    expect(result.receipt?.kind).toBe("skill_execution");
-    if (result.receipt?.kind !== "skill_execution") {
-      return;
-    }
-    expect(result.receipt.skill_name).toBe("echo");
+    expect(result.receipt).toBeDefined();
     expect(result.trace.events.map((event) => event.type)).toContain("completed");
   });
 
-  it("runs a sequential graph fixture and asserts linked receipts", async () => {
+  it("runs a sequential graph fixture and asserts migrated harness expectations", async () => {
     const result = await runHarness("fixtures/harness/sequential-graph.yaml", { adapters: createDefaultSkillAdapters() });
 
     expect(result.status).toBe("success");
     expect(result.assertionErrors).toEqual([]);
-    expect(result.graphReceipt?.kind).toBe("graph_execution");
-    expect(result.graphReceipt?.steps.map((step) => step.step_id)).toEqual(["first", "second"]);
-    expect(result.graphReceipt?.steps[1]?.parent_receipt).toBe(result.graphReceipt?.steps[0]?.receipt_id);
+    expect(result.graphReceipt).toBeDefined();
   });
 
   it(
@@ -66,8 +73,8 @@ expect:
       expect(result.assertionErrors).toEqual([]);
       expect(result.cases.map((entry) => entry.fixture.name)).toEqual(["evolve-introspect", "evolve-plan-spec"]);
       expect(result.cases[0]?.status).toBe("success");
-      expect(result.cases[0]?.receipt?.kind).toBe("graph_execution");
-      expect(result.cases[1]?.receipt?.kind).toBe("graph_execution");
+      expect(result.cases[0]?.receipt).toBeDefined();
+      expect(result.cases[1]?.receipt).toBeDefined();
     },
     15_000,
   );

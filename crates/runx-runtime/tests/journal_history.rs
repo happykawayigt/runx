@@ -218,7 +218,7 @@ fn history_merges_paused_ledgers_and_checkpoints() -> Result<(), Box<dyn std::er
         &[PausedRunCheckpoint {
             id: "rx_checkpoint00000000000000000001".to_owned(),
             name: "checkpoint-skill".to_owned(),
-            kind: "skill_execution".to_owned(),
+            kind: "runx.harness_receipt.v1".to_owned(),
             started_at: Some("2026-04-28T00:30:00Z".to_owned()),
             selected_runner: Some("agent-step".to_owned()),
             step_ids: vec!["plan".to_owned()],

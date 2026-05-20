@@ -608,6 +608,7 @@ runners:
           scopes:
             - runx:repo:package
           context:
+            thread: push-pull-request.thread
             harness_context: capture-harness-context.harness_context
             build_result: scafld-build.result
             review_result: scafld-review.result
@@ -622,6 +623,7 @@ runners:
           scopes:
             - thread:push
           context:
+            thread: push-pull-request.thread
             outbox_entry: package-feed-entry.outbox_entry.data
             draft_pull_request: package-pull-request.draft_pull_request.data
           inputs:

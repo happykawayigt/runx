@@ -1,10 +1,36 @@
 import { describe, expect, it } from "vitest";
 
-import { CONTROL_SCHEMA_REFS, validateGraphReceiptGovernance, validateScopeAdmission } from "@runxhq/core/receipts";
+import {
+  RUNX_CONTROL_SCHEMA_REFS,
+  validateScopeAdmissionContract,
+  type ScopeAdmissionContract,
+} from "@runxhq/contracts";
+
+function validateScopeAdmission(value: unknown): ScopeAdmissionContract {
+  const admission = validateScopeAdmissionContract(value);
+  return {
+    status: admission.status,
+    requested_scopes: admission.requested_scopes,
+    granted_scopes: admission.granted_scopes,
+    grant_id: admission.grant_id,
+    reasons: admission.reasons,
+    decision_summary: admission.decision_summary,
+  };
+}
+
+function validateGovernance(value: { readonly scope_admission?: unknown }): {
+  readonly scope_admission?: ScopeAdmissionContract;
+} {
+  return {
+    scope_admission: value.scope_admission === undefined
+      ? undefined
+      : validateScopeAdmission(value.scope_admission),
+  };
+}
 
 describe("receipt governance schema contracts", () => {
   it("exposes the published scope admission schema ref", () => {
-    expect(CONTROL_SCHEMA_REFS.scope_admission).toBe("https://runx.ai/spec/scope-admission.schema.json");
+    expect(RUNX_CONTROL_SCHEMA_REFS.scope_admission).toBe("https://runx.ai/spec/scope-admission.schema.json");
   });
 
   it("accepts the canonical scope admission shape", () => {
@@ -26,7 +52,7 @@ describe("receipt governance schema contracts", () => {
   });
 
   it("normalizes governance wrappers around scope admission", () => {
-    expect(validateGraphReceiptGovernance({
+    expect(validateGovernance({
       scope_admission: {
         status: "deny",
         requested_scopes: ["deployments:write"],

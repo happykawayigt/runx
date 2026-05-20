@@ -1,14 +1,17 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
 import { runCli } from "../packages/cli/src/index.js";
-import { appendLedgerEntries, createArtifactEnvelope } from "@runxhq/core/artifacts";
 import { createFileKnowledgeStore } from "@runxhq/core/knowledge";
-import { writeLocalReceipt } from "@runxhq/core/receipts";
-import { inspectLocalReceipt, listLocalHistory } from "@runxhq/runtime-local";
+import { inspectLocalReceipt, listLocalHistory, runLocalSkill, type Caller, type SkillAdapter } from "@runxhq/runtime-local";
+
+const caller: Caller = {
+  resolve: async () => undefined,
+  report: () => undefined,
+};
 
 describe("history, inspect, and knowledge CLI", () => {
   it("uses receipt files for history/inspect and knowledge for project projections", async () => {
@@ -56,7 +59,6 @@ describe("history, inspect, and knowledge CLI", () => {
         receipts: [
           {
             id: runReport.receipt.id,
-            kind: "skill_execution",
             name: "echo",
             sourceType: "cli-tool",
           },
@@ -76,7 +78,6 @@ describe("history, inspect, and knowledge CLI", () => {
       expect(JSON.parse(inspectStdout.contents())).toMatchObject({
         summary: {
           id: runReport.receipt.id,
-          kind: "skill_execution",
           name: "echo",
         },
       });
@@ -126,85 +127,39 @@ describe("history, inspect, and knowledge CLI", () => {
     const runxHome = path.join(tempDir, "home");
 
     try {
-      const builderReceiptId = "rx_historybuilder0001";
-      const builderArtifact = createArtifactEnvelope({
-        type: "draft_pull_request",
-        data: { title: "Draft PR" },
-        runId: builderReceiptId,
-        producer: { skill: "draft-content", runner: "agent-step" },
-      });
-      await writeLocalReceipt({
-        receiptId: builderReceiptId,
+      const builderReceiptId = await seedHistoryRun({
+        tempDir,
         receiptDir,
         runxHome,
-        skillName: "draft-content",
-        sourceType: "agent-step",
+        name: "draft-content",
+        artifactType: "draft_pull_request",
         inputs: { objective: "draft a pull request" },
-        stdout: JSON.stringify({ ok: true }),
-        stderr: "",
-        execution: {
-          status: "success",
-          exitCode: 0,
-          signal: null,
-          durationMs: 2,
-          metadata: {
-            agent_hook: {
-              source_type: "agent-step",
-              agent: "builder",
-              task: "draft-pr",
-              route: "provided",
-              status: "success",
-            },
-            runner: {
-              provider: "openai",
-            },
+        metadata: {
+          agent_hook: {
+            source_type: "agent-step",
+            agent: "builder",
+            task: "draft-pr",
+            route: "provided",
+            status: "success",
+          },
+          runner: {
+            provider: "openai",
           },
         },
-        artifactIds: [builderArtifact.meta.artifact_id],
-        startedAt: "2026-04-24T00:00:00Z",
-        completedAt: "2026-04-24T00:00:01Z",
-      });
-      await appendLedgerEntries({
-        receiptDir,
-        runId: builderReceiptId,
-        entries: [builderArtifact],
       });
 
-      const reviewerReceiptId = "rx_historyreviewer0001";
-      const reviewerArtifact = createArtifactEnvelope({
-        type: "issue_intake_packet",
-        data: { verdict: "needs follow-up" },
-        runId: reviewerReceiptId,
-        producer: { skill: "issue-intake", runner: "cli-tool" },
-      });
-      await writeLocalReceipt({
-        receiptId: reviewerReceiptId,
+      const reviewerReceiptId = await seedHistoryRun({
+        tempDir,
         receiptDir,
         runxHome,
-        skillName: "issue-intake",
-        sourceType: "cli-tool",
+        name: "issue-intake",
+        artifactType: "issue_intake_packet",
         inputs: { thread: "support request" },
-        stdout: JSON.stringify({ ok: true }),
-        stderr: "",
-        execution: {
-          status: "success",
-          exitCode: 0,
-          signal: null,
-          durationMs: 2,
-          metadata: {
-            runner: {
-              provider: "anthropic",
-            },
+        metadata: {
+          runner: {
+            provider: "anthropic",
           },
         },
-        artifactIds: [reviewerArtifact.meta.artifact_id],
-        startedAt: "2026-04-24T00:10:00Z",
-        completedAt: "2026-04-24T00:10:01Z",
-      });
-      await appendLedgerEntries({
-        receiptDir,
-        runId: reviewerReceiptId,
-        entries: [reviewerArtifact],
       });
 
       await expect(listLocalHistory({ receiptDir, runxHome, actor: "builder" })).resolves.toMatchObject({
@@ -264,6 +219,67 @@ describe("history, inspect, and knowledge CLI", () => {
     }
   });
 });
+
+async function seedHistoryRun(options: {
+  readonly tempDir: string;
+  readonly receiptDir: string;
+  readonly runxHome: string;
+  readonly name: string;
+  readonly artifactType: string;
+  readonly inputs: Readonly<Record<string, unknown>>;
+  readonly metadata: Readonly<Record<string, unknown>>;
+}): Promise<string> {
+  const skillDir = path.join(options.tempDir, "skills", options.name);
+  await mkdir(skillDir, { recursive: true });
+  await writeFile(
+    path.join(skillDir, "SKILL.md"),
+    `---
+name: ${options.name}
+description: Test history projections.
+source:
+  type: agent-step
+  agent: codex
+  task: ${options.name}
+inputs: {}
+runx:
+  artifacts:
+    wrap_as: ${options.artifactType}
+---
+Emit a history projection artifact.
+`,
+  );
+
+  const adapter: SkillAdapter = {
+    type: "agent-step",
+    invoke: async () => ({
+      status: "success",
+      stdout: JSON.stringify({ ok: true }),
+      stderr: "",
+      exitCode: 0,
+      signal: null,
+      durationMs: 2,
+      metadata: options.metadata,
+    }),
+  };
+  const result = await runLocalSkill({
+    skillPath: skillDir,
+    inputs: options.inputs,
+    caller,
+    adapters: [adapter],
+    receiptDir: options.receiptDir,
+    runxHome: options.runxHome,
+    env: {
+      ...process.env,
+      RUNX_CWD: options.tempDir,
+    },
+  });
+
+  expect(result.status).toBe("success");
+  if (result.status !== "success") {
+    throw new Error("history seed run failed");
+  }
+  return result.receipt.id;
+}
 
 function createMemoryStream(): NodeJS.WriteStream & { contents: () => string } {
   let contents = "";

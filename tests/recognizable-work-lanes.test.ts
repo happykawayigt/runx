@@ -130,7 +130,7 @@ describe("recognizable work lanes", () => {
         { ...process.env, RUNX_CWD: process.cwd() },
       );
 
-      expect(exitCode).toBe(0);
+      expect(exitCode, stderr.contents() || stdout.contents()).toBe(0);
       expect(stderr.contents()).toBe("");
       expect(JSON.parse(stdout.contents())).toMatchObject({
         status: "success",
@@ -141,8 +141,10 @@ describe("recognizable work lanes", () => {
           stdout: expect.stringContaining("\"recommended_lane\":\"issue-to-pr\""),
         },
         receipt: {
-          kind: "skill_execution",
-          status: "success",
+          schema: "runx.harness_receipt.v1",
+          seal: {
+            disposition: "closed",
+          },
         },
       });
       expect(JSON.parse(stdout.contents()).execution.stdout).toContain("\"signal\"");
@@ -157,13 +159,29 @@ describe("recognizable work lanes", () => {
     const answersPath = path.join(runtimeDir, "answers.json");
     const receiptDir = path.join(runtimeDir, "receipts");
     const runxHome = path.join(runtimeDir, "home");
+    const threadPath = path.join(runtimeDir, "thread.json");
     const stdout = createMemoryStream();
     const stderr = createMemoryStream();
     const taskId = "recognizable-lane-fixture";
+    const threadLocator = "github://example/repo/issues/123";
 
     try {
       await initScafldRepo(tempDir);
       runChecked("git", ["checkout", "-b", taskId], tempDir);
+      const thread = {
+        kind: "runx.thread.v1",
+        adapter: {
+          type: "file",
+          adapter_ref: threadPath,
+        },
+        thread_kind: "signal",
+        thread_locator: threadLocator,
+        entries: [],
+        decisions: [],
+        outbox: [],
+        source_refs: [],
+      };
+      await writeFile(threadPath, `${JSON.stringify(thread, null, 2)}\n`);
       await writeFile(
         answersPath,
         `${JSON.stringify(
@@ -207,7 +225,9 @@ describe("recognizable work lanes", () => {
           "--thread-body",
           "Apply a bounded fixture docs update.",
           "--thread-locator",
-          "github://example/repo/issues/123",
+          threadLocator,
+          "--thread",
+          JSON.stringify(thread),
           "--target-repo",
           "fixtures/repo",
           "--size",
@@ -231,7 +251,7 @@ describe("recognizable work lanes", () => {
         { ...process.env, RUNX_CWD: tempDir, RUNX_HOME: runxHome },
       );
 
-      expect(exitCode).toBe(0);
+      expect(exitCode, stderr.contents() || stdout.contents()).toBe(0);
       expect(stderr.contents()).toBe("");
       expect(JSON.parse(stdout.contents())).toMatchObject({
         status: "success",

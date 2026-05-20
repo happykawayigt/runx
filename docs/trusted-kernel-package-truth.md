@@ -54,3 +54,35 @@ Parser, receipts, runtime, adapters, and CLI cutover are separate specs.
 Full CLI/runtime cutover still requires the `fixtures/cli-parity` feature
 matrix and one-to-one TypeScript oracle parity; kernel parity alone is not a
 CLI or runtime cutover gate.
+
+The Rust CLI cutover gate also requires the negative release-artifact verifier:
+
+```bash
+node scripts/check-rust-cli-cutover-negative.mjs --candidate <candidate-package-or-binary>
+```
+
+That verifier is read-only and does not make Rust authoritative. It rejects
+candidate package or binary surfaces that still expose JavaScript fallback
+hooks, retired receipt/legacy shapes, v2 alias modes, or hidden references to
+TypeScript runtime packages where static inspection can see them. The current
+TypeScript-backed npm package is expected to fail this guard until an explicit
+Rust CLI cutover spec changes release artifacts.
+
+## Rust Dependency Policy
+
+`crates/deny.toml` is the Rust workspace supply-chain boundary for the parity
+track. It checks all feature graphs and currently has no package-specific
+license exceptions.
+
+The current tiers are:
+
+- Pure crates: `runx-contracts`, `runx-core`, `runx-parser`, `runx-receipts`,
+  and `runx-sdk` may not depend on async runtimes, HTTP clients/servers, MCP
+  framework crates, or alternate YAML backends.
+- Runtime and adapter crates: `runx-runtime` and `runx-cli` also have no
+  approved `reqwest`, `hyper`, `tokio`, `rmcp`, `ureq`, `axum`, or
+  `async-std` exception today. A future adapter-side exception must be
+  spec-reviewed, package-scoped, and documented here before the deny entry is
+  relaxed.
+- YAML parsing: `serde_norway` is the current parser backend. `serde_yml` and
+  `serde_yaml` are not approved Rust rewrite dependencies.

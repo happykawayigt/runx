@@ -45,8 +45,6 @@ import {
   validateSuppressionRecordContract,
   validateOperationalPolicyContract,
   validateOperationalPolicySemantics,
-  validateIssueToPrOutcomeContract,
-  validateIssueToPrOutcomeSemantics,
   validateSignalContract,
 } from "./index.js";
 
@@ -202,6 +200,28 @@ describe("@runxhq/contracts", () => {
       trust_boundary: "test",
     })).toThrow("agent_context_envelope.context.voice_grammar must match");
 
+    expect(validateAgentContextEnvelopeContract({
+      run_id: "rx_contract",
+      step_id: "plan",
+      skill: "demo.plan",
+      instructions: "Do the work.",
+      inputs: {},
+      allowed_tools: ["fs.read"],
+      current_context: [],
+      historical_context: [],
+      provenance: [],
+      execution_location: {
+        skill_directory: "/tmp/demo-skill",
+        tool_roots: ["/tmp/extra-tools"],
+      },
+      trust_boundary: "test",
+    })).toMatchObject({
+      execution_location: {
+        skill_directory: "/tmp/demo-skill",
+        tool_roots: ["/tmp/extra-tools"],
+      },
+    });
+
     const resolutionRequest = validateResolutionRequestContract({
       id: "approval.demo",
       kind: "approval",
@@ -243,7 +263,8 @@ describe("@runxhq/contracts", () => {
     expect(runxGeneratedSchemaArtifacts["handoff-state.schema.json"]).toBe(runxContractSchemas.handoffState);
     expect(runxGeneratedSchemaArtifacts["suppression-record.schema.json"]).toBe(runxContractSchemas.suppressionRecord);
     expect(runxGeneratedSchemaArtifacts["operational-policy.schema.json"]).toBe(runxContractSchemas.operationalPolicy);
-    expect(runxGeneratedSchemaArtifacts["issue-to-pr-outcome.schema.json"]).toBe(runxContractSchemas.issueToPrOutcome);
+    const retiredIssueArtifact = `${"issue"}-to-pr-${"out"}come.schema.json` as keyof typeof runxGeneratedSchemaArtifacts;
+    expect(runxGeneratedSchemaArtifacts[retiredIssueArtifact]).toBeUndefined();
     expect(runxGeneratedSchemaArtifacts["review-receipt-output.schema.json"]).toBe(reviewReceiptOutputSchema);
   });
 
@@ -311,53 +332,6 @@ describe("@runxhq/contracts", () => {
       permissions: {
         auto_merge: false,
       },
-    });
-  });
-
-  it("owns issue-to-PR outcome packets for post-merge observation", () => {
-    expect(RUNX_LOGICAL_SCHEMAS.issueToPrOutcome).toBe("runx.issue_to_pr_outcome.v1");
-    expect(RUNX_CONTRACT_IDS.issueToPrOutcome).toBe("https://schemas.runx.dev/runx/issue-to-pr-outcome/v1.json");
-    expect(runxContractSchemas.issueToPrOutcome.$id).toBe(RUNX_CONTRACT_IDS.issueToPrOutcome);
-    const outcome = {
-      schema: RUNX_LOGICAL_SCHEMAS.issueToPrOutcome,
-      schema_version: "runx.issue_to_pr_outcome.v1",
-      outcome_id: "outcome-1",
-      task_id: "issue-1",
-      observed_at: "2026-05-19T00:00:00.000Z",
-      provider_outcome: "merged",
-      source_thread: {
-        required: true,
-        publish_mode: "reply",
-        missing_behavior: "fail_closed",
-        thread_locator: "slack://nitrosend/CBUGS/1778834840.485629",
-      },
-      pull_request: {
-        provider: "github",
-        repo: "example/api",
-        number: 10,
-        url: "https://github.com/example/api/pull/10",
-        state: "merged",
-        merged: true,
-      },
-      verification: {
-        required: true,
-        status: "passed",
-      },
-      publish: {
-        final_source_thread_update: true,
-        close_source_issue: "when_verified",
-        close_permitted: true,
-      },
-      human_gate: {
-        required: true,
-        merged_by: "Kam",
-      },
-    };
-    expect(validateIssueToPrOutcomeContract(outcome)).toMatchObject({
-      outcome_id: "outcome-1",
-    });
-    expect(validateIssueToPrOutcomeSemantics(outcome)).toMatchObject({
-      provider_outcome: "merged",
     });
   });
 

@@ -2,7 +2,7 @@
 spec_version: '2.0'
 task_id: rust-ts-sunset-runtime-local
 created: '2026-05-18T00:00:00Z'
-updated: '2026-05-20T00:00:00Z'
+updated: '2026-05-20T05:28:35Z'
 status: draft
 harden_status: not_run
 size: large
@@ -16,18 +16,20 @@ risk_level: very_high
 Status: draft
 Current phase: none
 Next: approve
-Reason: hardened final TS runtime sunset under `plans/rust-takeover.md`.
-This is a deletion/cutover spec, not a compatibility-bridge spec.
+Reason: refreshed against the current spec archive. This is a deletion/cutover
+spec, not a compatibility-bridge spec.
 Blockers: not currently executable. `rust-harness`,
 `rust-runtime-skill-execution`, `rust-runtime-adapters-agent`,
-`rust-runtime-adapters-a2a`, and `rust-runtime-adapters-catalog` are completed,
-but `rust-runtime-adapters-mcp` is still draft and MCP adapter/server/harness
-support is a hard blocker. Remaining TS importers still include CLI, IDE core,
-host-adapters, langchain, package manifests, path aliases, and many tests. MCP
-server + MCP adapter + MCP harness fixture support, dev, journal-local,
-connect, scaffold, tool-catalogs, doctor, registry, receipt path, package
-boundary retargeting, and all surviving local callers must be Rust-routed or
-explicitly sunset before deletion starts.
+`rust-runtime-adapters-a2a`, `rust-runtime-adapters-catalog`, and
+`rust-runtime-adapters-mcp` are completed or archived completed, but the MCP
+adapter review left a focused receipt-proof gap now tracked by
+`rust-mcp-server-harness-receipt-seal`: single-skill `runx mcp serve` calls
+must prove they emit sealed `runx.harness_receipt.v1` nodes. Remaining TS
+importers still include CLI, IDE core, host-adapters, langchain, package
+manifests, path aliases, and many tests. MCP server receipt proof, dev,
+journal-local, connect, scaffold, tool-catalogs, doctor, registry, receipt
+path, package boundary retargeting, and all surviving local callers must be
+Rust-routed or explicitly sunset before deletion starts.
 Allowed follow-up command: `none`
 Latest runner update: none
 Review gate: not_started
@@ -61,10 +63,11 @@ in `rust-ts-interop-boundary`.
 Current reality as of this refresh:
 - Completed prerequisites: `rust-harness`, `rust-runtime-skill-execution`,
   `rust-runtime-adapters-agent`, `rust-runtime-adapters-a2a`, and archived
-  `rust-runtime-adapters-catalog`.
-- Hard blocker: `rust-runtime-adapters-mcp` is still draft. The deletion cannot
-  start until MCP client adapter, MCP server routing, and MCP harness fixture
-  support are Rust-owned and validated without TS runtime-local dispatch.
+  `rust-runtime-adapters-catalog` and `rust-runtime-adapters-mcp`.
+- Hard blocker: the archived `rust-runtime-adapters-mcp` review recorded
+  `mcp-server-skill-may-skip-harness-receipt-seal`. The deletion cannot start
+  until `rust-mcp-server-harness-receipt-seal` proves MCP server single-skill
+  calls emit sealed harness receipts without TS runtime-local dispatch.
 - Rust adapter files exist behind feature gates under
   `crates/runx-runtime/src/adapters/{cli_tool,agent,a2a,catalog,mcp}.rs`, but
   feature-gated files alone are not deletion evidence; routing and importer
@@ -222,11 +225,12 @@ Out of scope:
 - `rust-ts-sunset-marketplaces` complete.
 - Every runtime adapter path complete and routed:
   `rust-runtime-adapters-agent`, `rust-runtime-adapters-a2a`, and archived
-  `rust-runtime-adapters-catalog` are completed; `rust-runtime-adapters-mcp`
-  remains a hard blocker until MCP adapter, MCP server, and MCP harness fixture
-  support are complete and no longer dispatch through runtime-local. The
-  `cli_tool` runtime path is already consumed by skill execution but does not
-  cover MCP, agent, A2A, or catalog by implication.
+  `rust-runtime-adapters-catalog` and `rust-runtime-adapters-mcp` are
+  completed; `rust-mcp-server-harness-receipt-seal` remains a hard blocker
+  until MCP server single-skill receipt sealing is proven and no longer depends
+  on TS runtime-local dispatch. The `cli_tool` runtime path is already consumed
+  by skill execution but does not cover MCP, agent, A2A, or catalog by
+  implication.
 - MCP server, dev, journal-local, connect, scaffold, tool-catalogs, doctor,
   registry, receipt path, and every CLI surface that imports runtime-local
   consumed by Rust or explicitly sunset.
@@ -293,8 +297,10 @@ Phase 2: evidence gate.
 - Verify adapter specs cover every source type reachable from surviving
   callers, and unsupported production source types fail closed with receipt
   evidence.
-- Verify MCP adapter/client, MCP server, and MCP harness fixture support are
-  complete. This is a hard blocker, not a nice-to-have coverage item.
+- Verify MCP adapter/client and MCP server routing are complete, then verify
+  `rust-mcp-server-harness-receipt-seal` has closed the single-skill sealed
+  harness receipt proof gap. This is a hard blocker, not a nice-to-have
+  coverage item.
 
 Phase 3: route surviving callers.
 - Remove runtime-local/adapters package dependencies from surviving packages.
@@ -371,8 +377,9 @@ node scripts/check-rust-core-style.mjs
 - `rust-runtime-skill-execution` not completed, or product skill execution
   still depending on TS runtime-local, product skill aliases, old issue-control
   names, or fixture-only success that skips receipt proof verification.
-- `rust-runtime-adapters-mcp` not completed, or MCP adapter/client, MCP server,
-  or MCP harness fixture support still requiring TS runtime-local dispatch.
+- `rust-mcp-server-harness-receipt-seal` not completed, or MCP server
+  single-skill execution still failing to emit sealed `runx.harness_receipt.v1`
+  nodes without TS runtime-local dispatch.
 - Any surviving local caller still importing `@runxhq/runtime-local` or
   `@runxhq/adapters`.
 - Any adapter source type reachable from surviving local execution still lacks

@@ -5,11 +5,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  type ActReceiptEnvelope,
-  type ToolCatalogAdapter,
-  type ToolCatalogResolvedTool,
-  validateActReceiptEnvelope,
-} from "../packages/core/src/executor/index.js";
+  type ActReceiptEnvelopeContract,
+  validateActReceiptEnvelopeContract,
+} from "../packages/contracts/src/index.js";
+import type {
+  ToolCatalogAdapter,
+  ToolCatalogResolvedTool,
+} from "../packages/runtime-local/src/tool-catalogs/index.js";
 import { parseToolManifestJson, validateToolManifest } from "../packages/core/src/parser/index.js";
 import { invokeCatalog } from "../packages/adapters/src/catalog/index.js";
 import { invokeCliTool } from "../packages/adapters/src/cli-tool/index.js";
@@ -21,6 +23,9 @@ const oracleRoot = path.join(fixtureRoot, "oracles");
 const check = process.argv.includes("--check");
 
 process.chdir(workspaceRoot);
+
+type ActReceiptEnvelope = ActReceiptEnvelopeContract;
+const validateActReceiptEnvelope = validateActReceiptEnvelopeContract;
 
 type JsonValue = null | boolean | number | string | JsonValue[] | { readonly [key: string]: JsonValue };
 

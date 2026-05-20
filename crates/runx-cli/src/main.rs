@@ -27,7 +27,7 @@ fn main() -> ExitCode {
     ) {
         LauncherAction::Error(message) => {
             let _ignored = write_stderr_line(&format!("runx: {message}"));
-            ExitCode::from(2)
+            ExitCode::from(64)
         }
         LauncherAction::PrintHelp => write_stdout(&shim_help()),
         LauncherAction::PrintVersion => {
@@ -37,10 +37,13 @@ fn main() -> ExitCode {
         LauncherAction::RunNew(plan) => runx_cli::scaffold::run_native_new(plan),
         LauncherAction::RunHistory(plan) => run_native_history(plan.args),
         LauncherAction::RunList(plan) => run_native_list(plan),
+        LauncherAction::RunMcp(plan) => runx_cli::mcp::run_native_mcp(plan),
         LauncherAction::RunHarness(plan) => run_native_harness(PathBuf::from(plan.fixture_path)),
+        LauncherAction::RunKernel(plan) => runx_cli::kernel::run_native_kernel(plan),
         LauncherAction::RunConnect(plan) => run_native_connect(plan),
         LauncherAction::RunConfig(plan) => run_native_config(plan),
         LauncherAction::RunPolicy(plan) => runx_cli::policy::run_native_policy(plan),
+        LauncherAction::RunRegistry(plan) => runx_cli::registry::run_native_registry(plan),
         LauncherAction::RunDoctor(plan) => runx_cli::doctor::run_native_doctor(plan),
         LauncherAction::RunTool(plan) => runx_cli::tool::run_native_tool(plan),
         LauncherAction::Delegate(command) => match run_command(command) {
@@ -312,7 +315,7 @@ fn run_native_history(args: Vec<OsString>) -> ExitCode {
         Ok(output) => write_stdout(&output.output),
         Err(runx_cli::history::HistoryCliError::InvalidArgs(message)) => {
             let _ignored = write_stderr_line(&format!("runx: {message}"));
-            ExitCode::from(2)
+            ExitCode::from(64)
         }
         Err(error) => {
             let _ignored = write_stderr_line(&format!("runx: {error}"));
@@ -350,7 +353,7 @@ fn run_native_config(plan: runx_cli::config::ConfigPlan) -> ExitCode {
         Ok(output) => write_stdout(&output),
         Err(runx_cli::config::ConfigCliError::InvalidArgs(message)) => {
             let _ignored = write_stderr_line(&format!("runx: {message}"));
-            ExitCode::from(2)
+            ExitCode::from(64)
         }
         Err(error) => {
             let _ignored = write_stderr_line(&format!("runx: {error}"));

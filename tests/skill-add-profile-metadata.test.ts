@@ -6,8 +6,8 @@ import { describe, expect, it } from "vitest";
 
 import { createDefaultSkillAdapters } from "@runxhq/adapters";
 import { createFixtureMarketplaceAdapter, type MarketplaceAdapter, type SkillSearchResult } from "@runxhq/core/marketplaces";
-import { createFileRegistryStore, ingestSkillMarkdown } from "@runxhq/core/registry";
 import { installLocalSkill, runLocalSkill, type Caller } from "@runxhq/runtime-local";
+import { createFileRegistryStore, seedRegistrySkill } from "./registry-fixtures.js";
 
 const caller: Caller = {
   resolve: async (request) =>
@@ -48,7 +48,7 @@ runners:
 `;
 
     try {
-      const version = await ingestSkillMarkdown(createFileRegistryStore(registryDir), markdown, {
+      const version = await seedRegistrySkill(createFileRegistryStore(registryDir), markdown, {
         owner: "acme",
         version: "1.0.0",
         profileDocument,
@@ -86,11 +86,13 @@ runners:
         return;
       }
       expect(run.execution.stdout).toBe("installed x ok");
-      expect(run.receipt.kind).toBe("skill_execution");
-      if (run.receipt.kind !== "skill_execution") {
-        return;
-      }
-      expect(run.receipt.source_type).toBe("cli-tool");
+      expect(run.receipt).toMatchObject({
+        metadata: {
+          authority_proof: { source_type: "cli-tool" },
+          runner: { type: "cli-tool" },
+          runx: { source: "cli-tool" },
+        },
+      });
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
@@ -150,11 +152,13 @@ runners:
       if (run.status !== "success") {
         return;
       }
-      expect(run.receipt.kind).toBe("skill_execution");
-      if (run.receipt.kind !== "skill_execution") {
-        return;
-      }
-      expect(run.receipt.source_type).toBe("agent");
+      expect(run.receipt).toMatchObject({
+        metadata: {
+          authority_proof: { source_type: "agent" },
+          runner: { type: "agent" },
+          runx: { source: "agent" },
+        },
+      });
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }

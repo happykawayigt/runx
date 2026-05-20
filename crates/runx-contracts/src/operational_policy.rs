@@ -263,6 +263,44 @@ pub struct OperationalPolicyValidationFinding {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OperationalPolicyAdmissionRequest {
+    pub source_id: Option<String>,
+    pub target_repo: Option<String>,
+    pub action: OperationalPolicyAction,
+    pub runner_id: Option<String>,
+    pub source_thread_locator: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct OperationalPolicyAdmission {
+    pub status: OperationalPolicyAdmissionStatus,
+    pub findings: Vec<OperationalPolicyValidationFinding>,
+    pub policy_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_repo: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runner_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owner_route_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owners: Option<Vec<String>>,
+    pub dedupe_strategy: OperationalPolicyDedupeStrategy,
+    pub outcome_close_mode: OperationalPolicyOutcomeCloseMode,
+    pub source_thread_required: bool,
+    pub mutate_target_repo: bool,
+    pub require_human_merge_gate: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum OperationalPolicyAdmissionStatus {
+    Allow,
+    Deny,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum OperationalPolicyError {
     Contract(OperationalPolicyValidationFinding),
     Semantic(OperationalPolicyValidationFinding),
@@ -356,6 +394,146 @@ pub fn validate_operational_policy_semantics(
     Ok(())
 }
 
+pub fn admit_operational_policy_request(
+    policy: &OperationalPolicy,
+    request: &OperationalPolicyAdmissionRequest,
+) -> Result<OperationalPolicyAdmission, OperationalPolicyError> {
+    validate_operational_policy_contract(policy)?;
+
+    let mut findings = collect_semantic_findings(policy);
+    let source = select_request_source(policy, request, &mut findings);
+    let target = select_request_target(policy, request, &mut findings);
+    let runner = select_request_runner(policy, request, target, &mut findings);
+    let owner_route = target.and_then(|target| {
+        policy
+            .owner_routes
+            .iter()
+            .find(|route| route.route_id == target.default_owner_route)
+    });
+
+    validate_admitted_source(source, request, &mut findings);
+    validate_admitted_target(target, request, &mut findings);
+    validate_admitted_runner(runner, target, request, &mut findings);
+
+    Ok(OperationalPolicyAdmission {
+        status: admission_status(&findings),
+        findings,
+        policy_id: policy.policy_id.clone(),
+        source_id: source.map(|source| source.source_id.clone()),
+        target_repo: target.map(|target| target.repo.clone()),
+        runner_id: runner.map(|runner| runner.runner_id.clone()),
+        owner_route_id: owner_route.map(|route| route.route_id.clone()),
+        owners: owner_route.map(|route| route.owners.clone()),
+        dedupe_strategy: policy.dedupe.strategy,
+        outcome_close_mode: policy.outcomes.close_source_issue,
+        source_thread_required: source.is_some_and(|source| source.source_thread.required),
+        mutate_target_repo: policy.permissions.mutate_target_repo,
+        require_human_merge_gate: policy.permissions.require_human_merge_gate,
+    })
+}
+
+fn validate_admitted_source(
+    source: Option<&OperationalPolicySourceRule>,
+    request: &OperationalPolicyAdmissionRequest,
+    findings: &mut Vec<OperationalPolicyValidationFinding>,
+) {
+    if let Some(source) = source {
+        if !source.allowed_actions.contains(&request.action) {
+            findings.push(finding(
+                "source_action_not_allowed",
+                "/request/action",
+                &format!(
+                    "source '{}' does not allow action '{}'.",
+                    source.source_id, request.action
+                ),
+            ));
+        }
+        if source.source_thread.required
+            && non_empty_string(&request.source_thread_locator).is_none()
+        {
+            findings.push(finding(
+                "source_thread_locator_required",
+                "/request/source_thread_locator",
+                &format!(
+                    "source '{}' requires recoverable source-thread routing.",
+                    source.source_id
+                ),
+            ));
+        }
+    }
+}
+
+fn validate_admitted_target(
+    target: Option<&OperationalPolicyTargetRule>,
+    request: &OperationalPolicyAdmissionRequest,
+    findings: &mut Vec<OperationalPolicyValidationFinding>,
+) {
+    if let Some(target) = target
+        && !target.allowed_actions.contains(&request.action)
+    {
+        findings.push(finding(
+            "target_action_not_allowed",
+            "/request/action",
+            &format!(
+                "target '{}' does not allow action '{}'.",
+                target.repo, request.action
+            ),
+        ));
+    }
+}
+
+fn validate_admitted_runner(
+    runner: Option<&OperationalPolicyRunnerRule>,
+    target: Option<&OperationalPolicyTargetRule>,
+    request: &OperationalPolicyAdmissionRequest,
+    findings: &mut Vec<OperationalPolicyValidationFinding>,
+) {
+    if let Some(runner) = runner {
+        if runner.state != OperationalPolicyRunnerState::Available {
+            findings.push(finding(
+                "runner_unavailable",
+                "/request/runner_id",
+                &format!(
+                    "runner '{}' is '{}', not available.",
+                    runner.runner_id, runner.state
+                ),
+            ));
+        }
+        if !runner.allowed_actions.contains(&request.action) {
+            findings.push(finding(
+                "runner_action_not_allowed",
+                "/request/action",
+                &format!(
+                    "runner '{}' does not allow action '{}'.",
+                    runner.runner_id, request.action
+                ),
+            ));
+        }
+        if let Some(target) = target
+            && !runner.target_repos.contains(&target.repo)
+        {
+            findings.push(finding(
+                "runner_target_not_allowed",
+                "/request/target_repo",
+                &format!(
+                    "runner '{}' does not allow target repo '{}'.",
+                    runner.runner_id, target.repo
+                ),
+            ));
+        }
+    }
+}
+
+fn admission_status(
+    findings: &[OperationalPolicyValidationFinding],
+) -> OperationalPolicyAdmissionStatus {
+    if findings.is_empty() {
+        OperationalPolicyAdmissionStatus::Allow
+    } else {
+        OperationalPolicyAdmissionStatus::Deny
+    }
+}
+
 pub fn project_operational_policy_readback(
     policy: &OperationalPolicy,
 ) -> Result<OperationalPolicyReadback, OperationalPolicyError> {
@@ -375,6 +553,123 @@ pub fn project_operational_policy_readback(
         outcomes: policy.outcomes.clone(),
         permissions: policy.permissions.clone(),
     })
+}
+
+fn select_request_source<'a>(
+    policy: &'a OperationalPolicy,
+    request: &OperationalPolicyAdmissionRequest,
+    findings: &mut Vec<OperationalPolicyValidationFinding>,
+) -> Option<&'a OperationalPolicySourceRule> {
+    if let Some(source_id) = non_empty_string(&request.source_id) {
+        let source = policy
+            .sources
+            .iter()
+            .find(|candidate| candidate.source_id == source_id);
+        if source.is_none() {
+            findings.push(finding(
+                "unknown_source",
+                "/request/source_id",
+                &format!("request references unknown source '{source_id}'."),
+            ));
+        }
+        return source;
+    }
+    if policy.sources.len() == 1 {
+        return policy.sources.first();
+    }
+    findings.push(finding(
+        "source_required",
+        "/request/source_id",
+        "request must identify a source when policy contains multiple sources.",
+    ));
+    None
+}
+
+fn select_request_target<'a>(
+    policy: &'a OperationalPolicy,
+    request: &OperationalPolicyAdmissionRequest,
+    findings: &mut Vec<OperationalPolicyValidationFinding>,
+) -> Option<&'a OperationalPolicyTargetRule> {
+    let Some(target_repo) = non_empty_string(&request.target_repo) else {
+        findings.push(finding(
+            "target_repo_required",
+            "/request/target_repo",
+            "request must identify a target repo.",
+        ));
+        return None;
+    };
+
+    let target = policy
+        .targets
+        .iter()
+        .find(|candidate| candidate.repo == target_repo);
+    if target.is_none() {
+        findings.push(finding(
+            "unknown_target_repo",
+            "/request/target_repo",
+            &format!("request references unknown target repo '{target_repo}'."),
+        ));
+    }
+    target
+}
+
+fn select_request_runner<'a>(
+    policy: &'a OperationalPolicy,
+    request: &OperationalPolicyAdmissionRequest,
+    target: Option<&OperationalPolicyTargetRule>,
+    findings: &mut Vec<OperationalPolicyValidationFinding>,
+) -> Option<&'a OperationalPolicyRunnerRule> {
+    if let Some(runner_id) = non_empty_string(&request.runner_id) {
+        let runner = policy
+            .runners
+            .iter()
+            .find(|candidate| candidate.runner_id == runner_id);
+        if runner.is_none() {
+            findings.push(finding(
+                "unknown_runner",
+                "/request/runner_id",
+                &format!("request references unknown runner '{runner_id}'."),
+            ));
+        } else if let Some(target) = target
+            && !target.runner_ids.iter().any(|id| id == runner_id)
+        {
+            findings.push(finding(
+                "target_runner_not_allowed",
+                "/request/runner_id",
+                &format!(
+                    "target '{}' does not allow runner '{}'.",
+                    target.repo, runner_id
+                ),
+            ));
+        }
+        return runner;
+    }
+
+    let target = target?;
+    let runner = target
+        .runner_ids
+        .iter()
+        .filter_map(|runner_id| {
+            policy
+                .runners
+                .iter()
+                .find(|candidate| candidate.runner_id == *runner_id)
+        })
+        .find(|candidate| {
+            candidate.state == OperationalPolicyRunnerState::Available
+                && candidate.allowed_actions.contains(&request.action)
+        });
+    if runner.is_none() {
+        findings.push(finding(
+            "runner_required",
+            "/request/runner_id",
+            &format!(
+                "request needs an available runner for target '{}' and action '{}'.",
+                target.repo, request.action
+            ),
+        ));
+    }
+    runner
 }
 
 fn source_readback(source: &OperationalPolicySourceRule) -> OperationalPolicySourceReadback {
@@ -1016,6 +1311,15 @@ fn require_unit_interval(
         path,
         &format!("{field} must be between 0 and 1."),
     ))
+}
+
+fn non_empty_string(value: &Option<String>) -> Option<&str> {
+    let trimmed = value.as_deref()?.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    }
 }
 
 fn valid_repo_part(value: &str) -> bool {

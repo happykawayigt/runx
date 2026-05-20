@@ -1,4 +1,4 @@
-import type { AdapterActInvocation, ActReceiptEnvelope, SkillAdapter } from "@runxhq/core/executor";
+import type { AdapterActInvocation, ActReceiptEnvelope, SkillAdapter } from "@runxhq/runtime-local";
 import {
   createMcpExecutionMetadata,
   invokeMcpToolWithMetadata,

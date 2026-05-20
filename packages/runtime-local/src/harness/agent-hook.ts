@@ -1,4 +1,4 @@
-import type { AdapterActInvocation, ActReceiptEnvelope, SkillAdapter } from "@runxhq/core/executor";
+import type { AdapterActInvocation, ActReceiptEnvelope, SkillAdapter } from "../runner-local/adapter-types.js";
 
 export interface HarnessHookHandlerResult {
   readonly status?: "success" | "failure";

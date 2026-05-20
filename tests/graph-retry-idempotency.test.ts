@@ -1,18 +1,42 @@
+import { spawnSync } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
-import type { SkillAdapter } from "@runxhq/core/executor";
-import { runLocalGraph, type Caller } from "@runxhq/runtime-local";
+import { runLocalGraph, type Caller, type SkillAdapter } from "@runxhq/runtime-local";
 
 const nonInteractiveCaller: Caller = {
   resolve: async () => undefined,
   report: () => undefined,
 };
+const workspaceRoot = process.cwd();
+const cargo = process.platform === "win32" ? "cargo.exe" : "cargo";
+const runxBinary = path.join(
+  workspaceRoot,
+  "crates",
+  "target",
+  "debug",
+  process.platform === "win32" ? "runx.exe" : "runx",
+);
 
 describe("graph retry and idempotency", () => {
+  beforeAll(() => {
+    const result = spawnSync(
+      cargo,
+      ["build", "--quiet", "--manifest-path", "crates/Cargo.toml", "-p", "runx-cli", "--bin", "runx"],
+      {
+        cwd: workspaceRoot,
+        encoding: "utf8",
+        env: process.env,
+        maxBuffer: 8 * 1024 * 1024,
+      },
+    );
+
+    expect(result.status, result.stderr || result.stdout).toBe(0);
+  }, 120_000);
+
   it("retries a read-only step and records attempt receipts", async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-retry-read-"));
     const adapter = createFlakyAdapter();
@@ -23,7 +47,7 @@ describe("graph retry and idempotency", () => {
         caller: nonInteractiveCaller,
         receiptDir: path.join(tempDir, "receipts"),
         runxHome: path.join(tempDir, "home"),
-        env: process.env,
+        env: kernelEnv(),
         adapters: [adapter],
       });
 
@@ -35,16 +59,17 @@ describe("graph retry and idempotency", () => {
         ["flaky-read", 1, "failure"],
         ["flaky-read", 2, "success"],
       ]);
-      expect(result.receipt.steps.map((step) => step.retry)).toEqual([
+      expect(result.receipt.schema).toBe("runx.harness_receipt.v1");
+      expect(result.steps.map((step) => step.retry)).toEqual([
         {
           attempt: 1,
-          max_attempts: 2,
-          rule_fired: "initial_attempt",
+          maxAttempts: 2,
+          ruleFired: "initial_attempt",
         },
         {
           attempt: 2,
-          max_attempts: 2,
-          rule_fired: "retry_attempt",
+          maxAttempts: 2,
+          ruleFired: "retry_attempt",
         },
       ]);
     } finally {
@@ -62,7 +87,7 @@ describe("graph retry and idempotency", () => {
         caller: nonInteractiveCaller,
         receiptDir: path.join(tempDir, "receipts"),
         runxHome: path.join(tempDir, "home"),
-        env: process.env,
+        env: kernelEnv(),
         adapters: [adapter],
       });
 
@@ -72,18 +97,45 @@ describe("graph retry and idempotency", () => {
       }
       expect(result.reasons).toEqual(["step 'deploy' declares mutating retry without an idempotency key"]);
       expect(adapter.callCount()).toBe(0);
-      expect(result.receipt).toMatchObject({
-        status: "failure",
-        disposition: "policy_denied",
-        steps: [
+      expect(result.receipt?.schema).toBe("runx.harness_receipt.v1");
+      expect(result.receipt?.seal.disposition).toBe("declined");
+      expect(runtimeGraphSteps(result.receipt)).toMatchObject([
           {
             step_id: "deploy",
             status: "failure",
             disposition: "policy_denied",
             receipt_id: undefined,
           },
-        ],
+      ]);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails closed with a signed receipt when retry admission cannot reach the Rust kernel", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-retry-bridge-missing-"));
+    const adapter = createFlakyAdapter();
+
+    try {
+      const result = await runLocalGraph({
+        graphPath: path.resolve("fixtures/graphs/retry/read-only.yaml"),
+        caller: nonInteractiveCaller,
+        receiptDir: path.join(tempDir, "receipts"),
+        runxHome: path.join(tempDir, "home"),
+        env: { ...process.env, RUNX_KERNEL_EVAL_BIN: "" },
+        adapters: [adapter],
       });
+
+      expect(result.status).toBe("policy_denied");
+      if (result.status !== "policy_denied") {
+        return;
+      }
+      expect(result.reasons).toEqual([
+        "retry admission failed closed: Rust kernel eval requires RUNX_KERNEL_EVAL_BIN or an explicit command.",
+      ]);
+      expect(adapter.callCount()).toBe(0);
+      expect(result.receipt?.schema).toBe("runx.harness_receipt.v1");
+      expect(result.receipt?.seal.disposition).toBe("declined");
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
@@ -99,7 +151,7 @@ describe("graph retry and idempotency", () => {
         caller: nonInteractiveCaller,
         receiptDir: path.join(tempDir, "receipts"),
         runxHome: path.join(tempDir, "home"),
-        env: process.env,
+        env: kernelEnv(),
         adapters: [adapter],
       });
 
@@ -126,7 +178,7 @@ describe("graph retry and idempotency", () => {
         caller: nonInteractiveCaller,
         receiptDir: path.join(tempDir, "receipts"),
         runxHome: path.join(tempDir, "home"),
-        env: process.env,
+        env: kernelEnv(),
         adapters: [adapter],
       });
 
@@ -136,18 +188,16 @@ describe("graph retry and idempotency", () => {
       }
       expect(result.reasons).toEqual(["step 'deploy' declares mutating retry without an idempotency key"]);
       expect(adapter.callCount()).toBe(0);
-      expect(result.receipt).toMatchObject({
-        status: "failure",
-        disposition: "policy_denied",
-        steps: [
+      expect(result.receipt?.schema).toBe("runx.harness_receipt.v1");
+      expect(result.receipt?.seal.disposition).toBe("declined");
+      expect(runtimeGraphSteps(result.receipt)).toMatchObject([
           {
             step_id: "deploy",
             status: "failure",
             disposition: "policy_denied",
             receipt_id: undefined,
           },
-        ],
-      });
+      ]);
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
@@ -164,7 +214,7 @@ describe("graph retry and idempotency", () => {
         caller: nonInteractiveCaller,
         receiptDir,
         runxHome: path.join(tempDir, "home"),
-        env: process.env,
+        env: kernelEnv(),
         adapters: [adapter],
       });
 
@@ -173,7 +223,7 @@ describe("graph retry and idempotency", () => {
         return;
       }
       expect(result.steps).toHaveLength(2);
-      const hashes = result.receipt.steps.map((step) => step.retry?.idempotency_key_hash);
+      const hashes = result.steps.map((step) => step.retry?.idempotencyKeyHash);
       expect(hashes[0]).toBeTruthy();
       expect(hashes[0]).toBe(hashes[1]);
 
@@ -187,6 +237,13 @@ describe("graph retry and idempotency", () => {
     }
   });
 });
+
+function kernelEnv(): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    RUNX_KERNEL_EVAL_BIN: runxBinary,
+  };
+}
 
 function createFlakyAdapter(): SkillAdapter & { callCount: () => number } {
   let calls = 0;
@@ -216,4 +273,29 @@ function createFlakyAdapter(): SkillAdapter & { callCount: () => number } {
       };
     },
   };
+}
+
+interface RuntimeGraphStep {
+  readonly step_id: string;
+  readonly runner?: string;
+  readonly status?: string;
+  readonly receipt_id?: string;
+  readonly fanout_group?: string;
+  readonly disposition?: string;
+  readonly outcome_state?: string;
+  readonly retry?: {
+    readonly attempt?: number;
+    readonly max_attempts?: number;
+    readonly rule_fired?: string;
+    readonly idempotency_key_hash?: string;
+  };
+  readonly governance?: unknown;
+}
+
+function runtimeGraphSteps(receipt: { readonly metadata?: Readonly<Record<string, unknown>> } | undefined): readonly RuntimeGraphStep[] {
+  const runx = receipt?.metadata?.runx;
+  expect(runx).toEqual(expect.any(Object));
+  const steps = (runx as { readonly steps?: unknown } | undefined)?.steps;
+  expect(Array.isArray(steps)).toBe(true);
+  return steps as readonly RuntimeGraphStep[];
 }

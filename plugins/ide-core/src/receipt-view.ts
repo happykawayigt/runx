@@ -1,7 +1,7 @@
 export interface ReceiptViewNode {
   readonly id: string;
   readonly label: string;
-  readonly kind: "receipt" | "step" | "sync" | "approval" | "retry";
+  readonly kind: "receipt" | "step" | "sync" | "approval" | "retry" | "harness-ref";
   readonly status?: string;
   readonly detail?: Readonly<Record<string, unknown>>;
 }
@@ -93,8 +93,24 @@ export function buildReceiptViewModel(receipt: unknown): ReceiptViewModel {
     edges.push({ from: id, to: syncId, label: "sync" });
   }
 
+  const harness = recordValue(receipt.harness);
+  for (const [index, childRef] of arrayValue(harness?.child_harness_receipt_refs).entries()) {
+    const ref = referenceValue(childRef);
+    if (!ref) {
+      continue;
+    }
+    const refId = `${id}:child:${index}`;
+    nodes.push({
+      id: refId,
+      label: `child ${ref.uri}`,
+      kind: "harness-ref",
+      detail: ref,
+    });
+    edges.push({ from: id, to: refId, label: "child" });
+  }
+
   return {
-    title: stringValue(receipt.graph_name ?? receipt.skill_name) ?? id,
+    title: receiptTitle(receipt, id),
     nodes,
     edges,
   };
@@ -113,10 +129,37 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function recordValue(value: unknown): Readonly<Record<string, unknown>> | undefined {
+  return isRecord(value) ? value : undefined;
+}
+
 function arrayValue(value: unknown): readonly unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
+}
+
+function referenceValue(value: unknown): Readonly<{ type?: string; uri: string; label?: string }> | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const uri = stringValue(value.uri);
+  if (!uri) {
+    return undefined;
+  }
+  return {
+    type: stringValue(value.type),
+    uri,
+    label: stringValue(value.label),
+  };
+}
+
+function receiptTitle(receipt: Readonly<Record<string, unknown>>, fallback: string): string {
+  const harness = recordValue(receipt.harness);
+  const harnessRef = recordValue(harness?.harness_ref);
+  return stringValue(harnessRef?.label)
+    ?? stringValue(harness?.harness_id)
+    ?? fallback;
 }

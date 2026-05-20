@@ -1,14 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { CONTROL_SCHEMA_REFS, validateCredentialEnvelope } from "@runxhq/core/executor";
+import {
+  RUNX_CONTROL_SCHEMA_REFS,
+  validateCredentialEnvelopeContract,
+} from "@runxhq/contracts";
 
 describe("executor control schema contracts", () => {
   it("exposes the published credential envelope schema ref", () => {
-    expect(CONTROL_SCHEMA_REFS.credential_envelope).toBe("https://runx.ai/spec/credential-envelope.schema.json");
+    expect(RUNX_CONTROL_SCHEMA_REFS.credential_envelope).toBe("https://runx.ai/spec/credential-envelope.schema.json");
   });
 
   it("accepts the canonical credential envelope shape", () => {
-    expect(validateCredentialEnvelope({
+    expect(validateCredentialEnvelopeContract({
       kind: "runx.credential-envelope.v1",
       grant_id: "grant_1",
       provider: "github",
@@ -39,7 +42,7 @@ describe("executor control schema contracts", () => {
   });
 
   it("rejects envelopes with a non-canonical kind", () => {
-    expect(() => validateCredentialEnvelope({
+    expect(() => validateCredentialEnvelopeContract({
       kind: "github",
       grant_id: "grant_1",
       provider: "github",

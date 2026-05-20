@@ -3,31 +3,105 @@ import { asRecord, hashString } from "@runxhq/core/util";
 import { createFixtureMcpToolCatalogAdapter } from "./fixture.js";
 import {
   validateToolManifest,
-  type SkillInput,
-  type SkillSource,
-  type ValidatedTool,
 } from "@runxhq/core/parser";
-import type {
-  ToolCatalogAdapter,
-  ToolCatalogResolvedTool,
-  ToolCatalogSearchOptions,
-  ToolCatalogSearchResult,
-  ToolInspectProvenance,
-  ToolInspectResult,
-} from "@runxhq/core/executor";
+import type { SkillInput, SkillSource, ValidatedTool } from "../parser-types.js";
 
 export const runtimeLocalToolCatalogsPackage = "@runxhq/runtime-local/tool-catalogs";
 
-export type {
-  ToolCatalogAdapter,
-  ToolCatalogInvokeRequest,
-  ToolCatalogInvokeResult,
-  ToolCatalogResolvedTool,
-  ToolCatalogSearchOptions,
-  ToolCatalogSearchResult,
-  ToolInspectProvenance,
-  ToolInspectResult,
-} from "@runxhq/core/executor";
+export interface ToolCatalogSearchResult {
+  readonly tool_id: string;
+  readonly name: string;
+  readonly summary?: string;
+  readonly source: string;
+  readonly source_label: string;
+  readonly source_type: string;
+  readonly namespace: string;
+  readonly external_name: string;
+  readonly required_scopes: readonly string[];
+  readonly tags: readonly string[];
+  readonly catalog_ref: string;
+}
+
+export interface ToolCatalogSearchOptions {
+  readonly limit?: number;
+}
+
+export interface ToolInspectProvenance {
+  readonly origin: "local" | "imported";
+  readonly source?: string;
+  readonly source_label?: string;
+  readonly source_type?: string;
+  readonly namespace?: string;
+  readonly external_name?: string;
+  readonly catalog_ref?: string;
+  readonly tool_id?: string;
+  readonly tags?: readonly string[];
+}
+
+export interface ToolInspectResult {
+  readonly ref: string;
+  readonly name: string;
+  readonly description?: string;
+  readonly execution_source_type: string;
+  readonly inputs: Readonly<Record<string, SkillInput>>;
+  readonly scopes: readonly string[];
+  readonly mutating?: boolean;
+  readonly runtime?: unknown;
+  readonly risk?: unknown;
+  readonly runx?: Record<string, unknown>;
+  readonly reference_path: string;
+  readonly skill_directory: string;
+  readonly provenance: ToolInspectProvenance;
+}
+
+export interface ToolCatalogInvokeRequest {
+  readonly inputs: Readonly<Record<string, unknown>>;
+  readonly resolvedInputs?: Readonly<Record<string, string>>;
+  readonly env?: NodeJS.ProcessEnv;
+  readonly signal?: AbortSignal;
+  readonly skillDirectory: string;
+  readonly runId?: string;
+  readonly stepId?: string;
+}
+
+export type ToolCatalogInvokeResult =
+  | {
+      readonly status: "success";
+      readonly stdout: string;
+      readonly stderr?: string;
+      readonly metadata?: Readonly<Record<string, unknown>>;
+    }
+  | {
+      readonly status: "failure";
+      readonly stdout?: string;
+      readonly stderr: string;
+      readonly errorMessage?: string;
+      readonly metadata?: Readonly<Record<string, unknown>>;
+    };
+
+export interface ToolCatalogResolvedTool {
+  readonly tool: ValidatedTool;
+  readonly result: ToolCatalogSearchResult;
+  readonly skillDirectory: string;
+  readonly referencePath: string;
+  readonly invoke: (request: ToolCatalogInvokeRequest) => Promise<ToolCatalogInvokeResult>;
+}
+
+export interface ToolCatalogAdapter {
+  readonly source: string;
+  readonly label: string;
+  readonly search: (
+    query: string,
+    options?: ToolCatalogSearchOptions,
+  ) => Promise<readonly ToolCatalogSearchResult[]>;
+  readonly resolve?: (
+    ref: string,
+    options?: {
+      readonly env?: NodeJS.ProcessEnv;
+      readonly searchFromDirectory?: string;
+    },
+  ) => Promise<ToolCatalogResolvedTool | undefined>;
+}
 export { createMcpToolCatalogAdapter, type McpToolCatalogAdapterOptions } from "./mcp.js";
 export { createFixtureMcpToolCatalogAdapter } from "./fixture.js";
 
@@ -234,4 +308,3 @@ function skillSourceToRaw(source: SkillSource): Record<string, unknown> {
 function normalizeCatalogRef(ref: string): string {
   return ref.trim().toLowerCase();
 }
-

@@ -11,11 +11,13 @@ import { errorMessage } from "@runxhq/core/util";
 import {
   type AdapterActInvocation,
   type ActReceiptEnvelope,
-  type AgentActResolutionRequest,
   type NestedSkillInvoker,
-  type ResolutionResponse,
   type SkillAdapter,
-} from "@runxhq/core/executor";
+} from "@runxhq/runtime-local";
+import type {
+  AgentActResolutionRequestContract as AgentActResolutionRequest,
+  ResolutionResponseContract as ResolutionResponse,
+} from "@runxhq/contracts";
 
 import { resolveWithAnthropic } from "./anthropic.js";
 import { resolveWithOpenAi } from "./openai.js";

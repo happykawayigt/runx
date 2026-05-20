@@ -3,12 +3,18 @@ import path from "node:path";
 import type { ArtifactEnvelope } from "@runxhq/core/artifacts";
 import { createFileKnowledgeStore } from "@runxhq/core/knowledge";
 import { resolveRunxKnowledgeDir } from "@runxhq/core/config";
-import type { GraphStep, ValidatedSkill } from "@runxhq/core/parser";
-import type { GraphScopeGrant } from "@runxhq/core/policy";
-import { hashStable, type LocalReceipt } from "@runxhq/core/receipts";
-import { isPlainRecord, isRecord } from "@runxhq/core/util";
+import { hashStable, isPlainRecord, isRecord } from "@runxhq/core/util";
+import {
+  runnerReceiptCompletedAt,
+  runnerReceiptStartedAt,
+  runnerReceiptStatus,
+  type RunnerReceipt,
+} from "./graph-governance.js";
+import type { GraphScopeGrant } from "./kernel-bridge.js";
+import type { GraphStep, ValidatedSkill } from "../parser-types.js";
 
 const atomicMetadataKeys = new Set(["authority_proof"]);
+type KnowledgeIndexReceipt = Parameters<ReturnType<typeof createFileKnowledgeStore>["indexReceipt"]>[0]["receipt"];
 
 export interface RetryReceiptContext {
   readonly attempt: number;
@@ -18,7 +24,7 @@ export interface RetryReceiptContext {
 }
 
 export async function indexReceiptIfEnabled(
-  receipt: LocalReceipt,
+  receipt: KnowledgeIndexReceipt | RunnerReceipt,
   receiptDir: string,
   options: {
     readonly knowledgeDir?: string;
@@ -29,9 +35,17 @@ export async function indexReceiptIfEnabled(
   if (!knowledgeDir) {
     return;
   }
+  const indexableReceipt: KnowledgeIndexReceipt = "status" in receipt
+    ? receipt
+    : {
+        ...receipt,
+        status: runnerReceiptStatus(receipt),
+        started_at: runnerReceiptStartedAt(receipt),
+        completed_at: runnerReceiptCompletedAt(receipt),
+      };
   await createFileKnowledgeStore(knowledgeDir).indexReceipt({
-    receipt,
-    receiptPath: path.join(receiptDir, `${receipt.id}.json`),
+    receipt: indexableReceipt,
+    receiptPath: path.join(receiptDir, `${indexableReceipt.id}.json`),
     project: resolveKnowledgeProject(options.env),
   });
 }

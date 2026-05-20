@@ -1,0 +1,10 @@
+{
+  "name": "@runxhq/cli",
+  "version": "0.0.0-cutover-fixture",
+  "bin": {
+    "runx": "./bin/runx"
+  },
+  "dependencies": {
+    "@runxhq/runtime-local": "workspace:^0.1.1"
+  }
+}

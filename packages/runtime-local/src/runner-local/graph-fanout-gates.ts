@@ -1,9 +1,12 @@
 import type { ArtifactEnvelope } from "@runxhq/core/artifacts";
-import { validateResolutionRequest, type ResolutionRequest } from "@runxhq/core/executor";
-import type { ExecutionGraph, GraphStep } from "@runxhq/core/parser";
-import type { GraphReceiptSyncPoint } from "@runxhq/core/receipts";
+import {
+  validateResolutionRequestContract as validateResolutionRequest,
+  type ResolutionRequestContract as ResolutionRequest,
+} from "@runxhq/contracts";
 import type { FanoutSyncDecision } from "@runxhq/core/state-machine";
 import { isRecord } from "@runxhq/core/util";
+import type { GraphReceiptSyncPoint } from "./graph-governance.js";
+import type { ExecutionGraph, GraphStep } from "../parser-types.js";
 
 export interface PendingFanoutGate {
   readonly gateKey: string;

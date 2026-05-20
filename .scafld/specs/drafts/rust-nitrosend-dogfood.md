@@ -2,7 +2,7 @@
 spec_version: '2.0'
 task_id: rust-nitrosend-dogfood
 created: '2026-05-18T00:00:00Z'
-updated: '2026-05-20T00:21:00Z'
+updated: '2026-05-20T02:42:00Z'
 status: draft
 harden_status: not_run
 size: medium
@@ -14,18 +14,27 @@ risk_level: medium
 ## Current State
 
 Status: draft
-Current phase: policy fixture gap closed; external replay pending
-Next: add external-shaped Nitrosend fixture only after reusable target runner
-and post-merge observer gates are ready
+Current phase: external-shaped fixture contract added; external replay pending
+Next: add Rust runtime replay only after target execution and observer runtime
+gates are ready
 Reason: refreshed against the current local OSS checkout. This is a plan spec,
-with the Nitrosend-like policy fixture gap now closed.
+with no remaining safe local Nitrosend policy fixture work found.
 Blockers: `runx-target-repo-runners` and
-`runx-post-merge-outcome-observer` are still draft. No external-shaped
-Nitrosend replay fixture exists in this checkout yet.
+`runx-post-merge-outcome-observer` are still draft for live execution. A
+sanitized external-shaped fixture contract now exists, but no Rust runtime
+replay fixture exists yet.
 Allowed follow-up command: none during this refresh; do not run
 `scafld harden rust-nitrosend-dogfood`.
-Latest runner update: 2026-05-20 nitrosend/api policy fixture coverage added;
-Rust and TypeScript policy validation passed.
+Latest runner update: 2026-05-20 added Rust contract request-admission coverage
+for the Nitrosend-like policy. The new Rust API admits
+`nitrosend/nitrosend`, `nitrosend/api`, and `nitrosend/app` through the
+policy-backed source, target, runner, owner, dedupe, and outcome surface, and
+denies unknown target repos and missing source-thread routing before mutation.
+Runtime skill fixtures are present; `fixtures/external/nitrosend/issue-intake`
+now contains the sanitized `api-source-thread.json` fixture; the Nitrosend-like
+policy fixture covers workspace, API, and app target routing; contract policy
+validation passed; after refreshing ignored `dist` output with `pnpm build`,
+CLI policy lint/inspect also pass.
 Review gate: not_started
 
 ## Summary
@@ -45,10 +54,13 @@ Current local facts:
 - `fixtures/operational-policy/nitrosend-like.json` is present, but it is only
   Nitrosend-like. It now includes `nitrosend/nitrosend`, `nitrosend/api`, and
   `nitrosend/app` so policy lint/inspect cover the real target set.
-- No external-shaped Nitrosend replay fixture exists in this checkout:
-  `fixtures/external/nitrosend/**` is absent.
+- `fixtures/external/nitrosend/issue-intake/api-source-thread.json` exists as
+  the first sanitized external-shaped fixture contract. It cites the generic
+  runtime fixtures, the Nitrosend-like policy, the target-runner planning and
+  dedupe lookup contracts, and the post-merge harness receipt fixture.
 - The current reusable follow-on work is not complete: target-repo runner
-  support and the post-merge closure observer are both draft specs.
+  live execution and the post-merge closure observer runtime are both draft
+  specs.
 
 The dogfood goal is preservation, not a new adopter flow. The real Nitrosend
 workflow may keep using the human/product names `issue-intake` and
@@ -158,11 +170,11 @@ Out of scope:
 
 - [ ] Existing generic `issue-intake` and `issue-to-pr` runtime fixtures remain
   green and are referenced by the external-shaped Nitrosend fixture plan.
-- [ ] `fixtures/external/nitrosend/issue-intake/**` exists and contains
+- [x] `fixtures/external/nitrosend/issue-intake/**` exists and contains
   sanitized deterministic inputs, not live external capture.
-- [ ] The Nitrosend-like operational policy fixture covers
+- [x] The Nitrosend-like operational policy fixture covers
   `nitrosend/nitrosend`, `nitrosend/api`, and `nitrosend/app`.
-- [ ] `runx policy lint fixtures/operational-policy/nitrosend-like.json`
+- [x] `runx policy lint fixtures/operational-policy/nitrosend-like.json`
   accepts the policy, and `runx policy inspect` redacts raw provider locators.
 - [ ] Target PR creation uses `runx-target-repo-runners`; dedupe is represented
   in pull-request outbox `metadata.dedupe` and in the sealed receipt proof path.
@@ -183,12 +195,64 @@ Current local discovery/guard commands:
 
 ```sh
 find fixtures/runtime/skills -maxdepth 4 -type f | sort
-test ! -d fixtures/external
+test -f fixtures/external/nitrosend/issue-intake/api-source-thread.json
+cargo test --manifest-path crates/Cargo.toml -p runx-contracts --test nitrosend_external_fixture -- --nocapture
 pnpm --filter @runxhq/cli run runx policy lint fixtures/operational-policy/nitrosend-like.json --json
 pnpm --filter @runxhq/cli run runx policy inspect fixtures/operational-policy/nitrosend-like.json --json
+cargo test --manifest-path crates/Cargo.toml -p runx-contracts --test operational_policy -- --nocapture
+cargo test --manifest-path crates/Cargo.toml -p runx-contracts
 ! rg -n "runx\\.issue_to_pr_outcome\\.v1|issue_to_pr_outcome|verification[_-]report|target[_-]?effect|\"effect\"\\s*:" fixtures/runtime fixtures/operational-policy skills crates/runx-runtime
 git diff --check -- .scafld/specs/drafts/rust-nitrosend-dogfood.md
 ```
+
+2026-05-20 local refresh results:
+
+- `find fixtures/runtime/skills -maxdepth 4 -type f | sort` passed and listed
+  the existing generic `issue-intake` and `issue-to-pr` runtime fixtures.
+- `test -f fixtures/external/nitrosend/issue-intake/api-source-thread.json`
+  passed; a sanitized external-shaped Nitrosend fixture contract now exists.
+- `cargo test --manifest-path crates/Cargo.toml -p runx-contracts --test nitrosend_external_fixture -- --nocapture`
+  passed: 2 tests, deriving a target runner plan and provider dedupe lookup
+  from the fixture and validating the cited post-merge harness receipt.
+- A direct contract-level policy check against
+  `fixtures/operational-policy/nitrosend-like.json` passed with no findings and
+  projected a readback that redacts raw Slack/Sentry source locators.
+- `pnpm vitest run packages/contracts/src/schemas/operational-policy.test.ts`
+  passed: 23 tests.
+- Static target coverage check passed for `nitrosend/nitrosend`,
+  `nitrosend/api`, and `nitrosend/app` across targets, runner target repos, and
+  owner routes.
+- The retired-artifact guard passed:
+  `! rg -n "runx\\.issue_to_pr_outcome\\.v1|issue_to_pr_outcome|verification[_-]report|target[_-]?effect|\"effect\"\\s*:" fixtures/runtime fixtures/operational-policy skills crates/runx-runtime`.
+- `git diff --check -- .scafld/specs/drafts/rust-nitrosend-dogfood.md fixtures/operational-policy/nitrosend-like.json packages/contracts/src/schemas/operational-policy.test.ts packages/cli/src/index.test.ts packages/cli/src/commands/policy.ts`
+  passed before this evidence note was added.
+- `pnpm build` passed and refreshed ignored workspace `dist` output after the
+  receipts sunset removed `@runxhq/core/receipts`.
+- `pnpm --filter @runxhq/cli run runx policy lint fixtures/operational-policy/nitrosend-like.json --json`
+  passed with `status: "success"` and no findings.
+- `pnpm --filter @runxhq/cli run runx policy inspect fixtures/operational-policy/nitrosend-like.json --json`
+  passed with `status: "success"` and no findings.
+- `cargo test --manifest-path crates/Cargo.toml -p runx-contracts --test operational_policy -- --nocapture`
+  passed: 9 tests, including Rust request-admission coverage for all three
+  Nitrosend-like target repos plus unknown-target and missing-source-thread
+  fail-closed cases.
+- `cargo test --manifest-path crates/Cargo.toml -p runx-contracts` passed.
+
+2026-05-20 narrow policy-fixture slice verification:
+
+- The current safe slice is limited to verifying the Nitrosend-like policy and
+  external dogfood fixture cover `nitrosend/api` alongside
+  `nitrosend/nitrosend` and `nitrosend/app`.
+- Static fixture coverage passed for all three repos across policy targets,
+  runner `target_repos`, and owner-route `target_repos`.
+- Focused Rust contract tests passed for operational policy admission,
+  Nitrosend external fixture derivation, and target-runner planning/dedupe.
+- TypeScript operational-policy fixture tests passed.
+- CLI policy lint/inspect passed with no findings and redacted source
+  locators.
+- `scafld validate rust-nitrosend-dogfood --json` passed. `scafld build` and
+  `scafld complete` were not run because this parent dogfood spec remains a
+  draft with runtime replay acceptance still intentionally pending.
 
 Future validation once the missing external fixture and runner/observer specs
 land:

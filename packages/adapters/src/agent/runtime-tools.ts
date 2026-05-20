@@ -1,10 +1,11 @@
+import { errorMessage } from "@runxhq/core/util";
 import {
+  resolveToolExecutionTarget,
+  runValidatedSkill,
   type AdapterActInvocation,
   type NestedSkillInvoker,
   type SkillAdapter,
-} from "@runxhq/core/executor";
-import { errorMessage } from "@runxhq/core/util";
-import { resolveToolExecutionTarget, runValidatedSkill } from "@runxhq/runtime-local";
+} from "@runxhq/runtime-local";
 
 import { createA2aAdapter, createFixtureA2aTransport } from "../a2a/index.js";
 import { createCliToolAdapter } from "../cli-tool/index.js";

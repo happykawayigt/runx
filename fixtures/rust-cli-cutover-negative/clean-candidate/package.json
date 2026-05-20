@@ -1,0 +1,11 @@
+{
+  "name": "@runxhq/cli",
+  "version": "0.0.0-cutover-fixture",
+  "type": "module",
+  "bin": {
+    "runx": "./bin/runx"
+  },
+  "optionalDependencies": {
+    "@runxhq/runx-darwin-arm64": "0.0.0-cutover-fixture"
+  }
+}

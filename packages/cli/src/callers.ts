@@ -1,7 +1,11 @@
 import { createInterface } from "node:readline/promises";
 import { readFile } from "node:fs/promises";
 
-import type { Question, ResolutionRequest, ResolutionResponse } from "@runxhq/core/executor";
+import type {
+  QuestionContract as Question,
+  ResolutionRequestContract as ResolutionRequest,
+  ResolutionResponseContract as ResolutionResponse,
+} from "@runxhq/contracts";
 import { isRecord } from "@runxhq/core/util";
 import type { Caller } from "@runxhq/runtime-local";
 

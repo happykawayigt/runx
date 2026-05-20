@@ -1,4 +1,7 @@
-import type { ResolutionRequest, ResolutionResponse } from "@runxhq/core/executor";
+import type {
+  ResolutionRequestContract as ResolutionRequest,
+  ResolutionResponseContract as ResolutionResponse,
+} from "@runxhq/contracts";
 import type { Caller, ExecutionEvent } from "../runner-local/index.js";
 
 export interface StructuredResolution {

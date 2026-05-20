@@ -7,14 +7,14 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use runx_contracts::{HARNESS_RECEIPT_SCHEMA, HarnessReceipt};
-use runx_receipts::verify_harness_receipt_proof;
+use runx_receipts::{ReceiptProofContextProvider, verify_harness_receipt_proof};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::receipt_paths::{
     ReceiptStoreLabel, ReceiptStorePublicProjection, safe_receipt_store_projection,
 };
-use crate::receipts::{LocalHarnessSignatureVerifier, proof_context};
+use crate::receipts::{RuntimeReceiptProofContextProvider, RuntimeReceiptSignaturePolicy};
 
 const RECEIPT_STORE_INDEX_SCHEMA: &str = "runx.receipt_store_index.v1";
 const INDEX_FILE_NAME: &str = "index.json";
@@ -45,29 +45,48 @@ impl LocalReceiptStore {
     }
 
     pub fn read_exact(&self, receipt_id: &str) -> Result<HarnessReceipt, ReceiptStoreError> {
+        self.read_exact_with_policy(
+            receipt_id,
+            RuntimeReceiptSignaturePolicy::local_development(),
+        )
+    }
+
+    pub fn read_exact_with_policy(
+        &self,
+        receipt_id: &str,
+        signature_policy: RuntimeReceiptSignaturePolicy<'_>,
+    ) -> Result<HarnessReceipt, ReceiptStoreError> {
         let file_name = receipt_file_name(receipt_id)?;
         self.ensure_store_dir()?;
-        read_receipt_file(&self.root.join(file_name), receipt_id)
+        read_receipt_file(&self.root.join(file_name), receipt_id, signature_policy)
     }
 
     pub fn write_receipt(&self, receipt: &HarnessReceipt) -> Result<(), ReceiptStoreError> {
+        self.write_receipt_with_policy(receipt, RuntimeReceiptSignaturePolicy::local_development())
+    }
+
+    pub fn write_receipt_with_policy(
+        &self,
+        receipt: &HarnessReceipt,
+        signature_policy: RuntimeReceiptSignaturePolicy<'_>,
+    ) -> Result<(), ReceiptStoreError> {
         let file_name = receipt_file_name(&receipt.id)?;
         self.ensure_or_create_store_dir()?;
-        let receipt_path = self.root.join(&file_name);
+        let file_path = self.root.join(&file_name);
         let contents =
             serde_json::to_vec(receipt).map_err(|source| ReceiptStoreError::MalformedReceipt {
-                path: receipt_path.clone(),
+                path: file_path.clone(),
                 message: source.to_string(),
             })?;
 
-        if receipt_path.exists() {
+        if file_path.exists() {
             let existing =
-                fs::read(&receipt_path).map_err(|source| ReceiptStoreError::ReceiptUnreadable {
-                    path: receipt_path.clone(),
+                fs::read(&file_path).map_err(|source| ReceiptStoreError::ReceiptUnreadable {
+                    path: file_path.clone(),
                     source,
                 })?;
             if existing == contents {
-                verify_receipt_proof(&receipt_path, receipt)?;
+                verify_receipt_proof(&file_path, receipt, signature_policy)?;
                 return Ok(());
             }
             return Err(ReceiptStoreError::ReceiptAlreadyExists {
@@ -75,9 +94,9 @@ impl LocalReceiptStore {
             });
         }
 
-        verify_receipt_proof(&receipt_path, receipt)?;
+        verify_receipt_proof(&file_path, receipt, signature_policy)?;
         write_atomic(&self.root, &file_name, &contents)?;
-        match self.rebuild_index() {
+        match self.rebuild_index_with_policy(signature_policy) {
             Ok(_) => Ok(()),
             Err(error) => Err(ReceiptStoreError::ReceiptIndexStale {
                 path: self.index_path(),
@@ -87,6 +106,13 @@ impl LocalReceiptStore {
     }
 
     pub fn list(&self) -> Result<Vec<HarnessReceipt>, ReceiptStoreError> {
+        self.list_with_policy(RuntimeReceiptSignaturePolicy::local_development())
+    }
+
+    pub fn list_with_policy(
+        &self,
+        signature_policy: RuntimeReceiptSignaturePolicy<'_>,
+    ) -> Result<Vec<HarnessReceipt>, ReceiptStoreError> {
         self.ensure_store_dir()?;
         let mut receipts = Vec::new();
         for entry in
@@ -108,18 +134,27 @@ impl LocalReceiptStore {
             let Some(receipt_id) = path.file_stem().and_then(OsStr::to_str) else {
                 continue;
             };
-            receipts.push(read_receipt_file(&path, receipt_id)?);
+            receipts.push(read_receipt_file(&path, receipt_id, signature_policy)?);
         }
         receipts.sort_by(|left, right| left.id.cmp(&right.id));
         Ok(receipts)
     }
 
     pub fn load_index(&self) -> Result<ReceiptStoreIndex, ReceiptStoreError> {
+        self.load_index_with_policy(RuntimeReceiptSignaturePolicy::local_development())
+    }
+
+    pub fn load_index_with_policy(
+        &self,
+        signature_policy: RuntimeReceiptSignaturePolicy<'_>,
+    ) -> Result<ReceiptStoreIndex, ReceiptStoreError> {
         self.ensure_store_dir()?;
         let index_path = self.index_path();
         let contents = match fs::read_to_string(&index_path) {
             Ok(contents) => contents,
-            Err(source) if source.kind() == ErrorKind::NotFound => return self.rebuild_index(),
+            Err(source) if source.kind() == ErrorKind::NotFound => {
+                return self.rebuild_index_with_policy(signature_policy);
+            }
             Err(source) => {
                 return Err(ReceiptStoreError::StoreUnreadable {
                     path: index_path,
@@ -139,13 +174,20 @@ impl LocalReceiptStore {
                 message: format!("unsupported index schema {}", index.schema),
             });
         }
-        self.verify_index(&index)?;
+        self.verify_index(&index, signature_policy)?;
         Ok(index)
     }
 
     pub fn rebuild_index(&self) -> Result<ReceiptStoreIndex, ReceiptStoreError> {
+        self.rebuild_index_with_policy(RuntimeReceiptSignaturePolicy::local_development())
+    }
+
+    pub fn rebuild_index_with_policy(
+        &self,
+        signature_policy: RuntimeReceiptSignaturePolicy<'_>,
+    ) -> Result<ReceiptStoreIndex, ReceiptStoreError> {
         let entries = self
-            .list()?
+            .list_with_policy(signature_policy)?
             .into_iter()
             .map(|receipt| ReceiptStoreIndexEntry {
                 receipt_id: receipt.id.clone(),
@@ -162,8 +204,12 @@ impl LocalReceiptStore {
         Ok(index)
     }
 
-    fn verify_index(&self, index: &ReceiptStoreIndex) -> Result<(), ReceiptStoreError> {
-        let listed = self.list()?;
+    fn verify_index(
+        &self,
+        index: &ReceiptStoreIndex,
+        signature_policy: RuntimeReceiptSignaturePolicy<'_>,
+    ) -> Result<(), ReceiptStoreError> {
+        let listed = self.list_with_policy(signature_policy)?;
         let listed_ids = listed
             .iter()
             .map(|receipt| receipt.id.as_str())
@@ -187,7 +233,7 @@ impl LocalReceiptStore {
                     message: "index file name does not match receipt id".to_owned(),
                 });
             }
-            let receipt = self.read_exact(&entry.receipt_id)?;
+            let receipt = self.read_exact_with_policy(&entry.receipt_id, signature_policy)?;
             if receipt.created_at != entry.created_at {
                 return Err(ReceiptStoreError::ReceiptIndexStale {
                     path: self.index_path(),
@@ -373,7 +419,11 @@ fn receipt_file_name(receipt_id: &str) -> Result<String, ReceiptStoreError> {
     Ok(format!("{receipt_id}.json"))
 }
 
-fn read_receipt_file(path: &Path, expected_id: &str) -> Result<HarnessReceipt, ReceiptStoreError> {
+fn read_receipt_file(
+    path: &Path,
+    expected_id: &str,
+    signature_policy: RuntimeReceiptSignaturePolicy<'_>,
+) -> Result<HarnessReceipt, ReceiptStoreError> {
     let contents = fs::read_to_string(path).map_err(|source| {
         if source.kind() == ErrorKind::NotFound {
             ReceiptStoreError::MissingReceipt {
@@ -386,13 +436,14 @@ fn read_receipt_file(path: &Path, expected_id: &str) -> Result<HarnessReceipt, R
             }
         }
     })?;
-    parse_receipt_contents(&contents, path, expected_id)
+    parse_receipt_contents(&contents, path, expected_id, signature_policy)
 }
 
 fn parse_receipt_contents(
     contents: &str,
     path: &Path,
     expected_id: &str,
+    signature_policy: RuntimeReceiptSignaturePolicy<'_>,
 ) -> Result<HarnessReceipt, ReceiptStoreError> {
     let probe = serde_json::from_str::<ReceiptSchemaProbe>(contents).map_err(|source| {
         ReceiptStoreError::MalformedJson {
@@ -420,7 +471,7 @@ fn parse_receipt_contents(
             file_stem: expected_id.to_owned(),
         });
     }
-    verify_receipt_proof(path, &receipt)?;
+    verify_receipt_proof(path, &receipt, signature_policy)?;
     Ok(receipt)
 }
 
@@ -429,9 +480,13 @@ struct ReceiptSchemaProbe {
     schema: Option<String>,
 }
 
-fn verify_receipt_proof(path: &Path, receipt: &HarnessReceipt) -> Result<(), ReceiptStoreError> {
-    let verifier = LocalHarnessSignatureVerifier;
-    let context = proof_context(&verifier, receipt);
+fn verify_receipt_proof(
+    path: &Path,
+    receipt: &HarnessReceipt,
+    signature_policy: RuntimeReceiptSignaturePolicy<'_>,
+) -> Result<(), ReceiptStoreError> {
+    let proof_contexts = RuntimeReceiptProofContextProvider::new(signature_policy);
+    let context = proof_contexts.proof_context(receipt);
     let verification = verify_harness_receipt_proof(receipt, &context);
     if verification.valid {
         Ok(())

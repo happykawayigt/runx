@@ -2,6 +2,18 @@ use runx_contracts::JsonValue;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegistryLinkResolution {
+    pub link: String,
+    pub skill_id: String,
+    pub version: String,
+    pub digest: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub registry_url: Option<String>,
+    pub install_command: String,
+    pub run_command: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TrustTier {
     FirstParty,
@@ -62,6 +74,14 @@ pub struct RegistrySourceMetadata {
     pub publisher_handle: Option<String>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrustSignal {
+    pub id: String,
+    pub label: String,
+    pub status: String,
+    pub value: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct RegistrySearchResult {
     pub skill_id: String,
@@ -71,14 +91,126 @@ pub struct RegistrySearchResult {
     pub owner: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub digest: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_label: Option<String>,
     pub source_type: String,
     pub profile_mode: ProfileMode,
     pub runner_names: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile_digest: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile_trust_tier: Option<TrustTier>,
     pub required_scopes: Vec<String>,
     pub tags: Vec<String>,
     pub trust_tier: TrustTier,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub trust_signals: Vec<TrustSignal>,
     pub install_command: String,
     pub run_command: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct RegistrySkillVersion {
+    pub skill_id: String,
+    pub owner: String,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub version: String,
+    pub digest: String,
+    pub markdown: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile_document: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile_digest: Option<String>,
+    pub runner_names: Vec<String>,
+    pub source_type: String,
+    pub trust_tier: TrustTier,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub catalog_kind: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub catalog_audience: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub catalog_visibility: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_metadata: Option<RegistrySourceMetadata>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attestations: Vec<RegistryAttestation>,
+    pub required_scopes: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime: Option<JsonValue>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auth: Option<JsonValue>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub risk: Option<JsonValue>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runx: Option<runx_contracts::JsonObject>,
+    pub tags: Vec<String>,
+    pub publisher: RegistryPublisher,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct RegistrySkill {
+    pub skill_id: String,
+    pub owner: String,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub latest_version: String,
+    pub latest_digest: String,
+    pub versions: Vec<RegistrySkillVersion>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct RegistrySkillResolution {
+    pub markdown: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile_document: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile_digest: Option<String>,
+    pub runner_names: Vec<String>,
+    pub skill_id: String,
+    pub name: String,
+    pub version: String,
+    pub digest: String,
+    pub source: String,
+    pub source_label: String,
+    pub source_type: String,
+    pub trust_tier: TrustTier,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub registry_url: Option<String>,
+    pub install_command: String,
+    pub run_command: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PublishSkillMarkdownResult {
+    pub status: PublishStatus,
+    pub skill_id: String,
+    pub name: String,
+    pub version: String,
+    pub digest: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile_digest: Option<String>,
+    pub runner_names: Vec<String>,
+    pub source_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub registry_url: Option<String>,
+    pub link: RegistryLinkResolution,
+    pub record: RegistrySkillVersion,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PublishStatus {
+    Published,
+    Unchanged,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -127,7 +259,7 @@ pub struct AcquiredRegistrySkill {
     pub install_count: u64,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResolvedRegistryRef {
     pub skill_id: String,
     pub version: Option<String>,

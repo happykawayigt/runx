@@ -7,20 +7,38 @@ import {
   parseRunnerManifestYaml,
   validateRunnerManifest,
   validateSkillInstall,
-  type SkillInstallOrigin,
 } from "@runxhq/core/parser";
-import { hashString } from "@runxhq/core/receipts";
-import { isNotFound, readOptionalFile } from "@runxhq/core/util";
-import {
-  acquireRegistrySkill,
-  resolveRegistrySkill,
-  resolveRemoteRegistryRef,
-  type RegistryStore,
-} from "@runxhq/core/registry";
+import { asRecord, fetchWithTimeout, hashString, isNotFound, readOptionalFile } from "@runxhq/core/util";
+import type { SkillInstallOrigin } from "../parser-types.js";
+
+type RegistryTrustTier = "first_party" | "verified" | "community";
+
+export interface SkillInstallRegistrySkillVersion {
+  readonly markdown: string;
+  readonly profile_document?: string;
+  readonly profile_digest?: string;
+  readonly runner_names: readonly string[];
+  readonly skill_id: string;
+  readonly name: string;
+  readonly version: string;
+  readonly digest: string;
+  readonly source_type: string;
+  readonly trust_tier: RegistryTrustTier;
+}
+
+export interface SkillInstallRegistrySkill {
+  readonly skill_id: string;
+  readonly name: string;
+}
+
+export interface SkillInstallRegistryStore {
+  readonly getVersion: (skillId: string, version?: string) => Promise<SkillInstallRegistrySkillVersion | undefined>;
+  readonly listSkills?: () => Promise<readonly SkillInstallRegistrySkill[]>;
+}
 
 export interface InstallLocalSkillOptions {
   readonly ref: string;
-  readonly registryStore?: RegistryStore;
+  readonly registryStore?: SkillInstallRegistryStore;
   readonly marketplaceAdapters?: readonly MarketplaceAdapter[];
   readonly destinationRoot: string;
   readonly version?: string;
@@ -48,6 +66,24 @@ interface FetchedInstallCandidate {
   readonly markdown: string;
   readonly profileDocument?: string;
   readonly origin: SkillInstallOrigin;
+}
+
+interface RegistrySkillResolution {
+  readonly markdown: string;
+  readonly profile_document?: string;
+  readonly profile_digest?: string;
+  readonly runner_names: readonly string[];
+  readonly skill_id: string;
+  readonly name: string;
+  readonly version: string;
+  readonly digest: string;
+  readonly source: "runx-registry";
+  readonly source_label: "runx registry";
+  readonly source_type: string;
+  readonly trust_tier: RegistryTrustTier;
+  readonly registry_url?: string;
+  readonly add_command: string;
+  readonly run_command: string;
 }
 
 export async function installLocalSkill(options: InstallLocalSkillOptions): Promise<InstallLocalSkillResult> {
@@ -144,14 +180,14 @@ async function fetchInstallCandidate(options: InstallLocalSkillOptions): Promise
     if (!options.installationId) {
       throw new Error("Remote registry installs require an installation id.");
     }
-    const resolvedRef = await resolveRemoteRegistryRef(options.ref, {
+    const resolvedRef = await resolveRemoteRegistryRefForInstall(options.ref, {
       baseUrl: options.registryUrl,
       version: options.version,
     });
     if (!resolvedRef) {
       throw new Error(`Registry skill not found: ${options.ref}`);
     }
-    const acquired = await acquireRegistrySkill(resolvedRef.skill_id, {
+    const acquired = await acquireRegistrySkillForInstall(resolvedRef.skill_id, {
       baseUrl: options.registryUrl,
       installationId: options.installationId,
       version: resolvedRef.version,
@@ -178,7 +214,7 @@ async function fetchInstallCandidate(options: InstallLocalSkillOptions): Promise
     throw new Error("A local registry store is required when no remote registry URL is configured.");
   }
 
-  const resolved = await resolveRegistrySkill(options.registryStore, options.ref, {
+  const resolved = await resolveRegistrySkillForInstall(options.registryStore, options.ref, {
     version: options.version,
     registryUrl: options.registryUrl,
   });
@@ -204,6 +240,374 @@ async function fetchInstallCandidate(options: InstallLocalSkillOptions): Promise
 
 function isRemoteRegistryUrl(value: string | undefined): value is string {
   return typeof value === "string" && /^https?:\/\//i.test(value);
+}
+
+interface ResolveRegistrySkillForInstallOptions {
+  readonly version?: string;
+  readonly registryUrl?: string;
+}
+
+interface ParsedRegistrySkillRef {
+  readonly skillId: string;
+  readonly version?: string;
+}
+
+async function resolveRegistrySkillForInstall(
+  store: SkillInstallRegistryStore,
+  ref: string,
+  options: ResolveRegistrySkillForInstallOptions = {},
+): Promise<RegistrySkillResolution | undefined> {
+  const parsed = parseRegistrySkillRef(ref);
+  const version = options.version ?? parsed.version;
+  const record = parsed.skillId.includes("/")
+    ? await store.getVersion(parsed.skillId, version)
+    : await resolveRegistrySkillByNameForInstall(store, parsed.skillId, version);
+
+  if (!record) {
+    return undefined;
+  }
+
+  return registrySkillResolutionFromRecord(record, options.registryUrl);
+}
+
+async function resolveRegistrySkillByNameForInstall(
+  store: SkillInstallRegistryStore,
+  name: string,
+  version?: string,
+): Promise<SkillInstallRegistrySkillVersion | undefined> {
+  if (!store.listSkills) {
+    throw new Error(`Registry ref '${name}' requires a registry store that can list skills. Use '<owner>/<name>' instead.`);
+  }
+  const normalized = slugifyRegistryPart(name);
+  const matches = (await store.listSkills()).filter(
+    (skill) => skill.name === normalized || skill.skill_id.endsWith(`/${normalized}`),
+  );
+
+  if (matches.length === 0) {
+    return undefined;
+  }
+  if (matches.length > 1) {
+    throw new Error(`Registry ref '${name}' is ambiguous. Use '<owner>/<name>' instead.`);
+  }
+
+  return await store.getVersion(matches[0].skill_id, version);
+}
+
+function registrySkillResolutionFromRecord(
+  record: SkillInstallRegistrySkillVersion,
+  registryUrl?: string,
+): RegistrySkillResolution {
+  const ref = `${record.skill_id}@${record.version}`;
+  const registryFlag = registryUrl ? ` --registry ${registryUrl}` : "";
+  return {
+    markdown: record.markdown,
+    profile_document: record.profile_document,
+    profile_digest: record.profile_digest,
+    runner_names: record.runner_names,
+    skill_id: record.skill_id,
+    name: record.name,
+    version: record.version,
+    digest: record.digest,
+    source: "runx-registry",
+    source_label: "runx registry",
+    source_type: record.source_type,
+    trust_tier: validateRegistryTrustTier(record.trust_tier, "registry_version.trust_tier"),
+    registry_url: registryUrl,
+    add_command: `runx skill add ${ref}${registryFlag}`,
+    run_command: `runx skill ${record.name}`,
+  };
+}
+
+function parseRegistrySkillRef(ref: string): ParsedRegistrySkillRef {
+  const withoutProtocol = ref.startsWith("runx://skill/")
+    ? decodeURIComponent(ref.slice("runx://skill/".length))
+    : ref;
+  const withoutPrefix = withoutProtocol.replace(/^(registry|runx-registry):/, "");
+  const atIndex = withoutPrefix.lastIndexOf("@");
+
+  if (atIndex <= 0) {
+    return { skillId: withoutPrefix };
+  }
+
+  return {
+    skillId: withoutPrefix.slice(0, atIndex),
+    version: withoutPrefix.slice(atIndex + 1) || undefined,
+  };
+}
+
+function slugifyRegistryPart(value: string): string {
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  if (!slug) {
+    throw new Error("Registry slugs cannot be empty.");
+  }
+  return slug;
+}
+
+interface ResolveRemoteRegistryRefForInstallOptions {
+  readonly baseUrl: string;
+  readonly version?: string;
+}
+
+async function resolveRemoteRegistryRefForInstall(
+  ref: string,
+  options: ResolveRemoteRegistryRefForInstallOptions,
+): Promise<{ readonly skill_id: string; readonly version?: string } | undefined> {
+  const parsed = parseRegistrySkillRef(ref);
+  if (parsed.skillId.includes("/")) {
+    return {
+      skill_id: parsed.skillId,
+      version: options.version ?? parsed.version,
+    };
+  }
+
+  const matches = (await searchRemoteRegistryForInstall(parsed.skillId, {
+    baseUrl: options.baseUrl,
+    limit: 100,
+  })).filter((candidate) => candidate.name === parsed.skillId.trim().toLowerCase());
+  if (matches.length === 0) {
+    return undefined;
+  }
+  if (matches.length > 1) {
+    throw new Error(`Registry ref '${parsed.skillId}' is ambiguous. Use '<owner>/<name>' instead.`);
+  }
+  return {
+    skill_id: matches[0].skill_id,
+    version: options.version ?? parsed.version ?? matches[0].version,
+  };
+}
+
+interface SearchRemoteRegistryForInstallOptions {
+  readonly baseUrl: string;
+  readonly limit: number;
+}
+
+interface RemoteRegistrySearchResult {
+  readonly skill_id: string;
+  readonly name: string;
+  readonly version?: string;
+}
+
+async function searchRemoteRegistryForInstall(
+  query: string,
+  options: SearchRemoteRegistryForInstallOptions,
+): Promise<readonly RemoteRegistrySearchResult[]> {
+  const params = new URLSearchParams();
+  if (query.trim().length > 0) {
+    params.set("q", query.trim());
+  }
+  params.set("limit", String(options.limit));
+  const response = await fetchWithTimeout({
+    url: `${options.baseUrl.replace(/\/$/, "")}/v1/skills?${params.toString()}`,
+    description: `Registry search for '${query}'`,
+  });
+  if (!response.ok) {
+    throw new Error(`Registry search failed for '${query}': HTTP ${response.status}`);
+  }
+  const payload = asRecord(await response.json());
+  const skills = Array.isArray(payload?.skills) ? payload.skills : undefined;
+  if (payload?.status !== "success" || !skills) {
+    throw new Error(`Registry search returned an invalid payload for '${query}'.`);
+  }
+  return skills.map((skill) => validateRemoteRegistrySearchResult(skill, query));
+}
+
+function validateRemoteRegistrySearchResult(value: unknown, query: string): RemoteRegistrySearchResult {
+  const skill = asRecord(value);
+  if (
+    !skill
+    || typeof skill.skill_id !== "string"
+    || typeof skill.name !== "string"
+    || typeof skill.owner !== "string"
+    || typeof skill.source_type !== "string"
+    || (skill.profile_mode !== "portable" && skill.profile_mode !== "profiled")
+    || !isStringArray(skill.runner_names)
+    || !isStringArray(skill.required_scopes)
+    || !isStringArray(skill.tags)
+    || !isRegistryTrustTier(skill.trust_tier)
+    || typeof skill.install_command !== "string"
+    || typeof skill.run_command !== "string"
+  ) {
+    throw new Error(`Registry search returned an invalid skill entry for '${query}'.`);
+  }
+  return {
+    skill_id: skill.skill_id,
+    name: skill.name,
+    version: optionalString(skill.version),
+  };
+}
+
+interface AcquireRegistrySkillForInstallOptions {
+  readonly baseUrl: string;
+  readonly installationId: string;
+  readonly version?: string;
+  readonly channel?: string;
+}
+
+interface AcquiredRegistrySkillForInstall {
+  readonly skill_id: string;
+  readonly owner: string;
+  readonly name: string;
+  readonly version: string;
+  readonly digest: string;
+  readonly markdown: string;
+  readonly profile_document?: string;
+  readonly profile_digest?: string;
+  readonly runner_names: readonly string[];
+  readonly trust_tier: RegistryTrustTier;
+}
+
+async function acquireRegistrySkillForInstall(
+  skillId: string,
+  options: AcquireRegistrySkillForInstallOptions,
+): Promise<AcquiredRegistrySkillForInstall> {
+  const [owner, name] = splitRegistrySkillId(skillId);
+  const response = await fetchWithTimeout({
+    url: `${options.baseUrl.replace(/\/$/, "")}/v1/skills/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/acquire`,
+    init: {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        installation_id: options.installationId,
+        version: options.version,
+        channel: options.channel ?? "cli",
+      }),
+    },
+    description: `Registry acquire for ${skillId}`,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Registry acquire failed for ${skillId}: HTTP ${response.status}`);
+  }
+
+  return validateAcquiredRegistrySkillForInstall(await response.json(), skillId);
+}
+
+function validateAcquiredRegistrySkillForInstall(value: unknown, skillId: string): AcquiredRegistrySkillForInstall {
+  const payload = asRecord(value);
+  const acquisition = asRecord(payload?.acquisition);
+  if (
+    payload?.status !== "success"
+    || !acquisition
+    || typeof acquisition.skill_id !== "string"
+    || typeof acquisition.owner !== "string"
+    || typeof acquisition.name !== "string"
+    || typeof acquisition.version !== "string"
+    || typeof acquisition.digest !== "string"
+    || typeof acquisition.markdown !== "string"
+    || !isStringArray(acquisition.runner_names)
+    || !isRegistryTrustTier(acquisition.trust_tier)
+    || acquisition.publisher === undefined
+    || acquisition.attestations === undefined
+  ) {
+    throw new Error(`Registry acquire returned an invalid payload for ${skillId}.`);
+  }
+  validateRegistryPublisher(acquisition.publisher, "remote_registry.acquisition.publisher");
+  validateRegistryAttestations(acquisition.attestations, "remote_registry.acquisition.attestations");
+
+  return {
+    skill_id: acquisition.skill_id,
+    owner: acquisition.owner,
+    name: acquisition.name,
+    version: acquisition.version,
+    digest: acquisition.digest,
+    markdown: acquisition.markdown,
+    profile_document: optionalString(acquisition.profile_document),
+    profile_digest: optionalString(acquisition.profile_digest),
+    runner_names: acquisition.runner_names,
+    trust_tier: acquisition.trust_tier,
+  };
+}
+
+function validateRegistryPublisher(value: unknown, label: string): void {
+  const publisher = asRecord(value);
+  if (!publisher) {
+    throw new Error(`${label} must be an object.`);
+  }
+  if (
+    publisher.kind !== "organization"
+    && publisher.kind !== "user"
+    && publisher.kind !== "team"
+    && publisher.kind !== "service"
+    && publisher.kind !== "publisher"
+  ) {
+    throw new Error(`${label}.kind must be one of organization, user, team, service, or publisher.`);
+  }
+  requiredString(publisher.id, `${label}.id`);
+  optionalNonEmptyString(publisher.handle, `${label}.handle`);
+  optionalNonEmptyString(publisher.display_name, `${label}.display_name`);
+}
+
+function validateRegistryAttestations(value: unknown, label: string): void {
+  if (!Array.isArray(value)) {
+    throw new Error(`${label} must be an array when provided.`);
+  }
+  for (const [index, entry] of value.entries()) {
+    validateRegistryAttestation(entry, `${label}[${index}]`);
+  }
+}
+
+function validateRegistryAttestation(value: unknown, label: string): void {
+  const attestation = asRecord(value);
+  if (!attestation) {
+    throw new Error(`${label} must be an object.`);
+  }
+  if (attestation.kind !== "source" && attestation.kind !== "publisher" && attestation.kind !== "verification") {
+    throw new Error(`${label}.kind must be one of source, publisher, or verification.`);
+  }
+  if (attestation.status !== "verified" && attestation.status !== "declared") {
+    throw new Error(`${label}.status must be one of verified or declared.`);
+  }
+  requiredString(attestation.id, `${label}.id`);
+  requiredString(attestation.summary, `${label}.summary`);
+  optionalNonEmptyString(attestation.source, `${label}.source`);
+  optionalNonEmptyString(attestation.issued_at, `${label}.issued_at`);
+}
+
+function validateRegistryTrustTier(value: unknown, label: string): RegistryTrustTier {
+  if (isRegistryTrustTier(value)) {
+    return value;
+  }
+  throw new Error(`${label} must be one of first_party, verified, or community.`);
+}
+
+function isRegistryTrustTier(value: unknown): value is RegistryTrustTier {
+  return value === "first_party" || value === "verified" || value === "community";
+}
+
+function isStringArray(value: unknown): value is readonly string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "string");
+}
+
+function requiredString(value: unknown, label: string): string {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`${label} must be a non-empty string.`);
+  }
+  return value;
+}
+
+function optionalNonEmptyString(value: unknown, label: string): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  return requiredString(value, label);
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function splitRegistrySkillId(skillId: string): readonly [string, string] {
+  const parts = skillId.split("/");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+    throw new Error(`Invalid registry skill id '${skillId}'. Expected '<owner>/<name>'.`);
+  }
+  return [parts[0], parts[1]];
 }
 
 function buildProfileState(

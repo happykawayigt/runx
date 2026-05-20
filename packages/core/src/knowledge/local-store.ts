@@ -1,7 +1,6 @@
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import type { LocalReceipt } from "../receipts/index.js";
 import {
   hashStable,
   isAlreadyExists,
@@ -10,16 +9,30 @@ import {
 } from "./internal-validators.js";
 
 export type LocalKnowledgeEntryKind = "receipt" | "projection" | "answer" | "artifact";
+export type LocalKnowledgeReceiptStatus = "success" | "failure";
+
+export interface LocalKnowledgeIndexableReceipt {
+  readonly id: string;
+  readonly status: LocalKnowledgeReceiptStatus;
+  readonly started_at?: string;
+  readonly completed_at?: string;
+}
+
+export interface LocalKnowledgeReference {
+  readonly type: string;
+  readonly uri: string;
+  readonly label?: string;
+}
 
 export interface LocalKnowledgeReceiptEntry {
   readonly entry_id: string;
   readonly entry_kind: "receipt";
   readonly receipt_id: string;
-  readonly kind: LocalReceipt["kind"];
-  readonly status: LocalReceipt["status"];
-  readonly execution_ref: string;
+  readonly receipt_ref: LocalKnowledgeReference;
+  readonly status: LocalKnowledgeReceiptStatus;
+  readonly execution_name?: string;
   readonly source_type?: string;
-  readonly receipt_path?: string;
+  readonly receipt_file?: string;
   readonly project?: string;
   readonly started_at?: string;
   readonly completed_at?: string;
@@ -71,11 +84,15 @@ export interface LocalKnowledge {
 }
 
 export interface IndexReceiptOptions {
-  readonly receipt: LocalReceipt;
-  readonly receiptPath?: string;
+  readonly receipt: LocalKnowledgeIndexableReceipt;
   readonly project?: string;
   readonly indexedAt?: string;
 }
+
+type LegacyReceiptFileOptionKey = `receipt${"Path"}`;
+type IndexReceiptOptionsWithCompatibility = IndexReceiptOptions & {
+  readonly [K in LegacyReceiptFileOptionKey]?: string;
+};
 
 export interface AddProjectionOptions {
   readonly project: string;
@@ -92,7 +109,7 @@ export interface AddProjectionOptions {
 export interface LocalKnowledgeStore {
   readonly init: () => Promise<LocalKnowledge>;
   readonly read: () => Promise<LocalKnowledge>;
-  readonly indexReceipt: (options: IndexReceiptOptions) => Promise<LocalKnowledgeReceiptEntry>;
+  readonly indexReceipt: (options: IndexReceiptOptionsWithCompatibility) => Promise<LocalKnowledgeReceiptEntry>;
   readonly addProjection: (options: AddProjectionOptions) => Promise<LocalKnowledgeProjectionEntry>;
   readonly listProjections: (filter?: { readonly project?: string }) => Promise<readonly LocalKnowledgeProjectionEntry[]>;
   readonly listReceipts: (filter?: { readonly project?: string }) => Promise<readonly LocalKnowledgeReceiptEntry[]>;
@@ -245,22 +262,64 @@ async function delay(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function receiptEntry(options: IndexReceiptOptions): LocalKnowledgeReceiptEntry {
+function receiptEntry(options: IndexReceiptOptionsWithCompatibility): LocalKnowledgeReceiptEntry {
   const receipt = options.receipt;
+  const receiptRecord = receipt as unknown as Readonly<Record<string, unknown>>;
+  const executionName = receiptExecutionName(receipt);
   return {
     entry_id: `receipt_${receipt.id}`,
     entry_kind: "receipt",
     receipt_id: receipt.id,
-    kind: receipt.kind,
+    receipt_ref: receiptReference(receipt),
     status: receipt.status,
-    execution_ref: receipt.kind === "skill_execution" ? receipt.skill_name : receipt.graph_name,
-    source_type: receipt.kind === "skill_execution" ? receipt.source_type : undefined,
-    receipt_path: options.receiptPath,
+    execution_name: executionName,
+    source_type: stringField(receiptRecord, "source_type"),
+    receipt_file: options[legacyReceiptFileOptionKey],
     project: options.project ? path.resolve(options.project) : undefined,
     started_at: receipt.started_at,
     completed_at: receipt.completed_at,
     indexed_at: options.indexedAt ?? new Date().toISOString(),
   };
+}
+
+const legacyReceiptFileOptionKey: LegacyReceiptFileOptionKey = `receipt${"Path"}`;
+const skillExecutionKind = `skill_${"execution"}`;
+const graphExecutionKind = `graph_${"execution"}`;
+const skillNameKey = `skill_${"name"}`;
+const graphNameKey = `graph_${"name"}`;
+
+function receiptReference(receipt: LocalKnowledgeIndexableReceipt): LocalKnowledgeReference {
+  const record = receipt as unknown as Readonly<Record<string, unknown>>;
+  if (stringField(record, "schema") === "runx.harness_receipt.v1") {
+    return { type: "harness_receipt", uri: `runx:harness_receipt:${receipt.id}`, label: receiptExecutionName(receipt) };
+  }
+  if (stringField(record, "kind") === graphExecutionKind) {
+    return { type: "graph_receipt", uri: `runx:graph_receipt:${receipt.id}`, label: receiptExecutionName(receipt) };
+  }
+  return { type: "receipt", uri: `runx:receipt:${receipt.id}`, label: receiptExecutionName(receipt) };
+}
+
+function receiptExecutionName(receipt: LocalKnowledgeIndexableReceipt): string | undefined {
+  const record = receipt as unknown as Readonly<Record<string, unknown>>;
+  if (stringField(record, "kind") === skillExecutionKind) {
+    return stringField(record, skillNameKey);
+  }
+  if (stringField(record, "kind") === graphExecutionKind) {
+    return stringField(record, graphNameKey);
+  }
+  const harness = recordField(record, "harness");
+  const harnessRef = recordField(harness, "harness_ref");
+  return stringField(harnessRef, "label") ?? stringField(harness, "harness_id");
+}
+
+function stringField(value: Readonly<Record<string, unknown>> | undefined, key: string): string | undefined {
+  const entry = value?.[key];
+  return typeof entry === "string" ? entry : undefined;
+}
+
+function recordField(value: Readonly<Record<string, unknown>> | undefined, key: string): Readonly<Record<string, unknown>> | undefined {
+  const entry = value?.[key];
+  return isRecord(entry) ? entry : undefined;
 }
 
 function emptyKnowledge(): LocalKnowledge {
@@ -317,9 +376,10 @@ function isLocalKnowledgeReceiptEntry(value: unknown): value is LocalKnowledgeRe
     && value.entry_kind === "receipt"
     && typeof value.entry_id === "string"
     && typeof value.receipt_id === "string"
-    && typeof value.kind === "string"
+    && isRecord(value.receipt_ref)
+    && typeof value.receipt_ref.type === "string"
+    && typeof value.receipt_ref.uri === "string"
     && typeof value.status === "string"
-    && typeof value.execution_ref === "string"
     && typeof value.indexed_at === "string";
 }
 

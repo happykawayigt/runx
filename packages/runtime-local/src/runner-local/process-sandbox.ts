@@ -2,7 +2,6 @@ import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, rmSync, statSy
 import os from "node:os";
 import path from "node:path";
 
-import { normalizeSandboxDeclaration, type SandboxDeclaration } from "@runxhq/core/policy";
 import { errorMessage } from "@runxhq/core/util";
 
 const defaultEnvAllowlist = [
@@ -16,6 +15,26 @@ const defaultEnvAllowlist = [
   "COMSPEC",
   "PATHEXT",
 ] as const;
+
+export type SandboxProfile = "readonly" | "workspace-write" | "network" | "unrestricted-local-dev";
+
+export interface SandboxDeclaration {
+  readonly profile: SandboxProfile;
+  readonly cwdPolicy?: "skill-directory" | "workspace" | "custom";
+  readonly envAllowlist?: readonly string[];
+  readonly network?: boolean;
+  readonly writablePaths?: readonly string[];
+  readonly requireEnforcement?: boolean;
+}
+
+export interface RequiredSandboxDeclaration {
+  readonly profile: SandboxProfile;
+  readonly cwdPolicy: "skill-directory" | "workspace" | "custom";
+  readonly envAllowlist?: readonly string[];
+  readonly network: boolean;
+  readonly writablePaths: readonly string[];
+  readonly requireEnforcement: boolean;
+}
 
 export interface LocalProcessSandboxOptions {
   readonly sandbox?: SandboxDeclaration & { readonly approvedEscalation?: boolean };
@@ -132,6 +151,17 @@ export function prepareLocalProcessSandbox(options: LocalProcessSandboxOptions):
     args: spawnPlan.args,
     cleanupPaths: privateTmp ? [privateTmp] : undefined,
     metadata,
+  };
+}
+
+function normalizeSandboxDeclaration(sandbox: SandboxDeclaration | undefined): RequiredSandboxDeclaration {
+  return {
+    profile: sandbox?.profile ?? "readonly",
+    cwdPolicy: sandbox?.cwdPolicy ?? "skill-directory",
+    envAllowlist: sandbox?.envAllowlist,
+    network: sandbox?.network ?? sandbox?.profile === "network",
+    writablePaths: sandbox?.writablePaths ?? [],
+    requireEnforcement: sandbox?.requireEnforcement ?? false,
   };
 }
 

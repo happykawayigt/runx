@@ -57,7 +57,7 @@ describe("paused runs surface in history and inspect", () => {
         id: runId,
         name: "sourcey",
         status: "paused",
-        kind: "graph_execution",
+        kind: "runx.harness.v1",
         selectedRunner: "agent-step",
         stepIds: ["discover"],
         stepLabels: ["inspect repo"],

@@ -573,7 +573,13 @@ harness:
       expect:
         status: success
         receipt:
-          kind: graph_execution
+          schema: runx.harness_receipt.v1
+          harness_id: hrn_evolve_plan-only
+          state: sealed
+          disposition: closed
+          reason_code: graph_closed
+          child_receipt_refs:
+            - runx:harness_receipt:hrn_rcpt_evolve_plan-only
 `),
     );
 
@@ -591,7 +597,12 @@ harness:
         expect: {
           status: "success",
           receipt: {
-            kind: "graph_execution",
+            schema: "runx.harness_receipt.v1",
+            harness_id: "hrn_evolve_plan-only",
+            state: "sealed",
+            disposition: "closed",
+            reason_code: "graph_closed",
+            child_receipt_refs: ["runx:harness_receipt:hrn_rcpt_evolve_plan-only"],
           },
         },
       },

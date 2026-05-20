@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { runCli } from "../packages/cli/src/index.js";
-import { hashString } from "@runxhq/core/receipts";
+import { hashString } from "@runxhq/core/util";
 
 const originalFetch = globalThis.fetch;
 

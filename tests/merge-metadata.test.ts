@@ -4,8 +4,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { runLocalSkill, type Caller } from "@runxhq/runtime-local";
-import type { SkillAdapter } from "@runxhq/core/executor";
+import { runLocalSkill, type Caller, type SkillAdapter } from "@runxhq/runtime-local";
 
 const caller: Caller = {
   resolve: async () => undefined,
@@ -45,10 +44,6 @@ describe("merge-metadata", () => {
 
       expect(result.status).toBe("success");
       if (result.status !== "success") {
-        return;
-      }
-      expect(result.receipt.kind).toBe("skill_execution");
-      if (result.receipt.kind !== "skill_execution") {
         return;
       }
       expect(result.receipt.metadata).toMatchObject({
@@ -101,10 +96,6 @@ describe("merge-metadata", () => {
 
       expect(result.status).toBe("success");
       if (result.status !== "success") {
-        return;
-      }
-      expect(result.receipt.kind).toBe("skill_execution");
-      if (result.receipt.kind !== "skill_execution") {
         return;
       }
       expect(result.receipt.metadata).toMatchObject({

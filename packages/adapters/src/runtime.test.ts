@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { ResolutionRequest } from "@runxhq/core/executor";
+import type { ResolutionRequestContract as ResolutionRequest } from "@runxhq/contracts";
 
 vi.mock("./agent/index.js", () => ({
   executeManagedAgentResolution: vi.fn(async () => ({ actor: "agent", payload: { echoed: "managed" } })),

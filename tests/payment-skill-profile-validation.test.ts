@@ -5,16 +5,16 @@ import { authorityTermSchema } from "@runxhq/contracts";
 import { describe, expect, it } from "vitest";
 import { Value } from "@sinclair/typebox/value";
 
-import { buildRegistrySkillVersion } from "@runxhq/core/registry";
 import {
   parseRunnerManifestYaml,
   parseSkillMarkdown,
   validateRunnerManifest,
   validateSkill,
 } from "@runxhq/core/parser";
+import { buildRegistryFixtureVersion } from "./registry-fixtures.js";
 
 const paymentSecretKeyPattern = /(?:^|_)(?:pan|cvv|cvc|card_number|cardnumber|account_number|routing_number|private_key|seed_phrase|mnemonic|secret_key)(?:$|_)/i;
-const retiredReceiptFields = new Set(["kind", "status", "skill_name", "source_type"]);
+const retiredReceiptFields = new Set(["schema_version", "source_type"]);
 
 describe("payment skill execution profiles", () => {
   it("parse payment profiles and ingest packaged skills without raw payment credential fields", async () => {
@@ -34,7 +34,7 @@ describe("payment skill execution profiles", () => {
         const skill = validateSkill(parseSkillMarkdown(markdown), { mode: "strict" });
         expect(manifest.skill ?? skill.name, `${skill.name} profile skill binding`).toBe(skill.name);
 
-        const version = buildRegistrySkillVersion(markdown, {
+        const version = await buildRegistryFixtureVersion(markdown, {
           owner: "runx-payments",
           version: "validation",
           profileDocument,

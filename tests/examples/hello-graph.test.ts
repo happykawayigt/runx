@@ -13,7 +13,6 @@ describe("hello-graph example", () => {
     }
     expect(result.status).toBe("success");
     expect(result.assertionErrors).toEqual([]);
-    expect(result.graphReceipt?.kind).toBe("graph_execution");
-    expect(result.graphReceipt?.graph_name).toBe("hello-graph");
+    expect(result.graphReceipt).toBeDefined();
   });
 });

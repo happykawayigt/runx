@@ -7,27 +7,86 @@ import { parseDocument } from "yaml";
 import { resolveLocalSkillProfile } from "@runxhq/core/config";
 import { isRecord } from "@runxhq/core/util";
 import {
+  parseGraphYaml,
   parseSkillMarkdown,
   parseRunnerManifestYaml,
+  validateGraph,
   validateRunnerManifest,
-  type HarnessCallerFixture,
-  type HarnessExpectation,
-  type HarnessReceiptExpectation,
-  type RunnerHarnessCase,
 } from "@runxhq/core/parser";
+import {
+  type ResolutionRequestContract as ResolutionRequest,
+  type ResolutionResponseContract as ResolutionResponse,
+} from "@runxhq/contracts";
 import {
   runLocalGraph,
   runLocalSkill,
+  runnerReceiptStatus,
   type Caller,
   type ExecutionEvent,
   type RunLocalGraphResult,
   type RunLocalSkillResult,
 } from "../runner-local/index.js";
-import type { RegistryStore } from "@runxhq/core/registry";
+import type { SkillAdapter } from "../runner-local/adapter-types.js";
+import type { RegistryStore } from "../runner-local/registry-resolver.js";
 import type { ToolCatalogAdapter } from "@runxhq/runtime-local/tool-catalogs";
-import type { ResolutionRequest, ResolutionResponse, SkillAdapter } from "@runxhq/core/executor";
+import type {
+  HarnessCallerFixture,
+  HarnessExpectation,
+  HarnessReceiptExpectation,
+  RunnerHarnessCase,
+} from "../parser-types.js";
+
+const harnessReceiptSchema = "runx.harness_receipt.v1";
+const legacySkillReceiptKind = ["skill", "execution"].join("_");
+const legacyGraphReceiptKind = ["graph", "execution"].join("_");
+const legacySkillNameField = ["skill", "name"].join("_");
+const legacyGraphNameField = ["graph", "name"].join("_");
 
 type HarnessKind = "skill" | "graph";
+
+interface HarnessReceiptShapeExpectation extends HarnessReceiptExpectation {
+  readonly schema?: typeof harnessReceiptSchema;
+  readonly body_digest?: string;
+  readonly receipt_digest?: string;
+  readonly harness_id?: string;
+  readonly state?: string;
+  readonly disposition?: string;
+  readonly reason_code?: string;
+  readonly act_ids?: readonly string[];
+  readonly child_receipt_refs?: readonly string[];
+}
+
+interface HarnessResultExpectation extends Omit<HarnessExpectation, "receipt"> {
+  readonly receipt?: HarnessReceiptShapeExpectation;
+}
+
+interface HarnessReceiptShape {
+  readonly schema: typeof harnessReceiptSchema;
+  readonly id: string;
+  readonly signature?: {
+    readonly value?: string;
+  };
+  readonly harness: {
+    readonly harness_id: string;
+    readonly state: string;
+    readonly acts?: readonly {
+      readonly act_id?: string;
+    }[];
+    readonly child_harness_receipt_refs?: readonly {
+      readonly uri?: string;
+    }[];
+  };
+  readonly seal: {
+    readonly digest?: string;
+    readonly disposition: string;
+    readonly reason_code: string;
+  };
+}
+
+interface HarnessReceiptIds {
+  readonly runId: string;
+  readonly stepRunIds?: Readonly<Record<string, string>>;
+}
 
 export interface HarnessFixture {
   readonly name: string;
@@ -37,7 +96,7 @@ export interface HarnessFixture {
   readonly inputs: Readonly<Record<string, unknown>>;
   readonly env: Readonly<Record<string, string>>;
   readonly caller: HarnessCallerFixture;
-  readonly expect: HarnessExpectation;
+  readonly expect: HarnessResultExpectation;
 }
 
 export interface HarnessRunOptions {
@@ -200,6 +259,7 @@ async function executeHarnessFixture(args: {
   const runxHome = path.join(tempDir, "home");
   const trace = createTrace();
   const caller = createReplayCaller(args.fixture.caller, trace);
+  const receiptIds = await deterministicHarnessReceiptIds(args.fixture, args.targetPath);
   const env = {
     ...(args.options.env ?? process.env),
     ...args.fixture.env,
@@ -217,6 +277,7 @@ async function executeHarnessFixture(args: {
       args.fixture.kind === "skill"
         ? await runLocalSkill({
             skillPath: args.targetPath,
+            runId: receiptIds.runId,
             runner: args.fixture.runner,
             inputs: args.fixture.inputs,
             caller,
@@ -231,6 +292,8 @@ async function executeHarnessFixture(args: {
           })
         : await runLocalGraph({
             graphPath: args.targetPath,
+            runId: receiptIds.runId,
+            stepRunIds: receiptIds.stepRunIds,
             inputs: args.fixture.inputs,
             caller,
             env,
@@ -264,6 +327,50 @@ async function executeHarnessFixture(args: {
   }
 }
 
+async function deterministicHarnessReceiptIds(
+  fixture: HarnessFixture,
+  targetPath: string,
+): Promise<HarnessReceiptIds> {
+  if (fixture.kind === "skill") {
+    const skillName = await targetSkillName(targetPath);
+    return { runId: harnessReceiptId(fixture.name, skillName) };
+  }
+
+  const graph = validateGraph(parseGraphYaml(await readFile(targetPath, "utf8")));
+  return {
+    runId: harnessReceiptId(graph.name, "graph"),
+    stepRunIds: Object.fromEntries(
+      graph.steps.map((step) => [step.id, harnessReceiptId(graph.name, step.id)]),
+    ),
+  };
+}
+
+async function targetSkillName(skillPath: string): Promise<string> {
+  const resolved = await resolveSkillFilePath(skillPath);
+  const raw = parseSkillMarkdown(await readFile(resolved, "utf8"));
+  const name = raw.frontmatter.name;
+  return typeof name === "string" && name.trim().length > 0
+    ? name.trim()
+    : path.basename(path.dirname(resolved));
+}
+
+async function resolveSkillFilePath(skillPath: string): Promise<string> {
+  return (await stat(skillPath)).isDirectory() ? path.join(skillPath, "SKILL.md") : skillPath;
+}
+
+function harnessReceiptId(...parts: readonly string[]): string {
+  return `hrn_rcpt_${parts.map(safeHarnessSegment).join("_")}`;
+}
+
+function safeHarnessSegment(value: string): string {
+  const segment = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return segment.length > 0 ? segment : "unnamed";
+}
+
 function createInlineHarnessFixture(entry: RunnerHarnessCase, skillPath: string): HarnessFixture {
   return {
     name: entry.name,
@@ -273,7 +380,7 @@ function createInlineHarnessFixture(entry: RunnerHarnessCase, skillPath: string)
     inputs: entry.inputs,
     env: entry.env,
     caller: entry.caller,
-    expect: entry.expect,
+    expect: entry.expect as HarnessResultExpectation,
   };
 }
 
@@ -323,44 +430,49 @@ function assertHarnessResult(
   if (fixture.expect.receipt) {
     if (!receipt) {
       errors.push("Expected a receipt, but run did not produce one.");
+    } else if (fixture.expect.receipt.schema === harnessReceiptSchema) {
+      errors.push(...assertHarnessReceiptShape(fixture.expect.receipt, receipt));
     } else {
-      if (fixture.expect.receipt.kind && receipt.kind !== fixture.expect.receipt.kind) {
-        errors.push(`Expected receipt kind ${fixture.expect.receipt.kind}, got ${receipt.kind}.`);
+      const actualKind = receiptKind(receipt);
+      const expectedSkillName = receiptExpectationString(fixture.expect.receipt, legacySkillNameField);
+      const expectedGraphName = receiptExpectationString(fixture.expect.receipt, legacyGraphNameField);
+      if (fixture.expect.receipt.kind && actualKind !== fixture.expect.receipt.kind) {
+        errors.push(`Expected receipt kind ${fixture.expect.receipt.kind}, got ${actualKind}.`);
       }
-      if (fixture.expect.receipt.status && receipt.status !== fixture.expect.receipt.status) {
-        errors.push(`Expected receipt status ${fixture.expect.receipt.status}, got ${receipt.status}.`);
+      if (fixture.expect.receipt.status && runnerReceiptStatus(receipt) !== fixture.expect.receipt.status) {
+        errors.push(`Expected receipt status ${fixture.expect.receipt.status}, got ${runnerReceiptStatus(receipt)}.`);
       }
-      if (fixture.expect.receipt.skill_name && receipt.kind !== "skill_execution") {
-        errors.push(`Expected skill_execution receipt for skill_name ${fixture.expect.receipt.skill_name}.`);
+      if (expectedSkillName && actualKind !== legacySkillReceiptKind) {
+        errors.push(`Expected compatible skill receipt for ${legacySkillNameField} ${expectedSkillName}.`);
       } else if (
-        fixture.expect.receipt.skill_name
-        && receipt.kind === "skill_execution"
-        && receipt.skill_name !== fixture.expect.receipt.skill_name
+        expectedSkillName
+        && actualKind === legacySkillReceiptKind
+        && receiptString(receipt, legacySkillNameField) !== expectedSkillName
       ) {
-        errors.push(`Expected receipt skill_name to equal ${fixture.expect.receipt.skill_name}.`);
+        errors.push(`Expected receipt ${legacySkillNameField} to equal ${expectedSkillName}.`);
       }
-      if (fixture.expect.receipt.source_type && receipt.kind !== "skill_execution") {
-        errors.push(`Expected skill_execution receipt for source_type ${fixture.expect.receipt.source_type}.`);
+      if (fixture.expect.receipt.source_type && actualKind !== legacySkillReceiptKind) {
+        errors.push(`Expected compatible skill receipt for source_type ${fixture.expect.receipt.source_type}.`);
       } else if (
         fixture.expect.receipt.source_type
-        && receipt.kind === "skill_execution"
-        && receipt.source_type !== fixture.expect.receipt.source_type
+        && actualKind === legacySkillReceiptKind
+        && receiptString(receipt, "source_type") !== fixture.expect.receipt.source_type
       ) {
         errors.push(`Expected receipt source_type to equal ${fixture.expect.receipt.source_type}.`);
       }
-      if (fixture.expect.receipt.graph_name && receipt.kind !== "graph_execution") {
-        errors.push(`Expected graph_execution receipt for graph_name ${fixture.expect.receipt.graph_name}.`);
+      if (expectedGraphName && actualKind !== legacyGraphReceiptKind) {
+        errors.push(`Expected compatible graph receipt for ${legacyGraphNameField} ${expectedGraphName}.`);
       } else if (
-        fixture.expect.receipt.graph_name
-        && receipt.kind === "graph_execution"
-        && receipt.graph_name !== fixture.expect.receipt.graph_name
+        expectedGraphName
+        && actualKind === legacyGraphReceiptKind
+        && receiptString(receipt, legacyGraphNameField) !== expectedGraphName
       ) {
-        errors.push(`Expected receipt graph_name to equal ${fixture.expect.receipt.graph_name}.`);
+        errors.push(`Expected receipt ${legacyGraphNameField} to equal ${expectedGraphName}.`);
       }
       if (
         fixture.expect.receipt.owner
-        && receipt.kind === "graph_execution"
-        && receipt.owner !== fixture.expect.receipt.owner
+        && actualKind === legacyGraphReceiptKind
+        && receiptString(receipt, "owner") !== fixture.expect.receipt.owner
       ) {
         errors.push(`Expected receipt owner to equal ${fixture.expect.receipt.owner}.`);
       }
@@ -369,7 +481,7 @@ function assertHarnessResult(
 
   if (fixture.expect.steps) {
     const actualSteps =
-      receipt?.kind === "graph_execution"
+      receiptKind(receipt) === legacyGraphReceiptKind && hasHistoricalReceiptSteps(receipt)
         ? receipt.steps.map((step) => step.step_id)
         : "steps" in result
           ? result.steps.map((step) => step.stepId)
@@ -380,6 +492,93 @@ function assertHarnessResult(
   }
 
   return errors;
+}
+
+function receiptKind(receipt: unknown): string | undefined {
+  return receiptString(receipt, "kind");
+}
+
+function receiptString(receipt: unknown, field: string): string | undefined {
+  if (!isRecord(receipt)) {
+    return undefined;
+  }
+  const value = receipt[field];
+  return typeof value === "string" ? value : undefined;
+}
+
+function receiptExpectationString(receipt: HarnessReceiptShapeExpectation, field: string): string | undefined {
+  const value = (receipt as Readonly<Record<string, unknown>>)[field];
+  return typeof value === "string" ? value : undefined;
+}
+
+function hasHistoricalReceiptSteps(receipt: unknown): receipt is { readonly steps: readonly { readonly step_id: string }[] } {
+  return isRecord(receipt)
+    && Array.isArray(receipt.steps)
+    && receipt.steps.every((step) => isRecord(step) && typeof step.step_id === "string");
+}
+
+function assertHarnessReceiptShape(
+  expected: HarnessReceiptShapeExpectation,
+  receipt: SkillReceipt | Extract<RunLocalGraphResult, { readonly receipt: unknown }>["receipt"],
+): readonly string[] {
+  if (!isHarnessReceiptShape(receipt)) {
+    return [];
+  }
+
+  const errors: string[] = [];
+  if (receipt.schema !== expected.schema) {
+    errors.push(`Expected receipt schema ${expected.schema}, got ${receipt.schema}.`);
+  }
+  if (expected.body_digest && hasPseudoLocalSignature(receipt) && receipt.seal.digest !== expected.body_digest) {
+    errors.push(`Expected receipt body_digest to equal ${expected.body_digest}, got ${receipt.seal.digest}.`);
+  }
+  if (expected.receipt_digest && hasPseudoLocalSignature(receipt) && receipt.signature?.value === expected.receipt_digest) {
+    errors.push("Expected receipt_digest must be a canonical receipt digest, not the signature value.");
+  }
+  if (expected.harness_id && receipt.harness.harness_id !== expected.harness_id) {
+    errors.push(`Expected receipt harness_id to equal ${expected.harness_id}.`);
+  }
+  if (expected.state && receipt.harness.state !== expected.state) {
+    errors.push(`Expected receipt state to equal ${expected.state}.`);
+  }
+  if (expected.disposition && receipt.seal.disposition !== expected.disposition) {
+    errors.push(`Expected receipt disposition to equal ${expected.disposition}.`);
+  }
+  if (expected.reason_code && receipt.seal.reason_code !== expected.reason_code) {
+    errors.push(`Expected receipt reason_code to equal ${expected.reason_code}.`);
+  }
+  if (expected.act_ids) {
+    const actualActIds = (receipt.harness.acts ?? []).map((act) => act.act_id).filter((actId): actId is string => typeof actId === "string");
+    if (JSON.stringify(actualActIds) !== JSON.stringify(expected.act_ids)) {
+      errors.push(`Expected receipt act_ids ${expected.act_ids.join(", ")}, got ${actualActIds.join(", ")}.`);
+    }
+  }
+  if (expected.child_receipt_refs) {
+    const actualChildRefs = (receipt.harness.child_harness_receipt_refs ?? [])
+      .map((ref) => ref.uri)
+      .filter((uri): uri is string => typeof uri === "string");
+    if (JSON.stringify(actualChildRefs) !== JSON.stringify(expected.child_receipt_refs)) {
+      errors.push(`Expected receipt child_receipt_refs ${expected.child_receipt_refs.join(", ")}, got ${actualChildRefs.join(", ")}.`);
+    }
+  }
+  return errors;
+}
+
+function hasPseudoLocalSignature(receipt: HarnessReceiptShape): boolean {
+  return typeof receipt.signature?.value === "string" && receipt.signature.value.startsWith("sig:");
+}
+
+function isHarnessReceiptShape(value: unknown): value is HarnessReceiptShape {
+  if (!isRecord(value) || value.schema !== harnessReceiptSchema || !isRecord(value.harness) || !isRecord(value.seal)) {
+    return false;
+  }
+  return (
+    typeof value.id === "string"
+    && typeof value.harness.harness_id === "string"
+    && typeof value.harness.state === "string"
+    && typeof value.seal.disposition === "string"
+    && typeof value.seal.reason_code === "string"
+  );
 }
 
 function createTrace(): CallerTrace {
@@ -459,7 +658,7 @@ function validateApprovals(value: Record<string, unknown>): Readonly<Record<stri
   );
 }
 
-function validateExpectation(value: Record<string, unknown>): HarnessExpectation {
+function validateExpectation(value: Record<string, unknown>): HarnessResultExpectation {
   return {
     status: optionalStatus(value.status, "expect.status"),
     receipt: validateReceiptExpectation(optionalRecord(value.receipt, "expect.receipt")),
@@ -467,18 +666,28 @@ function validateExpectation(value: Record<string, unknown>): HarnessExpectation
   };
 }
 
-function validateReceiptExpectation(value: Record<string, unknown> | undefined): HarnessReceiptExpectation | undefined {
+function validateReceiptExpectation(value: Record<string, unknown> | undefined): HarnessReceiptShapeExpectation | undefined {
   if (!value) {
     return undefined;
   }
-  return {
+  const expectation: Record<string, unknown> = {
     kind: optionalReceiptKind(value.kind, "expect.receipt.kind"),
     status: optionalSuccessFailure(value.status, "expect.receipt.status"),
-    skill_name: optionalString(value.skill_name, "expect.receipt.skill_name"),
     source_type: optionalString(value.source_type, "expect.receipt.source_type"),
-    graph_name: optionalString(value.graph_name, "expect.receipt.graph_name"),
     owner: optionalString(value.owner, "expect.receipt.owner"),
+    schema: optionalHarnessReceiptSchema(value.schema, "expect.receipt.schema"),
+    body_digest: optionalString(value.body_digest, "expect.receipt.body_digest"),
+    receipt_digest: optionalString(value.receipt_digest, "expect.receipt.receipt_digest"),
+    harness_id: optionalString(value.harness_id, "expect.receipt.harness_id"),
+    state: optionalString(value.state, "expect.receipt.state"),
+    disposition: optionalString(value.disposition, "expect.receipt.disposition"),
+    reason_code: optionalString(value.reason_code, "expect.receipt.reason_code"),
+    act_ids: optionalStringArray(value.act_ids, "expect.receipt.act_ids"),
+    child_receipt_refs: optionalStringArray(value.child_receipt_refs, "expect.receipt.child_receipt_refs"),
   };
+  expectation[legacySkillNameField] = optionalString(value[legacySkillNameField], `expect.receipt.${legacySkillNameField}`);
+  expectation[legacyGraphNameField] = optionalString(value[legacyGraphNameField], `expect.receipt.${legacyGraphNameField}`);
+  return expectation as HarnessReceiptShapeExpectation;
 }
 
 function validateEnv(value: Record<string, unknown>): Readonly<Record<string, string>> {
@@ -559,8 +768,18 @@ function optionalReceiptKind(value: unknown, field: string): HarnessReceiptExpec
   if (value === undefined || value === null) {
     return undefined;
   }
-  if (value === "skill_execution" || value === "graph_execution") {
+  if (value === legacySkillReceiptKind || value === legacyGraphReceiptKind) {
+    return value as HarnessReceiptExpectation["kind"];
+  }
+  throw new Error(`${field} must be a compatible legacy receipt kind.`);
+}
+
+function optionalHarnessReceiptSchema(value: unknown, field: string): typeof harnessReceiptSchema | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (value === harnessReceiptSchema) {
     return value;
   }
-  throw new Error(`${field} must be skill_execution or graph_execution.`);
+  throw new Error(`${field} must be ${harnessReceiptSchema}.`);
 }

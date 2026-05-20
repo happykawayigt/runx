@@ -57,8 +57,10 @@ describe("local governed graph runner", () => {
           receiptId: result.steps[0].receiptId,
         },
       ]);
-      expect(result.receipt.kind).toBe("graph_execution");
-      expect(result.receipt.steps.map((step) => step.receipt_id)).toEqual(result.steps.map((step) => step.receiptId));
+      expect(result.receipt).toMatchObject({ schema: "runx.harness_receipt.v1" });
+      expect(harnessChildReceiptRefs(result.receipt).map((ref) => ref.uri)).toEqual(
+        result.steps.map((step) => expect.stringContaining(String(step.receiptId))),
+      );
 
       const files = await readdir(receiptDir);
       expect(files).toContain("ledgers");
@@ -170,7 +172,7 @@ describe("local governed graph runner", () => {
 
       expect(inspectExit).toBe(0);
       expect(stdout.contents()).toContain("sequential-echo");
-      expect(stdout.contents()).toContain("graph_execution");
+      expect(stdout.contents()).toContain("runx.harness_receipt.v1");
       expect(stdout.contents()).toContain(result.receipt.id);
       expect(stdout.contents()).toContain("verified");
     } finally {
@@ -428,6 +430,17 @@ runners:
         reflect: never
 `,
   );
+}
+
+function harnessChildReceiptRefs(receipt: unknown): Array<{ uri?: string }> {
+  const harness = typeof receipt === "object" && receipt !== null ? (receipt as { harness?: unknown }).harness : undefined;
+  if (!harness || typeof harness !== "object") {
+    return [];
+  }
+  const refs = (harness as { child_harness_receipt_refs?: unknown }).child_harness_receipt_refs;
+  return Array.isArray(refs)
+    ? refs.filter((ref): ref is { uri?: string } => typeof ref === "object" && ref !== null)
+    : [];
 }
 
 function createMemoryStream(): NodeJS.WriteStream & { contents: () => string; clear: () => void } {

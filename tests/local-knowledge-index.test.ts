@@ -46,8 +46,12 @@ describe("local knowledge index integration", () => {
       await expect(createFileKnowledgeStore(knowledgeDir).listReceipts({ project })).resolves.toEqual([
         expect.objectContaining({
           receipt_id: result.receipt.id,
-          kind: "skill_execution",
-          execution_ref: "echo",
+          receipt_ref: {
+            type: "receipt",
+            uri: `runx:receipt:${result.receipt.id}`,
+            label: "echo",
+          },
+          execution_name: "echo",
           source_type: "cli-tool",
         }),
       ]);
@@ -136,8 +140,12 @@ describe("local knowledge index integration", () => {
         expect.arrayContaining([
           expect.objectContaining({
             receipt_id: result.receipt.id,
-            kind: "graph_execution",
-            execution_ref: "sequential-echo",
+            receipt_ref: {
+              type: "graph_receipt",
+              uri: `runx:graph_receipt:${result.receipt.id}`,
+              label: "sequential-echo",
+            },
+            execution_name: "sequential-echo",
           }),
         ]),
       );

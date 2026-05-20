@@ -1,5 +1,8 @@
-import type { ResolutionRequest, ResolutionResponse } from "@runxhq/core/executor";
-import { inspectLocalRunState } from "../runner-local/index.js";
+import type {
+  ResolutionRequestContract as ResolutionRequest,
+  ResolutionResponseContract as ResolutionResponse,
+} from "@runxhq/contracts";
+import { inspectLocalRunState, runnerReceiptDisposition } from "../runner-local/index.js";
 import type { AuthResolver, Caller, ExecutionEvent, RunLocalSkillResult } from "../runner-local/index.js";
 
 // Host bridges let external runtimes host the runx kernel. Hosts get
@@ -141,7 +144,6 @@ export interface HostPausedState {
 }
 
 interface HostTerminalState {
-  readonly kind: "skill_execution" | "graph_execution";
   readonly skillName: string;
   readonly runId: string;
   readonly receiptId: string;
@@ -307,7 +309,7 @@ function normalizeRunResult(result: RunLocalSkillResult, events: readonly Execut
       events,
     };
   }
-  if (result.receipt.disposition === "escalated") {
+  if (runnerReceiptDisposition(result.receipt) === "blocked") {
     return {
       status: "escalated",
       skillName: result.skill.name,
@@ -355,7 +357,6 @@ export async function inspectLocalHostState(
   const status = inspectStatus(inspected.summary);
   return {
     status,
-    kind: inspected.summary.kind,
     skillName: inspected.summary.name,
     runId: inspected.runId,
     receiptId: inspected.receipt.id,

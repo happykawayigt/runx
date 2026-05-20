@@ -61,8 +61,13 @@ describe("approval receipt metadata", () => {
       }
       expect(result.receipt).toBeDefined();
       const receipt = JSON.parse(await readFile(path.join(receiptDir, `${result.receipt?.id}.json`), "utf8"));
-      expect(receipt.status).toBe("failure");
-      expect(receipt.output_hash).toBe("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+      expect(receipt.schema).toBe("runx.harness_receipt.v1");
+      expect(receipt.seal.disposition).toBe("declined");
+      expect(receipt.metadata?.runx).toMatchObject({
+        status: "failure",
+        disposition: "policy_denied",
+        output_hash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      });
       expect(receipt.metadata).toMatchObject({
         approval: {
           gate_id: "sandbox.approval-receipt-deny.unrestricted-local-dev",

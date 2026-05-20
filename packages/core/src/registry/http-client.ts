@@ -1,6 +1,6 @@
 import { parseRegistrySkillRef } from "./resolve.js";
 import { normalizeRegistrySearchResult, type RegistrySearchResult } from "./search.js";
-import type { ToolCatalogSearchResult, ToolInspectResult } from "../executor/index.js";
+import type { RemoteToolCatalogSearchResult, RemoteToolInspectResult } from "./tool-catalog-types.js";
 import { fetchWithTimeout } from "../util/http.js";
 import {
   validateRegistryAttestations,
@@ -181,7 +181,7 @@ export async function searchRemoteRegistry(
 export async function searchRemoteTools(
   query: string,
   options: SearchRemoteToolsOptions,
-): Promise<readonly ToolCatalogSearchResult[]> {
+): Promise<readonly RemoteToolCatalogSearchResult[]> {
   const fetchImpl = requireFetch(options.fetchImpl);
   const params = new URLSearchParams();
   if (query.trim().length > 0) {
@@ -203,7 +203,7 @@ export async function searchRemoteTools(
   }
   const payload = await response.json() as {
     readonly status?: string;
-    readonly tools?: readonly ToolCatalogSearchResult[];
+    readonly tools?: readonly RemoteToolCatalogSearchResult[];
   };
   if (payload.status !== "success" || !Array.isArray(payload.tools)) {
     throw new Error(`Remote tool search returned an invalid payload for '${query}'.`);
@@ -214,7 +214,7 @@ export async function searchRemoteTools(
 export async function readRemoteTool(
   ref: string,
   options: ReadRemoteToolOptions,
-): Promise<ToolInspectResult | undefined> {
+): Promise<RemoteToolInspectResult | undefined> {
   const fetchImpl = requireFetch(options.fetchImpl);
   const params = new URLSearchParams();
   if (options.source?.trim()) {
@@ -236,7 +236,7 @@ export async function readRemoteTool(
   }
   const payload = await response.json() as {
     readonly status?: string;
-    readonly tool?: ToolInspectResult;
+    readonly tool?: RemoteToolInspectResult;
   };
   if (payload.status !== "success" || payload.tool === undefined) {
     throw new Error(`Remote tool read returned an invalid payload for ${ref}.`);
@@ -463,7 +463,7 @@ function splitRegistrySkillId(skillId: string): readonly [string, string] {
   return [parts[0], parts[1]];
 }
 
-function validateRemoteToolSearchResult(value: unknown): ToolCatalogSearchResult {
+function validateRemoteToolSearchResult(value: unknown): RemoteToolCatalogSearchResult {
   const record = requireRecord(value, "remote_tools.tools[]");
   return {
     tool_id: requireString(record.tool_id, "remote_tools.tools[].tool_id"),
@@ -480,7 +480,7 @@ function validateRemoteToolSearchResult(value: unknown): ToolCatalogSearchResult
   };
 }
 
-function validateRemoteToolInspectResult(value: unknown): ToolInspectResult {
+function validateRemoteToolInspectResult(value: unknown): RemoteToolInspectResult {
   const record = requireRecord(value, "remote_tools.tool");
   const inputsRecord = requireRecord(record.inputs, "remote_tools.tool.inputs");
   const inputs: Record<string, { readonly type: string; readonly required: boolean; readonly description?: string }> = {};

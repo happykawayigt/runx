@@ -5,7 +5,6 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { createDefaultSkillAdapters } from "@runxhq/adapters";
-import { latestVerifiedReceiptOutcomeResolution, writeReceiptOutcomeResolution } from "@runxhq/core/receipts";
 import { runLocalSkill, type Caller } from "@runxhq/runtime-local";
 
 const caller: Caller = {
@@ -14,7 +13,7 @@ const caller: Caller = {
 };
 
 describe("manifest-agnostic runtime semantics", () => {
-  it("supports direct caller semantics and append-only outcome resolution", async () => {
+  it("supports direct caller semantics", async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-direct-semantics-"));
     const receiptDir = path.join(tempDir, "receipts");
 
@@ -41,45 +40,15 @@ describe("manifest-agnostic runtime semantics", () => {
       });
 
       expect(result.status).toBe("success");
-      if (result.status !== "success" || result.receipt.kind !== "skill_execution") {
+      if (result.status !== "success") {
         return;
       }
 
-      const receiptPath = path.join(receiptDir, `${result.receipt.id}.json`);
-      const before = await readFile(receiptPath, "utf8");
-
-      expect(result.receipt.disposition).toBe("observing");
-      expect(result.receipt.outcome_state).toBe("pending");
-      expect(result.receipt.input_context).toMatchObject({
-        truncated: false,
-        max_bytes: 64,
-        snapshot: { message: "[redacted]" },
-      });
-
-      await writeReceiptOutcomeResolution({
-        receiptDir,
-        runxHome: path.join(tempDir, "home"),
-        receiptId: result.receipt.id,
-        outcomeState: "complete",
-        source: "integration-test",
-        outcome: {
-          code: "confirmed",
-          summary: "Outcome confirmed after execution.",
-        },
-      });
-
-      const after = await readFile(receiptPath, "utf8");
-      const latest = await latestVerifiedReceiptOutcomeResolution(receiptDir, result.receipt.id, path.join(tempDir, "home"));
-
-      expect(after).toBe(before);
-      expect(latest).toMatchObject({
-        verification: { status: "verified" },
-        resolution: {
-          receipt_id: result.receipt.id,
-          outcome_state: "complete",
-          source: "integration-test",
-        },
-      });
+      expect(result.receipt.schema).toBe("runx.harness_receipt.v1");
+      expect(result.receipt.seal.disposition).toBe("deferred");
+      expect(result.receipt.harness.acts[0]?.surface_refs).toMatchObject([
+        { type: "github_issue", uri: "github://owner/repo/issues/99" },
+      ]);
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
@@ -106,20 +75,15 @@ describe("manifest-agnostic runtime semantics", () => {
       });
 
       expect(result.status).toBe("success");
-      if (result.status !== "success" || result.receipt.kind !== "skill_execution") {
+      if (result.status !== "success") {
         return;
       }
 
-      expect(result.receipt).toMatchObject({
-        disposition: "observing",
-        outcome_state: "pending",
-        surface_refs: [{ type: "issue", uri: "github://owner/repo/issues/77" }],
-      });
-      expect(result.receipt.input_context).toMatchObject({
-        source: "inputs",
-        truncated: false,
-      });
-      expect(result.receipt.input_context?.snapshot).toEqual({ message: "[redacted]" });
+      expect(result.receipt.schema).toBe("runx.harness_receipt.v1");
+      expect(result.receipt.seal.disposition).toBe("deferred");
+      expect(result.receipt.harness.acts[0]?.surface_refs).toMatchObject([
+        { type: "github_issue", uri: "github://owner/repo/issues/77" },
+      ]);
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
@@ -169,21 +133,16 @@ describe("manifest-agnostic runtime semantics", () => {
       if (
         manifestResult.status !== "success" ||
         directResult.status !== "success" ||
-        manifestResult.receipt.kind !== "skill_execution" ||
-        directResult.receipt.kind !== "skill_execution"
+        !("receipt" in manifestResult) ||
+        !("receipt" in directResult)
       ) {
         return;
       }
 
       const summarize = (receipt: typeof manifestResult.receipt) => ({
-        disposition: receipt.disposition,
-        outcome_state: receipt.outcome_state,
-        surface_refs: receipt.surface_refs,
-        input_context: {
-          source: receipt.input_context?.source,
-          truncated: receipt.input_context?.truncated,
-          snapshot: receipt.input_context?.snapshot,
-        },
+        schema: receipt.schema,
+        seal_disposition: receipt.seal.disposition,
+        surface_refs: receipt.harness.acts[0]?.surface_refs,
       });
 
       expect(summarize(manifestResult.receipt)).toEqual(summarize(directResult.receipt));

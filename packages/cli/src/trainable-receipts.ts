@@ -1,19 +1,20 @@
-import { readLedgerEntries, type ArtifactEnvelope } from "@runxhq/core/artifacts";
+import { readFile, readdir } from "node:fs/promises";
+import path from "node:path";
+
 import {
-  defaultRunxHome,
-  listVerifiedLocalReceipts,
-  latestVerifiedReceiptOutcomeResolution,
-  type GovernedDisposition,
-  type LocalReceipt,
-  type ReceiptVerification,
-  type ReceiptSurfaceRef,
-  type VerifiedReceiptOutcomeResolution,
-} from "@runxhq/core/receipts";
-import type { OutcomeState } from "@runxhq/core/receipts";
-import { isRecord } from "@runxhq/core/util";
+  validateHarnessReceiptContract,
+  type HarnessReceiptContract,
+} from "@runxhq/contracts";
+import { errorMessage, isNotFound } from "@runxhq/core/util";
+
+type HarnessReceiptWithVerificationSummary = HarnessReceiptContract & {
+  readonly seal: HarnessReceiptContract["seal"] & {
+    readonly verification_summary: NonNullable<HarnessReceiptContract["seal"]["verification_summary"]>;
+  };
+};
 
 export const TRAINING_SCHEMA_REFS = {
-  trainable_receipt_row: "https://runx.ai/spec/training/trainable-receipt-row.schema.json",
+  trainable_harness_receipt_row: "https://runx.ai/spec/training/trainable-harness-receipt-row.schema.json",
 } as const;
 
 export interface StreamTrainableReceiptsOptions {
@@ -26,31 +27,22 @@ export interface StreamTrainableReceiptsOptions {
 }
 
 export interface TrainableReceiptRow {
-  readonly kind: "runx.trainable-receipt-row.v1";
+  readonly kind: "runx.trainable-harness-receipt-row.v1";
   readonly exported_at: string;
-  readonly receipt_id: string;
-  readonly receipt_kind: LocalReceipt["kind"];
-  readonly skill_name: string | null;
-  readonly graph_name: string | null;
-  readonly owner: string | null;
-  readonly source_type: string | null;
-  readonly status: LocalReceipt["status"];
-  readonly disposition: GovernedDisposition | null;
-  readonly effective_outcome_state: OutcomeState;
-  readonly input_context: LocalReceipt["input_context"] | null;
-  readonly surface_refs: readonly ReceiptSurfaceRef[];
-  readonly evidence_refs: readonly ReceiptSurfaceRef[];
-  readonly context_from: readonly string[];
-  readonly artifact_ids: readonly string[];
-  readonly receipt: LocalReceipt;
-  readonly receipt_verification: ReceiptVerification;
-  readonly latest_outcome_resolution: VerifiedReceiptOutcomeResolution | null;
-  readonly ledger_entries: readonly ArtifactEnvelope[];
-  readonly runner_provenance: {
-    readonly provider?: string;
-    readonly model?: string;
-    readonly prompt_version?: string;
-  };
+  readonly harness_receipt_id: string;
+  readonly harness_id: string;
+  readonly state: HarnessReceiptContract["harness"]["state"];
+  readonly disposition: string;
+  readonly reason_code: string;
+  readonly host_ref: HarnessReceiptContract["harness"]["host_ref"];
+  readonly harness_ref: HarnessReceiptContract["harness"]["harness_ref"];
+  readonly act_ids: readonly string[];
+  readonly decision_ids: readonly string[];
+  readonly artifact_refs: HarnessReceiptContract["harness"]["artifact_refs"];
+  readonly signal_refs: HarnessReceiptContract["harness"]["signal_refs"];
+  readonly child_harness_receipt_refs: HarnessReceiptContract["harness"]["child_harness_receipt_refs"];
+  readonly verification_summary: NonNullable<HarnessReceiptContract["seal"]["verification_summary"]>;
+  readonly receipt: HarnessReceiptWithVerificationSummary;
 }
 
 export async function* streamTrainableReceipts(
@@ -58,106 +50,94 @@ export async function* streamTrainableReceipts(
 ): AsyncGenerator<TrainableReceiptRow> {
   const since = parseTimestamp(options.since, "since");
   const until = parseTimestamp(options.until, "until");
-  const receipts = await listVerifiedLocalReceipts(options.receiptDir, options.runxHome);
 
-  for (const { receipt, verification } of receipts) {
-    if (verification.status !== "verified") {
+  for (const receipt of await listHarnessReceipts(options.receiptDir)) {
+    const createdAt = Date.parse(receipt.created_at);
+    if (since && createdAt < since) {
       continue;
     }
-
-    const timestamp = receiptTimestamp(receipt);
-    if (since && (!timestamp || timestamp < since)) {
+    if (until && createdAt > until) {
       continue;
     }
-    if (until && (!timestamp || timestamp > until)) {
+    if (options.status && receipt.harness.state !== options.status) {
       continue;
     }
-
-    const latestOutcomeResolution = await latestVerifiedReceiptOutcomeResolution(
-      options.receiptDir,
-      receipt.id,
-      options.runxHome ?? defaultRunxHome(),
-    );
-    const effectiveOutcomeState = latestOutcomeResolution?.resolution.outcome_state ?? receipt.outcome_state ?? "complete";
-    if (options.status && effectiveOutcomeState !== options.status) {
+    if (options.source && receipt.harness.host_ref.uri !== options.source && receipt.harness.host_ref.type !== options.source) {
       continue;
     }
-
-    const receiptSource = sourceType(receipt);
-    if (options.source && receiptSource !== options.source) {
+    if (!receipt.seal.verification_summary) {
+      process.stderr.write(`warning: skipping harness receipt ${receipt.id}: missing verification summary\n`);
       continue;
     }
+    const receiptWithVerification = receipt as HarnessReceiptWithVerificationSummary;
 
     yield projectTrainableReceiptRow({
-      receipt,
-      verification,
-      effectiveOutcomeState,
-      latestOutcomeResolution: latestOutcomeResolution ?? null,
-      ledgerEntries: await readLedgerEntries(options.receiptDir, receipt.id),
-      runnerProvenance: runnerProvenance(receipt),
+      receipt: receiptWithVerification,
       exportedAt: new Date().toISOString(),
     });
   }
 }
 
 export function projectTrainableReceiptRow(options: {
-  readonly receipt: LocalReceipt;
-  readonly verification: ReceiptVerification;
-  readonly effectiveOutcomeState: OutcomeState;
-  readonly latestOutcomeResolution: VerifiedReceiptOutcomeResolution | null;
-  readonly ledgerEntries: readonly ArtifactEnvelope[];
-  readonly runnerProvenance: TrainableReceiptRow["runner_provenance"];
+  readonly receipt: HarnessReceiptWithVerificationSummary;
   readonly exportedAt: string;
 }): TrainableReceiptRow {
   const { receipt } = options;
   return {
-    kind: "runx.trainable-receipt-row.v1",
+    kind: "runx.trainable-harness-receipt-row.v1",
     exported_at: options.exportedAt,
-    receipt_id: receipt.id,
-    receipt_kind: receipt.kind,
-    skill_name: receipt.kind === "skill_execution" ? receipt.skill_name : null,
-    graph_name: receipt.kind === "graph_execution" ? receipt.graph_name : null,
-    owner: receipt.kind === "graph_execution" ? receipt.owner ?? null : null,
-    source_type: receipt.kind === "skill_execution" ? receipt.source_type : null,
-    status: receipt.status,
-    disposition: receipt.disposition ?? null,
-    effective_outcome_state: options.effectiveOutcomeState,
-    input_context: receipt.input_context ?? null,
-    surface_refs: receipt.surface_refs ?? [],
-    evidence_refs: receipt.evidence_refs ?? [],
-    context_from: collectContextFrom(receipt),
-    artifact_ids: collectArtifactIds(receipt),
+    harness_receipt_id: receipt.id,
+    harness_id: receipt.harness.harness_id,
+    state: receipt.harness.state,
+    disposition: receipt.seal.disposition,
+    reason_code: receipt.seal.reason_code,
+    host_ref: receipt.harness.host_ref,
+    harness_ref: receipt.harness.harness_ref,
+    act_ids: receipt.harness.acts.map((act) => act.act_id),
+    decision_ids: receipt.harness.decisions.map((decision) => decision.decision_id),
+    artifact_refs: receipt.harness.artifact_refs,
+    signal_refs: receipt.harness.signal_refs,
+    child_harness_receipt_refs: receipt.harness.child_harness_receipt_refs,
+    verification_summary: receipt.seal.verification_summary ?? {
+      signature_valid: false,
+      hash_commitments_valid: false,
+      authority_attenuation_valid: false,
+      criteria_bound: false,
+      redaction_valid: false,
+      external_attestations_present: false,
+    },
     receipt,
-    receipt_verification: options.verification,
-    latest_outcome_resolution: options.latestOutcomeResolution,
-    ledger_entries: options.ledgerEntries,
-    runner_provenance: options.runnerProvenance,
   };
 }
 
-function collectContextFrom(receipt: LocalReceipt): readonly string[] {
-  if (receipt.kind === "skill_execution") {
-    return receipt.context_from;
+async function listHarnessReceipts(directory: string): Promise<readonly HarnessReceiptContract[]> {
+  let entries: readonly string[];
+  try {
+    entries = await readdir(directory);
+  } catch (error) {
+    if (isNotFound(error)) {
+      return [];
+    }
+    throw error;
   }
-  return receipt.steps.flatMap((step) =>
-    step.context_from.map((entry) => entry.receipt_id ?? `${entry.from_step}:${entry.output}`),
-  );
-}
 
-function collectArtifactIds(receipt: LocalReceipt): readonly string[] {
-  if (receipt.kind === "skill_execution") {
-    return receipt.artifact_ids ?? [];
+  const receipts: HarnessReceiptContract[] = [];
+  for (const entry of entries.filter((item) => item.endsWith(".json")).sort()) {
+    const fullPath = path.join(directory, entry);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(await readFile(fullPath, "utf8"));
+    } catch (error) {
+      process.stderr.write(`warning: skipping harness receipt at ${fullPath}: ${errorMessage(error)}\n`);
+      continue;
+    }
+    try {
+      receipts.push(validateHarnessReceiptContract(parsed, fullPath));
+    } catch (error) {
+      process.stderr.write(`warning: skipping harness receipt at ${fullPath}: ${errorMessage(error)}\n`);
+    }
   }
-  return receipt.steps.flatMap((step) => step.artifact_ids ?? []);
-}
-
-function receiptTimestamp(receipt: LocalReceipt): number | undefined {
-  const raw = receipt.completed_at ?? receipt.started_at;
-  if (!raw) {
-    return undefined;
-  }
-  const timestamp = Date.parse(raw);
-  return Number.isNaN(timestamp) ? undefined : timestamp;
+  return receipts.sort((left, right) => right.created_at.localeCompare(left.created_at));
 }
 
 function parseTimestamp(value: string | undefined, label: string): number | undefined {
@@ -169,18 +149,4 @@ function parseTimestamp(value: string | undefined, label: string): number | unde
     throw new Error(`Invalid ${label} timestamp '${value}'. Expected ISO-8601.`);
   }
   return timestamp;
-}
-
-function sourceType(receipt: LocalReceipt): string | undefined {
-  return receipt.kind === "skill_execution" ? receipt.source_type : undefined;
-}
-
-function runnerProvenance(receipt: LocalReceipt): TrainableReceiptRow["runner_provenance"] {
-  const metadata = receipt.kind === "skill_execution" && isRecord(receipt.metadata) ? receipt.metadata : undefined;
-  const runner = isRecord(metadata?.runner) ? metadata.runner : undefined;
-  return {
-    provider: typeof runner?.provider === "string" ? runner.provider : undefined,
-    model: typeof runner?.model === "string" ? runner.model : undefined,
-    prompt_version: typeof runner?.prompt_version === "string" ? runner.prompt_version : undefined,
-  };
 }

@@ -1,11 +1,10 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
 import { runCli } from "../packages/cli/src/index.js";
-import { createFileRegistryStore } from "@runxhq/core/registry";
 
 describe("skill-publish CLI", () => {
   it("publishes valid skill markdown to a local registry path", async () => {
@@ -61,7 +60,7 @@ describe("skill-publish CLI", () => {
         },
       });
       expect(report.publish.link.install_command).toBe(`runx skill add acme/echo@1.0.0 --registry ${registryDir}`);
-      await expect(createFileRegistryStore(registryDir).getVersion("acme/echo", "1.0.0")).resolves.toMatchObject({
+      await expect(readRegistryVersion(registryDir, "acme/echo", "1.0.0")).resolves.toMatchObject({
         markdown: await readFile(path.resolve("fixtures/skills/echo/SKILL.md"), "utf8"),
       });
     } finally {
@@ -98,7 +97,7 @@ describe("skill-publish CLI", () => {
 
       expect(exitCode).toBe(0);
       expect(stderr.contents()).toBe("");
-      await expect(createFileRegistryStore(registryDir).getVersion("acme/portable", "1.0.0")).resolves.toMatchObject({
+      await expect(readRegistryVersion(registryDir, "acme/portable", "1.0.0")).resolves.toMatchObject({
         source_type: "agent",
       });
     } finally {
@@ -151,7 +150,7 @@ describe("skill-publish CLI", () => {
         status: "passed",
         case_count: 2,
       });
-      await expect(createFileRegistryStore(registryDir).getVersion("acme/sourcey", "1.0.0")).resolves.toMatchObject({
+      await expect(readRegistryVersion(registryDir, "acme/sourcey", "1.0.0")).resolves.toMatchObject({
         markdown: await readFile(path.resolve("skills/sourcey/SKILL.md"), "utf8"),
         profile_document: await readFile(path.resolve("skills/sourcey/X.yaml"), "utf8"),
         runner_names: ["agent", "sourcey"],
@@ -183,7 +182,7 @@ describe("skill-publish CLI", () => {
 
       expect(exitCode).toBe(1);
       expect(stderr.contents()).toContain("Skill markdown must start with YAML frontmatter");
-      await expect(createFileRegistryStore(registryDir).listSkills()).resolves.toEqual([]);
+      await expect(listRegistrySkills(registryDir)).resolves.toEqual([]);
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
@@ -270,7 +269,7 @@ harness:
       expect(exitCode).toBe(1);
       expect(stdout.contents()).toBe("");
       expect(stderr.contents()).toContain("Harness failed");
-      await expect(createFileRegistryStore(registryDir).listSkills()).resolves.toEqual([]);
+      await expect(listRegistrySkills(registryDir)).resolves.toEqual([]);
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
@@ -306,7 +305,7 @@ harness:
 
       expect(JSON.parse(first.contents()).publish.status).toBe("published");
       expect(JSON.parse(second.contents()).publish.status).toBe("unchanged");
-      const versions = await createFileRegistryStore(registryDir).listVersions("acme/echo");
+      const versions = await listRegistryVersions(registryDir, "acme/echo");
       expect(versions).toHaveLength(1);
     } finally {
       await rm(tempDir, { recursive: true, force: true });
@@ -342,4 +341,55 @@ function createMemoryStream(): NodeJS.WriteStream & { contents: () => string } {
     },
     contents: () => buffer,
   } as NodeJS.WriteStream & { contents: () => string };
+}
+
+async function readRegistryVersion(
+  registryDir: string,
+  skillId: string,
+  version: string,
+): Promise<Record<string, unknown>> {
+  return JSON.parse(
+    await readFile(path.join(registryDir, ...registrySkillPathParts(skillId), `${encodeURIComponent(version)}.json`), "utf8"),
+  ) as Record<string, unknown>;
+}
+
+async function listRegistryVersions(registryDir: string, skillId: string): Promise<readonly Record<string, unknown>[]> {
+  const skillDir = path.join(registryDir, ...registrySkillPathParts(skillId));
+  let entries: string[];
+  try {
+    entries = await readdir(skillDir);
+  } catch {
+    return [];
+  }
+  return await Promise.all(
+    entries
+      .filter((entry) => entry.endsWith(".json"))
+      .sort()
+      .map(async (entry) => JSON.parse(await readFile(path.join(skillDir, entry), "utf8")) as Record<string, unknown>),
+  );
+}
+
+async function listRegistrySkills(registryDir: string): Promise<readonly string[]> {
+  let owners: string[];
+  try {
+    owners = await readdir(registryDir);
+  } catch {
+    return [];
+  }
+  const skills: string[] = [];
+  for (const owner of owners) {
+    const ownerDir = path.join(registryDir, owner);
+    for (const name of await readdir(ownerDir)) {
+      skills.push(`${decodeURIComponent(owner)}/${decodeURIComponent(name)}`);
+    }
+  }
+  return skills.sort();
+}
+
+function registrySkillPathParts(skillId: string): readonly [string, string] {
+  const [owner, name] = skillId.split("/");
+  if (!owner || !name) {
+    throw new Error(`Invalid registry skill id: ${skillId}`);
+  }
+  return [encodeURIComponent(owner), encodeURIComponent(name)];
 }

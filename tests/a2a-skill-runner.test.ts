@@ -42,11 +42,8 @@ describe("A2A skill runner", () => {
         return;
       }
       expect(result.execution.stdout).toBe("hi");
-      expect(result.receipt.kind).toBe("skill_execution");
-      if (result.receipt.kind !== "skill_execution") {
-        return;
-      }
-      expect(result.receipt.source_type).toBe("a2a");
+      expect(result.receipt.schema).toBe("runx.harness_receipt.v1");
+      expect(result.receipt.seal.disposition).toBe("closed");
       expect(result.receipt.metadata).toMatchObject({
         a2a: {
           agent_card_url_hash: expect.stringMatching(/^[a-f0-9]{64}$/),

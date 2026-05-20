@@ -73,7 +73,7 @@ fn policy_missing_path_exits_usage() -> Result<(), Box<dyn std::error::Error>> {
         .args(["policy", "inspect", "--json"])
         .output()?;
 
-    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(output.status.code(), Some(64));
     assert!(
         String::from_utf8(output.stderr)?
             .contains("runx policy inspect|lint requires exactly one policy path",)

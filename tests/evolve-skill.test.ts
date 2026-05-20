@@ -119,11 +119,11 @@ describe("evolve skill", () => {
 
       const report = JSON.parse(stdout.contents()) as {
         status: string;
-        receipt: { id: string; kind: string };
+        receipt: { id: string; schema: string };
       };
       expect(report.status).toBe("success");
       expect(report.receipt).toMatchObject({
-        kind: "graph_execution",
+        schema: "runx.harness_receipt.v1",
       });
 
       const ledger = await readFile(path.join(receiptDir, "ledgers", `${report.receipt.id}.jsonl`), "utf8");
@@ -229,11 +229,11 @@ describe("evolve skill", () => {
 
       const report = JSON.parse(stdout.contents()) as {
         status: string;
-        receipt: { id: string; kind: string };
+        receipt: { id: string; schema: string };
       };
       expect(report.status).toBe("success");
       expect(report.receipt).toMatchObject({
-        kind: "graph_execution",
+        schema: "runx.harness_receipt.v1",
       });
 
       const ledger = await readFile(path.join(receiptDir, "ledgers", `${report.receipt.id}.jsonl`), "utf8");
@@ -278,10 +278,10 @@ describe("evolve skill", () => {
       const report = JSON.parse(stdout.contents()) as {
         status: string;
         execution: { stderr: string; errorMessage?: string };
-        receipt: { kind: string };
+        receipt: { schema: string };
       };
       expect(report.status).toBe("failure");
-      expect(report.receipt.kind).toBe("graph_execution");
+      expect(report.receipt.schema).toBe("runx.harness_receipt.v1");
       expect(report.execution.stderr || report.execution.errorMessage).toContain("evolve currently stops at spec");
     } finally {
       await rm(tempDir, { recursive: true, force: true });

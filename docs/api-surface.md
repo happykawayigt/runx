@@ -5,16 +5,6 @@
 This page lists the public package entry points from each `@runxhq/*` package `exports` map.
 The package manifests are authoritative; regenerate this page with `pnpm docs:api`.
 
-## Rust SDK
-
-The Rust `runx-sdk` crate is a CLI-backed v0 SDK over an installed `runx`
-binary and documented `runx --json` output. It exposes typed helpers for skill
-search, skill run, resume, connect list, host protocol decoding, and
-act-assignment construction through `runx-contracts`.
-
-`runx-sdk` does not replace the TypeScript runtime. The later `native-runtime`
-path is a separate cutover track.
-
 ## @runxhq/adapters
 
 Runx concrete runtime adapters.
@@ -64,7 +54,7 @@ Version: `0.2.5`
 
 ## @runxhq/core
 
-Runx trusted kernel domains: parser, state machine, policy, executor contracts, receipts, registry, knowledge, config, and artifacts.
+Runx trusted kernel domains: parser, state machine, policy, executor contracts, registry, knowledge, config, and artifacts.
 
 Kernel parity fixtures under `fixtures/kernel/` provide conformance evidence for the stable `@runxhq/core/state-machine` and `@runxhq/core/policy` exports during the Rust port.
 
@@ -80,7 +70,6 @@ Version: `0.1.6`
 | `@runxhq/core/marketplaces` | `./dist/src/marketplaces/index.d.ts` | `./dist/src/marketplaces/index.js` |
 | `@runxhq/core/parser` | `./dist/src/parser/index.d.ts` | `./dist/src/parser/index.js` |
 | `@runxhq/core/policy` | `./dist/src/policy/index.d.ts` | `./dist/src/policy/index.js` |
-| `@runxhq/core/receipts` | `./dist/src/receipts/index.d.ts` | `./dist/src/receipts/index.js` |
 | `@runxhq/core/registry` | `./dist/src/registry/index.d.ts` | `./dist/src/registry/index.js` |
 | `@runxhq/core/state-machine` | `./dist/src/state-machine/index.d.ts` | `./dist/src/state-machine/index.js` |
 | `@runxhq/core/util` | `./dist/src/util/index.d.ts` | `./dist/src/util/index.js` |

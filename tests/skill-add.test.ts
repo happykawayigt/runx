@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -6,8 +6,8 @@ import { describe, expect, it } from "vitest";
 
 import { runCli } from "../packages/cli/src/index.js";
 import type { MarketplaceAdapter, SkillSearchResult } from "@runxhq/core/marketplaces";
-import { createFileRegistryStore, ingestSkillMarkdown } from "@runxhq/core/registry";
 import { installLocalSkill } from "@runxhq/runtime-local";
+import { createFileRegistryStore, seedRegistrySkill } from "./registry-fixtures.js";
 
 describe("skill-add", () => {
   it("installs a registry skill as pinned markdown with provenance", async () => {
@@ -19,7 +19,7 @@ describe("skill-add", () => {
     const markdown = await readFile(path.resolve("skills/sourcey/SKILL.md"), "utf8");
 
     try {
-      const version = await ingestSkillMarkdown(createFileRegistryStore(registryDir), markdown, {
+      const version = await seedRegistrySkill(createFileRegistryStore(registryDir), markdown, {
         owner: "acme",
         version: "1.0.0",
         createdAt: "2026-04-10T00:00:00.000Z",
@@ -127,6 +127,135 @@ describe("skill-add", () => {
     }
   });
 
+  it("uses native registry install only when explicitly requested", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-skill-add-rust-"));
+    const registryBin = path.join(tempDir, "registry-install.mjs");
+    const skillsDir = path.join(tempDir, "skills");
+    const stdout = createMemoryStream();
+    const stderr = createMemoryStream();
+
+    try {
+      await writeFile(
+        registryBin,
+        `#!/usr/bin/env node
+const args = process.argv.slice(2);
+const expected = ["registry", "install", "acme/sourcey@1.0.0", "--json", "--to", ${JSON.stringify(skillsDir)}, "--digest", "abcd"];
+if (JSON.stringify(args) !== JSON.stringify(expected)) {
+  process.stderr.write("unexpected args: " + JSON.stringify(args) + "\\n");
+  process.exit(2);
+}
+process.stdout.write(JSON.stringify({
+  status: "success",
+  registry: {
+    action: "install",
+    source: "local",
+    ref: "acme/sourcey@1.0.0",
+    install: {
+      status: "installed",
+      destination: ${JSON.stringify(path.join(skillsDir, "acme", "sourcey", "SKILL.md"))},
+      skill_name: "sourcey",
+      source: "runx-registry",
+      source_label: "runx registry",
+      skill_id: "acme/sourcey",
+      version: "1.0.0",
+      digest: "sha256:abcd",
+      profile_digest: "sha256:profile",
+      profile_state_path: ${JSON.stringify(path.join(skillsDir, "acme", "sourcey", ".runx", "profile.json"))},
+      runner_names: ["agent"],
+      trust_tier: "community"
+    },
+    receipt_metadata: {}
+  }
+}, null, 2) + "\\n");
+`,
+      );
+      await chmod(registryBin, 0o755);
+
+      const exitCode = await runCli(
+        ["skill", "add", "acme/sourcey@1.0.0", "--to", skillsDir, "--digest", "sha256:abcd", "--json"],
+        { stdin: process.stdin, stdout, stderr },
+        {
+          ...process.env,
+          RUNX_CWD: process.cwd(),
+          RUNX_RUST_REGISTRY_INSTALL: "1",
+          RUNX_RUST_REGISTRY_BIN: registryBin,
+          RUNX_REGISTRY_DIR: path.join(tempDir, "unused-registry"),
+        },
+      );
+
+      expect(exitCode).toBe(0);
+      expect(stderr.contents()).toBe("");
+      const report = JSON.parse(stdout.contents()) as {
+        install: {
+          status: string;
+          destination: string;
+          skill_id: string;
+          profileDigest: string;
+          profileStatePath: string;
+          runnerNames: string[];
+        };
+      };
+      expect(report.install).toMatchObject({
+        status: "installed",
+        destination: path.join(skillsDir, "acme", "sourcey", "SKILL.md"),
+        skill_id: "acme/sourcey",
+        profileDigest: "sha256:profile",
+        profileStatePath: path.join(skillsDir, "acme", "sourcey", ".runx", "profile.json"),
+        runnerNames: ["agent"],
+      });
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not route fixture marketplace install through native registry install", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-skill-add-marketplace-rust-"));
+    const registryBin = path.join(tempDir, "registry-install.mjs");
+    const stdout = createMemoryStream();
+    const stderr = createMemoryStream();
+
+    try {
+      await writeFile(
+        registryBin,
+        `#!/usr/bin/env node
+process.stderr.write("native registry install should not run for fixture marketplace\\n");
+process.exit(2);
+`,
+      );
+      await chmod(registryBin, 0o755);
+
+      const exitCode = await runCli(
+        ["skill", "add", "fixture-marketplace:sourcey-docs", "--to", path.join(tempDir, "skills"), "--json"],
+        { stdin: process.stdin, stdout, stderr },
+        {
+          ...process.env,
+          RUNX_CWD: process.cwd(),
+          RUNX_REGISTRY_DIR: path.join(tempDir, "registry"),
+          RUNX_ENABLE_FIXTURE_MARKETPLACE: "1",
+          RUNX_RUST_REGISTRY_INSTALL: "1",
+          RUNX_RUST_REGISTRY_BIN: registryBin,
+        },
+      );
+
+      expect(exitCode).toBe(0);
+      expect(stderr.contents()).toBe("");
+      const report = JSON.parse(stdout.contents()) as {
+        install: {
+          source: string;
+          skill_id: string;
+        };
+      };
+      expect(report.install).toEqual(
+        expect.objectContaining({
+          source: "fixture-marketplace",
+          skill_id: "fixture/sourcey-docs",
+        }),
+      );
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("installs runx links into decoded namespace folder packages", async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-skill-add-link-"));
     const registryDir = path.join(tempDir, "registry");
@@ -134,7 +263,7 @@ describe("skill-add", () => {
     const markdown = await readFile(path.resolve("skills/sourcey/SKILL.md"), "utf8");
 
     try {
-      await ingestSkillMarkdown(createFileRegistryStore(registryDir), markdown, {
+      await seedRegistrySkill(createFileRegistryStore(registryDir), markdown, {
         owner: "acme",
         version: "1.0.0",
         createdAt: "2026-04-10T00:00:00.000Z",
@@ -165,7 +294,7 @@ describe("skill-add", () => {
     const stderr = createMemoryStream();
 
     try {
-      await ingestSkillMarkdown(createFileRegistryStore(registryDir), await readFile(path.resolve("skills/sourcey/SKILL.md"), "utf8"), {
+      await seedRegistrySkill(createFileRegistryStore(registryDir), await readFile(path.resolve("skills/sourcey/SKILL.md"), "utf8"), {
         owner: "acme",
         version: "1.0.0",
       });

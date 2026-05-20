@@ -1,18 +1,27 @@
+import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { runCli } from "../packages/cli/src/index.js";
 import { createDefaultSkillAdapters } from "@runxhq/adapters";
-import { inspectLocalGraph, runLocalGraph, type Caller } from "@runxhq/runtime-local";
+import { runLocalGraph, type Caller, type SkillAdapter } from "@runxhq/runtime-local";
 
 const nonInteractiveCaller: Caller = {
   resolve: async () => undefined,
   report: () => undefined,
 };
 const adapters = createDefaultSkillAdapters();
+const workspaceRoot = process.cwd();
+const cargo = process.platform === "win32" ? "cargo.exe" : "cargo";
+const runxBinary = path.join(
+  workspaceRoot,
+  "crates",
+  "target",
+  "debug",
+  process.platform === "win32" ? "runx.exe" : "runx",
+);
 
 describe("local fanout graph runner", () => {
   it("runs a fanout group with all-success sync policy", async () => {
@@ -42,7 +51,8 @@ describe("local fanout graph runner", () => {
         ["synthesize", "success", undefined],
       ]);
       expect(result.steps[3].stdout).toBe("approved");
-      expect(result.receipt.sync_points).toEqual([
+      expect(result.receipt.schema).toBe("runx.harness_receipt.v1");
+      expect(runtimeSyncPoints(result.receipt)).toEqual([
         expect.objectContaining({
           group_id: "advisors",
           strategy: "all",
@@ -146,12 +156,9 @@ steps:
       ]);
       expect(result.steps.slice(0, 3).map((step) => step.parentReceipt)).toEqual([undefined, undefined, undefined]);
       expect(result.steps[3].stdout).toBe("go");
-      expect(result.receipt.steps.slice(0, 3).map((step) => step.fanout_group)).toEqual([
-        "advisors",
-        "advisors",
-        "advisors",
-      ]);
-      expect(result.receipt.sync_points).toEqual([
+      expect(result.receipt.schema).toBe("runx.harness_receipt.v1");
+      expect(result.receipt.harness.child_harness_receipt_refs).toHaveLength(4);
+      expect(runtimeSyncPoints(result.receipt)).toEqual([
         expect.objectContaining({
           group_id: "advisors",
           strategy: "quorum",
@@ -222,7 +229,8 @@ steps:
       expect(resumed.steps.map((step) => step.stepId)).toEqual(["market", "risk", "synthesize"]);
       expect(resumed.steps.slice(0, 2).map((step) => step.fanoutGroup)).toEqual(["advisors", "advisors"]);
       expect(resumed.output).toBe("go");
-      expect(resumed.receipt.sync_points).toEqual([
+      expect(resumed.receipt.schema).toBe("runx.harness_receipt.v1");
+      expect(runtimeSyncPoints(resumed.receipt)).toEqual([
         expect.objectContaining({
           group_id: "advisors",
           decision: "pause",
@@ -287,12 +295,11 @@ steps:
       if (result.status !== "escalated") {
         return;
       }
-      expect(result.receipt.status).toBe("failure");
-      expect(result.receipt.disposition).toBe("escalated");
-      expect(result.receipt.outcome_state).toBe("pending");
+      expect(result.receipt.schema).toBe("runx.harness_receipt.v1");
+      expect(result.receipt.seal.disposition).toBe("blocked");
       expect(result.state.status).toBe("escalated");
       expect(result.errorMessage).toBe("fanout escalation: fanout branches disagreed on structured field recommendation");
-      expect(result.receipt.sync_points).toEqual([
+      expect(runtimeSyncPoints(result.receipt)).toEqual([
         expect.objectContaining({
           group_id: "advisors",
           decision: "escalate",
@@ -373,8 +380,10 @@ steps:
       expect(result.reasons).toEqual([
         "transition policy blocked step 'market': expected seed.allowed == true",
       ]);
-      expect(result.receipt?.steps.map((step) => step.step_id)).toEqual(["seed", "market"]);
-      expect(result.receipt?.steps[1]).toMatchObject({
+      expect(result.receipt?.schema).toBe("runx.harness_receipt.v1");
+      const graphSteps = runtimeGraphSteps(result.receipt);
+      expect(graphSteps.map((step) => step.step_id)).toEqual(["seed", "market"]);
+      expect(graphSteps[1]).toMatchObject({
         step_id: "market",
         status: "failure",
         disposition: "policy_denied",
@@ -383,7 +392,6 @@ steps:
       expect(result.receipt?.metadata).toMatchObject({
         authority_proof: {
           skill_name: "json-output",
-          source_type: "cli-tool",
           requested: {
             connected_auth: false,
             scopes: [],
@@ -399,11 +407,71 @@ steps:
     }
   });
 
-  it("exposes sync policy decisions through composite receipt inspection and the CLI shell", async () => {
+  it("denies mutating retry fanout branches without idempotency before adapter execution", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-fanout-retry-denied-"));
+    const graphPath = path.join(tempDir, "graph.yaml");
+    const receiptDir = path.join(tempDir, "receipts");
+    const runxHome = path.join(tempDir, "home");
+    const echoSkillPath = path.resolve("fixtures/skills/echo");
+    const adapter = createCountingAdapter();
+
+    try {
+      await writeFile(
+        graphPath,
+        `name: fanout-retry-mutating-denied
+fanout:
+  groups:
+    advisors:
+      strategy: all
+      on_branch_failure: halt
+steps:
+  - id: deploy
+    mode: fanout
+    fanout_group: advisors
+    skill: ${echoSkillPath}
+    mutation: true
+    inputs:
+      message: deploy
+    retry:
+      max_attempts: 2
+`,
+      );
+      ensureRustRunxBinary();
+
+      const result = await runLocalGraph({
+        graphPath,
+        caller: nonInteractiveCaller,
+        receiptDir,
+        runxHome,
+        env: kernelEnv(),
+        adapters: [adapter],
+      });
+
+      expect(result.status).toBe("policy_denied");
+      if (result.status !== "policy_denied") {
+        return;
+      }
+      expect(result.reasons).toEqual(["step 'deploy' declares mutating retry without an idempotency key"]);
+      expect(adapter.callCount()).toBe(0);
+      expect(result.receipt?.schema).toBe("runx.harness_receipt.v1");
+      const graphSteps = runtimeGraphSteps(result.receipt);
+      expect(graphSteps).toMatchObject([
+        {
+          step_id: "deploy",
+          status: "failure",
+          disposition: "policy_denied",
+          fanout_group: "advisors",
+          receipt_id: undefined,
+        },
+      ]);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("records sync policy decisions on the harness receipt", async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-fanout-inspect-"));
     const receiptDir = path.join(tempDir, "receipts");
-    const stdout = createMemoryStream();
-    const stderr = createMemoryStream();
 
     try {
       const result = await runLocalGraph({
@@ -419,48 +487,81 @@ steps:
         return;
       }
 
-      const inspection = await inspectLocalGraph({
-        graphId: result.receipt.id,
-        receiptDir,
-        env: process.env,
-      });
-      expect(inspection.summary.syncPoints).toEqual([
-        {
-          groupId: "advisors",
+      expect(runtimeSyncPoints(result.receipt)).toEqual([
+        expect.objectContaining({
+          group_id: "advisors",
           decision: "proceed",
-          ruleFired: "quorum.min_success",
+          rule_fired: "quorum.min_success",
           reason: "2/3 branches succeeded; required 2",
-        },
+        }),
       ]);
-
-      const inspectExit = await runCli(
-        ["skill", "inspect", result.receipt.id, "--receipt-dir", receiptDir],
-        { stdin: process.stdin, stdout, stderr },
-        { ...process.env, RUNX_CWD: process.cwd(), RUNX_HOME: path.join(tempDir, "home") },
-      );
-      expect(inspectExit).toBe(0);
-      expect(stdout.contents()).toContain("fanout-advisors");
-      expect(stdout.contents()).toContain("graph_execution");
-      expect(stdout.contents()).toContain(result.receipt.id);
-      expect(stdout.contents()).toContain("verified");
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
   });
 });
 
-function createMemoryStream(): NodeJS.WriteStream & { contents: () => string; clear: () => void } {
-  let buffer = "";
+function kernelEnv(): NodeJS.ProcessEnv {
   return {
-    write: (chunk: string | Uint8Array) => {
-      buffer += chunk.toString();
-      return true;
+    ...process.env,
+    RUNX_KERNEL_EVAL_BIN: runxBinary,
+  };
+}
+
+function ensureRustRunxBinary(): void {
+  const result = spawnSync(
+    cargo,
+    ["build", "--quiet", "--manifest-path", "crates/Cargo.toml", "-p", "runx-cli", "--bin", "runx"],
+    {
+      cwd: workspaceRoot,
+      encoding: "utf8",
+      env: process.env,
+      maxBuffer: 8 * 1024 * 1024,
     },
-    contents: () => buffer,
-    clear: () => {
-      buffer = "";
+  );
+
+  expect(result.status, result.stderr || result.stdout).toBe(0);
+}
+
+function runtimeSyncPoints(receipt: ({ readonly metadata?: Readonly<Record<string, unknown>> } & { readonly sync_points?: unknown }) | undefined): readonly unknown[] {
+  const syncPoints = receipt?.sync_points;
+  expect(Array.isArray(syncPoints)).toBe(true);
+  return syncPoints as readonly unknown[];
+}
+
+interface RuntimeGraphStep {
+  readonly step_id: string;
+  readonly status?: string;
+  readonly disposition?: string;
+  readonly receipt_id?: string;
+  readonly fanout_group?: string;
+}
+
+function runtimeGraphSteps(receipt: { readonly metadata?: Readonly<Record<string, unknown>> } | undefined): readonly RuntimeGraphStep[] {
+  const runx = receipt?.metadata?.runx;
+  expect(runx).toEqual(expect.any(Object));
+  const steps = (runx as { readonly steps?: unknown } | undefined)?.steps;
+  expect(Array.isArray(steps)).toBe(true);
+  return steps as readonly RuntimeGraphStep[];
+}
+
+function createCountingAdapter(): SkillAdapter & { callCount: () => number } {
+  let calls = 0;
+  return {
+    type: "cli-tool",
+    callCount: () => calls,
+    invoke: async (request) => {
+      calls += 1;
+      return {
+        status: "success",
+        stdout: String(request.inputs.message ?? "ok"),
+        stderr: "",
+        exitCode: 0,
+        signal: null,
+        durationMs: 1,
+      };
     },
-  } as NodeJS.WriteStream & { contents: () => string; clear: () => void };
+  };
 }
 
 async function writeSleepSkill(directory: string, label: string): Promise<void> {

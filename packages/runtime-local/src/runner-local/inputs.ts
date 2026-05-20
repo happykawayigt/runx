@@ -1,14 +1,18 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
+import {
+  validateResolutionRequestContract as validateResolutionRequest,
+  type QuestionContract as Question,
+  type ResolutionRequestContract as ResolutionRequest,
+} from "@runxhq/contracts";
 import { readLedgerEntries } from "@runxhq/core/artifacts";
-import { validateResolutionRequest, type Question, type ResolutionRequest } from "@runxhq/core/executor";
 import { validateOutboxEntry, validateThread } from "@runxhq/core/knowledge";
-import type { SkillInput, ValidatedSkill } from "@runxhq/core/parser";
 import { isPlainRecord, isRecord } from "@runxhq/core/util";
 
 import { defaultReceiptDir } from "./receipt-paths.js";
 import type { RunLocalSkillOptions } from "./index.js";
+import type { SkillInput, ValidatedSkill } from "../parser-types.js";
 
 export async function resolveInputs(
   skill: ValidatedSkill,

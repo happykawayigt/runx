@@ -1,14 +1,26 @@
+[graph]
+# Supply-chain policy must cover adapter feature flags as well as the default
+# pure-kernel graph. Feature-gated runtime/network dependencies need the same
+# reviewed exception path as default dependencies.
+all-features = true
+
 [bans]
 multiple-versions = "allow"
+# Default workspace ban for heavy async/network/application frameworks and
+# deprecated YAML backends. Pure crates must never depend on these. Adapter or
+# runtime-tier use requires a spec-reviewed, package-scoped exception before
+# the crate is removed from this list.
 deny = [
-  { name = "async-std" },
-  { name = "axum" },
-  { name = "clap" },
-  { name = "hyper" },
-  { name = "reqwest" },
-  { name = "rmcp" },
-  { name = "tokio" },
-  { name = "ureq" },
+  { name = "async-std", reason = "No async runtime exception is approved for the Rust parity workspace." },
+  { name = "axum", reason = "No HTTP server framework exception is approved for the Rust parity workspace." },
+  { name = "clap", reason = "CLI parsing remains hand-rolled for the cargo-installed launcher boundary." },
+  { name = "hyper", reason = "No raw HTTP transport exception is approved; adapter-side HTTP needs a scoped spec first." },
+  { name = "reqwest", reason = "No HTTP client exception is approved; adapter-side HTTP needs a scoped spec first." },
+  { name = "rmcp", reason = "MCP currently uses the narrow local protocol layer; rmcp needs a scoped adapter spec first." },
+  { name = "serde_yaml", reason = "Unapproved YAML backend; the parser backend is serde_norway." },
+  { name = "serde_yml", reason = "Retired YAML backend candidate; the parser backend is serde_norway." },
+  { name = "tokio", reason = "No async runtime exception is approved for the Rust parity workspace." },
+  { name = "ureq", reason = "No HTTP client exception is approved; adapter-side HTTP needs a scoped spec first." },
 ]
 
 [licenses]
@@ -19,6 +31,7 @@ allow = [
   "Unicode-3.0",
 ]
 confidence-threshold = 0.8
+exceptions = []
 
 [sources]
 unknown-git = "deny"

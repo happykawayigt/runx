@@ -4,8 +4,8 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { writeLocalReceipt } from "@runxhq/core/receipts";
 import { inspectLocalReceipt, listLocalHistory } from "@runxhq/runtime-local";
+import { runCli } from "../packages/cli/src/index.js";
 
 describe("receipt verification for inspect/history", () => {
   it("marks locally signed receipts as verified", async () => {
@@ -43,14 +43,22 @@ describe("receipt verification for inspect/history", () => {
 
     try {
       const receipt = await writeFixtureReceipt(receiptDir, runxHome);
-      const receiptPath = path.join(receiptDir, `${receipt.id}.json`);
-      const contents = await readFile(receiptPath, "utf8");
-      await writeFile(receiptPath, contents.replace('"status": "success"', '"status": "failure"'));
+      const persisted = path.join(receiptDir, `${receipt.id}.json`);
+      const contents = await readFile(persisted, "utf8");
+      const tamperedReceipt = JSON.parse(contents) as {
+        seal: { disposition: string };
+        harness: { seal: { disposition: string } };
+      };
+      tamperedReceipt.seal.disposition = "failed";
+      tamperedReceipt.harness.seal.disposition = "failed";
+      await writeFile(persisted, `${JSON.stringify(tamperedReceipt, null, 2)}\n`);
 
       await expect(inspectLocalReceipt({ receiptDir, runxHome, receiptId: receipt.id })).resolves.toMatchObject({
         receipt: {
           id: receipt.id,
-          status: "failure",
+          seal: {
+            disposition: "failed",
+          },
         },
         verification: { status: "invalid", reason: "signature_mismatch" },
         summary: {
@@ -86,21 +94,25 @@ describe("receipt verification for inspect/history", () => {
 });
 
 async function writeFixtureReceipt(receiptDir: string, runxHome: string) {
-  return await writeLocalReceipt({
-    receiptDir,
-    runxHome,
-    skillName: "echo",
-    sourceType: "cli-tool",
-    inputs: { message: "hi" },
-    stdout: "ok",
-    stderr: "",
-    execution: {
-      status: "success",
-      exitCode: 0,
-      signal: null,
-      durationMs: 1,
+  const stdout = createMemoryStream();
+  const stderr = createMemoryStream();
+  const exit = await runCli(
+    ["skill", "fixtures/skills/echo", "--message", "hi", "--receipt-dir", receiptDir, "--json"],
+    { stdin: process.stdin, stdout, stderr },
+    { ...process.env, RUNX_HOME: runxHome, RUNX_CWD: process.cwd() },
+  );
+  expect(exit).toBe(0);
+  expect(stderr.contents()).toBe("");
+  return (JSON.parse(stdout.contents()) as { receipt: { id: string } }).receipt;
+}
+
+function createMemoryStream(): NodeJS.WriteStream & { contents: () => string } {
+  let contents = "";
+  return {
+    write(chunk: unknown) {
+      contents += String(chunk);
+      return true;
     },
-    startedAt: "2026-04-10T00:00:00Z",
-    completedAt: "2026-04-10T00:00:01Z",
-  });
+    contents: () => contents,
+  } as NodeJS.WriteStream & { contents: () => string };
 }

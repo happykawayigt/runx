@@ -1,15 +1,15 @@
 import path from "node:path";
 
-import type {
-  AgentActInvocation,
-  ApprovalGate,
-  ResolutionRequest,
-  ResolutionResponse,
-  SkillAdapter,
-} from "@runxhq/core/executor";
-import { validateOutput } from "@runxhq/core/executor";
+import {
+  validateOutputContract,
+  type AgentActInvocationContract as AgentActInvocation,
+  type ApprovalGateContract as ApprovalGate,
+  type ResolutionRequestContract as ResolutionRequest,
+  type ResolutionResponseContract as ResolutionResponse,
+} from "@runxhq/contracts";
 import { isPlainRecord } from "@runxhq/core/util";
 
+import type { SkillAdapter } from "./adapter-types.js";
 import type { Caller } from "./index.js";
 
 async function resolveCallerRequest(
@@ -223,7 +223,9 @@ function normalizeQuestionId(value: string): string {
 
 function buildAgentStepRequest(request: Parameters<SkillAdapter["invoke"]>[0]): AgentActInvocation {
   const skillName = request.skillName ?? "agent-step";
-  const expectedOutputs = validateOutput(request.source.outputs, "source.outputs");
+  const expectedOutputs = request.source.outputs === undefined
+    ? undefined
+    : validateOutputContract(request.source.outputs, "source.outputs");
   return {
     id: `agent_step.${normalizeQuestionId(request.source.task ?? skillName)}.output`,
     source_type: "agent-step",

@@ -70,6 +70,7 @@ const ignoredDirectoryNames = new Set([
   ".build",
   ".data",
   ".git",
+  ".runx",
   ".turbo",
   "coverage",
   "dist",
@@ -83,7 +84,7 @@ const ignoredFiles = new Set([
 ]);
 
 const migratedHarnessPattern = /\brunx\.harness_receipt\.v1\b|\bHarnessReceipt\b|\bharness receipt\b/iu;
-const runtimePseudoSignaturePattern = /\bsig:\{digest\}\b|\bsig:pending\b|\bruntime-skeleton\b|\bLocalHarnessSignatureVerifier\b/u;
+const runtimePseudoSignaturePattern = /\bsig:\{digest\}|\bsig:pending\b|\bruntime-skeleton\b|\bLocalHarnessSignatureVerifier\b/u;
 const legacyIdPrefixPattern = /\.startsWith\(["']gx_["']\)|\.startsWith\(["']rx_["']\)/u;
 const retiredReceiptTypePattern =
   /\bLocalSkillReceipt\b|\bLocalGraphReceipt\b|\bLocalReceiptContract\b|\bLocalSkillReceiptContract\b|\bLocalGraphReceiptContract\b/u;
@@ -216,13 +217,18 @@ function finding(
     file,
     line,
     kind,
-    classification: classifyFinding(file, kind),
+    classification: classifyFinding(file, kind, token, text.trim()),
     token,
     text: text.trim(),
   };
 }
 
-function classifyFinding(file: string, kind: ReceiptAuditKind): ReceiptAuditClassification {
+function classifyFinding(
+  file: string,
+  kind: ReceiptAuditKind,
+  token: string,
+  text: string,
+): ReceiptAuditClassification {
   if (kind === "harness_receipt_shape") {
     return "migrated";
   }
@@ -239,7 +245,65 @@ function classifyFinding(file: string, kind: ReceiptAuditKind): ReceiptAuditClas
     return "false_positive";
   }
 
+  if (isKnownGuardOrDevOnlyContext(file, kind, token, text)) {
+    return "false_positive";
+  }
+
   return "active_blocker";
+}
+
+function isKnownGuardOrDevOnlyContext(
+  file: string,
+  kind: ReceiptAuditKind,
+  token: string,
+  text: string,
+): boolean {
+  if (kind === "runtime_pseudo_signature") {
+    return isAllowedRuntimePseudoSignatureContext(file, text);
+  }
+
+  if (kind !== "retired_receipt_shape") {
+    return false;
+  }
+
+  if (isRustHarnessRetiredFieldRejection(file)) {
+    return true;
+  }
+
+  return isRustNonReceiptContractName(file, token, text);
+}
+
+function isAllowedRuntimePseudoSignatureContext(file: string, text: string): boolean {
+  if (file === "crates/runx-runtime/src/receipts.rs") {
+    return /\bRuntimeReceiptSignaturePolicy\b|\ballows_local_pseudo_signatures\b|\bsig:pending\b|\bruntime-skeleton\b/u.test(text);
+  }
+
+  if (file.startsWith("crates/runx-runtime/tests/")) {
+    return /\bRuntimeReceiptSignaturePolicy\b|\bsig:\{digest\}/u.test(text);
+  }
+
+  if (file === "crates/runx-receipts/src/tree.rs" || file.startsWith("crates/runx-receipts/tests/")) {
+    return /\bsig:\{digest\}/u.test(text);
+  }
+
+  return false;
+}
+
+function isRustHarnessRetiredFieldRejection(file: string): boolean {
+  return file === "crates/runx-runtime/src/harness/fixtures.rs"
+    || file === "crates/runx-runtime/tests/harness_fixtures.rs";
+}
+
+function isRustNonReceiptContractName(file: string, token: string, text: string): boolean {
+  if (!file.endsWith(".rs") || (token !== "skill_name" && token !== "graph_name")) {
+    return false;
+  }
+
+  if (/\bskill_execution\b|\bgraph_execution\b/u.test(text)) {
+    return false;
+  }
+
+  return true;
 }
 
 function isGeneratedStaleArtifact(file: string): boolean {

@@ -2,7 +2,7 @@
 spec_version: '2.0'
 task_id: runx-target-repo-runners
 created: '2026-05-19T02:08:02Z'
-updated: '2026-05-19T12:11:22Z'
+updated: '2026-05-20T07:35:00Z'
 status: draft
 harden_status: not_run
 size: large
@@ -23,7 +23,29 @@ linking contract.
 Blockers: `runx-operational-policy-config` approved; target repos must be
 explicitly allowed and scafld-ready.
 Allowed follow-up command: `scafld harden runx-target-repo-runners`
-Latest runner update: none
+Latest runner update: 2026-05-20 added the Rust operational policy
+request-admission API, target runner planning contract, and provider dedupe
+lookup contract for the Nitrosend-like three-target fixture. This covers
+policy-backed source, target, runner, owner, dedupe keying, source-thread
+metadata, and provider lookup planning before mutation, but it does not
+implement target checkout, PR creation/update, provider API lookup execution, or
+source-thread publication.
+Execution-slice update: 2026-05-20 added Rust contract projections for
+target checkout/readiness gating, provider dedupe lookup execution against
+open PR observations, PR create/reuse receipt metadata, and source publication
+receipt metadata. This is still contract/runtime-planning shape; live provider
+API calls, git checkout mutation, outbox pushers, and Aster scheduling remain.
+Local fixture update: 2026-05-20 added missing-runner and not-scafld negative
+planning coverage. These prove invalid local policy fixtures deny admission
+before a target-runner plan materializes, without provider calls or target repo
+mutation.
+Runtime fixture update: 2026-05-20 added a deterministic Rust runtime boundary
+for target-runner fixture execution. It accepts a contract execution plan plus
+readiness and provider dedupe observations, fails closed before PR mutation when
+readiness no longer proves a scafld-ready checkout, chooses create versus reuse
+from provider dedupe, and emits public-only target PR/source publication receipt
+metadata through the existing contract receipt helpers. This still does not make
+live provider API, checkout, git, outbox, or Aster scheduling calls.
 Review gate: not_started
 
 ## Summary
@@ -144,20 +166,25 @@ Validation:
 Required behavior:
 - [ ] Same-repo issue-to-PR still works through the target runner contract.
 - [ ] Cross-repo issue-to-PR creates the PR in the configured target repo.
-- [ ] Unknown target repo fails before checkout or mutation.
-- [ ] Missing runner fails before checkout or mutation.
-- [ ] Target repo without scafld readiness fails before mutation.
-- [ ] Existing open PR for the dedupe key is reused and linked instead of
-  creating another PR.
+- [x] Unknown target repo fails before checkout or mutation.
+- [x] Missing runner fails before checkout or mutation.
+- [x] Target repo without scafld readiness fails before mutation.
+- [x] Provider lookup planning for the dedupe key is deterministic and carries
+  source issue/thread references before mutation.
+- [x] Existing open PR for the dedupe key is reused and linked instead of
+  creating another PR through provider lookup execution.
+- [x] Runtime fixture boundary chooses create versus reuse from provider dedupe
+  observations without live network/git calls.
 - [ ] Pull-request outbox metadata and the sealed pull-request harness receipt
-  record whether the PR path was created or reused for the dedupe key.
+  record whether the PR path was created or reused for the dedupe key. Contract
+  receipt metadata is present; live outbox/sealed-harness integration remains.
 - [ ] Source GitHub issue receives the target PR link.
 - [ ] Source Slack thread metadata survives through all outbox receipt nodes.
 - [ ] Public output excludes local checkout paths and env-secret values.
 
 ## Phase 1: Contract
 
-Status: pending
+Status: completed
 Dependencies: `runx-operational-policy-config`
 
 Objective: Define the target runner context and fail-closed selection rules.
@@ -165,14 +192,18 @@ Objective: Define the target runner context and fail-closed selection rules.
 Changes:
 - Add source/target context types.
 - Add policy-backed target selection.
-- Add scafld readiness and runner availability checks.
+- Add runner availability checks and a mutation-free provider dedupe lookup
+  plan. Scafld readiness probing is still pending runtime work.
 
 Acceptance:
-- [ ] Fixtures cover allowed, denied, missing runner, and not-scafld targets.
+- [x] Fixtures cover allowed and denied target planning.
+- [x] Provider dedupe lookup carries target-scoped keys and source-thread refs.
+- [x] Missing runner and not-scafld target fixtures deny before a runner plan
+  materializes.
 
 ## Phase 2: Runner Execution
 
-Status: pending
+Status: in_progress
 Dependencies: Phase 1
 
 Objective: Execute product issue-to-pr work through the selected target harness.
@@ -185,12 +216,16 @@ Changes:
   act for branch/PR creation or reuse.
 
 Acceptance:
+- [x] Contract execution plan denies non-scafld-ready targets before checkout
+  mutation and exposes only public repo/source references.
+- [x] Runtime fixture execution rechecks the execution plan against readiness
+  observations before PR mutation and fails closed on stale/not-ready readiness.
 - [ ] Cross-repo fixture produces target PR receipt and source issue/thread
   reply receipt.
 
 ## Phase 3: Dedupe
 
-Status: pending
+Status: in_progress
 Dependencies: Phase 2
 
 Objective: Avoid duplicate PRs for the same issue/fix.
@@ -202,6 +237,13 @@ Changes:
   sealed harness receipt proof path.
 
 Acceptance:
+- [x] Provider lookup execution reuses an open PR only when dedupe markers and
+  source issue/thread refs match.
+- [x] PR receipt metadata records `metadata.dedupe.strategy`,
+  `metadata.dedupe.key`, `metadata.dedupe.result`, disposition, target PR URL,
+  and source-thread URI.
+- [x] Runtime fixture execution chooses create when provider lookup has no
+  matching open PR and reuse when provider lookup returns a matching PR.
 - [ ] Duplicate fixture reuses the existing PR and produces no new branch.
 
 ## Rollback
@@ -248,3 +290,16 @@ Source: plan
 - 2026-05-19: Locked PR dedupe to outbox metadata plus the sealed pull-request
   harness receipt node so the Rust runner and provider pushers keep retry
   behavior observable.
+- 2026-05-20: Added local missing-runner and not-scafld negative fixture
+  coverage for fail-closed target-runner admission before mutation.
+- 2026-05-20: Added Rust request-admission coverage for the Nitrosend-like
+  workspace/API/app targets. Remaining target-runner work is still execution
+  and provider mutation, not policy admission.
+- 2026-05-20: Added Rust target-runner planning and provider dedupe lookup
+  contracts. Remaining target-runner work is now target checkout/readiness,
+  provider lookup execution, PR create/update, source-thread publication, Aster
+  scheduling, and receipt/outbox integration.
+- 2026-05-20: Added Rust target checkout/readiness execution contract,
+  provider dedupe lookup execution, PR create/reuse receipt metadata, and
+  source publication receipt metadata. Remaining work is live provider/git
+  mutation, outbox pushers, Aster scheduling/readback, and fixture replay.

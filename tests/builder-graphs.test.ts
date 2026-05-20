@@ -5,6 +5,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { readLedgerEntries } from "@runxhq/core/artifacts";
 import { parseSkillMarkdown, validateSkill } from "@runxhq/core/parser";
 import { runLocalSkill, type Caller } from "@runxhq/runtime-local";
 
@@ -67,11 +68,12 @@ describe("builder skill design-skill", () => {
       if (result.status !== "success") {
         return;
       }
-      expect(result.receipt.kind).toBe("graph_execution");
-      if (result.receipt.kind !== "graph_execution") {
-        return;
-      }
-      expect(result.receipt.steps.map((step) => step.step_id)).toEqual(["decompose", "research", "author-harness"]);
+      expect(result.receipt).toMatchObject({ schema: "runx.harness_receipt.v1" });
+      await expect(graphStepIds(path.join(tempDir, "receipts"), result.receipt.id)).resolves.toEqual([
+        "decompose",
+        "research",
+        "author-harness",
+      ]);
       const output = JSON.parse(result.execution.stdout) as {
         pain_points: string[];
         catalog_fit: { why_new?: string };
@@ -98,7 +100,7 @@ describe("builder skill design-skill", () => {
           }),
         ]),
       );
-      expect(result.receipt.steps).toHaveLength(3);
+      expect(harnessChildReceiptRefs(result.receipt)).toHaveLength(3);
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
@@ -129,15 +131,15 @@ describe("builder skill improve-skill", () => {
       if (result.status !== "success") {
         return;
       }
-      expect(result.receipt.kind).toBe("graph_execution");
-      if (result.receipt.kind !== "graph_execution") {
-        return;
-      }
-      expect(result.receipt.steps.map((step) => step.step_id)).toEqual(["review-receipt", "author-update-harness"]);
+      expect(result.receipt).toMatchObject({ schema: "runx.harness_receipt.v1" });
+      await expect(graphStepIds(path.join(tempDir, "receipts"), result.receipt.id)).resolves.toEqual([
+        "review-receipt",
+        "author-update-harness",
+      ]);
       expect(JSON.parse(result.execution.stdout)).toMatchObject({
         acceptance_checks: expect.arrayContaining(["missing-context fixture passes"]),
       });
-      expect(result.receipt.steps[0]?.skill).toContain("../review-receipt");
+      expect(harnessChildReceiptRefs(result.receipt)).toHaveLength(2);
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
@@ -155,6 +157,21 @@ function createBuilderCaller(): Caller {
         : undefined,
     report: () => undefined,
   };
+}
+
+async function graphStepIds(receiptDir: string, runId: string): Promise<string[]> {
+  return (await readLedgerEntries(receiptDir, runId))
+    .filter((entry) => entry.type === "run_event" && entry.data.kind === "step_started")
+    .map((entry) => String(entry.data.step_id));
+}
+
+function harnessChildReceiptRefs(receipt: unknown): unknown[] {
+  const harness = typeof receipt === "object" && receipt !== null ? (receipt as { harness?: unknown }).harness : undefined;
+  if (!harness || typeof harness !== "object") {
+    return [];
+  }
+  const refs = (harness as { child_harness_receipt_refs?: unknown }).child_harness_receipt_refs;
+  return Array.isArray(refs) ? refs : [];
 }
 
 function answerForAgentStep(questionId: string): unknown {

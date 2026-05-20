@@ -1,13 +1,23 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const workspaceRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+const cargo = process.platform === "win32" ? "cargo.exe" : "cargo";
+const rustKernelBin = path.join(
+  workspaceRoot,
+  "crates",
+  "target",
+  "debug",
+  process.platform === "win32" ? "runx.exe" : "runx",
+);
 const forwardedArgs = process.argv.slice(2).filter((arg) => arg !== "--");
 const cliPackageTestTargets = forwardedArgs.filter(isCliPackageTarget);
 const forwardedArgsWithoutCliPackageTest = forwardedArgs.filter((arg) => !isCliPackageTarget(arg));
+
+ensureRustKernelBin();
 
 if (forwardedArgs.length > 0) {
   if (cliPackageTestTargets.length > 0 && hasExplicitTarget(forwardedArgsWithoutCliPackageTest)) {
@@ -30,7 +40,7 @@ async function runVitest(args, extraEnv = {}) {
     const child = spawn(pnpm, ["exec", "vitest", ...args], {
       cwd: workspaceRoot,
       stdio: "inherit",
-      env: { ...process.env, ...extraEnv },
+      env: { ...process.env, RUNX_KERNEL_EVAL_BIN: rustKernelBin, ...extraEnv },
     });
     child.on("error", reject);
     child.on("exit", (code) => {
@@ -41,6 +51,17 @@ async function runVitest(args, extraEnv = {}) {
       }
     });
   });
+}
+
+function ensureRustKernelBin() {
+  const result = spawnSync(cargo, ["build", "--quiet", "--manifest-path", "crates/Cargo.toml", "-p", "runx-cli", "--bin", "runx"], {
+    cwd: workspaceRoot,
+    stdio: "inherit",
+    env: process.env,
+  });
+  if (result.status !== 0) {
+    process.exit(result.status ?? 1);
+  }
 }
 
 function isCliPackageTarget(arg) {

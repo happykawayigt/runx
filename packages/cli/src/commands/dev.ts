@@ -2,10 +2,8 @@ import type {
   DevFixtureResultContract,
   DevReportContract,
 } from "@runxhq/contracts";
-import { resolvePathFromUserInput, resolveRunxHomeDir, resolveRunxWorkspaceBase } from "@runxhq/core/config";
-import { writeLocalReceipt } from "@runxhq/core/receipts";
-import { type RegistryStore } from "@runxhq/core/registry";
-import { type Caller } from "@runxhq/runtime-local";
+import { resolvePathFromUserInput, resolveRunxWorkspaceBase } from "@runxhq/core/config";
+import { type Caller, type RegistryStore } from "@runxhq/runtime-local";
 
 import type { CliAgentRuntime } from "../agent-runtime.js";
 import { statusIcon, theme } from "../ui.js";
@@ -58,7 +56,6 @@ export async function handleDevCommand(
   }
   const fixturePaths = await discoverFixturePaths(unitPath, root);
   const selectedLane = parsed.devLane ?? "deterministic";
-  const startedAt = Date.now();
   const fixtures: DevFixtureResultContract[] = [];
   for (const fixturePath of fixturePaths) {
     fixtures.push(await runDevFixture(root, fixturePath, selectedLane, parsed, env, deps));
@@ -68,33 +65,11 @@ export async function handleDevCommand(
     : fixtures.some((fixture) => fixture.status === "success")
       ? "success"
       : "skipped";
-  const receipt = await writeLocalReceipt({
-    receiptDir: parsed.receiptDir ? resolvePathFromUserInput(parsed.receiptDir, env) : deps.resolveDefaultReceiptDir(env),
-    runxHome: resolveRunxHomeDir(env),
-    skillName: "runx.dev",
-    sourceType: "dev",
-    inputs: { path: parsed.devPath, lane: selectedLane },
-    stdout: JSON.stringify({ fixtures: fixtures.map((fixture) => ({ name: fixture.name, status: fixture.status })) }),
-    stderr: "",
-    execution: {
-      status: status === "failure" ? "failure" : "success",
-      exitCode: status === "failure" ? 1 : 0,
-      signal: null,
-      durationMs: Date.now() - startedAt,
-      metadata: {
-        dev: {
-          fixture_count: fixtures.length,
-          selected_lane: selectedLane,
-        },
-      },
-    },
-  });
   return {
     schema: "runx.dev.v1",
     status,
     doctor,
     fixtures,
-    receipt_id: receipt.id,
   };
 }
 

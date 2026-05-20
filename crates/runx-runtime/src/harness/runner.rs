@@ -19,8 +19,7 @@ use crate::harness::fixtures::{
     fixture_kind_name, load_harness_fixture,
 };
 use crate::receipts::{
-    StepReceiptWithDisposition, graph_receipt_with_disposition, step_receipt,
-    step_receipt_with_disposition,
+    StepReceiptWithDisposition, graph_receipt_with_disposition, step_receipt_with_disposition,
 };
 use crate::runner::{GraphRun, Runtime, RuntimeOptions, StepRun};
 
@@ -150,7 +149,7 @@ fn run_agent_step_fixture(
         output: &output,
         created_at: &options.created_at,
         disposition: disposition.clone(),
-        reason_code: reason_code(&fixture.name, &disposition),
+        reason_code: process_reason_code(&disposition),
         summary: format!("agent-step {} completed", fixture.name),
     })?;
     Ok(HarnessReplayOutput {
@@ -194,7 +193,7 @@ fn run_graph_replay_fixture(
             output: &output,
             created_at: &options.created_at,
             disposition: disposition.clone(),
-            reason_code: reason_code(&replay_step.step_id, &disposition),
+            reason_code: process_reason_code(&disposition),
             summary: if output.succeeded() {
                 format!("agent-step {} replayed", replay_step.task)
             } else {
@@ -241,7 +240,7 @@ fn run_graph_replay_fixture(
         Vec::new(),
         &options.created_at,
         disposition.clone(),
-        reason_code(&fixture.name, &disposition),
+        named_reason_code(&fixture.name, &disposition),
         format!("graph {} replayed through fixture harness", fixture.name),
     )?;
     let step_receipts = runs
@@ -396,8 +395,16 @@ fn disposition_from_expected_status(status: &HarnessExpectedStatus) -> ClosureDi
     }
 }
 
-fn reason_code(name: &str, disposition: &ClosureDisposition) -> String {
-    let suffix = match disposition {
+fn process_reason_code(disposition: &ClosureDisposition) -> String {
+    format!("process_{}", disposition_suffix(disposition))
+}
+
+fn named_reason_code(name: &str, disposition: &ClosureDisposition) -> String {
+    format!("{name}_{}", disposition_suffix(disposition))
+}
+
+fn disposition_suffix(disposition: &ClosureDisposition) -> &'static str {
+    match disposition {
         ClosureDisposition::Closed => "closed",
         ClosureDisposition::Deferred => "deferred",
         ClosureDisposition::Superseded => "superseded",
@@ -406,8 +413,7 @@ fn reason_code(name: &str, disposition: &ClosureDisposition) -> String {
         ClosureDisposition::Failed => "failed",
         ClosureDisposition::Killed => "killed",
         ClosureDisposition::TimedOut => "timed_out",
-    };
-    format!("{name}_{suffix}")
+    }
 }
 
 fn run_skill_fixture<A>(
@@ -431,13 +437,21 @@ where
         skill_directory: skill_dir,
         env,
     })?;
-    let receipt = step_receipt(
-        &fixture.name,
-        &skill_name,
-        1,
-        &skill_output,
-        &options.created_at,
-    )?;
+    let disposition = if skill_output.succeeded() {
+        ClosureDisposition::Closed
+    } else {
+        ClosureDisposition::Failed
+    };
+    let receipt = step_receipt_with_disposition(StepReceiptWithDisposition {
+        graph_name: &fixture.name,
+        step_id: &skill_name,
+        attempt: 1,
+        output: &skill_output,
+        created_at: &options.created_at,
+        disposition: disposition.clone(),
+        reason_code: process_reason_code(&disposition),
+        summary: format!("step {skill_name} completed"),
+    })?;
     Ok(HarnessReplayOutput {
         fixture: fixture.clone(),
         status: status_from_disposition(&receipt.seal.disposition),

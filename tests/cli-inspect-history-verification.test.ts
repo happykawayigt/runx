@@ -65,9 +65,15 @@ describe("CLI inspect/history receipt verification", () => {
       });
       await writeFile(ledgerPath, ledgerContents);
 
-      const receiptPath = path.join(receiptDir, `${runReport.receipt.id}.json`);
-      const contents = await readFile(receiptPath, "utf8");
-      await writeFile(receiptPath, contents.replace('"status": "success"', '"status": "failure"'));
+      const receiptFile = path.join(receiptDir, `${runReport.receipt.id}.json`);
+      const contents = await readFile(receiptFile, "utf8");
+      const tamperedReceipt = JSON.parse(contents) as {
+        seal: { disposition: string };
+        harness: { seal: { disposition: string } };
+      };
+      tamperedReceipt.seal.disposition = "failed";
+      tamperedReceipt.harness.seal.disposition = "failed";
+      await writeFile(receiptFile, `${JSON.stringify(tamperedReceipt, null, 2)}\n`);
 
       const invalidHistoryStdout = createMemoryStream();
       const invalidHistoryExit = await runCli(

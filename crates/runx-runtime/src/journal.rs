@@ -10,13 +10,13 @@ use runx_contracts::{
     ClosureDisposition, ExecutionEvent, HarnessReceipt, HarnessState, JsonObject, JsonValue,
     Reference, ReferenceType,
 };
-use runx_receipts::verify_harness_receipt_proof;
+use runx_receipts::{ReceiptProofContextProvider, verify_harness_receipt_proof};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::receipt_paths::safe_receipt_store_label;
 use crate::receipt_store::{LocalReceiptStore, ReceiptStoreError};
-use crate::receipts::{LocalHarnessSignatureVerifier, proof_context};
+use crate::receipts::{RuntimeReceiptProofContextProvider, RuntimeReceiptSignaturePolicy};
 
 pub const JOURNAL_PROJECTION_SCHEMA: &str = "runx.journal_projection.v1";
 pub const JOURNAL_PROJECTOR_ID: &str = "runx-runtime.local-journal.v1";
@@ -227,10 +227,21 @@ pub fn project_journal_for_receipt(
 // harness receipt into a deterministic row set; splitting it before CLI and
 // paused-run sources land would obscure the ordering invariants.
 pub fn project_receipt_journal(receipt: &HarnessReceipt) -> JournalProjection {
+    project_receipt_journal_with_policy(receipt, RuntimeReceiptSignaturePolicy::local_development())
+}
+
+#[must_use]
+// rust-style-allow: long-function because this projection assembles one sealed
+// harness receipt into a deterministic row set; splitting it before CLI and
+// paused-run sources land would obscure the ordering invariants.
+pub fn project_receipt_journal_with_policy(
+    receipt: &HarnessReceipt,
+    signature_policy: RuntimeReceiptSignaturePolicy<'_>,
+) -> JournalProjection {
     let watermark = receipt_watermark(receipt);
     let receipt_ref = harness_receipt_ref(&receipt.id);
     let verification = ReceiptVerificationProjection {
-        status: verification_status(receipt),
+        status: verification_status(receipt, signature_policy),
     };
     let mut rows = vec![JournalProjectionRow {
         schema: JOURNAL_PROJECTION_SCHEMA.to_owned(),
@@ -344,7 +355,10 @@ fn history_row(receipt: &HarnessReceipt) -> LocalHistoryReceipt {
         actors: metadata_values(receipt.metadata.as_ref(), &["actor", "runner", "provider"]),
         artifact_types: artifact_types(receipt),
         verification: ReceiptVerificationProjection {
-            status: verification_status(receipt),
+            status: verification_status(
+                receipt,
+                RuntimeReceiptSignaturePolicy::local_development(),
+            ),
         },
     }
 }
@@ -431,9 +445,12 @@ fn normalized(value: &Option<String>) -> Option<String> {
         .filter(|entry| !entry.is_empty())
 }
 
-fn verification_status(receipt: &HarnessReceipt) -> String {
-    let verifier = LocalHarnessSignatureVerifier;
-    let context = proof_context(&verifier, receipt);
+fn verification_status(
+    receipt: &HarnessReceipt,
+    signature_policy: RuntimeReceiptSignaturePolicy<'_>,
+) -> String {
+    let proof_contexts = RuntimeReceiptProofContextProvider::new(signature_policy);
+    let context = proof_contexts.proof_context(receipt);
     if verify_harness_receipt_proof(receipt, &context).valid {
         "verified".to_owned()
     } else {

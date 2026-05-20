@@ -1,4 +1,4 @@
-import { hashString } from "../receipts/index.js";
+import { hashString } from "../util/hash.js";
 import {
   parseRunnerManifestYaml,
   parseSkillMarkdown,
@@ -217,5 +217,4 @@ function recordArrayField(value: unknown, field: string): readonly string[] {
 function recordField(value: unknown, field: string): unknown {
   return isRecord(value) ? value[field] : undefined;
 }
-
 

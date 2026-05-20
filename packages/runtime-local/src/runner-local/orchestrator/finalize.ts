@@ -1,4 +1,3 @@
-import { writeLocalGraphReceipt } from "@runxhq/core/receipts";
 import {
   appendPreparedLedgerEntries,
   createLedgerAnchorMetadata,
@@ -10,7 +9,11 @@ import { errorMessage, isRecord } from "@runxhq/core/util";
 
 import { buildGraphCompletedLedgerEntry } from "../graph-ledger.js";
 import { graphProducerSkillName } from "../graph-reporting.js";
-import { toGraphReceiptStep } from "../graph-governance.js";
+import {
+  runnerReceiptStatus,
+  toGraphReceiptStep,
+  writeRunnerGraphReceipt,
+} from "../graph-governance.js";
 import {
   indexReceiptIfEnabled,
   mergeMetadata,
@@ -66,7 +69,7 @@ export async function finalizeRun(ctx: FinalizeRunContext, options: RunLocalGrap
     entries: terminalAlreadyCommitted ? [] : [completedLedgerEntry],
   });
   await appendPreparedLedgerEntries(ledgerPlan);
-  const receipt = await writeLocalGraphReceipt({
+  const receipt = await writeRunnerGraphReceipt({
     receiptDir: ctx.receiptDir,
     runxHome: options.runxHome ?? options.env?.RUNX_HOME,
     graphId: ctx.graphId,
@@ -119,7 +122,7 @@ export async function finalizeRun(ctx: FinalizeRunContext, options: RunLocalGrap
   });
 
   return {
-    status: graphEscalated ? "escalated" : receipt.status,
+    status: graphEscalated ? "escalated" : runnerReceiptStatus(receipt),
     graph: ctx.graph,
     state: ctx.state,
     steps: [...ctx.stepRuns],

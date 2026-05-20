@@ -1,6 +1,4 @@
 import { loadRunxWorkspacePolicy } from "@runxhq/core/config";
-import { uniqueReceiptId } from "@runxhq/core/receipts";
-import { createSequentialGraphState } from "@runxhq/core/state-machine";
 
 import {
   contextReceiptMetadata,
@@ -20,6 +18,8 @@ import {
 } from "../runner-helpers.js";
 import { unique } from "@runxhq/core/util";
 import { type GraphStepOutput } from "../graph-context.js";
+import { uniqueRunnerReceiptId } from "../graph-governance.js";
+import { createSequentialGraphStateViaKernel } from "../kernel-bridge.js";
 import type { GraphStepRun, RunLocalGraphOptions } from "../index.js";
 
 import type { RunContext } from "./run-context.js";
@@ -51,7 +51,7 @@ export async function prepareRun(options: RunLocalGraphOptions): Promise<RunCont
     voiceProfileReceiptMetadata(voiceProfile),
     options.receiptMetadata,
   );
-  const graphId = options.runId ?? options.resumeFromRunId ?? uniqueReceiptId("gx");
+  const graphId = options.runId ?? options.resumeFromRunId ?? uniqueRunnerReceiptId("gx");
   const graphStepCache = await loadGraphStepExecutables(
     graph,
     graphDirectory,
@@ -67,7 +67,7 @@ export async function prepareRun(options: RunLocalGraphOptions): Promise<RunCont
     retry: step.retry ?? graphStepCache.get(step.id)?.retry,
     fanoutGroup: step.fanoutGroup,
   }));
-  const state = createSequentialGraphState(graphId, graphSteps);
+  const state = await createSequentialGraphStateViaKernel(graphId, graphSteps, { env: options.env });
 
   return {
     options,

@@ -87,15 +87,6 @@ const pureCoreDomains = ["parser", "policy", "state-machine"];
 const relativeRuntimeDomainPattern = /(^|\/)(runner-local|harness|sdk|mcp)(\/|$)/;
 const staticSpecifierPattern =
   /\b(?:import|export)\s+(?:type\s+)?(?:[^'";]*?\s+from\s+)?["']([^"']+)["']|import\s*\(\s*["']([^"']+)["']\s*\)/g;
-const receiptStorageImportPattern =
-  /\bimport\s+(?:type\s+)?(?:\{([^}]+)\}|\*\s+as\s+([A-Za-z_$][\w$]*)|([A-Za-z_$][\w$]*))\s+from\s+["']([^"']*receipts[^"']*)["']/g;
-const forbiddenExecutorReceiptImports = new Set([
-  "writeLocalReceipt",
-  "writeLocalGraphReceipt",
-  "buildLocalReceipt",
-  "buildLocalGraphReceipt",
-]);
-
 const findings = [];
 const packageManifestCache = new Map();
 const workspacePackageNames = await readWorkspacePackageNames();
@@ -170,9 +161,6 @@ async function checkSourceFile(filePath) {
     }
   }
 
-  if (packageSource?.packageName === "core" && packageSource.domain === "executor") {
-    checkExecutorReceiptOwnership(rel, source);
-  }
 }
 
 function checkCoreImport(rel, domain, specifier) {
@@ -197,29 +185,6 @@ function checkCoreImport(rel, domain, specifier) {
 
   if (domain === "parser" && specifierTargetsDomain(rel, specifier, "adapters")) {
     findings.push(`${rel} imports ${specifier}; parser cannot depend on concrete adapters.`);
-  }
-}
-
-function checkExecutorReceiptOwnership(rel, source) {
-  let match;
-  while ((match = receiptStorageImportPattern.exec(source)) !== null) {
-    const specifier = match[4];
-    if (!specifierTargetsDomain(rel, specifier, "receipts")) {
-      continue;
-    }
-    if (match[2] || match[3]) {
-      findings.push(`${rel} imports ${specifier}; executor must not default- or namespace-import receipt storage helpers.`);
-      continue;
-    }
-    const importedNames = (match[1] ?? "")
-      .split(",")
-      .map((entry) => entry.trim().split(/\s+as\s+/u)[0]?.trim())
-      .filter(Boolean);
-    for (const importedName of importedNames) {
-      if (forbiddenExecutorReceiptImports.has(importedName)) {
-        findings.push(`${rel} imports ${importedName} from ${specifier}; executor returns observations but must not write or own receipts.`);
-      }
-    }
   }
 }
 

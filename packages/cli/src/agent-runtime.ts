@@ -4,7 +4,10 @@ import {
   loadManagedAgentConfig,
   type ManagedAgentConfig,
 } from "@runxhq/adapters/agent";
-import type { ResolutionRequest, ResolutionResponse } from "@runxhq/core/executor";
+import type {
+  ResolutionRequestContract as ResolutionRequest,
+  ResolutionResponseContract as ResolutionResponse,
+} from "@runxhq/contracts";
 
 type AgentActResolutionRequest = Extract<ResolutionRequest, { readonly kind: "agent_act" }>;
 

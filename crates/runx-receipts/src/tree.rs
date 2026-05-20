@@ -291,13 +291,23 @@ fn child_receipt_proof_findings(
 }
 
 trait ChildProofPolicy {
-    fn findings(&mut self, path: &str, receipt: &HarnessReceipt) -> Vec<ReceiptFinding>;
+    fn findings(
+        &mut self,
+        path: &str,
+        reference: &Reference,
+        receipt: &HarnessReceipt,
+    ) -> Vec<ReceiptFinding>;
 }
 
 struct StructuralChildProofPolicy;
 
 impl ChildProofPolicy for StructuralChildProofPolicy {
-    fn findings(&mut self, _path: &str, _receipt: &HarnessReceipt) -> Vec<ReceiptFinding> {
+    fn findings(
+        &mut self,
+        _path: &str,
+        _reference: &Reference,
+        _receipt: &HarnessReceipt,
+    ) -> Vec<ReceiptFinding> {
         Vec::new()
     }
 }
@@ -320,16 +330,24 @@ impl<'a, P: ReceiptProofContextProvider> StrictChildProofPolicy<'a, P> {
 }
 
 impl<P: ReceiptProofContextProvider> ChildProofPolicy for StrictChildProofPolicy<'_, P> {
-    fn findings(&mut self, path: &str, receipt: &HarnessReceipt) -> Vec<ReceiptFinding> {
+    fn findings(
+        &mut self,
+        path: &str,
+        reference: &Reference,
+        receipt: &HarnessReceipt,
+    ) -> Vec<ReceiptFinding> {
+        let mut findings = child_digest_link_findings(path, reference, receipt);
         if !self.verified_receipts.insert(receipt_address(receipt)) {
-            return Vec::new();
+            return findings;
         }
         let context = self.proof_contexts.proof_context(receipt);
-        verify_harness_receipt_proof(receipt, &context)
-            .findings
-            .into_iter()
-            .map(|finding| child_finding(path, finding))
-            .collect()
+        findings.extend(
+            verify_harness_receipt_proof(receipt, &context)
+                .findings
+                .into_iter()
+                .map(|finding| child_finding(path, finding)),
+        );
+        findings
     }
 }
 
@@ -418,11 +436,11 @@ impl<R: ReceiptResolver, P: ChildProofPolicy> TreeTraversal<'_, R, P> {
                 message: "child harness receipt refs must not point to an ancestor".to_owned(),
             }];
         }
-        if self.reached.contains(child.id.as_str()) {
-            return Vec::new();
-        }
         let child_path = format!("{}.harness", resolved.path);
-        let mut findings = self.proof_policy.findings(&resolved.path, child);
+        let mut findings = self.proof_policy.findings(&resolved.path, reference, child);
+        if self.reached.contains(child.id.as_str()) {
+            return findings;
+        }
         findings.extend(parent_link_findings(path, parent, child, self.config));
         findings.extend(self.subtree_findings(&child_path, child, next_depth));
         self.reached.insert(child.id.clone());
@@ -494,6 +512,21 @@ fn parent_link_findings(
         }],
         None => Vec::new(),
     }
+}
+
+fn child_digest_link_findings(
+    path: &str,
+    reference: &Reference,
+    child: &HarnessReceipt,
+) -> Vec<ReceiptFinding> {
+    if reference.locator.as_deref() == Some(child.seal.digest.as_str()) {
+        return Vec::new();
+    }
+    vec![ReceiptFinding {
+        code: ReceiptFindingCode::ChildReceiptDigestMismatch,
+        path: format!("{path}.locator"),
+        message: "strict tree proof requires child harness receipt refs to carry the exact child receipt digest".to_owned(),
+    }]
 }
 
 fn child_finding(path: &str, finding: ReceiptFinding) -> ReceiptFinding {
@@ -796,11 +829,47 @@ mod tests {
 
     #[test]
     fn strict_tree_proof_accepts_root_and_child() -> Result<(), serde_json::Error> {
-        let root = proof_root()?;
+        let mut root = proof_root()?;
         let child = proof_child("hrn_rcpt_child_1")?;
+        link_child_digest(&mut root, 0, &child)?;
         let proof_contexts = FixtureProofContexts::default();
 
         assert!(validate_receipt_tree_proof(&root, &[child], &proof_contexts).is_ok());
+        Ok(())
+    }
+
+    #[test]
+    fn strict_tree_proof_rejects_missing_child() -> Result<(), serde_json::Error> {
+        let mut root = proof_root()?;
+        let child = proof_child("hrn_rcpt_child_1")?;
+        link_child_digest(&mut root, 0, &child)?;
+        let proof_contexts = FixtureProofContexts::default();
+
+        let verification = verify_receipt_tree_proof(&root, &[], &proof_contexts);
+
+        assert_finding(
+            &verification,
+            ReceiptFindingCode::ChildReceiptMissing,
+            "harness.child_harness_receipt_refs[0]",
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn strict_tree_proof_rejects_extra_child() -> Result<(), serde_json::Error> {
+        let mut root = proof_root()?;
+        let child = proof_child("hrn_rcpt_child_1")?;
+        link_child_digest(&mut root, 0, &child)?;
+        let extra = proof_child("hrn_rcpt_extra")?;
+        let proof_contexts = FixtureProofContexts::default();
+
+        let verification = verify_receipt_tree_proof(&root, &[child, extra], &proof_contexts);
+
+        assert_finding(
+            &verification,
+            ReceiptFindingCode::OrphanChildReceipt,
+            "children[1].id",
+        );
         Ok(())
     }
 
@@ -809,6 +878,7 @@ mod tests {
     -> Result<(), serde_json::Error> {
         let mut root = proof_root()?;
         let child = proof_child("hrn_rcpt_child_1")?;
+        link_child_digest(&mut root, 0, &child)?;
         root.harness.child_harness_receipt_refs[0].uri = child.id.clone();
         let proof_contexts = FixtureProofContexts::default();
 
@@ -831,8 +901,9 @@ mod tests {
     #[test]
     fn strict_tree_proof_rejects_structurally_valid_child_proof_mismatch()
     -> Result<(), serde_json::Error> {
-        let root = proof_root()?;
+        let mut root = proof_root()?;
         let mut child = proof_child("hrn_rcpt_child_1")?;
+        link_child_digest(&mut root, 0, &child)?;
         child.harness.acts[0].summary = "tampered child proof body".to_owned();
         let proof_contexts = FixtureProofContexts::default();
 
@@ -853,10 +924,32 @@ mod tests {
     }
 
     #[test]
+    fn strict_tree_proof_rejects_valid_alternate_child_with_same_id()
+    -> Result<(), serde_json::Error> {
+        let mut root = proof_root()?;
+        let original = proof_child("hrn_rcpt_child_1")?;
+        link_child_digest(&mut root, 0, &original)?;
+        let mut alternate = proof_child("hrn_rcpt_child_1")?;
+        alternate.harness.acts[0].summary = "valid alternate child body".to_owned();
+        refresh_proof_digest_and_signature(&mut alternate)?;
+        let proof_contexts = FixtureProofContexts::default();
+
+        let verification = verify_receipt_tree_proof(&root, &[alternate], &proof_contexts);
+
+        assert_finding(
+            &verification,
+            ReceiptFindingCode::ChildReceiptDigestMismatch,
+            "children[0].locator",
+        );
+        Ok(())
+    }
+
+    #[test]
     fn strict_tree_proof_rejects_custom_resolver_child_not_in_supplied_receipts()
     -> Result<(), serde_json::Error> {
-        let root = proof_root()?;
+        let mut root = proof_root()?;
         let mut child = proof_child("hrn_rcpt_child_1")?;
+        link_child_digest(&mut root, 0, &child)?;
         child.harness.acts[0].summary = "hidden tampered child".to_owned();
         let resolver = HiddenChildResolver { child: &child };
         let proof_contexts = FixtureProofContexts::default();
@@ -884,6 +977,46 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn strict_tree_proof_rejects_custom_resolver_duplicate_id_child_after_reached()
+    -> Result<(), serde_json::Error> {
+        let mut root = proof_root()?;
+        let first = proof_child("shared_child")?;
+        let mut second = proof_child("shared_child")?;
+        root.harness.child_harness_receipt_refs = vec![
+            reference(ReferenceType::HarnessReceipt, "first"),
+            reference(ReferenceType::HarnessReceipt, "second"),
+        ];
+        root.harness.child_harness_receipt_refs[0].locator = Some(first.seal.digest.clone());
+        root.harness.child_harness_receipt_refs[1].locator = Some(second.seal.digest.clone());
+        refresh_proof_digest_and_signature(&mut root)?;
+        second.harness.acts[0].summary = "hidden duplicate-id tamper".to_owned();
+        let resolver = DuplicateIdResolver {
+            first: &first,
+            second: &second,
+        };
+        let proof_contexts = FixtureProofContexts::default();
+
+        let verification = verify_receipt_tree_proof_with_resolver(
+            &root,
+            &resolver,
+            ReceiptTreeConfig::default(),
+            &proof_contexts,
+        );
+
+        assert_finding(
+            &verification,
+            ReceiptFindingCode::SealDigestMismatch,
+            "hidden_second.seal.digest",
+        );
+        assert_finding(
+            &verification,
+            ReceiptFindingCode::SignatureInvalid,
+            "hidden_second.signature.value",
+        );
+        Ok(())
+    }
+
     fn fixture(json: &str) -> Result<HarnessReceipt, serde_json::Error> {
         serde_json::from_str::<Fixture>(json).map(|fixture| fixture.expected)
     }
@@ -906,6 +1039,15 @@ mod tests {
         receipt.harness.child_harness_receipt_refs.clear();
         refresh_proof_digest_and_signature(&mut receipt)?;
         Ok(receipt)
+    }
+
+    fn link_child_digest(
+        root: &mut HarnessReceipt,
+        index: usize,
+        child: &HarnessReceipt,
+    ) -> Result<(), serde_json::Error> {
+        root.harness.child_harness_receipt_refs[index].locator = Some(child.seal.digest.clone());
+        refresh_proof_digest_and_signature(root)
     }
 
     fn refresh_proof_digest_and_signature(
@@ -1007,6 +1149,30 @@ mod tests {
             ReceiptResolveResult::Found(ResolvedReceipt {
                 path: "hidden_child".to_owned(),
                 receipt: self.child,
+            })
+        }
+
+        fn supplied_receipts<'a>(&'a self) -> Vec<ResolvedReceipt<'a>> {
+            Vec::new()
+        }
+    }
+
+    struct DuplicateIdResolver<'a> {
+        first: &'a HarnessReceipt,
+        second: &'a HarnessReceipt,
+    }
+
+    impl ReceiptResolver for DuplicateIdResolver<'_> {
+        fn resolve_child<'a>(&'a self, reference: &Reference) -> ReceiptResolveResult<'a> {
+            if reference.uri.ends_with(":first") {
+                return ReceiptResolveResult::Found(ResolvedReceipt {
+                    path: "hidden_first".to_owned(),
+                    receipt: self.first,
+                });
+            }
+            ReceiptResolveResult::Found(ResolvedReceipt {
+                path: "hidden_second".to_owned(),
+                receipt: self.second,
             })
         }
 

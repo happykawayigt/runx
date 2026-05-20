@@ -1,9 +1,11 @@
 import {
-  validateOutput,
   type AdapterActInvocation,
-  type AgentActInvocation,
-  type AgentActResolutionRequest,
-} from "@runxhq/core/executor";
+} from "@runxhq/runtime-local";
+import {
+  validateOutputContract,
+  type AgentActInvocationContract as AgentActInvocation,
+  type AgentActResolutionRequestContract as AgentActResolutionRequest,
+} from "@runxhq/contracts";
 
 import { FINAL_RESULT_TOOL_NAME, type ManagedAgentExecutionTelemetry } from "./types.js";
 import { normalizeRequestId, parseConfiguredToolRoots } from "./helpers.js";
@@ -31,7 +33,9 @@ export function buildManagedAgentActInvocation(
   sourceType: "agent" | "agent-step",
 ): AgentActInvocation {
   const skillName = request.skillName ?? (sourceType === "agent-step" ? "agent-step" : "skill");
-  const expectedOutputs = validateOutput(request.source.outputs, "source.outputs");
+  const expectedOutputs = request.source.outputs === undefined
+    ? undefined
+    : validateOutputContract(request.source.outputs, "source.outputs");
   const base = {
     run_id: request.runId ?? "rx_pending",
     step_id: request.stepId,

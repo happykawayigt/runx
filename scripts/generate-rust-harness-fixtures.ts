@@ -125,7 +125,7 @@ function stepReceipt(
 ): Record<string, Json> {
   const disposition = "closed";
   const act = observationAct(stepId, stdout, disposition, refs);
-  const receiptSeal = seal(disposition, `${stepId}_closed`, `step ${stepId} completed`);
+  const receiptSeal = seal(disposition, "process_closed", `step ${stepId} completed`);
   return {
     schema: "runx.harness_receipt.v1",
     id: `hrn_rcpt_${graphName}_${stepId}`,
@@ -138,6 +138,9 @@ function stepReceipt(
 }
 
 function graphReceipt(graphName: string, steps: Record<string, Json>[]): Record<string, Json> {
+  for (const step of steps) {
+    refreshProof(step);
+  }
   const receiptSeal = seal("closed", "graph_closed", `graph ${graphName} completed`);
   return {
     schema: "runx.harness_receipt.v1",
@@ -150,10 +153,21 @@ function graphReceipt(graphName: string, steps: Record<string, Json>[]): Record<
       "graph",
       "sealed",
       [],
-      steps.map((step) => reference("harness_receipt", String(step.id))),
+      steps.map(childReceiptReference),
       receiptSeal,
     ),
     seal: receiptSeal,
+  };
+}
+
+function childReceiptReference(step: Record<string, Json>): Json {
+  const sealValue = step.seal;
+  const locator =
+    sealValue !== null && typeof sealValue === "object" && !Array.isArray(sealValue) ? sealValue.digest : null;
+  return {
+    type: "harness_receipt",
+    uri: `runx:harness_receipt:${String(step.id)}`,
+    locator: typeof locator === "string" ? locator : null,
   };
 }
 

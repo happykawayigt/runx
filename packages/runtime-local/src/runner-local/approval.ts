@@ -1,12 +1,14 @@
-import type { ApprovalGate } from "@runxhq/core/executor";
-import type { SkillSandbox, ValidatedSkill } from "@runxhq/core/parser";
-import type { LocalSkillReceipt } from "@runxhq/core/receipts";
-import { writeLocalReceipt } from "@runxhq/core/receipts";
+import type { ApprovalGateContract as ApprovalGate } from "@runxhq/contracts";
 
 import type { NormalizedExecutionSemantics } from "./execution-semantics.js";
+import {
+  writeRunnerSkillReceipt,
+  type RunnerSkillReceipt,
+} from "./graph-governance.js";
 import { defaultReceiptDir } from "./receipt-paths.js";
 import { mergeMetadata, runnerTrustMetadata } from "./runner-helpers.js";
 import type { ApprovalDecision, Caller } from "./index.js";
+import type { SkillSandbox, ValidatedSkill } from "../parser-types.js";
 
 export async function approveSandboxEscalationIfNeeded(
   skill: ValidatedSkill,
@@ -90,9 +92,9 @@ export async function writePolicyDeniedReceipt(options: {
     readonly parentReceipt?: string;
     readonly contextFrom?: readonly string[];
   };
-}): Promise<LocalSkillReceipt> {
+}): Promise<RunnerSkillReceipt> {
   const startedAt = new Date().toISOString();
-  return await writeLocalReceipt({
+  return await writeRunnerSkillReceipt({
     receiptDir: options.runOptions.receiptDir ?? defaultReceiptDir(options.runOptions.env),
     runxHome: options.runOptions.runxHome ?? options.runOptions.env?.RUNX_HOME,
     skillName: options.skill.name,

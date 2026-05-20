@@ -10,14 +10,27 @@ import {
 import { createFileKnowledgeStore } from "@runxhq/core/knowledge";
 import { errorMessage } from "@runxhq/core/util";
 import { resolveRunxKnowledgeDir } from "@runxhq/core/config";
-import type { PostRunReflectPolicy } from "@runxhq/core/parser";
-import type { LocalReceipt } from "@runxhq/core/receipts";
 
-import type { Caller } from "./index.js";
+import type { Caller, RunLocalGraphResult, RunLocalSkillResult } from "./index.js";
+import {
+  runnerReceiptCategory,
+  runnerReceiptCompletedAt,
+  runnerReceiptGraphSteps,
+  runnerReceiptSource,
+  runnerReceiptStatus,
+} from "./graph-governance.js";
+import type { PostRunReflectPolicy } from "../parser-types.js";
+
+type ReflectReceipt = NonNullable<
+  | Extract<RunLocalSkillResult, { readonly status: "success" | "failure" }>["receipt"]
+  | Extract<RunLocalGraphResult, { readonly status: "success" | "failure" | "escalated" }>["receipt"]
+  | Extract<RunLocalSkillResult, { readonly status: "policy_denied" }>["receipt"]
+  | Extract<RunLocalGraphResult, { readonly status: "policy_denied" }>["receipt"]
+>;
 
 export interface ReflectProjectionOptions {
   readonly caller: Caller;
-  readonly receipt: LocalReceipt;
+  readonly receipt: ReflectReceipt;
   readonly receiptDir: string;
   readonly runId: string;
   readonly skillName: string;
@@ -33,8 +46,8 @@ interface LocalReflectProjection {
   readonly skill_ref: string;
   readonly receipt_id: string;
   readonly run_id: string;
-  readonly receipt_kind: LocalReceipt["kind"];
-  readonly status: LocalReceipt["status"];
+  readonly receipt_category: string;
+  readonly status: "success" | "failure";
   readonly selected_runner?: string;
   readonly policy: PostRunReflectPolicy;
   readonly mediation: "agentic" | "deterministic";
@@ -65,7 +78,7 @@ export async function projectReflectIfEnabled(options: ReflectProjectionOptions)
     return;
   }
 
-  const projectedAt = options.receipt.completed_at ?? new Date().toISOString();
+  const projectedAt = runnerReceiptCompletedAt(options.receipt) ?? new Date().toISOString();
 
   try {
     const ledgerEntries = await readLedgerEntries(options.receiptDir, options.runId);
@@ -98,7 +111,7 @@ export async function projectReflectIfEnabled(options: ReflectProjectionOptions)
           runId: options.runId,
           producer: {
             skill: options.skillName,
-            runner: options.receipt.kind === "graph_execution" ? "graph" : options.receipt.source_type,
+            runner: runnerReceiptCategory(options.receipt) === "graph" ? "graph" : runnerReceiptSource(options.receipt) ?? "runtime",
           },
           kind: "reflect_projected",
           status: "success",
@@ -125,7 +138,7 @@ export async function projectReflectIfEnabled(options: ReflectProjectionOptions)
 }
 
 function buildReflectProjection(options: {
-  readonly receipt: LocalReceipt;
+  readonly receipt: ReflectReceipt;
   readonly runId: string;
   readonly skillName: string;
   readonly selectedRunnerName?: string;
@@ -147,36 +160,38 @@ function buildReflectProjection(options: {
   );
   const signals = [
     options.involvedAgentMediatedWork ? "agent-mediated" : "deterministic",
-    options.receipt.kind === "graph_execution" ? "graph-execution" : "skill-execution",
-    options.receipt.status === "failure" ? "run-failed" : "run-succeeded",
+    runnerReceiptCategory(options.receipt) === "graph" ? "graph-execution" : "skill-execution",
+    runnerReceiptStatus(options.receipt) === "failure" ? "run-failed" : "run-succeeded",
     ...(artifactEntries.length > 0 ? ["artifacts-emitted"] : []),
     ...(eventKinds.includes("step_waiting_resolution") ? ["paused-before-completion"] : []),
   ];
 
+  const steps = runnerReceiptGraphSteps(options.receipt);
   const stepSummary =
-    options.receipt.kind === "graph_execution"
+    runnerReceiptCategory(options.receipt) === "graph"
       ? {
-          total_steps: options.receipt.steps.length,
-          successful_steps: options.receipt.steps.filter((step) => step.status === "success").length,
-          failed_steps: options.receipt.steps.filter((step) => step.status === "failure").length,
-          runner_types: uniqueStrings(options.receipt.steps.map((step) => step.runner ?? "default")),
+          total_steps: steps.length,
+          successful_steps: steps.filter((step) => step.status === "success").length,
+          failed_steps: steps.filter((step) => step.status === "failure").length,
+          runner_types: uniqueStrings(steps.map((step) => step.runner ?? "default")),
         }
       : undefined;
+  const receiptStatus = runnerReceiptStatus(options.receipt);
 
   return {
     schema_version: "runx.reflect.v1",
     skill_ref: options.skillName,
     receipt_id: options.receipt.id,
     run_id: options.runId,
-    receipt_kind: options.receipt.kind,
-    status: options.receipt.status,
+    receipt_category: runnerReceiptCategory(options.receipt),
+    status: receiptStatus,
     selected_runner: options.selectedRunnerName,
     policy: options.policy,
     mediation: options.involvedAgentMediatedWork ? "agentic" : "deterministic",
     summary:
-      options.receipt.kind === "graph_execution"
-        ? `${options.skillName} ${options.receipt.status} with ${options.receipt.steps.length} step(s)`
-        : `${options.skillName} ${options.receipt.status} via ${options.receipt.source_type}`,
+      runnerReceiptCategory(options.receipt) === "graph"
+        ? `${options.skillName} ${receiptStatus} with ${steps.length} step(s)`
+        : `${options.skillName} ${receiptStatus} via ${runnerReceiptSource(options.receipt) ?? "runtime"}`,
     signals,
     ledger: {
       event_kinds: eventKinds,

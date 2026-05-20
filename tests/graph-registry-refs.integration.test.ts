@@ -6,9 +6,9 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { createFileRegistryStore } from "@runxhq/core/registry";
 import { materializeRegistrySkill } from "@runxhq/runtime-local";
 import { parseSkillMarkdown, validateSkill } from "@runxhq/core/parser";
+import { createFileRegistryStore } from "./registry-fixtures.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REAL_REGISTRY_ROOT = path.resolve(HERE, "..", "..", "cloud", ".data", "runx-registry");

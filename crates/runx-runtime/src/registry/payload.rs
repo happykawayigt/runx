@@ -27,12 +27,23 @@ pub(crate) fn parse_search(
                 summary: optional_string_field(skill, "description", route, &path)?,
                 owner: string_field(skill, "owner", route, &path)?,
                 version: optional_string_field(skill, "version", route, &path)?,
+                digest: optional_string_field(skill, "digest", route, &path)?,
+                source: optional_string_field(skill, "source", route, &path)?,
+                source_label: optional_string_field(skill, "source_label", route, &path)?,
                 source_type: string_field(skill, "source_type", route, &path)?,
                 profile_mode: profile_mode_field(skill, "profile_mode", route, &path)?,
                 runner_names: string_array_field(skill, "runner_names", route, &path)?,
+                profile_digest: optional_string_field(skill, "profile_digest", route, &path)?,
+                profile_trust_tier: optional_trust_tier_field(
+                    skill,
+                    "profile_trust_tier",
+                    route,
+                    &path,
+                )?,
                 required_scopes: string_array_field(skill, "required_scopes", route, &path)?,
                 tags: string_array_field(skill, "tags", route, &path)?,
                 trust_tier: trust_tier_field(skill, "trust_tier", route, &path)?,
+                trust_signals: trust_signals_field(skill, "trust_signals", route, &path)?,
                 install_command: string_field(skill, "install_command", route, &path)?,
                 run_command: string_field(skill, "run_command", route, &path)?,
             })
@@ -250,6 +261,18 @@ fn trust_tier_field(
     }
 }
 
+fn optional_trust_tier_field(
+    record: &Map<String, Value>,
+    field: &str,
+    route: &str,
+    path: &str,
+) -> Result<Option<TrustTier>, RegistryClientError> {
+    match record.get(field) {
+        None | Some(Value::Null) => Ok(None),
+        Some(_) => trust_tier_field(record, field, route, path).map(Some),
+    }
+}
+
 fn profile_mode_field(
     record: &Map<String, Value>,
     field: &str,
@@ -265,6 +288,35 @@ fn profile_mode_field(
             "expected portable or profiled",
         )),
     }
+}
+
+fn trust_signals_field(
+    record: &Map<String, Value>,
+    field: &str,
+    route: &str,
+    path: &str,
+) -> Result<Vec<super::types::TrustSignal>, RegistryClientError> {
+    let Some(value) = record.get(field) else {
+        return Ok(Vec::new());
+    };
+    if value.is_null() {
+        return Ok(Vec::new());
+    }
+    let base = format!("{path}.{field}");
+    array(value, route, &base)?
+        .iter()
+        .enumerate()
+        .map(|(index, value)| {
+            let item_path = format!("{base}[{index}]");
+            let item = object(value, route, &item_path)?;
+            Ok(super::types::TrustSignal {
+                id: string_field(item, "id", route, &item_path)?,
+                label: string_field(item, "label", route, &item_path)?,
+                status: string_field(item, "status", route, &item_path)?,
+                value: string_field(item, "value", route, &item_path)?,
+            })
+        })
+        .collect()
 }
 
 fn publisher_field(

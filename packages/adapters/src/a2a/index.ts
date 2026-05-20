@@ -1,4 +1,4 @@
-import type { AdapterActInvocation, ActReceiptEnvelope, SkillAdapter } from "@runxhq/core/executor";
+import type { AdapterActInvocation, ActReceiptEnvelope, SkillAdapter } from "@runxhq/runtime-local";
 import { hashStable, hashString } from "@runxhq/core/util";
 
 export const a2aAdapterPackage = "@runxhq/adapters/a2a";

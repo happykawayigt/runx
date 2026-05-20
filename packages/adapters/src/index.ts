@@ -1,4 +1,4 @@
-import type { SkillAdapter } from "@runxhq/core/executor";
+import type { SkillAdapter } from "@runxhq/runtime-local";
 
 import { createCatalogAdapter } from "./catalog/index.js";
 import {

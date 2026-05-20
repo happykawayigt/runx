@@ -45,7 +45,7 @@ fn parses_harness_skill_fixture_contract() -> Result<(), HarnessFixtureError> {
             field: "expect.receipt".to_owned(),
         })?;
     assert_eq!(receipt.harness_id.as_deref(), Some("hrn_echo-skill_echo"));
-    assert_eq!(receipt.reason_code.as_deref(), Some("echo_closed"));
+    assert_eq!(receipt.reason_code.as_deref(), Some("process_closed"));
     assert_eq!(receipt.act_ids, vec!["act_echo"]);
     Ok(())
 }

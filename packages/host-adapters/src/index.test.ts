@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import type { HostBridge, HostRunResult, HostRunState } from "@runxhq/runtime-local/sdk";
 import {
   createAnthropicHostAdapter,
   createCrewAiHostAdapter,
   createLangChainHostAdapter,
   createOpenAiHostAdapter,
   createVercelAiHostAdapter,
+  type HostBridge,
+  type HostRunResult,
+  type HostRunState,
 } from "./index.js";
 
 function fakeBridge(result: HostRunResult): HostBridge {

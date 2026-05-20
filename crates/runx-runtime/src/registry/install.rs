@@ -37,13 +37,14 @@ pub struct InstallLocalSkillOptions {
     pub expected_digest: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum InstallStatus {
     Installed,
     Unchanged,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct InstallLocalSkillResult {
     pub status: InstallStatus,
     pub destination: PathBuf,
@@ -157,53 +158,22 @@ fn validate_install_candidate(
     candidate: &InstallCandidate,
     options: &InstallLocalSkillOptions,
 ) -> Result<ValidatedLocalInstall, InstallError> {
-    let actual_digest = sha256_prefixed(&candidate.markdown);
-    let expected_digest = options
-        .expected_digest
-        .as_ref()
-        .or(candidate.digest.as_ref());
-    if let Some(expected) = expected_digest {
-        if expected != &actual_digest {
-            return Err(InstallError::DigestMismatch {
-                ref_name: candidate.r#ref.clone(),
-                expected: expected.clone(),
-                actual: actual_digest,
-            });
-        }
-    }
-
+    let actual_digest = validate_candidate_digest(candidate, options)?;
     let origin = install_origin(candidate, &actual_digest);
     let install = validate_skill_install(&candidate.markdown, origin)?;
-    let profile_digest = candidate
-        .profile_document
-        .as_ref()
-        .map(|document| sha256_prefixed(document));
-    if let Some(expected) = &candidate.profile_digest {
-        if Some(expected) != profile_digest.as_ref() {
-            return Err(InstallError::ProfileDigestMismatch {
-                ref_name: candidate.r#ref.clone(),
-                expected: expected.clone(),
-                actual: profile_digest.clone().unwrap_or_else(|| "none".to_owned()),
-            });
-        }
-    }
-
+    let profile_digest = validate_candidate_profile_digest(candidate)?;
     let runner_names = validate_install_binding_manifest(
         &install.skill.name,
         candidate.profile_document.as_deref(),
         &candidate.runner_names,
     )?;
-    let next_profile_state = match &candidate.profile_document {
-        Some(document) => Some(profile_state(
-            &install.skill.name,
-            &actual_digest,
-            document,
-            profile_digest.as_deref(),
-            &runner_names,
-            &serde_json::to_value(&install.origin)?,
-        )?),
-        None => None,
-    };
+    let next_profile_state = next_profile_state(
+        candidate,
+        &install,
+        &actual_digest,
+        profile_digest.as_deref(),
+        &runner_names,
+    )?;
     Ok(ValidatedLocalInstall {
         actual_digest,
         profile_digest,
@@ -211,6 +181,69 @@ fn validate_install_candidate(
         install,
         next_profile_state,
     })
+}
+
+fn validate_candidate_digest(
+    candidate: &InstallCandidate,
+    options: &InstallLocalSkillOptions,
+) -> Result<String, InstallError> {
+    let actual_digest = sha256_prefixed(&candidate.markdown);
+    let expected_digest = options
+        .expected_digest
+        .as_ref()
+        .or(candidate.digest.as_ref());
+    if let Some(expected) =
+        expected_digest.filter(|expected| !digest_matches(expected, &actual_digest))
+    {
+        return Err(InstallError::DigestMismatch {
+            ref_name: candidate.r#ref.clone(),
+            expected: expected.clone(),
+            actual: actual_digest,
+        });
+    }
+    Ok(actual_digest)
+}
+
+fn validate_candidate_profile_digest(
+    candidate: &InstallCandidate,
+) -> Result<Option<String>, InstallError> {
+    let profile_digest = candidate
+        .profile_document
+        .as_ref()
+        .map(|document| sha256_prefixed(document));
+    if let Some(expected) = &candidate.profile_digest {
+        let matches = profile_digest
+            .as_ref()
+            .is_some_and(|actual| digest_matches(expected, actual));
+        if !matches {
+            return Err(InstallError::ProfileDigestMismatch {
+                ref_name: candidate.r#ref.clone(),
+                expected: expected.clone(),
+                actual: profile_digest.clone().unwrap_or_else(|| "none".to_owned()),
+            });
+        }
+    }
+    Ok(profile_digest)
+}
+
+fn next_profile_state(
+    candidate: &InstallCandidate,
+    install: &ValidatedSkillInstall,
+    actual_digest: &str,
+    profile_digest: Option<&str>,
+    runner_names: &[String],
+) -> Result<Option<String>, InstallError> {
+    let Some(document) = &candidate.profile_document else {
+        return Ok(None);
+    };
+    Ok(Some(profile_state(
+        &install.skill.name,
+        actual_digest,
+        document,
+        profile_digest,
+        runner_names,
+        &serde_json::to_value(&install.origin)?,
+    )?))
 }
 
 fn install_origin(candidate: &InstallCandidate, actual_digest: &str) -> SkillInstallOrigin {
@@ -400,6 +433,13 @@ fn sha256_prefixed(value: &str) -> String {
         hex.push_str(&format!("{byte:02x}"));
     }
     format!("sha256:{hex}")
+}
+
+fn digest_matches(expected: &str, actual_prefixed: &str) -> bool {
+    expected == actual_prefixed
+        || actual_prefixed
+            .strip_prefix("sha256:")
+            .is_some_and(|actual_hex| expected == actual_hex)
 }
 
 fn trust_tier_string(value: &TrustTier) -> String {

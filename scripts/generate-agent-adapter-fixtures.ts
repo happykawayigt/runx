@@ -2,12 +2,34 @@ import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { validateActReceiptEnvelope, type ActReceiptEnvelope } from "../packages/core/src/executor/index.js";
-import type { ManagedAgentConfig } from "../packages/adapters/src/agent/index.js";
 import {
-  createManagedAgentAdapter,
-  createManagedAgentStepAdapter,
-} from "../packages/adapters/src/agent/index.js";
+  type ActReceiptEnvelopeContract,
+  type AgentActResolutionRequestContract,
+  type ResolutionResponseContract,
+  validateActReceiptEnvelopeContract,
+} from "../packages/contracts/src/index.js";
+import type {
+  AdapterActInvocation,
+  SkillAdapter,
+} from "../packages/runtime-local/src/runner-local/adapter-types.js";
+import { errorMessage } from "../packages/core/src/util/index.js";
+import {
+  buildManagedAgentActInvocation,
+  buildManagedRuntimeInstructions,
+  nativeAgentMetadata,
+} from "../packages/adapters/src/agent/agent-act-invocation.js";
+import {
+  extractApiErrorMessage,
+  isRecord,
+  parseJsonObject,
+} from "../packages/adapters/src/agent/helpers.js";
+import { validateFinalPayload } from "../packages/adapters/src/agent/json-schema.js";
+import {
+  FINAL_RESULT_TOOL_NAME,
+  type ManagedAgentExecutionTelemetry,
+  type OpenAiResponseBody,
+  type OpenAiToolCall,
+} from "../packages/adapters/src/agent/types.js";
 
 const workspaceRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const fixtureRoot = path.join(workspaceRoot, "fixtures", "runtime", "adapters", "agent");
@@ -16,7 +38,18 @@ const check = process.argv.includes("--check");
 
 process.chdir(workspaceRoot);
 
+type ActReceiptEnvelope = ActReceiptEnvelopeContract;
+type AgentActResolutionRequest = AgentActResolutionRequestContract;
+type ResolutionResponse = ResolutionResponseContract;
+const validateActReceiptEnvelope = validateActReceiptEnvelopeContract;
+
 type JsonValue = null | boolean | number | string | JsonValue[] | { readonly [key: string]: JsonValue };
+
+interface ManagedAgentConfig {
+  readonly provider: "openai";
+  readonly model: string;
+  readonly apiKey: string;
+}
 
 interface AgentSource {
   readonly type: "agent" | "agent-step";
@@ -185,9 +218,7 @@ async function materializeCaseFixture(oracleCase: OracleCase): Promise<void> {
 async function runOracleCase(oracleCase: OracleCase): Promise<void> {
   const restoreFetch = installFetchFixture(oracleCase.providerResponses);
   try {
-    const adapter = oracleCase.request.source.type === "agent"
-      ? createManagedAgentAdapter(config)
-      : createManagedAgentStepAdapter(config);
+    const adapter = createFixtureManagedAgentAdapter(config, oracleCase.request.source.type);
     const receipt = validateActReceiptEnvelope(
       await adapter.invoke({
         skillName: oracleCase.request.skillName,
@@ -222,6 +253,172 @@ async function runOracleCase(oracleCase: OracleCase): Promise<void> {
   } finally {
     restoreFetch();
   }
+}
+
+function createFixtureManagedAgentAdapter(
+  config: ManagedAgentConfig,
+  sourceType: "agent" | "agent-step",
+): SkillAdapter {
+  return {
+    type: sourceType,
+    invoke: async (request) => await invokeFixtureManagedAgentAdapter(config, request, sourceType),
+  };
+}
+
+async function invokeFixtureManagedAgentAdapter(
+  config: ManagedAgentConfig,
+  request: AdapterActInvocation,
+  sourceType: "agent" | "agent-step",
+): Promise<ActReceiptEnvelope> {
+  const started = performance.now();
+  const invocation = buildManagedAgentActInvocation(request, sourceType);
+
+  try {
+    const execution = await resolveFixtureOpenAi(config, {
+      id: invocation.id,
+      kind: "agent_act",
+      invocation,
+    });
+    return {
+      status: "success",
+      stdout: typeof execution.response.payload === "string"
+        ? execution.response.payload
+        : JSON.stringify(execution.response.payload),
+      stderr: "",
+      exitCode: 0,
+      signal: null,
+      durationMs: Math.round(performance.now() - started),
+      metadata: nativeAgentMetadata(sourceType, request, config, execution, "success"),
+    };
+  } catch (error) {
+    return {
+      status: "failure",
+      stdout: "",
+      stderr: "",
+      exitCode: null,
+      signal: null,
+      durationMs: Math.round(performance.now() - started),
+      errorMessage: errorMessage(error),
+      metadata: nativeAgentMetadata(sourceType, request, config, undefined, "failure"),
+    };
+  }
+}
+
+async function resolveFixtureOpenAi(
+  config: ManagedAgentConfig,
+  request: AgentActResolutionRequest,
+): Promise<ManagedAgentExecutionTelemetry & { readonly response: ResolutionResponse }> {
+  const response = await createFixtureOpenAiResponse(config, request);
+  const functionCalls = collectOpenAiFunctionCalls(response);
+  const toolCalls = functionCalls.length;
+
+  if (functionCalls.length === 0) {
+    const assistantText = extractOpenAiAssistantText(response);
+    if (!assistantText.trim()) {
+      throw new Error(`Managed agent resolution for ${request.id} returned no assistant text.`);
+    }
+    return {
+      response: { actor: "agent", payload: assistantText },
+      rounds: 1,
+      toolCalls,
+      tools: [],
+      toolExecutions: [],
+    };
+  }
+
+  for (const call of functionCalls) {
+    if (call.name !== FINAL_RESULT_TOOL_NAME) {
+      continue;
+    }
+    const submittedPayload = parseJsonObject(call.arguments, `${call.name}.arguments`);
+    const validationError = validateFinalPayload(submittedPayload, request.invocation.envelope.output);
+    if (validationError) {
+      throw new Error(validationError);
+    }
+    return {
+      response: { actor: "agent", payload: submittedPayload },
+      rounds: 1,
+      toolCalls,
+      tools: [],
+      toolExecutions: [],
+    };
+  }
+
+  throw new Error(`Managed agent resolution for ${request.id} returned no final result.`);
+}
+
+async function createFixtureOpenAiResponse(
+  config: ManagedAgentConfig,
+  request: AgentActResolutionRequest,
+): Promise<OpenAiResponseBody> {
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${config.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: config.model,
+      store: false,
+      parallel_tool_calls: false,
+      instructions: buildManagedRuntimeInstructions(request),
+      input: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: JSON.stringify({
+                request_id: request.id,
+                source_type: request.invocation.source_type,
+                agent: request.invocation.agent,
+                task: request.invocation.task,
+                envelope: request.invocation.envelope,
+              }, null, 2),
+            },
+          ],
+        },
+      ],
+      tools: [],
+    }),
+  });
+
+  if (!response.ok) {
+    const bodyText = await response.text();
+    throw new Error(`OpenAI Responses API ${response.status}: ${extractApiErrorMessage(bodyText)}`);
+  }
+
+  return await response.json() as OpenAiResponseBody;
+}
+
+function collectOpenAiFunctionCalls(response: OpenAiResponseBody): readonly OpenAiToolCall[] {
+  return Array.isArray(response.output)
+    ? response.output
+      .filter((item): item is OpenAiToolCall =>
+        isRecord(item)
+        && item.type === "function_call"
+        && typeof item.call_id === "string"
+        && typeof item.name === "string"
+        && typeof item.arguments === "string")
+    : [];
+}
+
+function extractOpenAiAssistantText(response: OpenAiResponseBody): string {
+  if (!Array.isArray(response.output)) {
+    return "";
+  }
+  const parts: string[] = [];
+  for (const item of response.output) {
+    if (!isRecord(item) || item.type !== "message" || item.role !== "assistant" || !Array.isArray(item.content)) {
+      continue;
+    }
+    for (const content of item.content) {
+      if (isRecord(content) && content.type === "output_text" && typeof content.text === "string") {
+        parts.push(content.text);
+      }
+    }
+  }
+  return parts.join("\n");
 }
 
 function installFetchFixture(responses: readonly ProviderResponse[]): () => void {

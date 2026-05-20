@@ -6,15 +6,19 @@ import { describe, expect, it } from "vitest";
 
 import { createDefaultSkillAdapters } from "@runxhq/adapters";
 import {
-  createFileRegistryStore,
-  HttpCachedRegistryStore,
-  ingestSkillMarkdown,
-} from "@runxhq/core/registry";
-import { runLocalGraph, type Caller } from "@runxhq/runtime-local";
-import {
   isRegistryRef,
   parseRegistryRef,
+  runLocalGraph,
+  type Caller,
+  type RegistrySkillVersion as GraphRegistrySkillVersion,
+  type RegistryStore as GraphRegistryStore,
 } from "@runxhq/runtime-local";
+import {
+  createFileRegistryStore,
+  seedRegistrySkill,
+  type RegistrySkillVersion as FixtureRegistrySkillVersion,
+  type RegistryStore as FixtureRegistryStore,
+} from "./registry-fixtures.js";
 
 const caller: Caller = {
   resolve: async () => undefined,
@@ -100,7 +104,7 @@ describe("graph registry refs", () => {
 
     try {
       const store = createFileRegistryStore(path.join(tempDir, "registry"));
-      await ingestSkillMarkdown(store, ECHO_MARKDOWN, {
+      await seedRegistrySkill(store, ECHO_MARKDOWN, {
         owner: "testorg",
         version: "0.1.0",
         createdAt: "2026-04-20T00:00:00.000Z",
@@ -148,13 +152,13 @@ steps:
 
     try {
       const store = createFileRegistryStore(path.join(tempDir, "registry"));
-      await ingestSkillMarkdown(store, ECHO_MARKDOWN, {
+      await seedRegistrySkill(store, ECHO_MARKDOWN, {
         owner: "testorg",
         version: "0.1.0",
         createdAt: "2026-04-20T00:00:00.000Z",
         profileDocument: ECHO_PROFILE,
       });
-      await ingestSkillMarkdown(store, ECHO_MARKDOWN, {
+      await seedRegistrySkill(store, ECHO_MARKDOWN, {
         owner: "testorg",
         version: "0.2.0",
         createdAt: "2026-04-21T00:00:00.000Z",
@@ -264,7 +268,7 @@ steps:
 
     try {
       const store = createFileRegistryStore(path.join(tempDir, "registry"));
-      await ingestSkillMarkdown(store, ECHO_MARKDOWN, {
+      await seedRegistrySkill(store, ECHO_MARKDOWN, {
         owner: "testorg",
         version: "0.1.0",
         createdAt: "2026-04-20T00:00:00.000Z",
@@ -300,7 +304,7 @@ steps:
     }
   });
 
-  it("fetches a graph step skill from a remote registry via HttpCachedRegistryStore", async () => {
+  it("fetches a graph step skill from a remote-backed registry store", async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-graph-registry-http-"));
 
     try {
@@ -346,8 +350,8 @@ steps:
       };
 
       const cache = createFileRegistryStore(path.join(tempDir, "cache"));
-      const store = new HttpCachedRegistryStore({
-        remoteBaseUrl: "https:/@runxhq/core/registry.example",
+      const store = new FixtureRemoteRegistryStore({
+        remoteBaseUrl: "https://registry.example",
         installationId: "inst_test",
         cache,
         fetchImpl,
@@ -440,3 +444,112 @@ steps:
     }
   });
 });
+
+interface FixtureRemoteRegistryStoreOptions {
+  readonly remoteBaseUrl: string;
+  readonly installationId: string;
+  readonly cache: FixtureRegistryStore;
+  readonly fetchImpl: typeof fetch;
+  readonly now?: () => Date;
+}
+
+class FixtureRemoteRegistryStore implements GraphRegistryStore {
+  constructor(private readonly options: FixtureRemoteRegistryStoreOptions) {}
+
+  async getVersion(skillId: string, version?: string): Promise<GraphRegistrySkillVersion | undefined> {
+    const cached = await this.options.cache.getVersion(skillId, version);
+    if (cached && version) {
+      return cached;
+    }
+
+    const acquired = await this.acquire(skillId, version);
+    if (!acquired) {
+      return cached;
+    }
+
+    return await this.options.cache.putVersion(
+      acquiredRegistrySkillToVersion(acquired, this.options.now?.() ?? new Date()),
+      { upsert: true },
+    );
+  }
+
+  async listVersions(skillId: string): Promise<readonly GraphRegistrySkillVersion[]> {
+    return await this.options.cache.listVersions(skillId);
+  }
+
+  private async acquire(skillId: string, version?: string): Promise<FixtureAcquiredRegistrySkill | undefined> {
+    const [owner, name] = splitRegistrySkillId(skillId);
+    const response = await this.options.fetchImpl(
+      `${this.options.remoteBaseUrl.replace(/\/$/, "")}/v1/skills/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/acquire`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          installation_id: this.options.installationId,
+          version,
+          channel: "graph-fixture",
+        }),
+      },
+    );
+    if (response.status === 404) {
+      return undefined;
+    }
+    if (!response.ok) {
+      throw new Error(`Registry acquire failed for ${skillId}: HTTP ${response.status}`);
+    }
+    const payload = await response.json() as { readonly status?: string; readonly acquisition?: FixtureAcquiredRegistrySkill };
+    if (payload.status !== "success" || !payload.acquisition) {
+      throw new Error(`Registry acquire returned an invalid payload for ${skillId}.`);
+    }
+    return payload.acquisition;
+  }
+}
+
+interface FixtureAcquiredRegistrySkill {
+  readonly skill_id: string;
+  readonly owner: string;
+  readonly name: string;
+  readonly version: string;
+  readonly digest: string;
+  readonly markdown: string;
+  readonly profile_document?: string;
+  readonly profile_digest?: string;
+  readonly runner_names: readonly string[];
+  readonly trust_tier: "first_party" | "verified" | "community";
+  readonly publisher: FixtureRegistrySkillVersion["publisher"];
+  readonly attestations: FixtureRegistrySkillVersion["attestations"];
+}
+
+function acquiredRegistrySkillToVersion(
+  acquired: FixtureAcquiredRegistrySkill,
+  now: Date,
+): FixtureRegistrySkillVersion {
+  const timestamp = now.toISOString();
+  return {
+    skill_id: acquired.skill_id,
+    owner: acquired.owner,
+    name: acquired.name,
+    version: acquired.version,
+    digest: acquired.digest,
+    markdown: acquired.markdown,
+    profile_document: acquired.profile_document,
+    profile_digest: acquired.profile_digest,
+    runner_names: acquired.runner_names,
+    source_type: "runx-registry",
+    trust_tier: acquired.trust_tier,
+    attestations: acquired.attestations,
+    required_scopes: [],
+    tags: [],
+    publisher: acquired.publisher,
+    created_at: timestamp,
+    updated_at: timestamp,
+  };
+}
+
+function splitRegistrySkillId(skillId: string): readonly [string, string] {
+  const parts = skillId.split("/");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+    throw new Error(`Invalid registry skill id '${skillId}'. Expected '<owner>/<name>'.`);
+  }
+  return [parts[0], parts[1]];
+}

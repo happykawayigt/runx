@@ -41,7 +41,8 @@ Today `crates/runx-cli/src/launcher.rs` still delegates to TypeScript through
 explicit candidate signals are set. `RUNX_RUST_CLI` currently routes native
 candidate implementations for `connect`, `config`, supported `doctor`, supported
 `list`, `new`, `init`, `history`, `policy inspect|lint`, and
-`tool build|search|inspect`;
+`tool build|search|inspect`, plus supported `mcp serve` shapes without native
+runner selection;
 `RUNX_RUST_HARNESS` separately routes `runx harness <fixture>` to the Rust
 runtime harness runner. This spec removes release-path delegation and makes the
 Rust binary the authoritative `runx` invocation.
@@ -108,9 +109,9 @@ Invariants:
 - As of the 2026-05-20 inspection, this guard is intentionally active:
   `crates/runx-cli/tests/launcher.rs` proves packaged Node CLI files do not set
   `RUNX_RUST_CLI`/`RUNX_RUST_HARNESS`, candidate commands delegate without
-  native signals, `RUNX_RUST_CLI=0` and empty signals still delegate, and
-  supported native routes only activate when the operator-controlled signal is
-  non-empty and non-zero.
+  native signals, `RUNX_RUST_CLI=0`/`RUNX_RUST_HARNESS=0` and empty signals
+  still delegate, and supported native routes only activate when the
+  operator-controlled signal is non-empty and non-zero.
 - The current TS command set includes `runx policy inspect|lint <policy.json>`;
   the Rust CLI parity matrix must include its exit codes, JSON shape, and
   redacted human readback.
@@ -204,12 +205,14 @@ Out of scope:
   disposition.
 - Current native command coverage is partial. `connect`, `config`, `new`,
   `init`, `history`, `list`, `policy inspect|lint`, supported `doctor`,
-  supported `tool`, and harness replay have Rust candidate paths and focused
-  tests. The canonical matrix still includes `skill.run`, `skill.search`,
+  supported `tool`, supported `mcp serve` without `--runner`, and harness replay
+  have Rust candidate paths and focused tests. MCP runner selection still
+  delegates to the TypeScript CLI until native runner support exists. The
+  canonical matrix still includes `skill.run`, `skill.search`,
   `skill.add`, `skill.publish`, `skill.inspect`, `evolve`, `resume`, `replay`,
   `diff`, `export-receipts.trainable`, `knowledge.show`, `dev`, and
-  `mcp.serve`; those require Rust implementation, explicit removal, or
-  migration notes before cutover.
+  runner-selected `mcp.serve`; those require Rust implementation, explicit
+  removal, or migration notes before cutover.
 - Binary distribution infrastructure: signing, CDN, version pinning.
 - Release engineering can publish a previous known-good npm package as a
   rollback, and can revoke or quarantine a bad native binary artifact.
@@ -461,3 +464,6 @@ Cutover validation script status from the 2026-05-20 inspection:
 - 2026-05-20: Added native candidate coverage note for `policy inspect|lint`;
   release authority still remains with the TypeScript CLI until the hard
   cutover packaging and no-JS-fallback gates land.
+- 2026-05-20: Narrowed MCP candidate coverage to supported `mcp serve` shapes
+  without `--runner`; runner-selected MCP remains delegated to TypeScript until
+  native runner support lands.

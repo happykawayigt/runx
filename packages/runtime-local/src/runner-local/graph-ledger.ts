@@ -4,9 +4,9 @@ import {
   createRunEventEntry,
   type ArtifactEnvelope,
 } from "@runxhq/core/artifacts";
-import type { GraphStep, ValidatedSkill } from "@runxhq/core/parser";
 
 import { graphStepRunner } from "./graph-reporting.js";
+import type { GraphStep, ValidatedSkill } from "../parser-types.js";
 
 export async function appendSkillLedgerEntries(options: {
   readonly receiptDir: string;

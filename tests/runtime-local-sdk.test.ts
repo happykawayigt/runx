@@ -5,8 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDefaultSkillAdapters } from "@runxhq/adapters";
 
-import { createFileRegistryStore, ingestSkillMarkdown } from "@runxhq/core/registry";
-import { hashString } from "@runxhq/core/receipts";
+import { hashString } from "@runxhq/core/util";
 import {
   connectPreprovision,
   createRunxHostBridge,
@@ -50,8 +49,10 @@ describe("TypeScript SDK", () => {
       const receipt = await sdk.inspectReceipt({ receiptId: result.receipt.id });
       expect(receipt).toMatchObject({
         id: result.receipt.id,
-        kind: "skill_execution",
-        status: "success",
+        schema: "runx.harness_receipt.v1",
+        seal: {
+          disposition: "closed",
+        },
       });
       await expect(inspect({ receiptId: result.receipt.id, receiptDir })).resolves.toMatchObject({
         id: result.receipt.id,
@@ -158,7 +159,6 @@ describe("TypeScript SDK", () => {
       await expect(bridge.inspect(completed.receiptId, { receiptDir })).resolves.toMatchObject({
         status: "completed",
         receiptId: completed.receiptId,
-        kind: "skill_execution",
         skillName: "echo",
       });
     } finally {
@@ -210,14 +210,14 @@ describe("TypeScript SDK", () => {
         inputs: {},
         execution: { stdout: "ok" },
         state: {},
-        receipt: { id: "rx_done", kind: "skill_execution", status: "success" },
+        receipt: { id: "rx_done", schema: "runx.harness_receipt.v1" },
       } as any,
     );
     expect(completed).toMatchObject({
       kernelStatus: "success",
       ledgerRunId: "rx_done",
       receiptId: "rx_done",
-      receiptKind: "skill_execution",
+      receiptSchema: "runx.harness_receipt.v1",
       stdout: "ok",
     });
 
@@ -254,7 +254,7 @@ describe("TypeScript SDK", () => {
           inputs: {},
           execution: { stdout: "", errorMessage: "nope" },
           state: {},
-          receipt: { id: "rx_wrong", kind: "skill_execution", status: "failure" },
+          receipt: { id: "rx_wrong", schema: "runx.harness_receipt.v1" },
         } as any,
       ),
     ).toThrow(/did not match kernel status/);
@@ -318,19 +318,16 @@ describe("TypeScript SDK", () => {
     try {
       const sdk = createRunxSdk({
         env: { ...process.env, RUNX_CWD: process.cwd() },
-        registryStore: createFileRegistryStore(registryDir),
+        registryDir,
         connect,
         adapters: createDefaultSkillAdapters(),
       });
-      await ingestSkillMarkdown(
-        createFileRegistryStore(registryDir),
-        await readFile(path.resolve("skills/sourcey/SKILL.md"), "utf8"),
-        {
-          owner: "acme",
-          version: "1.0.0",
-          createdAt: "2026-04-10T00:00:00.000Z",
-        },
-      );
+      await sdk.publishSkill({
+        skillPath: "skills/sourcey",
+        owner: "acme",
+        version: "1.0.0",
+        createdAt: "2026-04-10T00:00:00.000Z",
+      });
 
       const searchResults = await sdk.searchSkills({ query: "sourcey" });
       expect(searchResults[0]).toMatchObject({
@@ -360,7 +357,7 @@ describe("TypeScript SDK", () => {
     try {
       const sdk = createRunxSdk({
         env: { ...process.env, RUNX_CWD: process.cwd() },
-        registryStore: createFileRegistryStore(registryDir),
+        registryDir,
         adapters: createDefaultSkillAdapters(),
       });
 

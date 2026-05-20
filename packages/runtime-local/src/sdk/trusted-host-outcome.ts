@@ -1,7 +1,11 @@
-import type { ResolutionRequest } from "@runxhq/core/executor";
-import type { LocalReceipt } from "@runxhq/core/receipts";
+import type { ResolutionRequestContract as ResolutionRequest } from "@runxhq/contracts";
 import type { RunLocalSkillResult } from "../runner-local/index.js";
 import type { HostRunResult } from "./host-protocol.js";
+
+type TrustedKernelReceipt = NonNullable<
+  | Extract<RunLocalSkillResult, { readonly status: "success" | "failure" }>["receipt"]
+  | Extract<RunLocalSkillResult, { readonly status: "policy_denied" }>["receipt"]
+>;
 
 // First-party projection for trusted hosts such as the runx cloud worker.
 // This is not a provider response shape and must not be returned by public
@@ -11,9 +15,9 @@ export interface TrustedHostOutcome {
   readonly kernelStatus: RunLocalSkillResult["status"];
   readonly kernelRunId?: string;
   readonly ledgerRunId?: string;
-  readonly receipt?: LocalReceipt;
+  readonly receipt?: TrustedKernelReceipt;
   readonly receiptId?: string;
-  readonly receiptKind?: LocalReceipt["kind"];
+  readonly receiptSchema?: TrustedKernelReceipt["schema"];
   readonly requests?: readonly ResolutionRequest[];
   readonly denialReasons?: readonly string[];
   readonly stdout?: string;
@@ -45,7 +49,7 @@ export function createTrustedHostOutcome(
       ledgerRunId: kernel.receipt?.id,
       receipt: kernel.receipt,
       receiptId: kernel.receipt?.id,
-      receiptKind: kernel.receipt?.kind,
+      receiptSchema: kernel.receipt?.schema,
       denialReasons: kernel.reasons,
     };
   }
@@ -55,7 +59,7 @@ export function createTrustedHostOutcome(
     ledgerRunId: kernel.receipt.id,
     receipt: kernel.receipt,
     receiptId: kernel.receipt.id,
-    receiptKind: kernel.receipt.kind,
+    receiptSchema: kernel.receipt.schema,
     stdout: kernel.execution.stdout,
     error: kernel.execution.errorMessage,
   };

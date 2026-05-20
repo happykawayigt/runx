@@ -1,11 +1,10 @@
 use runx_contracts::{HarnessReceipt, Reference, ReferenceType};
 use runx_receipts::{
-    ReceiptProofContext, ReceiptProofContextProvider, ReceiptResolveResult, ReceiptResolver,
-    ReceiptTreeConfig, ReceiptVerification, ResolvedReceipt,
+    ReceiptResolveResult, ReceiptResolver, ReceiptTreeConfig, ReceiptVerification, ResolvedReceipt,
     verify_receipt_tree_proof_with_resolver,
 };
 
-use crate::receipts::{LocalHarnessSignatureVerifier, proof_context};
+use crate::receipts::{RuntimeReceiptProofContextProvider, RuntimeReceiptSignaturePolicy};
 
 #[derive(Clone, Debug, Default)]
 pub struct RuntimeReceiptResolver {
@@ -73,27 +72,45 @@ pub fn validate_runtime_receipt_tree(
     }
 }
 
+pub fn validate_runtime_receipt_tree_with_policy(
+    root: &HarnessReceipt,
+    receipts: impl IntoIterator<Item = HarnessReceipt>,
+    config: ReceiptTreeConfig,
+    signature_policy: RuntimeReceiptSignaturePolicy<'_>,
+) -> Result<(), ReceiptVerification> {
+    let verification =
+        verify_runtime_receipt_tree_with_policy(root, receipts, config, signature_policy);
+    if verification.valid {
+        Ok(())
+    } else {
+        Err(verification)
+    }
+}
+
 #[must_use]
 pub fn verify_runtime_receipt_tree(
     root: &HarnessReceipt,
     receipts: impl IntoIterator<Item = HarnessReceipt>,
     config: ReceiptTreeConfig,
 ) -> ReceiptVerification {
+    verify_runtime_receipt_tree_with_policy(
+        root,
+        receipts,
+        config,
+        RuntimeReceiptSignaturePolicy::local_development(),
+    )
+}
+
+#[must_use]
+pub fn verify_runtime_receipt_tree_with_policy(
+    root: &HarnessReceipt,
+    receipts: impl IntoIterator<Item = HarnessReceipt>,
+    config: ReceiptTreeConfig,
+    signature_policy: RuntimeReceiptSignaturePolicy<'_>,
+) -> ReceiptVerification {
     let resolver = RuntimeReceiptResolver::new(receipts);
-    let proof_contexts = RuntimeReceiptProofContextProvider {
-        verifier: LocalHarnessSignatureVerifier,
-    };
+    let proof_contexts = RuntimeReceiptProofContextProvider::new(signature_policy);
     verify_receipt_tree_proof_with_resolver(root, &resolver, config, &proof_contexts)
-}
-
-struct RuntimeReceiptProofContextProvider {
-    verifier: LocalHarnessSignatureVerifier,
-}
-
-impl ReceiptProofContextProvider for RuntimeReceiptProofContextProvider {
-    fn proof_context<'a>(&'a self, receipt: &HarnessReceipt) -> ReceiptProofContext<'a> {
-        proof_context(&self.verifier, receipt)
-    }
 }
 
 fn runtime_receipt_path(index: usize) -> String {

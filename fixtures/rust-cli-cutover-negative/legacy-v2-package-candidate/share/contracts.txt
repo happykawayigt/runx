@@ -1,0 +1,4 @@
+retired shape: skill_execution
+legacy receipt id: gx_0123456789abcdef
+blocked alias: runx v2
+blocked env: RUNX_V2

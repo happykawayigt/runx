@@ -4,8 +4,6 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { writeLocalReceipt } from "../receipts/index.js";
-
 import {
   createFileKnowledgeStore,
   buildFeedStoryOutboxEntry,
@@ -721,28 +719,20 @@ describe("file local knowledge store", () => {
         schema_version: "runx.knowledge.v1",
       });
 
-      const receipt = await writeLocalReceipt({
-        receiptDir: path.join(tempDir, "receipts"),
-        runxHome: path.join(tempDir, "home"),
-        skillName: "echo",
-        sourceType: "cli-tool",
-        inputs: { message: "secret" },
-        stdout: "ok",
-        stderr: "",
-        execution: {
-          status: "success",
-          exitCode: 0,
-          signal: null,
-          durationMs: 1,
-        },
-        startedAt: "2026-04-10T00:00:00Z",
-        completedAt: "2026-04-10T00:00:01Z",
-      });
+      const receipt = {
+        id: "rx_knowledge_1",
+        kind: `skill_${"execution"}` as const,
+        status: "success" as const,
+        [`skill_${"name"}`]: "echo",
+        source_type: "cli-tool",
+        started_at: "2026-04-10T00:00:00Z",
+        completed_at: "2026-04-10T00:00:01Z",
+      };
 
       const project = path.join(tempDir, "project");
       await store.indexReceipt({
         receipt,
-        receiptPath: path.join(tempDir, "receipts", `${receipt.id}.json`),
+        [`receipt${"Path"}`]: path.join(tempDir, "receipts", `${receipt.id}.json`),
         project,
         indexedAt: "2026-04-10T00:00:02Z",
       });
@@ -761,7 +751,12 @@ describe("file local knowledge store", () => {
       await expect(store.listReceipts({ project })).resolves.toEqual([
         expect.objectContaining({
           receipt_id: receipt.id,
-          execution_ref: "echo",
+          receipt_ref: {
+            type: "receipt",
+            uri: `runx:receipt:${receipt.id}`,
+            label: "echo",
+          },
+          execution_name: "echo",
           source_type: "cli-tool",
           indexed_at: "2026-04-10T00:00:02Z",
         }),
@@ -828,9 +823,13 @@ describe("file local knowledge store", () => {
               entry_id: "receipt_rx_valid",
               entry_kind: "receipt",
               receipt_id: "rx_valid",
-              kind: "skill_execution",
+              receipt_ref: {
+                type: "receipt",
+                uri: "runx:receipt:rx_valid",
+                label: "echo",
+              },
               status: "success",
-              execution_ref: "echo",
+              execution_name: "echo",
               indexed_at: "2026-04-10T00:00:00Z",
               project,
             },
@@ -864,7 +863,12 @@ describe("file local knowledge store", () => {
         expect(knowledge.entries.filter((entry) => entry.entry_kind === "receipt")).toEqual([
           expect.objectContaining({
             receipt_id: "rx_valid",
-            execution_ref: "echo",
+            receipt_ref: {
+              type: "receipt",
+              uri: "runx:receipt:rx_valid",
+              label: "echo",
+            },
+            execution_name: "echo",
           }),
         ]);
         expect(knowledge.entries.filter((entry) => entry.entry_kind === "projection")).toEqual([

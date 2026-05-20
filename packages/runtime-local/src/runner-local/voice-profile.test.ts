@@ -4,9 +4,9 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import type { AdapterActInvocation, SkillAdapter } from "@runxhq/core/executor";
-import { hashString } from "@runxhq/core/receipts";
+import { hashString } from "@runxhq/core/util";
 
+import type { AdapterActInvocation, SkillAdapter } from "./adapter-types.js";
 import { runLocalSkill } from "./index.js";
 
 describe("voice profile injection", () => {
@@ -63,7 +63,7 @@ describe("voice profile injection", () => {
         content: voiceProfileContent,
       });
 
-      if (result.status !== "success" || result.receipt.kind !== "skill_execution") {
+      if (result.status !== "success" || result.receipt.schema !== "runx.harness_receipt.v1") {
         return;
       }
 

@@ -39,13 +39,8 @@ describe("hello-world example", () => {
         return;
       }
       expect(result.execution.stdout).toBe("hello from docs\n");
-      expect(result.receipt.kind).toBe("skill_execution");
-      if (result.receipt.kind !== "skill_execution") {
-        return;
-      }
-      expect(result.receipt.skill_name).toBe("hello-world");
-      expect(result.receipt.source_type).toBe("cli-tool");
-      expect(result.receipt.status).toBe("success");
+      expect(result.receipt.schema).toBe("runx.harness_receipt.v1");
+      expect(result.receipt.seal.disposition).toBe("closed");
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }

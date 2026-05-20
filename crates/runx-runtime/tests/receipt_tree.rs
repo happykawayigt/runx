@@ -1,9 +1,15 @@
 use runx_contracts::{
     FanoutReceiptDecision, FanoutReceiptStrategy, FanoutReceiptSyncPoint, HarnessReceipt,
-    JsonObject,
+    JsonObject, ReceiptIssuer, ReceiptSignature,
 };
-use runx_receipts::{ReceiptFindingCode, ReceiptTreeConfig};
-use runx_runtime::receipts::{graph_receipt, step_receipt};
+use runx_receipts::{
+    ReceiptFindingCode, ReceiptTreeConfig, SignatureVerificationFailure, SignatureVerifier,
+    canonical_receipt_body_digest,
+};
+use runx_runtime::receipt_tree::{
+    validate_runtime_receipt_tree_with_policy, verify_runtime_receipt_tree_with_policy,
+};
+use runx_runtime::receipts::{RuntimeReceiptSignaturePolicy, graph_receipt, step_receipt};
 use runx_runtime::{
     InvocationStatus, RuntimeReceiptResolver, SkillOutput, StepRun, validate_runtime_receipt_tree,
     verify_runtime_receipt_tree,
@@ -73,6 +79,41 @@ fn runtime_resolver_reports_ambiguous_scoped_receipts() -> Result<(), Box<dyn st
 }
 
 #[test]
+fn runtime_tree_rejects_missing_child_receipt() -> Result<(), Box<dyn std::error::Error>> {
+    let (root, _children) = graph_with_steps("tree_runtime_missing_child", &["child"])?;
+
+    let verification = verify_runtime_receipt_tree(&root, Vec::new(), ReceiptTreeConfig::default());
+
+    assert_finding(
+        &verification,
+        ReceiptFindingCode::ChildReceiptMissing,
+        "harness.child_harness_receipt_refs[0]",
+    );
+    Ok(())
+}
+
+#[test]
+fn runtime_tree_rejects_extra_child_receipt() -> Result<(), Box<dyn std::error::Error>> {
+    let (root, mut children) = graph_with_steps("tree_runtime_extra_child", &["child"])?;
+    children.push(step_receipt(
+        "tree_runtime_extra_child",
+        "orphan",
+        1,
+        &skill_output(InvocationStatus::Success),
+        CREATED_AT,
+    )?);
+
+    let verification = verify_runtime_receipt_tree(&root, children, ReceiptTreeConfig::default());
+
+    assert_finding(
+        &verification,
+        ReceiptFindingCode::OrphanChildReceipt,
+        "runtime_receipts[1].id",
+    );
+    Ok(())
+}
+
+#[test]
 fn runtime_fanout_receipt_tree_uses_explicit_receipts() -> Result<(), Box<dyn std::error::Error>> {
     let steps = vec![
         step_run(
@@ -126,6 +167,106 @@ fn runtime_tree_rejects_structurally_valid_child_proof_tamper()
         &verification,
         ReceiptFindingCode::SignatureInvalid,
         "runtime_receipts[0].signature.value",
+    );
+    Ok(())
+}
+
+#[test]
+fn runtime_tree_rejects_valid_alternate_child_with_same_id()
+-> Result<(), Box<dyn std::error::Error>> {
+    let (root, children) = graph_with_steps("tree_runtime_child_digest", &["child"])?;
+    let mut alternate = children[0].clone();
+    alternate.harness.acts[0].summary = "valid alternate child body".to_owned();
+    refresh_local_digest_and_signature(&mut alternate)?;
+
+    let verification =
+        verify_runtime_receipt_tree(&root, vec![alternate], ReceiptTreeConfig::default());
+
+    assert_finding(
+        &verification,
+        ReceiptFindingCode::ChildReceiptDigestMismatch,
+        "runtime_receipts[0].locator",
+    );
+    Ok(())
+}
+
+#[test]
+fn runtime_tree_rejects_child_ref_without_digest_locator() -> Result<(), Box<dyn std::error::Error>>
+{
+    let (mut root, children) = graph_with_steps("tree_runtime_missing_child_digest", &["child"])?;
+    root.harness.child_harness_receipt_refs[0].locator = None;
+    refresh_local_digest_and_signature(&mut root)?;
+
+    assert!(runx_receipts::verify_receipt_tree(&root, &children).valid);
+    let verification = verify_runtime_receipt_tree(&root, children, ReceiptTreeConfig::default());
+
+    assert_finding(
+        &verification,
+        ReceiptFindingCode::ChildReceiptDigestMismatch,
+        "runtime_receipts[0].locator",
+    );
+    Ok(())
+}
+
+#[test]
+fn production_tree_policy_rejects_local_pseudo_signature_even_with_permissive_verifier()
+-> Result<(), Box<dyn std::error::Error>> {
+    let (root, children) = graph_with_steps("tree_runtime_prod_pseudo", &["child"])?;
+    let verifier = PermissiveProductionVerifier;
+
+    let verification = verify_runtime_receipt_tree_with_policy(
+        &root,
+        children,
+        ReceiptTreeConfig::default(),
+        RuntimeReceiptSignaturePolicy::production(&verifier),
+    );
+
+    assert_finding(
+        &verification,
+        ReceiptFindingCode::SignatureMalformed,
+        "signature.value",
+    );
+    Ok(())
+}
+
+#[test]
+fn production_tree_policy_accepts_supplied_non_pseudo_verifier()
+-> Result<(), Box<dyn std::error::Error>> {
+    let (mut root, mut children) = graph_with_steps("tree_runtime_prod_real", &["plan", "apply"])?;
+    resign_for_test_verifier(&mut root)?;
+    for child in &mut children {
+        resign_for_test_verifier(child)?;
+    }
+    let verifier = TestProductionVerifier;
+
+    assert!(
+        validate_runtime_receipt_tree_with_policy(
+            &root,
+            children,
+            ReceiptTreeConfig::default(),
+            RuntimeReceiptSignaturePolicy::production(&verifier),
+        )
+        .is_ok()
+    );
+    Ok(())
+}
+
+#[test]
+fn production_tree_policy_without_verifier_fails_closed() -> Result<(), Box<dyn std::error::Error>>
+{
+    let (root, children) = graph_with_steps("tree_runtime_prod_missing", &["child"])?;
+
+    let verification = verify_runtime_receipt_tree_with_policy(
+        &root,
+        children,
+        ReceiptTreeConfig::default(),
+        RuntimeReceiptSignaturePolicy::production_without_verifier(),
+    );
+
+    assert_finding(
+        &verification,
+        ReceiptFindingCode::SignatureVerifierMissing,
+        "signature",
     );
     Ok(())
 }
@@ -197,6 +338,56 @@ fn fanout_sync_point(steps: &[StepRun]) -> FanoutReceiptSyncPoint {
             .map(|receipt| receipt.id)
             .collect(),
         gate: None,
+    }
+}
+
+fn resign_for_test_verifier(
+    receipt: &mut HarnessReceipt,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let digest = canonical_receipt_body_digest(receipt)?;
+    receipt.signature.value = format!("ed25519-test:{digest}");
+    Ok(())
+}
+
+fn refresh_local_digest_and_signature(
+    receipt: &mut HarnessReceipt,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let digest = canonical_receipt_body_digest(receipt)?;
+    receipt.seal.digest = digest.clone();
+    if let Some(seal) = receipt.harness.seal.as_mut() {
+        seal.digest = digest.clone();
+    }
+    receipt.signature.value = format!("sig:{digest}");
+    Ok(())
+}
+
+struct PermissiveProductionVerifier;
+
+impl SignatureVerifier for PermissiveProductionVerifier {
+    fn verify(
+        &self,
+        _issuer: &ReceiptIssuer,
+        _signature: &ReceiptSignature,
+        _body_digest: &str,
+    ) -> Result<(), SignatureVerificationFailure> {
+        Ok(())
+    }
+}
+
+struct TestProductionVerifier;
+
+impl SignatureVerifier for TestProductionVerifier {
+    fn verify(
+        &self,
+        _issuer: &ReceiptIssuer,
+        signature: &ReceiptSignature,
+        body_digest: &str,
+    ) -> Result<(), SignatureVerificationFailure> {
+        if signature.value == format!("ed25519-test:{body_digest}") {
+            Ok(())
+        } else {
+            Err(SignatureVerificationFailure::SignatureMismatch)
+        }
     }
 }
 

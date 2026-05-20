@@ -154,7 +154,7 @@ expect:
     harness_id: "hrn_bounded-docs-fix_bounded-docs-fix"
     state: "sealed"
     disposition: "closed"
-    reason_code: "bounded-docs-fix_closed"
+    reason_code: "process_closed"
     act_ids:
       - "act_bounded-docs-fix"
     decision_ids:

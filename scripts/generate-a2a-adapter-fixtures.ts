@@ -2,9 +2,15 @@ import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { validateActReceiptEnvelope, type ActReceiptEnvelope } from "../packages/core/src/executor/index.js";
+import {
+  type ActReceiptEnvelopeContract,
+  validateActReceiptEnvelopeContract,
+} from "../packages/contracts/src/index.js";
 import { invokeA2a } from "../packages/adapters/src/a2a/index.js";
 import { createA2aFixtureTransport } from "../packages/runtime-local/src/harness/a2a-fixture.js";
+
+type ActReceiptEnvelope = ActReceiptEnvelopeContract;
+const validateActReceiptEnvelope = validateActReceiptEnvelopeContract;
 
 const workspaceRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const fixtureRoot = path.join(workspaceRoot, "fixtures", "runtime", "adapters", "a2a");

@@ -1,4 +1,4 @@
-import { hashString } from "../receipts/index.js";
+import { hashString } from "../util/hash.js";
 
 import type { MarketplaceAdapter, SkillSearchResult } from "./index.js";
 

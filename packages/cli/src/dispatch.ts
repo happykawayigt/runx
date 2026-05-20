@@ -7,22 +7,14 @@ import {
   resolvePathFromUserInput,
   resolveRunxGlobalHomeDir,
   resolveRunxKnowledgeDir,
-  resolveRunxRegistryPath,
   resolveRunxRegistryTarget,
   resolveSkillInstallRoot,
 } from "@runxhq/core/config";
 import { runHarnessTarget, validatePublishHarness } from "@runxhq/runtime-local/harness";
-import { createFixtureMarketplaceAdapter } from "@runxhq/core/marketplaces";
+import { createFixtureMarketplaceAdapter, isMarketplaceRef } from "@runxhq/core/marketplaces";
 import { createFileKnowledgeStore } from "@runxhq/core/knowledge";
 import { createRunxSdk } from "@runxhq/runtime-local/sdk";
 import { resolveEnvToolCatalogAdapters, searchToolCatalogAdapters } from "@runxhq/runtime-local/tool-catalogs";
-import {
-  createDefaultHttpCachedRegistryStore,
-  createFileRegistryStore,
-  createLocalRegistryClient,
-  publishSkillMarkdown,
-  type RegistryStore,
-} from "@runxhq/core/registry";
 import {
   defaultReceiptDir,
   installLocalSkill,
@@ -30,6 +22,7 @@ import {
   readPendingSkillPath,
   runLocalSkill,
   type Caller,
+  type RegistryStore,
   type RunLineageMetadata,
   type RunLocalSkillResult,
 } from "@runxhq/runtime-local";
@@ -89,7 +82,13 @@ import { handleInitCommand } from "./commands/init.js";
 import { handleListCommand } from "./commands/list.js";
 import { handleMcpServeCommand } from "./commands/mcp.js";
 import { handleNewCommand } from "./commands/new.js";
+import { installRegistryViaRustCli, nativeRegistryInstallRequested } from "./native-registry.js";
 import { handlePolicyCommand, renderPolicyResult } from "./commands/policy.js";
+import {
+  createCliFileRegistryStore,
+  publishRegistrySkillMarkdown,
+  resolveCliRegistryStoreForGraphs,
+} from "./registry-fallback.js";
 import {
   handleToolBuildCommand,
   renderToolCommandResult,
@@ -356,18 +355,28 @@ export async function dispatchCli(
     const installState = registryTarget.mode === "remote"
       ? await ensureRunxInstallState(resolveRunxGlobalHomeDir(env))
       : undefined;
-    const result = await installLocalSkill({
-      ref: parsed.skillRef,
-      registryStore: registryTarget.mode === "local"
-        ? createFileRegistryStore(registryTarget.registryPath)
-        : undefined,
-      marketplaceAdapters: env.RUNX_ENABLE_FIXTURE_MARKETPLACE === "1" ? [createFixtureMarketplaceAdapter()] : [],
-      destinationRoot: resolveSkillInstallRoot(env, parsed.installTo),
-      version: parsed.installVersion,
-      expectedDigest: parsed.expectedDigest,
-      registryUrl: registryTarget.mode === "remote" ? registryTarget.registryUrl : parsed.registryUrl,
-      installationId: installState?.state.installation_id,
-    });
+    const result = nativeRegistryInstallRequested(env) && !isMarketplaceRef(parsed.skillRef)
+      ? await installRegistryViaRustCli({
+        ref: parsed.skillRef,
+        env,
+        registryOverride: parsed.registryUrl,
+        destinationRoot: resolveSkillInstallRoot(env, parsed.installTo),
+        version: parsed.installVersion,
+        expectedDigest: parsed.expectedDigest,
+        installationId: installState?.state.installation_id,
+      })
+      : await installLocalSkill({
+        ref: parsed.skillRef,
+        registryStore: registryTarget.mode === "local"
+          ? createCliFileRegistryStore(registryTarget.registryPath)
+          : undefined,
+        marketplaceAdapters: env.RUNX_ENABLE_FIXTURE_MARKETPLACE === "1" ? [createFixtureMarketplaceAdapter()] : [],
+        destinationRoot: resolveSkillInstallRoot(env, parsed.installTo),
+        version: parsed.installVersion,
+        expectedDigest: parsed.expectedDigest,
+        registryUrl: registryTarget.mode === "remote" ? registryTarget.registryUrl : parsed.registryUrl,
+        installationId: installState?.state.installation_id,
+      });
     if (parsed.json) {
       io.stdout.write(`${JSON.stringify({ status: "success", install: result }, null, 2)}\n`);
     } else {
@@ -392,16 +401,14 @@ export async function dispatchCli(
       throw new Error(`Harness failed for ${resolvedPublishPath}: ${harness.assertion_errors.join("; ")}`);
     }
     const skillPackage = await loadLocalSkillPackage(resolvedPublishPath);
-    const result = await publishSkillMarkdown(
-      createLocalRegistryClient(createFileRegistryStore(resolveRunxRegistryPath(env, { registry: parsed.registryUrl }))),
-      skillPackage.markdown,
-      {
-        owner: parsed.publishOwner,
-        version: parsed.publishVersion,
-        registryUrl: parsed.registryUrl,
-        profileDocument: skillPackage.profileDocument,
-      },
-    );
+    const result = await publishRegistrySkillMarkdown({
+      env,
+      registry: parsed.registryUrl,
+      markdown: skillPackage.markdown,
+      owner: parsed.publishOwner,
+      version: parsed.publishVersion,
+      profileDocument: skillPackage.profileDocument,
+    });
     if (parsed.json) {
       io.stdout.write(`${JSON.stringify({ status: "success", publish: { ...result, harness } }, null, 2)}\n`);
     } else {
@@ -559,21 +566,7 @@ export function writeCliError(io: CliIo, message: string): number {
 }
 
 async function resolveRegistryStoreForGraphs(env: NodeJS.ProcessEnv): Promise<RegistryStore | undefined> {
-  const target = resolveRunxRegistryTarget(env);
-  if (target.mode === "local") {
-    return createFileRegistryStore(target.registryPath);
-  }
-  if (!target.registryUrl) {
-    return undefined;
-  }
-  const globalHomeDir = resolveRunxGlobalHomeDir(env);
-  const install = await ensureRunxInstallState(globalHomeDir);
-  return createDefaultHttpCachedRegistryStore({
-    remoteBaseUrl: target.registryUrl,
-    cacheRoot: resolveRunxRegistryPath(env),
-    installationId: install.state.installation_id,
-    channel: "cli-graph",
-  });
+  return await resolveCliRegistryStoreForGraphs(env);
 }
 
 async function executeLocalSkillCommand(options: {

@@ -24,6 +24,7 @@ pub enum ReceiptFindingCode {
     ChildReceiptCycle,
     OrphanChildReceipt,
     ChildReceiptParentMismatch,
+    ChildReceiptDigestMismatch,
     ChildReceiptDepthLimit,
     ChildReceiptBreadthLimit,
     DuplicateChildReceipt,

@@ -147,6 +147,7 @@ describe("operational-policy schema", () => {
     ["invalid-owner-route-mismatch.json", "owner_route_target_mismatch"],
     ["invalid-source-thread-missing.json", "source_thread_required"],
     ["invalid-no-available-runner.json", "target_action_without_runner"],
+    ["invalid-not-scafld-target.json", "mutation_without_scafld"],
   ])("reports stable semantic finding for %s", (fixtureName, code) => {
     const policy = readPolicyFixture(fixtureName);
 

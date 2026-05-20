@@ -4,8 +4,8 @@ use std::path::Path;
 use runx_runtime::registry::{
     AcquireOptions, HostedHttpError, HttpMethod, HttpRequest, HttpResponse, InstallCandidate,
     InstallError, InstallLocalSkillOptions, InstallStatus, RegistryClient, RegistryClientError,
-    RegistryResolveError, Transport, TrustTier, install_local_skill, materialization_cache_path,
-    materialization_digest_marker, parse_registry_ref,
+    RegistryResolveError, Transport, TrustTier, build_registry_skill_version, install_local_skill,
+    materialization_cache_path, materialization_digest_marker, parse_registry_ref,
 };
 use serde_json::json;
 use tempfile::tempdir;
@@ -241,6 +241,34 @@ fn local_install_is_idempotent_and_rejects_conflicts() -> Result<(), Box<dyn std
         Err(error) => error,
     };
     assert!(profile_conflict.to_string().contains("profile state"));
+    Ok(())
+}
+
+#[test]
+fn local_install_accepts_bare_registry_store_digests() -> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempdir()?;
+    let mut candidate = install_candidate();
+    let record = build_registry_skill_version(
+        &candidate.markdown,
+        &runx_runtime::registry::IngestSkillOptions {
+            owner: Some("acme".to_owned()),
+            version: Some("1.0.0".to_owned()),
+            profile_document: candidate.profile_document.clone(),
+            ..runx_runtime::registry::IngestSkillOptions::default()
+        },
+    )?;
+    candidate.digest = Some(record.digest.clone());
+    candidate.profile_digest = record.profile_digest.clone();
+    let options = InstallLocalSkillOptions {
+        destination_root: temp.path().join("skills"),
+        expected_digest: None,
+    };
+
+    let install = install_local_skill(&candidate, &options)?;
+
+    assert_eq!(install.status, InstallStatus::Installed);
+    assert_eq!(install.skill_id.as_deref(), Some("acme/echo"));
+    assert!(install.digest.starts_with("sha256:"));
     Ok(())
 }
 

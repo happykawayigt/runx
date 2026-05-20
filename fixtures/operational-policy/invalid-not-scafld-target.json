@@ -1,0 +1,79 @@
+{
+  "schema": "runx.operational_policy.v1",
+  "schema_version": "runx.operational_policy.v1",
+  "policy_id": "invalid-not-scafld-target",
+  "sources": [
+    {
+      "source_id": "github-issues",
+      "provider": "github",
+      "allowed_locators": [
+        "github://example/project/issues"
+      ],
+      "allowed_actions": [
+        "issue-to-pr"
+      ],
+      "source_thread": {
+        "required": true,
+        "publish_mode": "comment",
+        "missing_behavior": "fail_closed"
+      }
+    }
+  ],
+  "runners": [
+    {
+      "runner_id": "local-pr-runner",
+      "kind": "local",
+      "state": "available",
+      "allowed_actions": [
+        "issue-to-pr"
+      ],
+      "target_repos": [
+        "example/project"
+      ],
+      "scafld_required": true
+    }
+  ],
+  "owner_routes": [
+    {
+      "route_id": "maintainers",
+      "owners": [
+        "maintainers"
+      ],
+      "target_repos": [
+        "example/project"
+      ]
+    }
+  ],
+  "targets": [
+    {
+      "repo": "example/project",
+      "runner_ids": [
+        "local-pr-runner"
+      ],
+      "allowed_actions": [
+        "issue-to-pr"
+      ],
+      "default_owner_route": "maintainers",
+      "scafld_required": false
+    }
+  ],
+  "dedupe": {
+    "strategy": "source_fingerprint",
+    "key_fields": [
+      "source.locator",
+      "target_repo"
+    ],
+    "on_duplicate": "reuse"
+  },
+  "outcomes": {
+    "observe_provider": false,
+    "verification_required": false,
+    "close_source_issue": "never",
+    "publish_final_source_thread_update": true
+  },
+  "permissions": {
+    "auto_merge": false,
+    "mutate_target_repo": true,
+    "require_human_merge_gate": true
+  }
+}

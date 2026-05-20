@@ -2,7 +2,7 @@ import { parseDocument } from "yaml";
 
 import { validateGraphDocument, type ExecutionGraph } from "./graph.js";
 import { normalizeSandboxDeclaration } from "../policy/sandbox.js";
-import { GOVERNED_DISPOSITIONS, type ExecutionSemantics } from "../receipts/index.js";
+import { GOVERNED_DISPOSITIONS, type ExecutionSemantics } from "../execution-semantics.js";
 import { errorMessage, isRecord } from "../util/types.js";
 
 export const parserPackage = "@runxhq/core/parser";
@@ -144,11 +144,18 @@ export interface HarnessCallerFixture {
 }
 
 export interface HarnessReceiptExpectation {
-  readonly kind?: "skill_execution" | "graph_execution";
+  readonly [key: string]: unknown;
+  readonly schema?: "runx.harness_receipt.v1";
   readonly status?: "success" | "failure";
-  readonly skill_name?: string;
   readonly source_type?: string;
-  readonly graph_name?: string;
+  readonly body_digest?: string;
+  readonly receipt_digest?: string;
+  readonly harness_id?: string;
+  readonly state?: string;
+  readonly disposition?: string;
+  readonly reason_code?: string;
+  readonly child_receipt_refs?: readonly string[];
+  readonly act_ids?: readonly string[];
   readonly owner?: string;
 }
 
@@ -862,11 +869,17 @@ function validateHarnessReceiptExpectation(
     return undefined;
   }
   return {
-    kind: optionalHarnessReceiptKind(value.kind, `${field}.kind`),
+    schema: optionalHarnessReceiptSchema(value.schema, `${field}.schema`),
     status: optionalHarnessReceiptStatus(value.status, `${field}.status`),
-    skill_name: optionalString(value.skill_name, `${field}.skill_name`),
     source_type: optionalString(value.source_type, `${field}.source_type`),
-    graph_name: optionalString(value.graph_name, `${field}.graph_name`),
+    body_digest: optionalString(value.body_digest, `${field}.body_digest`),
+    receipt_digest: optionalString(value.receipt_digest, `${field}.receipt_digest`),
+    harness_id: optionalString(value.harness_id, `${field}.harness_id`),
+    state: optionalString(value.state, `${field}.state`),
+    disposition: optionalString(value.disposition, `${field}.disposition`),
+    reason_code: optionalString(value.reason_code, `${field}.reason_code`),
+    child_receipt_refs: optionalStringArray(value.child_receipt_refs, `${field}.child_receipt_refs`),
+    act_ids: optionalStringArray(value.act_ids, `${field}.act_ids`),
     owner: optionalString(value.owner, `${field}.owner`),
   };
 }
@@ -919,14 +932,14 @@ function optionalHarnessReceiptStatus(value: unknown, field: string): HarnessRec
   throw new SkillValidationError(`${field} must be success or failure.`);
 }
 
-function optionalHarnessReceiptKind(value: unknown, field: string): HarnessReceiptExpectation["kind"] {
+function optionalHarnessReceiptSchema(value: unknown, field: string): HarnessReceiptExpectation["schema"] {
   if (value === undefined || value === null) {
     return undefined;
   }
-  if (value === "skill_execution" || value === "graph_execution") {
+  if (value === "runx.harness_receipt.v1") {
     return value;
   }
-  throw new SkillValidationError(`${field} must be skill_execution or graph_execution.`);
+  throw new SkillValidationError(`${field} must be runx.harness_receipt.v1.`);
 }
 
 function requiredString(value: unknown, field: string): string {

@@ -1,6 +1,13 @@
-import { readdir } from "node:fs/promises";
+import { createHash, createPublicKey, verify, type KeyObject } from "node:crypto";
+import { readFile, readdir } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 
+import {
+  RUNX_LOGICAL_SCHEMAS,
+  validateHarnessReceiptContract,
+  type HarnessReceiptContract,
+} from "@runxhq/contracts";
 import {
   inspectLedger,
   parseLedgerAnchorMetadata,
@@ -9,16 +16,76 @@ import {
   SYSTEM_ARTIFACT_TYPES,
   readLedgerEntries,
 } from "@runxhq/core/artifacts";
-import {
-  listVerifiedLocalReceipts,
-  readVerifiedLocalReceipt,
-  type LocalGraphReceipt,
-  type LocalReceipt,
-  type ReceiptVerification,
-} from "@runxhq/core/receipts";
-import { errorMessage, isNotFound, isRecord } from "@runxhq/core/util";
+import { errorMessage, isNotFound, isRecord, stableStringify } from "@runxhq/core/util";
 import { defaultReceiptDir } from "./receipt-paths.js";
 import { readPendingRunState, type PendingRunState } from "./inputs.js";
+import {
+  runnerReceiptCategory,
+  runnerReceiptCompletedAt,
+  runnerReceiptDisplayName,
+  runnerReceiptGraphSteps,
+  runnerReceiptSource,
+  runnerReceiptStartedAt,
+  runnerReceiptStatus,
+} from "./graph-governance.js";
+
+export type ReceiptVerificationStatus = "verified" | "unverified" | "invalid";
+
+export interface ReceiptVerification {
+  readonly status: ReceiptVerificationStatus;
+  readonly reason?: string;
+}
+
+export type RuntimeReceipt = HarnessReceiptContract;
+
+interface VerifiedRuntimeReceipt {
+  readonly receipt: RuntimeReceipt;
+  readonly verification: ReceiptVerification;
+}
+
+export async function readVerifiedRuntimeReceipt(
+  receiptDir: string,
+  id: string,
+  runxHome = defaultRunxHome(),
+): Promise<VerifiedRuntimeReceipt> {
+  const receipt = await readRuntimeReceipt(receiptDir, id);
+  return {
+    receipt,
+    verification: await verifyHarnessReceipt(receipt, runxHome),
+  };
+}
+
+export async function listVerifiedRuntimeReceipts(
+  receiptDir: string,
+  runxHome = defaultRunxHome(),
+): Promise<readonly VerifiedRuntimeReceipt[]> {
+  let entries: readonly string[];
+  try {
+    entries = await readdir(receiptDir);
+  } catch (error) {
+    if (isNotFound(error)) {
+      return [];
+    }
+    throw error;
+  }
+
+  const settled = await Promise.all(
+    entries
+      .filter((entry) => entry.endsWith(".json"))
+      .map(async (entry) => {
+        try {
+          return await readVerifiedRuntimeReceipt(receiptDir, entry.slice(0, -".json".length), runxHome);
+        } catch (error) {
+          process.stderr.write(
+            `warning: skipping receipt at ${path.join(receiptDir, entry)}: ${errorMessage(error)}\n`,
+          );
+          return undefined;
+        }
+      }),
+  );
+  const receipts = settled.filter((entry): entry is VerifiedRuntimeReceipt => entry !== undefined);
+  return receipts.sort((left, right) => receiptTimestamp(right.receipt).localeCompare(receiptTimestamp(left.receipt)));
+}
 
 export interface InspectLocalGraphOptions {
   readonly graphId: string;
@@ -35,7 +102,7 @@ export interface InspectLocalReceiptOptions {
 }
 
 export interface InspectLocalReceiptResult {
-  readonly receipt: LocalReceipt;
+  readonly receipt: RuntimeReceipt;
   readonly verification: ReceiptVerification;
   readonly ledgerVerification: LedgerVerification;
   readonly summary: LocalReceiptSummary;
@@ -50,7 +117,7 @@ export type InspectLocalRunStateResult =
   | {
       readonly status: "terminal";
       readonly runId: string;
-      readonly receipt: LocalReceipt;
+      readonly receipt: RuntimeReceipt;
       readonly verification: ReceiptVerification;
       readonly ledgerVerification: LedgerVerification;
       readonly summary: LocalReceiptSummary;
@@ -112,14 +179,14 @@ export interface ComparableRunSummary {
 }
 
 export interface LocalReceiptSummary extends ComparableRunSummary {
-  readonly kind: LocalReceipt["kind"];
-  readonly status: LocalReceipt["status"];
+  readonly kind: string;
+  readonly status: string;
   readonly verification: ReceiptVerification;
   readonly ledgerVerification: LedgerVerification;
 }
 
 export interface PausedRunSummary extends ComparableRunSummary {
-  readonly kind: LocalReceipt["kind"];
+  readonly kind: string;
   readonly status: "paused";
   readonly selectedRunner?: string;
   readonly stepIds: readonly string[];
@@ -137,7 +204,7 @@ export interface InspectLocalRunOptions {
 export type InspectLocalRunResult =
   | {
       readonly kind: "terminal";
-      readonly receipt: LocalReceipt;
+      readonly receipt: RuntimeReceipt;
       readonly verification: ReceiptVerification;
       readonly ledgerVerification: LedgerVerification;
       readonly summary: LocalReceiptSummary;
@@ -178,7 +245,7 @@ export interface ReadLocalReplaySeedOptions {
 export interface LocalReplaySeed {
   readonly runId: string;
   readonly receiptId: string;
-  readonly receipt: LocalReceipt;
+  readonly receipt: RuntimeReceipt;
   readonly verification: ReceiptVerification;
   readonly skillPath: string;
   readonly selectedRunner?: string;
@@ -195,7 +262,7 @@ export interface DiffLocalRunsOptions {
 }
 
 export interface InspectLocalGraphResult {
-  readonly receipt: LocalGraphReceipt;
+  readonly receipt: RuntimeReceipt;
   readonly verification: ReceiptVerification;
   readonly summary: {
     readonly id: string;
@@ -219,12 +286,12 @@ export interface InspectLocalGraphResult {
 }
 
 export async function inspectLocalGraph(options: InspectLocalGraphOptions): Promise<InspectLocalGraphResult> {
-  const { receipt, verification } = await readVerifiedLocalReceipt(
+  const { receipt, verification } = await readVerifiedRuntimeReceipt(
     options.receiptDir ?? defaultReceiptDir(options.env),
     options.graphId,
     options.runxHome ?? options.env?.RUNX_HOME,
   );
-  if (receipt.kind !== "graph_execution") {
+  if (!isHarnessReceipt(receipt) || runnerReceiptCategory(receipt) !== "graph") {
     throw new Error(`Receipt ${options.graphId} is not a graph execution receipt.`);
   }
 
@@ -233,10 +300,10 @@ export async function inspectLocalGraph(options: InspectLocalGraphOptions): Prom
     verification,
     summary: {
       id: receipt.id,
-      name: receipt.graph_name,
-      status: receipt.status,
+      name: runnerReceiptDisplayName(receipt),
+      status: runnerReceiptStatus(receipt),
       verification,
-      steps: receipt.steps.map((step) => ({
+      steps: runnerReceiptGraphSteps(receipt).map((step) => ({
         id: step.step_id,
         attempt: step.attempt,
         status: step.status,
@@ -255,7 +322,7 @@ export async function inspectLocalGraph(options: InspectLocalGraphOptions): Prom
 
 export async function inspectLocalReceipt(options: InspectLocalReceiptOptions): Promise<InspectLocalReceiptResult> {
   const receiptDir = options.receiptDir ?? defaultReceiptDir(options.env);
-  const { receipt, verification } = await readVerifiedLocalReceipt(
+  const { receipt, verification } = await readVerifiedRuntimeReceipt(
     receiptDir,
     options.receiptId,
     options.runxHome ?? options.env?.RUNX_HOME,
@@ -305,7 +372,7 @@ export async function inspectLocalRunState(options: {
 
 export async function listLocalHistory(options: ListLocalHistoryOptions = {}): Promise<ListLocalHistoryResult> {
   const receiptDir = options.receiptDir ?? defaultReceiptDir(options.env);
-  const receipts = await listVerifiedLocalReceipts(
+  const receipts = await listVerifiedRuntimeReceipts(
     receiptDir,
     options.runxHome ?? options.env?.RUNX_HOME,
   );
@@ -386,7 +453,7 @@ async function listPendingRunSummaries(
     throw error;
   }
   const candidates = entries
-    .filter((entry) => /^(rx|gx)_[A-Za-z0-9_-]+\.jsonl$/.test(entry))
+    .filter((entry) => entry.endsWith(".jsonl"))
     .map((entry) => entry.slice(0, -".jsonl".length))
     .filter((id) => !terminalIds.has(id));
 
@@ -397,7 +464,7 @@ async function listPendingRunSummaries(
       summaries.push({
         id,
         name: id,
-        kind: id.startsWith("gx_") ? "graph_execution" : "skill_execution",
+        kind: "run",
         status: "paused",
         stepIds: [],
         stepLabels: [],
@@ -431,7 +498,7 @@ function buildPausedRunSummary(
   return {
     id: runId,
     name: pending.skillName && pending.skillName.trim().length > 0 ? pending.skillName : runId,
-    kind: runId.startsWith("gx_") ? "graph_execution" : "skill_execution",
+    kind: pausedRunKind(pending),
     status: "paused",
     selectedRunner: pending.selectedRunner,
     stepIds: pending.stepIds,
@@ -444,7 +511,7 @@ export async function inspectLocalRun(options: InspectLocalRunOptions): Promise<
   const receiptDir = options.receiptDir ?? defaultReceiptDir(options.env);
   const runxHome = options.runxHome ?? options.env?.RUNX_HOME;
   try {
-    const { receipt, verification } = await readVerifiedLocalReceipt(receiptDir, options.referenceId, runxHome);
+    const { receipt, verification } = await readVerifiedRuntimeReceipt(receiptDir, options.referenceId, runxHome);
     const summary = await summarizeLocalReceipt(receipt, verification, receiptDir);
     return {
       kind: "terminal",
@@ -470,7 +537,7 @@ export async function inspectLocalRun(options: InspectLocalRunOptions): Promise<
         summary: {
           id: options.referenceId,
           name: options.referenceId,
-          kind: options.referenceId.startsWith("gx_") ? "graph_execution" : "skill_execution",
+          kind: "run",
           status: "paused",
           stepIds: [],
           stepLabels: [],
@@ -558,7 +625,7 @@ export function diffRunSummaries(left: ComparableRunSummary, right: ComparableRu
 }
 
 async function summarizeLocalReceipt(
-  receipt: LocalReceipt,
+  receipt: RuntimeReceipt,
   verification: ReceiptVerification,
   receiptDir: string,
   preloadedLedgerEntries?: readonly ArtifactEnvelope[],
@@ -567,7 +634,7 @@ async function summarizeLocalReceipt(
   const ledgerInspection = await inspectLedger(
     receiptDir,
     ledgerRunId,
-    parseLedgerAnchorMetadata(receipt.metadata),
+    parseLedgerAnchorMetadata(isRecord(receipt.metadata) ? receipt.metadata : undefined),
   );
   const ledgerEntries = ledgerInspection.verification.status === "invalid"
     ? (preloadedLedgerEntries ?? [])
@@ -579,42 +646,19 @@ async function summarizeLocalReceipt(
   const approval = extractReceiptApproval(receipt);
   const lineage = extractReceiptLineage(receipt);
   const runnerProvider = metadata ? readNestedString(metadata, ["runner", "provider"]) : undefined;
-  if (receipt.kind === "skill_execution") {
-    return {
-      id: receipt.id,
-      kind: receipt.kind,
-      status: receipt.status,
-      verification,
-      name: resolveSummaryName(receipt.skill_name, receipt.id),
-      sourceType: receipt.source_type,
-      startedAt: receipt.started_at,
-      completedAt: receipt.completed_at,
-      actors,
-      artifactTypes,
-      disposition: receipt.disposition,
-      outcomeState: receipt.outcome_state,
-      approval,
-      lineage,
-      runnerProvider,
-      harnessState: harness?.state,
-      harnessSealSummary: harness?.sealSummary,
-      harnessId: harness?.id,
-      ledgerVerification: ledgerInspection.verification,
-    };
-  }
-
   return {
     id: receipt.id,
-    kind: receipt.kind,
-    status: receipt.status,
+    kind: RUNX_LOGICAL_SCHEMAS.harnessReceipt,
+    status: runnerReceiptStatus(receipt),
     verification,
-    name: resolveSummaryName(receipt.graph_name, receipt.id),
-    startedAt: receipt.started_at,
-    completedAt: receipt.completed_at,
+    name: runnerReceiptDisplayName(receipt),
+    sourceType: runnerReceiptSource(receipt),
+    startedAt: runnerReceiptStartedAt(receipt) ?? receipt.created_at,
+    completedAt: runnerReceiptCompletedAt(receipt) ?? receipt.seal.closed_at ?? receipt.seal.last_observed_at,
     actors,
     artifactTypes,
-    disposition: receipt.disposition,
-    outcomeState: receipt.outcome_state,
+    disposition: receipt.seal.disposition,
+    outcomeState: receipt.harness.state,
     approval,
     lineage,
     runnerProvider,
@@ -626,17 +670,18 @@ async function summarizeLocalReceipt(
 }
 
 function extractReceiptHarness(
-  receipt: LocalReceipt,
+  receipt: RuntimeReceipt,
   ledgerEntries: readonly ArtifactEnvelope[],
 ): { readonly id?: string; readonly state?: string; readonly sealSummary?: string } | undefined {
-  const directArtifactIds = receipt.kind === "skill_execution" && Array.isArray(receipt.artifact_ids)
-    ? new Set(receipt.artifact_ids)
-    : undefined;
+  if (isHarnessReceipt(receipt)) {
+    return {
+      id: receipt.harness.harness_id,
+      state: receipt.harness.state,
+      sealSummary: receipt.seal.summary,
+    };
+  }
   for (const entry of ledgerEntries) {
     if (entry.type === null || SYSTEM_ARTIFACT_TYPES.has(entry.type)) {
-      continue;
-    }
-    if (directArtifactIds && !directArtifactIds.has(entry.meta.artifact_id)) {
       continue;
     }
     const harness = findHarnessRecord(entry.data);
@@ -676,36 +721,40 @@ function resolveSummaryName(field: string | null | undefined, fallbackId: string
   return fallbackId;
 }
 
-function extractReceiptActors(receipt: LocalReceipt): readonly string[] | undefined {
+function extractReceiptActors(receipt: RuntimeReceipt): readonly string[] | undefined {
+  const harnessActors = [
+    receipt.harness.host_ref.uri,
+    receipt.harness.authority.actor_ref.uri,
+  ].filter((entry) => entry.trim().length > 0);
   const metadata = isRecord(receipt.metadata) ? receipt.metadata : undefined;
   if (!metadata) {
-    return undefined;
+    return harnessActors.length > 0 ? Array.from(new Set(harnessActors)) : undefined;
   }
-  const actors = [
+  const metadataActors = [
     readNestedString(metadata, ["agent_hook", "agent"]),
     readNestedString(metadata, ["agent_runner", "skill"]),
     readNestedString(metadata, ["auth", "provider"]),
     readNestedString(metadata, ["runner", "provider"]),
     readNestedString(metadata, ["approval", "gate_type"]),
   ].filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
+  if (metadataActors.length > 0) {
+    return Array.from(new Set(metadataActors));
+  }
+  const actors = [...harnessActors, ...metadataActors];
   return actors.length > 0 ? Array.from(new Set(actors)) : undefined;
 }
 
 function extractReceiptArtifactTypes(
-  receipt: LocalReceipt,
+  receipt: RuntimeReceipt,
   ledgerEntries: readonly ArtifactEnvelope[],
 ): readonly string[] | undefined {
-  const directArtifactIds = receipt.kind === "skill_execution" && Array.isArray(receipt.artifact_ids)
-    ? new Set(receipt.artifact_ids)
-    : undefined;
   const artifactTypes = ledgerEntries
     .filter((entry) => entry.type !== null && !SYSTEM_ARTIFACT_TYPES.has(entry.type))
-    .filter((entry) => !directArtifactIds || directArtifactIds.has(entry.meta.artifact_id))
     .map((entry) => entry.type as string);
   return artifactTypes.length > 0 ? Array.from(new Set(artifactTypes)) : undefined;
 }
 
-function extractReceiptApproval(receipt: LocalReceipt): RunApprovalSummary | undefined {
+function extractReceiptApproval(receipt: RuntimeReceipt): RunApprovalSummary | undefined {
   const metadata = isRecord(receipt.metadata) ? receipt.metadata : undefined;
   if (!metadata) {
     return undefined;
@@ -725,7 +774,7 @@ function extractReceiptApproval(receipt: LocalReceipt): RunApprovalSummary | und
   };
 }
 
-function extractReceiptLineage(receipt: LocalReceipt): RunLineageSummary | undefined {
+function extractReceiptLineage(receipt: RuntimeReceipt): RunLineageSummary | undefined {
   const metadata = isRecord(receipt.metadata) ? receipt.metadata : undefined;
   if (!metadata) {
     return undefined;
@@ -751,11 +800,11 @@ async function resolveLocalRunReference(
   runxHome: string | undefined,
 ): Promise<{
   readonly runId: string;
-  readonly receipt: LocalReceipt;
+  readonly receipt: RuntimeReceipt;
   readonly verification: ReceiptVerification;
   readonly ledgerEntries: readonly ArtifactEnvelope[];
 }> {
-  const direct = await tryReadLocalReceipt(referenceId, receiptDir, runxHome);
+  const direct = await tryReadRuntimeReceipt(referenceId, receiptDir, runxHome);
   if (direct) {
     return {
       runId: referenceId,
@@ -769,7 +818,7 @@ async function resolveLocalRunReference(
   if (!receiptId) {
     throw new Error(`Run or receipt '${referenceId}' was not found.`);
   }
-  const resolved = await readVerifiedLocalReceipt(receiptDir, receiptId, runxHome);
+  const resolved = await readVerifiedRuntimeReceipt(receiptDir, receiptId, runxHome);
   return {
     runId: referenceId,
     receipt: resolved.receipt,
@@ -778,13 +827,13 @@ async function resolveLocalRunReference(
   };
 }
 
-async function tryReadLocalReceipt(
+async function tryReadRuntimeReceipt(
   receiptId: string,
   receiptDir: string,
   runxHome: string | undefined,
-): Promise<{ readonly receipt: LocalReceipt; readonly verification: ReceiptVerification } | undefined> {
+): Promise<{ readonly receipt: RuntimeReceipt; readonly verification: ReceiptVerification } | undefined> {
   try {
-    return await readVerifiedLocalReceipt(receiptDir, receiptId, runxHome);
+    return await readVerifiedRuntimeReceipt(receiptDir, receiptId, runxHome);
   } catch (error) {
     if (isNotFound(error)) {
       return undefined;
@@ -878,4 +927,107 @@ function readNestedString(value: Readonly<Record<string, unknown>>, path: readon
     current = current[key];
   }
   return typeof current === "string" ? current : undefined;
+}
+
+async function readRuntimeReceipt(receiptDir: string, id: string): Promise<RuntimeReceipt> {
+  assertSafeReceiptFileStem(id);
+  const filePath = path.join(receiptDir, `${id}.json`);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await readFile(filePath, "utf8")) as unknown;
+  } catch (error) {
+    if (isNotFound(error)) {
+      throw error;
+    }
+    throw new Error(
+      `${filePath} is not valid JSON: ${errorMessage(error)}`,
+      { cause: error },
+    );
+  }
+  if (isRecord(parsed) && parsed.schema === RUNX_LOGICAL_SCHEMAS.harnessReceipt) {
+    return validateHarnessReceiptContract(parsed, filePath);
+  }
+  throw new Error(`${filePath} is not a ${RUNX_LOGICAL_SCHEMAS.harnessReceipt} receipt.`);
+}
+
+async function verifyHarnessReceipt(
+  receipt: RuntimeReceipt,
+  runxHome: string,
+): Promise<ReceiptVerification> {
+  if (receipt.schema !== RUNX_LOGICAL_SCHEMAS.harnessReceipt || receipt.signature.alg !== "Ed25519") {
+    return {
+      status: "unverified",
+      reason: "unsupported_receipt_version_or_signature_algorithm",
+    };
+  }
+
+  const publicKey = await loadRuntimePublicKey(runxHome);
+  if (!publicKey) {
+    return {
+      status: "unverified",
+      reason: "local_public_key_missing",
+    };
+  }
+
+  if (receipt.issuer.public_key_sha256 !== publicKey.publicKeySha256) {
+    return {
+      status: "unverified",
+      reason: "local_public_key_mismatch",
+    };
+  }
+
+  try {
+    const { signature, ...signedPayload } = receipt;
+    return verify(
+      null,
+      Buffer.from(stableStringify(signedPayload)),
+      publicKey.publicKey,
+      Buffer.from(signature.value, "base64url"),
+    )
+      ? { status: "verified" }
+      : { status: "invalid", reason: "signature_mismatch" };
+  } catch {
+    return { status: "invalid", reason: "signature_mismatch" };
+  }
+}
+
+async function loadRuntimePublicKey(
+  runxHome = defaultRunxHome(),
+): Promise<{ readonly publicKey: KeyObject; readonly publicKeySha256: string } | undefined> {
+  const publicKeyPath = path.join(runxHome, "keys", "local-ed25519-public.pem");
+  try {
+    const publicKey = createPublicKey(await readFile(publicKeyPath, "utf8"));
+    const publicDer = publicKey.export({ format: "der", type: "spki" });
+    return {
+      publicKey,
+      publicKeySha256: createHash("sha256").update(publicDer).digest("hex"),
+    };
+  } catch (error) {
+    if (isNotFound(error)) {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
+function defaultRunxHome(): string {
+  return process.env.RUNX_HOME ?? path.join(os.homedir(), ".runx");
+}
+
+function receiptTimestamp(receipt: RuntimeReceipt): string {
+  return receipt.seal.closed_at ?? receipt.seal.last_observed_at ?? receipt.created_at;
+}
+
+function pausedRunKind(pending: PendingRunState): string {
+  return pending.stepIds.length > 0 ? RUNX_LOGICAL_SCHEMAS.harness : RUNX_LOGICAL_SCHEMAS.harnessReceipt;
+}
+
+function isHarnessReceipt(receipt: RuntimeReceipt): receipt is HarnessReceiptContract {
+  return "schema" in receipt && receipt.schema === RUNX_LOGICAL_SCHEMAS.harnessReceipt;
+}
+
+function assertSafeReceiptFileStem(id: string): void {
+  if (id.length === 0 || id.includes("/") || id.includes("\\") || id === "." || id === "..") {
+    throw new Error(`Invalid receipt id '${id}'.`);
+  }
 }

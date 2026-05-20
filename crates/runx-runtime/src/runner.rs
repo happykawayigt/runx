@@ -113,6 +113,15 @@ where
     ) -> Result<GraphRun, RuntimeError> {
         let graph = load_graph(graph_path)?;
         let graph_dir = graph_path.parent().unwrap_or_else(|| Path::new("."));
+        self.run_graph_with_caller(graph_dir, graph, caller)
+    }
+
+    pub fn run_graph_with_caller(
+        &self,
+        graph_dir: &Path,
+        graph: ExecutionGraph,
+        caller: &mut dyn Caller,
+    ) -> Result<GraphRun, RuntimeError> {
         let mut execution = GraphExecution::new(&graph);
         execution.run(self, graph_dir, &graph, caller, None)?;
         let receipt = graph_receipt(
@@ -148,9 +157,19 @@ where
     ) -> Result<GraphCheckpoint, RuntimeError> {
         let graph = load_graph(graph_path)?;
         let graph_dir = graph_path.parent().unwrap_or_else(|| Path::new("."));
-        let mut execution = GraphExecution::new(&graph);
-        execution.run(self, graph_dir, &graph, caller, Some(max_steps))?;
-        Ok(execution.checkpoint(graph.name))
+        self.run_graph_until_steps_with_caller(graph_dir, &graph, max_steps, caller)
+    }
+
+    pub fn run_graph_until_steps_with_caller(
+        &self,
+        graph_dir: &Path,
+        graph: &ExecutionGraph,
+        max_steps: usize,
+        caller: &mut dyn Caller,
+    ) -> Result<GraphCheckpoint, RuntimeError> {
+        let mut execution = GraphExecution::new(graph);
+        execution.run(self, graph_dir, graph, caller, Some(max_steps))?;
+        Ok(execution.checkpoint(graph.name.clone()))
     }
 
     pub fn resume_graph_file(
@@ -170,6 +189,16 @@ where
     ) -> Result<GraphRun, RuntimeError> {
         let graph = load_graph(graph_path)?;
         let graph_dir = graph_path.parent().unwrap_or_else(|| Path::new("."));
+        self.resume_graph_with_caller(graph_dir, graph, checkpoint, caller)
+    }
+
+    pub fn resume_graph_with_caller(
+        &self,
+        graph_dir: &Path,
+        graph: ExecutionGraph,
+        checkpoint: GraphCheckpoint,
+        caller: &mut dyn Caller,
+    ) -> Result<GraphRun, RuntimeError> {
         let mut execution = GraphExecution::from_checkpoint(&graph, checkpoint)?;
         execution.run(self, graph_dir, &graph, caller, None)?;
         let receipt = graph_receipt(
@@ -186,6 +215,19 @@ where
             },
         )?;
         Ok(execution.finish(graph, receipt))
+    }
+
+    pub fn resume_graph_until_steps_with_caller(
+        &self,
+        graph_dir: &Path,
+        graph: &ExecutionGraph,
+        checkpoint: GraphCheckpoint,
+        max_steps: usize,
+        caller: &mut dyn Caller,
+    ) -> Result<GraphCheckpoint, RuntimeError> {
+        let mut execution = GraphExecution::from_checkpoint(graph, checkpoint)?;
+        execution.run(self, graph_dir, graph, caller, Some(max_steps))?;
+        Ok(execution.checkpoint(graph.name.clone()))
     }
 }
 

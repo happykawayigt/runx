@@ -107,9 +107,9 @@ importers:
 
   packages/host-adapters:
     dependencies:
-      '@runxhq/runtime-local':
-        specifier: workspace:^0.1.1
-        version: link:../runtime-local
+      '@runxhq/contracts':
+        specifier: workspace:^0.2.5
+        version: link:../contracts
 
   packages/langchain:
     dependencies:

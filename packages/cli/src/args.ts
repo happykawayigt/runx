@@ -125,7 +125,7 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     }
 
     const next = nextValue(rest, index);
-    const value = inlineValue ?? next;
+    const value = parseInputValue(inlineValue ?? next);
     if (inlineValue === undefined && next !== "true") {
       index += 1;
     }
@@ -476,6 +476,18 @@ function mergeInputValue(existing: unknown, next: unknown): unknown {
     return next;
   }
   return Array.isArray(existing) ? [...existing, next] : [existing, next];
+}
+
+function parseInputValue(value: string): unknown {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+    return value;
+  }
+  try {
+    return JSON.parse(trimmed) as unknown;
+  } catch {
+    return value;
+  }
 }
 
 function truthyFlag(value: unknown): boolean {

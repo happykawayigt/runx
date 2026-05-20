@@ -116,8 +116,8 @@ expect:
 
       const result = await runHarness(fixturePath, { adapters: createDefaultSkillAdapters() });
       expect(result.status).toBe("policy_denied");
-      expect(result.receipt?.kind).toBe("skill_execution");
-      if (result.receipt?.kind !== "skill_execution") {
+      expect(result.receipt).toBeDefined();
+      if (!result.receipt) {
         return;
       }
       expect(result.receipt.metadata).toMatchObject({

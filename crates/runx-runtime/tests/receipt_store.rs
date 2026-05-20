@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use runx_contracts::{HarnessReceipt, JsonObject};
-use runx_runtime::receipts::step_receipt;
+use runx_runtime::receipts::{RuntimeReceiptSignaturePolicy, step_receipt};
 use runx_runtime::{InvocationStatus, LocalReceiptStore, ReceiptStoreError, SkillOutput};
 use serde_json::json;
 
@@ -171,6 +171,32 @@ fn valid_runtime_generated_receipt_is_accepted_by_read_list_and_index()
     assert_eq!(store.list()?.len(), 1);
     assert_eq!(store.rebuild_index()?.entries[0].receipt_id, receipt.id);
     assert_eq!(store.load_index()?.entries[0].receipt_id, receipt.id);
+    Ok(())
+}
+
+#[test]
+fn production_read_policy_without_verifier_rejects_local_pseudo_receipt()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = TestDir::new()?;
+    let receipt = success_harness_receipt()?;
+    write_json(temp.path(), &receipt_file_name(&receipt.id), &receipt)?;
+    let store = LocalReceiptStore::new(temp.path());
+
+    let result = store.read_exact_with_policy(
+        &receipt.id,
+        RuntimeReceiptSignaturePolicy::production_without_verifier(),
+    );
+
+    assert!(matches!(
+        &result,
+        Err(ReceiptStoreError::ReceiptProofInvalid { .. })
+    ));
+    if let Err(ReceiptStoreError::ReceiptProofInvalid { message, .. }) = &result {
+        assert!(
+            message.contains("SignatureVerifierMissing"),
+            "expected missing production verifier finding, got {message}"
+        );
+    }
     Ok(())
 }
 

@@ -2,7 +2,7 @@
 spec_version: '2.0'
 task_id: rust-kernel-blocking-promotion
 created: '2026-05-17T00:30:00Z'
-updated: '2026-05-20T00:43:00Z'
+updated: '2026-05-20T08:08:00Z'
 status: draft
 harden_status: not_run
 size: medium
@@ -27,6 +27,10 @@ while Rust kernel parity checks are advisory
 Allowed follow-up command: run the evidence script against audited evidence; do
 not run `scafld harden rust-kernel-blocking-promotion`.
 Latest runner update: 2026-05-20 clean-kernel counter semantics slice landed
+Local evidence update: 2026-05-20 reran the clean-kernel counter fixture tests,
+reran fixture mode, refreshed the stale `runx-core` public API snapshot, and
+verified `node scripts/check-rust-kernel-parity.mjs --api-only` passes. This
+does not satisfy the live five-PR soak gate and does not authorize the CI flip.
 Review gate: not_started
 
 ## Summary
@@ -166,6 +170,11 @@ Observed current state:
 - `scripts/count-clean-kernel-prs.ts` exists with fixture-mode tests and
   fails closed without advisory-start evidence.
 - Clean PR evidence remains `<to be filled at exec time>`.
+- 2026-05-20 local API evidence: `node scripts/check-rust-kernel-parity.mjs
+  --api-only` initially failed because `crates/runx-core/api-snapshot.txt` was
+  stale after the kernel JSON bridge and payment authority subset API were
+  exported. The snapshot was regenerated with the command printed by the gate,
+  and the API-only parity check now passes.
 
 ## Gate Classification
 
@@ -276,7 +285,8 @@ Acceptance:
 - [x] `ac1_2` command - script exposes fixture mode.
   - Command: `pnpm exec tsx scripts/count-clean-kernel-prs.ts --fixture tests/fixtures/clean-kernel-prs.json --min 1`
   - Expected kind: `exit_code_zero`
-  - Status: passed 2026-05-20 by stricter local fixture run with `--min 3`
+  - Status: passed 2026-05-20 by local fixture run with `--min 1`; fixture
+    currently counts 4 qualifying local evidence records.
 
 ## Phase 2: Soak verification
 
@@ -393,6 +403,15 @@ Second pass performed: none
 ## Evidence
 
 Clean PR evidence: <to be filled at exec time>
+
+Local non-promoting evidence, 2026-05-20:
+- `pnpm exec vitest run --config vitest.config.ts tests/count-clean-kernel-prs.test.ts`
+  passed, 6 tests.
+- `pnpm exec tsx scripts/count-clean-kernel-prs.ts --fixture tests/fixtures/clean-kernel-prs.json --min 1`
+  passed with 4 fixture-qualified records. This is fixture evidence only, not
+  live five-PR soak evidence.
+- `node scripts/check-rust-kernel-parity.mjs --api-only` passed after
+  regenerating `crates/runx-core/api-snapshot.txt`.
 
 ## Metadata
 

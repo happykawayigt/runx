@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { buildRegistrySkillVersion } from "@runxhq/core/registry";
+import { parseRunnerManifestYaml, parseSkillMarkdown, validateRunnerManifest, validateSkill } from "@runxhq/core/parser";
 
 import { safeReadDir, toProjectPath } from "../authoring-utils.js";
 
@@ -103,10 +103,7 @@ async function renderOfficialSkillsLock(root: string): Promise<string | undefine
     }
     const markdown = await readFile(markdownPath, "utf8");
     const profileDocument = await readFile(profilePath, "utf8");
-    const record = buildRegistrySkillVersion(markdown, {
-      owner: "runx",
-      profileDocument,
-    });
+    const record = buildOfficialSkillLockRecord(markdown, profileDocument);
     entries.push({
       skill_id: record.skill_id,
       version: record.version,
@@ -118,6 +115,44 @@ async function renderOfficialSkillsLock(root: string): Promise<string | undefine
 
 function hashDoctorContents(contents: string): string {
   return `sha256:${createHash("sha256").update(contents).digest("hex")}`;
+}
+
+function buildOfficialSkillLockRecord(
+  markdown: string,
+  profileDocument: string,
+): { readonly skill_id: string; readonly version: string; readonly digest: string } {
+  const raw = parseSkillMarkdown(markdown);
+  const skill = validateSkill(raw, { mode: "strict" });
+  const manifest = validateRunnerManifest(parseRunnerManifestYaml(profileDocument));
+  if (manifest.skill && manifest.skill !== skill.name) {
+    throw new Error(`Runner manifest skill '${manifest.skill}' does not match skill '${skill.name}'.`);
+  }
+
+  const digest = createHash("sha256").update(markdown).digest("hex");
+  const profileDigest = createHash("sha256").update(profileDocument).digest("hex");
+  const versionSeed = createHash("sha256")
+    .update(JSON.stringify({
+      markdown_digest: digest,
+      profile_digest: profileDigest,
+    }))
+    .digest("hex");
+  return {
+    skill_id: `runx/${slugifyOfficialSkillName(skill.name)}`,
+    version: `sha-${versionSeed.slice(0, 12)}`,
+    digest,
+  };
+}
+
+function slugifyOfficialSkillName(value: string): string {
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  if (!slug) {
+    throw new Error("Official skill names cannot produce an empty registry slug.");
+  }
+  return slug;
 }
 
 async function discoverDoctorFileBudgetDiagnostics(root: string): Promise<readonly DoctorDiagnostic[]> {

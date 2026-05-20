@@ -23,7 +23,14 @@ source-thread update, and issue closure.
 Blockers: `runx-operational-policy-config`; target/source context from
 `runx-target-repo-runners` for cross-repo flows.
 Allowed follow-up command: `scafld harden runx-post-merge-outcome-observer`
-Latest runner update: none
+Latest runner update: 2026-05-20 added Rust contract-level repeated observer
+signal idempotency proof for duplicate local provider observations, tightened
+missing source-thread routing to fail before provider-state classification in
+the pure planner, added a stable webhook/scheduler runtime dedupe plan and a
+sealed harness-receipt publication projection gate, then added the local runtime
+command projection boundary for source issue comments, source-thread replies,
+and policy-authorized source issue close commands. Provider adapters remain
+pending.
 Review gate: not_started
 
 ## Summary
@@ -150,17 +157,22 @@ Required behavior:
   explicitly says otherwise.
 - [ ] Closed-unmerged PR posts a distinct observation closure and does not claim
   a fix shipped.
-- [ ] Repeated observer signal is idempotent.
-- [ ] Missing source Slack thread fails Slack publish cleanly without posting to
-  channel root.
+- [x] Repeated observer signal is idempotent at the Rust contract planning
+  layer; webhook and scheduler signals share one runtime dedupe receipt
+  identity before publication.
+- [x] Missing source Slack thread fails Slack publish cleanly without posting to
+  channel root. Rust contract planning now fails closed before provider-state
+  classification when source-thread metadata is missing, and the local runtime
+  command projection fails closed when sealed source-thread provider/locator
+  metadata is missing. Live provider adapters remain pending.
 - [ ] Final publication is backed by a sealed harness receipt containing issue
   link, PR link, merge sha when available, verification summary, closure reason,
   and next human action.
-- [ ] Final publication validates by reading the sealed harness receipt and
+- [x] Final publication validates by reading the sealed harness receipt and
   proof-bound verification criteria before it is published or used to close the
   source issue.
-- [ ] Final publication excludes absolute local paths, raw env vars, secrets,
-  and excessive logs.
+- [x] Final publication excludes absolute local paths, raw env vars, secrets,
+  and excessive logs at the local runtime command-projection boundary.
 - [ ] No fixture, emitted artifact, schema id, or persisted receipt uses
   `runx.issue_to_pr_outcome.v1`, `issue_to_pr_outcome`, `effect`,
   `verification_report`, `verification-report`, or `target_outcome`.
@@ -267,3 +279,21 @@ Source: plan
   longer defines a terminal packet; Rust, Aster, and repo wrappers must
   consume sealed harness receipts with contained observation, verification,
   reply, and revision acts.
+- 2026-05-20: `runx-post-merge-observer-idempotency-contract` added a pure Rust
+  planner proof that repeated merged-and-verified provider observations keep
+  the same closure key, act forms, and idempotency identity without live GitHub.
+- 2026-05-20: Added a pure Rust planner regression proving missing
+  source-thread metadata fails closed before terminal provider-state
+  classification, so this local contract slice cannot plan a root-channel
+  fallback.
+- 2026-05-20: Added the contract runtime dedupe plan that gives webhook and
+  scheduler observations the same post-merge observer receipt identity, plus a
+  sealed harness-receipt projection gate for final publication and issue close.
+- 2026-05-20: Added the runtime/publication slice in `runx-runtime`: it consumes
+  `PostMergeObserverRuntimeDedupePlan` plus a sealed harness receipt, emits only
+  deterministic source issue comment, source-thread reply, and authorized close
+  commands, dedupes repeated webhook/scheduler publication by publication key,
+  fails closed on missing source-thread provider/locator metadata, and sanitizes
+  public command text for local paths and env-secret assignments. The spec stays
+  draft because live provider adapters and end-to-end publication fixtures are
+  still pending.

@@ -1,9 +1,12 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 
-import type { SandboxDeclaration } from "@runxhq/core/policy";
 import { asRecord, hashString } from "@runxhq/core/util";
 
-import { cleanupLocalProcessSandbox, prepareLocalProcessSandbox } from "../runner-local/process-sandbox.js";
+import {
+  cleanupLocalProcessSandbox,
+  prepareLocalProcessSandbox,
+  type SandboxDeclaration,
+} from "../runner-local/process-sandbox.js";
 
 export const mcpRuntimeLocalPackage = "@runxhq/runtime-local/mcp";
 

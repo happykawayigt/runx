@@ -76,7 +76,7 @@ runx-core         pure decisions: state-machine, policy, scope, sandbox normaliz
                     posture: std default; no_std deferred to a follow-up spec
 
 runx-parser       pure: YAML -> AST -> intermediate representation
-                    deps: runx-contracts, runx-core, serde, serde_yml,
+                    deps: runx-contracts, runx-core, serde, serde_norway,
                           serde_json, regex, thiserror
                     posture: public raw object subtrees use
                              `runx_contracts::JsonValue`; execution
@@ -95,7 +95,8 @@ runx-runtime      impure: filesystem, subprocess, network, adapters, MCP,
                     default features: none
                     opt-in features: cli-tool, mcp, a2a, agent, catalog
                     deps: runx-contracts, runx-core, runx-parser,
-                          runx-receipts, tokio, etc.
+                          runx-receipts; async/network dependencies require
+                          explicit adapter-tier exception specs
 
 runx-cli          binary: argument parsing, presentation, exit codes
                     includes: skill authoring subcommands until a separate
@@ -116,7 +117,7 @@ Crates below the runtime line own all side effects. The boundary between pure
 and impure is enforced both by dependency direction and by `cargo-deny`/lint
 rules (see section 10).
 
-Parser parity uses `serde_yml` as the YAML backend. Raw object subtrees use
+Parser parity uses `serde_norway` as the YAML backend. Raw object subtrees use
 `runx_contracts::JsonValue`, and execution semantics are validated into the
 `runx_contracts::execution` types so parser fixtures detect drift against the
 contracts crate instead of carrying a duplicate local model.
@@ -330,8 +331,11 @@ needs the same discipline. Layered enforcement:
    as `runx_contracts::JsonValue` and validates execution metadata into the
    `runx_contracts::execution` types. No `tokio`, `reqwest`, `hyper`, `clap`,
    `rmcp`.
-   Enforced by `cargo-deny` configuration that forbids those crates as
-   transitive dependencies of `runx-core`.
+   Enforced by dependency direction and by the workspace `cargo-deny`
+   default ban. The ban is intentionally stricter than "pure crates only"
+   because `cargo-deny` is workspace-scoped in this track; adapter/runtime-tier
+   exceptions must be introduced by an explicit spec before the dependency is
+   removed from `deny.toml`.
 
 2. **API surface lint**: `cargo-public-api` snapshots the public API. A diff
    against the snapshot in CI flags accidental surface growth.
@@ -567,8 +571,10 @@ Async and blocking rules:
 
 - `runx-contracts`, `runx-core`, `runx-parser`, and `runx-receipts` do not
   depend on `tokio`, `async-trait`, HTTP clients, or subprocess libraries.
-- `runx-runtime` owns async execution, `tokio`, process management, network
-  IO, MCP, sandbox enforcement, and adapter concurrency.
+- `runx-runtime` owns process management, network IO, MCP, sandbox
+  enforcement, and adapter concurrency. It may own an async runtime or MCP/HTTP
+  protocol crate only after a spec records the security rationale and updates
+  `crates/deny.toml`; until then the workspace ban is deliberate.
 - `runx-runtime` defaults to no adapter features. Adapter families are opt-in:
   `cli-tool`, `mcp`, `a2a`, `agent`, and `catalog`.
 - `runx-sdk` v0 is explicitly a blocking CLI-backed client and depends on

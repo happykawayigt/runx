@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { createIdeActionCore, createFixtureConnectService } from "../plugins/ide-core/src/index.js";
 import { registerRunxCommands } from "../plugins/antigravity/src/extension.js";
-import { createFileRegistryStore, ingestSkillMarkdown } from "@runxhq/core/registry";
+import { createFileRegistryStore, seedRegistrySkill } from "./registry-fixtures.js";
 
 describe("ide plugin actions", () => {
   it("runs skills and surfaces input-resolution requests as structured output", async () => {
@@ -46,7 +46,7 @@ describe("ide plugin actions", () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-ide-actions-registry-"));
     try {
       const registryStore = createFileRegistryStore(path.join(tempDir, "registry"));
-      await ingestSkillMarkdown(registryStore, await readFile(path.resolve("skills/sourcey/SKILL.md"), "utf8"), {
+      await seedRegistrySkill(registryStore, await readFile(path.resolve("skills/sourcey/SKILL.md"), "utf8"), {
         owner: "acme",
         version: "1.0.0",
         createdAt: "2026-04-10T00:00:00.000Z",
@@ -77,9 +77,41 @@ describe("ide plugin actions", () => {
       await expect(core.connectPreprovision({ provider: "github", scopes: ["repo:read"] })).resolves.toMatchObject({ status: "success" });
       await expect(core.connectRevoke("grant_1")).resolves.toMatchObject({ status: "success" });
 
-      const harness = await core.harnessRun("fixtures/harness/echo-skill.yaml");
+      const harnessFixturePath = path.join(tempDir, "echo-skill-current.yaml");
+      await writeFile(
+        harnessFixturePath,
+        `name: echo-skill
+kind: skill
+target: ${JSON.stringify(path.resolve("fixtures/skills/echo"))}
+inputs:
+  message: hello from harness
+expect:
+  status: success
+  receipt:
+    schema: runx.harness_receipt.v1
+    state: sealed
+    disposition: closed
+    reason_code: process_closed
+`,
+        "utf8",
+      );
+      const harness = await core.harnessRun(harnessFixturePath);
       expect(harness.status).toBe("success");
       expect(harness.data?.assertionErrors).toEqual([]);
+      const harnessReceipt = harness.data?.receipt;
+      expect(harnessReceipt).toMatchObject({
+        schema: "runx.harness_receipt.v1",
+        harness: {
+          state: "sealed",
+        },
+        seal: {
+          disposition: "closed",
+          reason_code: "process_closed",
+        },
+      });
+      expect(harnessReceipt?.seal.digest).toMatch(/^sha256:[a-f0-9]{64}$/);
+      expect(harnessReceipt?.harness.harness_id).toBe(`hrn_${harnessReceipt?.id}`);
+      expect(harnessReceipt?.harness.acts?.map((act) => act.act_id)).toEqual([`act_${harnessReceipt?.id}`]);
 
       const registered: string[] = [];
       const disposables = registerRunxCommands(

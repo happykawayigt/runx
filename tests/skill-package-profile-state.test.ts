@@ -88,11 +88,7 @@ runners:
         return;
       }
       expect(result.execution.stdout).toBe("from colocated");
-      expect(result.receipt.kind).toBe("skill_execution");
-      if (result.receipt.kind !== "skill_execution") {
-        return;
-      }
-      expect(result.receipt.source_type).toBe("cli-tool");
+      expect(result.receipt).toMatchObject({ source_type: "cli-tool" });
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }

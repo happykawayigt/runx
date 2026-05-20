@@ -1,7 +1,7 @@
 {
   "name": "@runxhq/core",
   "version": "0.1.6",
-  "description": "Runx trusted kernel domains: parser, state machine, policy, executor contracts, receipts, registry, knowledge, config, and artifacts.",
+  "description": "Runx trusted kernel domains: parser, state machine, policy, registry, knowledge, config, and artifacts.",
   "private": false,
   "license": "Apache-2.0",
   "type": "module",
@@ -24,10 +24,6 @@
       "types": "./dist/src/config/index.d.ts",
       "import": "./dist/src/config/index.js"
     },
-    "./executor": {
-      "types": "./dist/src/executor/index.d.ts",
-      "import": "./dist/src/executor/index.js"
-    },
     "./knowledge": {
       "types": "./dist/src/knowledge/index.d.ts",
       "import": "./dist/src/knowledge/index.js"
@@ -43,10 +39,6 @@
     "./policy": {
       "types": "./dist/src/policy/index.d.ts",
       "import": "./dist/src/policy/index.js"
-    },
-    "./receipts": {
-      "types": "./dist/src/receipts/index.d.ts",
-      "import": "./dist/src/receipts/index.js"
     },
     "./registry": {
       "types": "./dist/src/registry/index.d.ts",

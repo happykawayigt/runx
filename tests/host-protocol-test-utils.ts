@@ -3,7 +3,8 @@ import os from "node:os";
 import path from "node:path";
 
 import { createDefaultSkillAdapters } from "@runxhq/adapters";
-import { createRunxSdk, createHostBridge, type HostBridge } from "@runxhq/runtime-local/sdk";
+import type { HostBridge } from "@runxhq/host-adapters";
+import { createRunxSdk, createHostBridge } from "@runxhq/runtime-local/sdk";
 
 export interface HostHarness {
   readonly bridge: HostBridge;

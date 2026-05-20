@@ -69,11 +69,7 @@ runners:
         return;
       }
       expect(result.execution.stdout).toBe("from folder");
-      expect(result.receipt.kind).toBe("skill_execution");
-      if (result.receipt.kind !== "skill_execution") {
-        return;
-      }
-      expect(result.receipt.source_type).toBe("cli-tool");
+      expect(result.receipt).toMatchObject({ source_type: "cli-tool" });
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
@@ -211,11 +207,7 @@ Standard folder.
       if (result.status !== "success") {
         return;
       }
-      expect(result.receipt.kind).toBe("skill_execution");
-      if (result.receipt.kind !== "skill_execution") {
-        return;
-      }
-      expect(result.receipt.source_type).toBe("agent");
+      expect(result.receipt).toMatchObject({ source_type: "agent" });
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }

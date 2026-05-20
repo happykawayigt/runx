@@ -5,7 +5,6 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { runCli } from "../packages/cli/src/index.js";
-import { createFileRegistryStore } from "@runxhq/core/registry";
 
 describe("CLI skill registry execution profile", () => {
   it("publishes, searches, and adds folder package execution profile", async () => {
@@ -69,7 +68,7 @@ describe("CLI skill registry execution profile", () => {
       await expect(readFile(path.join(skillsDir, "acme", "sourcey", ".runx", "profile.json"), "utf8")).resolves.toContain(
         "tool: sourcey.build",
       );
-      await expect(createFileRegistryStore(registryDir).getVersion("acme/sourcey", "1.0.0")).resolves.toMatchObject({
+      await expect(readRegistryVersion(registryDir, "acme/sourcey", "1.0.0")).resolves.toMatchObject({
         runner_names: ["agent", "sourcey"],
       });
     } finally {
@@ -87,4 +86,21 @@ function createMemoryStream(): NodeJS.WriteStream & { contents: () => string } {
     },
     contents: () => buffer,
   } as NodeJS.WriteStream & { contents: () => string };
+}
+
+async function readRegistryVersion(
+  registryDir: string,
+  skillId: string,
+  version: string,
+): Promise<Record<string, unknown>> {
+  const [owner, name] = skillId.split("/");
+  if (!owner || !name) {
+    throw new Error(`Invalid registry skill id: ${skillId}`);
+  }
+  return JSON.parse(
+    await readFile(
+      path.join(registryDir, encodeURIComponent(owner), encodeURIComponent(name), `${encodeURIComponent(version)}.json`),
+      "utf8",
+    ),
+  ) as Record<string, unknown>;
 }

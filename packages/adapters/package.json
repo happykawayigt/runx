@@ -42,6 +42,7 @@
     }
   },
   "dependencies": {
+    "@runxhq/contracts": "workspace:^0.2.4",
     "@runxhq/core": "workspace:^0.1.5",
     "@runxhq/runtime-local": "workspace:^0.1.1"
   }

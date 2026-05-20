@@ -1,12 +1,12 @@
 use runx_contracts::{ClosureDisposition, HarnessReceipt, HarnessReceiptSchema, HarnessState};
 use runx_receipts::{
-    canonical_receipt_body_digest, canonical_receipt_digest, validate_harness_receipt_proof,
-    verify_harness_receipt_proof,
+    ReceiptProofContextProvider, canonical_receipt_body_digest, canonical_receipt_digest,
+    validate_harness_receipt_proof, verify_harness_receipt_proof,
 };
 
 use crate::harness::fixtures::{HarnessExpectedStatus, HarnessReceiptExpectation};
 use crate::harness::runner::{HarnessReplayError, HarnessReplayOutput};
-use crate::receipts::{LocalHarnessSignatureVerifier, proof_context};
+use crate::receipts::RuntimeReceiptProofContextProvider;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct HarnessReplayReceipt {
@@ -164,8 +164,8 @@ fn assert_receipt_digests(
 }
 
 fn assert_receipt_proof(receipt: &HarnessReceipt) -> Result<(), HarnessReplayError> {
-    let verifier = LocalHarnessSignatureVerifier;
-    let context = proof_context(&verifier, receipt);
+    let proof_contexts = RuntimeReceiptProofContextProvider::local_development();
+    let context = proof_contexts.proof_context(receipt);
     validate_harness_receipt_proof(receipt, &context).map_err(|verification| {
         HarnessReplayError::ReceiptProofInvalid {
             receipt_id: receipt.id.clone(),

@@ -1,8 +1,17 @@
-import type { Output, OutputEntry } from "@runxhq/core/executor";
-import type { SkillInput } from "@runxhq/core/parser";
+import type {
+  OutputContract as Output,
+  OutputEntryContract as OutputEntry,
+} from "@runxhq/contracts";
 
 import { FINAL_RESULT_TOOL_NAME } from "./types.js";
 import { asRecord, isRecord, isString } from "./helpers.js";
+
+export interface SkillInput {
+  readonly type: string;
+  readonly required: boolean;
+  readonly description?: string;
+  readonly default?: unknown;
+}
 
 export function skillInputsToJsonSchema(inputs: Readonly<Record<string, SkillInput>>): Readonly<Record<string, unknown>> {
   const properties = Object.fromEntries(

@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -11,6 +12,16 @@ const caller: Caller = {
   resolve: async () => undefined,
   report: () => undefined,
 };
+const workspaceRoot = process.cwd();
+const cargo = process.platform === "win32" ? "cargo.exe" : "cargo";
+const runxBinary = path.join(
+  workspaceRoot,
+  "crates",
+  "target",
+  "debug",
+  process.platform === "win32" ? "runx.exe" : "runx",
+);
+let rustRunxBuilt = false;
 
 describe("local runtime auth security", () => {
   it("fails closed when resolved credential material does not match the admitted grant", async () => {
@@ -340,13 +351,14 @@ source:
 Graph wrapper used to verify policy denial receipt propagation.
 `,
       );
+      ensureRustRunxBinary();
 
       const result = await runLocalSkill({
         skillPath: wrapperDir,
         caller,
         receiptDir,
         runxHome: path.join(tempDir, "home"),
-        env: process.env,
+        env: kernelEnv(),
         adapters: createDefaultSkillAdapters(),
       });
 
@@ -356,9 +368,7 @@ Graph wrapper used to verify policy denial receipt propagation.
       }
       expect(result.reasons).toEqual(["step 'deploy' declares mutating retry without an idempotency key"]);
       expect(result.receipt).toMatchObject({
-        kind: "graph_execution",
-        status: "failure",
-        disposition: "policy_denied",
+        schema: "runx.harness_receipt.v1",
         metadata: {
           authority_proof: {
             run_id: expect.any(String),
@@ -374,17 +384,11 @@ Graph wrapper used to verify policy denial receipt propagation.
             },
           },
         },
-        steps: [
-          {
-            step_id: "deploy",
-            status: "failure",
-            receipt_id: undefined,
-          },
-        ],
       });
-
       const receiptContents = await readFile(path.join(receiptDir, `${result.receipt?.id}.json`), "utf8");
-      expect(receiptContents).toContain('"kind": "graph_execution"');
+      const receipt = JSON.parse(receiptContents) as { readonly metadata?: Readonly<Record<string, unknown>> };
+      expect(receipt).toMatchObject({ schema: "runx.harness_receipt.v1" });
+      expect(graphStepStatusesFromReceipt(receipt)).toEqual([["deploy", "failure"]]);
       expect(receiptContents).not.toContain("should-not-run");
     } finally {
       await rm(tempDir, { recursive: true, force: true });
@@ -443,18 +447,21 @@ Graph wrapper used to verify top-level graph authority proof metadata.
       if (result.status !== "success") {
         return;
       }
-      expect(result.receipt.metadata).toMatchObject({
-        authority_proof: {
-          run_id: result.receipt.id,
-          skill_name: "graph-success-wrapper",
-          source_type: "graph",
-          requested: {
-            connected_auth: false,
-            scopes: [],
-            mutating: false,
-          },
-          credential_material: {
-            status: "not_requested",
+      expect(result.receipt).toMatchObject({
+        schema: "runx.harness_receipt.v1",
+        metadata: {
+          authority_proof: {
+            run_id: result.receipt.id,
+            skill_name: "graph-success-wrapper",
+            source_type: "graph",
+            requested: {
+              connected_auth: false,
+              scopes: [],
+              mutating: false,
+            },
+            credential_material: {
+              status: "not_requested",
+            },
           },
         },
       });
@@ -463,3 +470,38 @@ Graph wrapper used to verify top-level graph authority proof metadata.
     }
   });
 });
+
+function graphStepStatusesFromReceipt(receipt: { readonly metadata?: Readonly<Record<string, unknown>> }): Array<[string, string]> {
+  const runx = receipt.metadata?.runx as { readonly steps?: unknown } | undefined;
+  expect(Array.isArray(runx?.steps)).toBe(true);
+  return (runx?.steps as Array<{ readonly step_id?: unknown; readonly status?: unknown }>).map((step) => [
+    String(step.step_id),
+    String(step.status),
+  ]);
+}
+
+function kernelEnv(): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    RUNX_KERNEL_EVAL_BIN: runxBinary,
+  };
+}
+
+function ensureRustRunxBinary(): void {
+  if (rustRunxBuilt) {
+    return;
+  }
+  const result = spawnSync(
+    cargo,
+    ["build", "--quiet", "--manifest-path", "crates/Cargo.toml", "-p", "runx-cli", "--bin", "runx"],
+    {
+      cwd: workspaceRoot,
+      encoding: "utf8",
+      env: process.env,
+      maxBuffer: 8 * 1024 * 1024,
+    },
+  );
+
+  expect(result.status, result.stderr || result.stdout).toBe(0);
+  rustRunxBuilt = true;
+}

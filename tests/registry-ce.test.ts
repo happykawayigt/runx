@@ -5,13 +5,8 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { buildSkillPageModel } from "../apps/registry/src/skill-page.js";
-import {
-  createFileRegistryStore,
-  deriveTrustSignals,
-  ingestSkillMarkdown,
-  resolveRunxLink,
-  searchRegistry,
-} from "@runxhq/core/registry";
+import { searchRegistry } from "@runxhq/runtime-local/sdk";
+import { createFileRegistryStore, publishRegistryFixtureSkill } from "./registry-fixtures.js";
 
 describe("registry CE", () => {
   it("ingests skill markdown, derives trust signals, searches, and resolves runx links", async () => {
@@ -21,12 +16,14 @@ describe("registry CE", () => {
     try {
       const markdown = await readFile(path.resolve("skills/sourcey/SKILL.md"), "utf8");
       const profileDocument = await readFile(path.resolve("skills/sourcey/X.yaml"), "utf8");
-      const version = await ingestSkillMarkdown(store, markdown, {
+      const publish = await publishRegistryFixtureSkill(store, markdown, {
         owner: "acme",
         version: "1.0.0",
         createdAt: "2026-04-10T00:00:00.000Z",
         profileDocument,
+        registryUrl: "https://runx.example.test",
       });
+      const version = publish.record;
 
       expect(version.skill_id).toBe("acme/sourcey");
       expect(version.version).toBe("1.0.0");
@@ -37,16 +34,13 @@ describe("registry CE", () => {
       expect(version.markdown).toBe(markdown);
       expect(version.profile_document).toBe(profileDocument);
 
-      const trustSignals = deriveTrustSignals(version);
-      expect(trustSignals).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ id: "digest", status: "verified", value: `sha256:${version.digest}` }),
-          expect.objectContaining({ id: "source_type", status: "declared", value: "agent" }),
-          expect.objectContaining({ id: "trust_tier", status: "declared", value: "community" }),
-          expect.objectContaining({ id: "publisher", status: "declared", value: "acme" }),
-          expect.objectContaining({ id: "runner_metadata", status: "verified" }),
-        ]),
-      );
+      const trustSignals = expect.arrayContaining([
+        expect.objectContaining({ id: "digest", status: "verified", value: `sha256:${version.digest}` }),
+        expect.objectContaining({ id: "source_type", status: "declared", value: "agent" }),
+        expect.objectContaining({ id: "trust_tier", status: "declared", value: "community" }),
+        expect.objectContaining({ id: "publisher", status: "declared", value: "acme" }),
+        expect.objectContaining({ id: "runner_metadata", status: "verified" }),
+      ]);
 
       const page = await buildSkillPageModel(store, "acme/sourcey", "1.0.0", "https://runx.example.test");
       expect(page).toMatchObject({
@@ -70,22 +64,21 @@ describe("registry CE", () => {
       ]);
 
       const results = await searchRegistry(store, "sourcey", { registryUrl: "https://runx.example.test" });
-      expect(results).toEqual([
-        expect.objectContaining({
-          skill_id: "acme/sourcey",
-          source: "runx-registry",
-          source_label: "runx registry",
-          source_type: "agent",
-          trust_tier: "community",
-          profile_mode: "profiled",
-          runner_names: ["agent", "sourcey"],
-          profile_digest: version.profile_digest,
-          add_command: "runx skill add acme/sourcey@1.0.0 --registry https://runx.example.test",
-        }),
-      ]);
+      expect(results).toHaveLength(1);
+      expect(results[0]).toEqual(expect.objectContaining({
+        skill_id: "acme/sourcey",
+        source: "runx-registry",
+        source_label: "runx registry",
+        source_type: "agent",
+        trust_tier: "community",
+        profile_mode: "profiled",
+        runner_names: ["agent", "sourcey"],
+        profile_digest: version.profile_digest,
+        add_command: "runx skill add acme/sourcey@1.0.0 --registry https://runx.example.test",
+        trust_signals: trustSignals,
+      }));
 
-      const link = await resolveRunxLink(store, "acme/sourcey", "1.0.0", "https://runx.example.test");
-      expect(link).toEqual({
+      expect(publish.link).toEqual({
         link: "runx://skill/acme%2Fsourcey@1.0.0",
         skill_id: "acme/sourcey",
         version: "1.0.0",

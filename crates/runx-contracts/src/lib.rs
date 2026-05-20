@@ -15,11 +15,13 @@ pub mod host_protocol;
 pub mod json;
 pub mod links;
 pub mod operational_policy;
+pub mod post_merge_observer;
 pub mod receipts;
 pub mod redaction;
 pub mod reference;
 pub mod registry;
 pub mod signal;
+pub mod target_runner;
 pub mod tools;
 pub mod verification;
 
@@ -76,23 +78,54 @@ pub use host_protocol::{
 pub use json::{JsonNumber, JsonObject, JsonValue};
 pub use links::{DuplicateCandidate, Links};
 pub use operational_policy::{
-    OperationalPolicy, OperationalPolicyAction, OperationalPolicyAutomationPermissions,
-    OperationalPolicyDedupePolicy, OperationalPolicyDedupeStrategy,
-    OperationalPolicyDuplicateBehavior, OperationalPolicyError, OperationalPolicyMissingBehavior,
-    OperationalPolicyOutcomeCloseMode, OperationalPolicyOutcomePolicy, OperationalPolicyOwnerRoute,
-    OperationalPolicyPublishMode, OperationalPolicyReadback, OperationalPolicyRunnerKind,
-    OperationalPolicyRunnerReadback, OperationalPolicyRunnerRule, OperationalPolicyRunnerState,
-    OperationalPolicySchema, OperationalPolicySentryPolicy, OperationalPolicySourceProvider,
+    OperationalPolicy, OperationalPolicyAction, OperationalPolicyAdmission,
+    OperationalPolicyAdmissionRequest, OperationalPolicyAdmissionStatus,
+    OperationalPolicyAutomationPermissions, OperationalPolicyDedupePolicy,
+    OperationalPolicyDedupeStrategy, OperationalPolicyDuplicateBehavior, OperationalPolicyError,
+    OperationalPolicyMissingBehavior, OperationalPolicyOutcomeCloseMode,
+    OperationalPolicyOutcomePolicy, OperationalPolicyOwnerRoute, OperationalPolicyPublishMode,
+    OperationalPolicyReadback, OperationalPolicyRunnerKind, OperationalPolicyRunnerReadback,
+    OperationalPolicyRunnerRule, OperationalPolicyRunnerState, OperationalPolicySchema,
+    OperationalPolicySentryPolicy, OperationalPolicySourceProvider,
     OperationalPolicySourceReadback, OperationalPolicySourceRule,
     OperationalPolicySourceThreadPolicy, OperationalPolicyTargetReadback,
     OperationalPolicyTargetRule, OperationalPolicyValidationFinding,
-    lint_operational_policy_contract, project_operational_policy_readback,
-    validate_operational_policy_contract, validate_operational_policy_semantics,
+    admit_operational_policy_request, lint_operational_policy_contract,
+    project_operational_policy_readback, validate_operational_policy_contract,
+    validate_operational_policy_semantics,
+};
+pub use post_merge_observer::{
+    PostMergeObserverClosureState, PostMergeObserverCriterionPlan,
+    PostMergeObserverIdempotencyPlan, PostMergeObserverPlan, PostMergeObserverPlanError,
+    PostMergeObserverPlanRequest, PostMergeObserverProviderPlan, PostMergeObserverPublicationPlan,
+    PostMergeObserverPublicationProjection, PostMergeObserverRuntimeDecision,
+    PostMergeObserverRuntimeDedupePlan, PostMergeObserverSignalSource,
+    PostMergeObserverSourceIssuePlan, PostMergeProvider, PostMergePullRequestObservation,
+    PostMergePullRequestState, PostMergeSourceIssueDisposition, PostMergeVerificationObservation,
+    PostMergeVerificationStatus, plan_post_merge_observer_closure,
+    plan_post_merge_observer_runtime_dedupe, project_post_merge_observer_publication_from_receipt,
 };
 pub use redaction::{HashAlgorithm, HashCommitment, REDACTION_SCHEMA, Redaction, RedactionSchema};
 pub use reference::{ActRef, Reference, ReferenceType};
 pub use signal::{
     SIGNAL_SCHEMA, Signal, SignalAuthenticity, SignalSchema, SignalTrustLevel, SignalType,
+};
+pub use target_runner::{
+    TargetRepoRunnerCheckoutPlan, TargetRepoRunnerDedupeComponent,
+    TargetRepoRunnerDedupeLookupExecution, TargetRepoRunnerDedupeLookupObservation,
+    TargetRepoRunnerDedupeLookupPlan, TargetRepoRunnerDedupeLookupQuery,
+    TargetRepoRunnerDedupePlan, TargetRepoRunnerDedupeResult, TargetRepoRunnerExecutionPlan,
+    TargetRepoRunnerExistingPullRequest, TargetRepoRunnerOwnerPlan, TargetRepoRunnerPlan,
+    TargetRepoRunnerPlanError, TargetRepoRunnerPlanRequest, TargetRepoRunnerProvider,
+    TargetRepoRunnerProviderPullRequest, TargetRepoRunnerPullRequestDisposition,
+    TargetRepoRunnerPullRequestReceiptPlan, TargetRepoRunnerReadinessObservation,
+    TargetRepoRunnerReadinessPlan, TargetRepoRunnerRunnerPlan, TargetRepoRunnerSourceContext,
+    TargetRepoRunnerSourcePlan, TargetRepoRunnerSourcePublicationReceiptPlan,
+    TargetRepoRunnerSourceThreadPlan, TargetRepoRunnerTargetPlan,
+    apply_target_repo_runner_dedupe_lookup_execution, execute_target_repo_runner_dedupe_lookup,
+    plan_target_repo_runner, plan_target_repo_runner_dedupe_lookup,
+    plan_target_repo_runner_execution, plan_target_repo_runner_pull_request_receipt,
+    plan_target_repo_runner_source_publication_receipt,
 };
 pub use verification::{
     ReceiptVerificationSummary, Verification, VerificationCheck, VerificationStatus,

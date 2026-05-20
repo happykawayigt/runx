@@ -1,5 +1,6 @@
 mod http;
 mod install;
+mod local;
 mod payload;
 mod refs;
 mod types;
@@ -14,14 +15,24 @@ pub use install::{
     InstallCandidate, InstallError, InstallLocalSkillOptions, InstallLocalSkillResult,
     InstallStatus, install_local_skill,
 };
+pub use local::{
+    CreateRegistrySkillVersionResult, FileRegistryStore, IngestSkillOptions, LocalRegistryClient,
+    LocalRegistryError, PublishSkillMarkdownOptions, PutVersionOptions, RegistryResolveOptions,
+    RegistrySearchOptions, RegistrySkillVersionPayload, build_registry_skill_version,
+    build_skill_id, create_file_registry_store, create_local_registry_client,
+    create_registry_skill_version, ingest_skill_markdown, normalize_registry_skill_version,
+    publish_skill_markdown, read_registry_skill, resolve_registry_skill, resolve_runx_link,
+    runx_link_for_version, search_registry, search_registry_with_options, slugify, split_skill_id,
+};
 pub use refs::{
     ParsedRegistryRef, RegistryResolveError, materialization_cache_path,
     materialization_digest_marker, parse_registry_ref, safe_skill_package_parts,
 };
 pub use types::{
-    AcquiredRegistrySkill, ProfileMode, RegistryAttestation, RegistryPublisher,
-    RegistrySearchResult, RegistrySkillDetail, RegistrySourceMetadata, ResolvedRegistryRef,
-    TrustTier,
+    AcquiredRegistrySkill, ProfileMode, PublishSkillMarkdownResult, PublishStatus,
+    RegistryAttestation, RegistryLinkResolution, RegistryPublisher, RegistrySearchResult,
+    RegistrySkill, RegistrySkillDetail, RegistrySkillResolution, RegistrySkillVersion,
+    RegistrySourceMetadata, ResolvedRegistryRef, TrustSignal, TrustTier,
 };
 
 #[derive(Clone, Copy, Debug)]

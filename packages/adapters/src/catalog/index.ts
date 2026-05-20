@@ -1,4 +1,4 @@
-import type { AdapterActInvocation, ActReceiptEnvelope, SkillAdapter } from "@runxhq/core/executor";
+import type { AdapterActInvocation, ActReceiptEnvelope, SkillAdapter } from "@runxhq/runtime-local";
 import { errorMessage } from "@runxhq/core/util";
 import { resolveCatalogTool } from "@runxhq/runtime-local/tool-catalogs";
 

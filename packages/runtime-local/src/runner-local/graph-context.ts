@@ -1,6 +1,6 @@
 import type { ArtifactEnvelope } from "@runxhq/core/artifacts";
-import type { ExecutionGraph, GraphStep } from "@runxhq/core/parser";
 import { isRecord } from "@runxhq/core/util";
+import type { ExecutionGraph, GraphStep } from "../parser-types.js";
 
 export interface GraphStepOutput {
   readonly status: "success" | "failure";

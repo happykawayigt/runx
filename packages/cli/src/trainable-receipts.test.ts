@@ -1,105 +1,30 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { createArtifactEnvelope, appendLedgerEntries } from "@runxhq/core/artifacts";
 import { runCli } from "./index.js";
-import { writeLocalReceipt, writeReceiptOutcomeResolution } from "@runxhq/core/receipts";
-import { runLocalSkill, type Caller } from "@runxhq/runtime-local";
-import type { SkillAdapter } from "@runxhq/core/executor";
 import { TRAINING_SCHEMA_REFS } from "./trainable-receipts.js";
 
-const caller: Caller = {
-  resolve: async () => undefined,
-  report: () => undefined,
-};
-
 describe("trainable receipts export", () => {
-  it("publishes the canonical trainable receipt row schema ref", () => {
-    expect(TRAINING_SCHEMA_REFS.trainable_receipt_row).toBe("https://runx.ai/spec/training/trainable-receipt-row.schema.json");
+  it("publishes the canonical trainable harness row schema ref", () => {
+    expect(TRAINING_SCHEMA_REFS.trainable_harness_receipt_row).toBe(
+      "https://runx.ai/spec/training/trainable-harness-receipt-row.schema.json",
+    );
   });
 
-  it("streams filtered JSONL records with outcome resolution, ledger entries, and prompt provenance without mutating receipts", async () => {
-    const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-trainable-receipts-"));
-    const receiptDir = path.join(tempDir, "receipts");
-    const runxHome = path.join(tempDir, "home");
+  it("streams filtered JSONL records from harness receipt fixtures", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-trainable-harness-"));
+    const directory = path.join(tempDir, "receipts");
 
     try {
-      const completeReceipt = await writeLocalReceipt({
-        receiptDir,
-        runxHome,
-        skillName: "issue-triage",
-        sourceType: "cli-tool",
-        inputs: { issue: 123 },
-        stdout: "triaged",
-        stderr: "",
-        execution: {
-          status: "success",
-          exitCode: 0,
-          signal: null,
-          durationMs: 5,
-          metadata: {
-            runner: {
-              provider: "openai",
-              model: "gpt-test",
-              prompt_version: "triage-v1",
-            },
-          },
-        },
-        startedAt: "2026-04-10T00:00:00Z",
-        completedAt: "2026-04-10T00:00:05Z",
-        outcomeState: "pending",
-        disposition: "observing",
-      });
-      const completeReceiptPath = path.join(receiptDir, `${completeReceipt.id}.json`);
-      const before = await readFile(completeReceiptPath, "utf8");
-
-      await writeReceiptOutcomeResolution({
-        receiptDir,
-        runxHome,
-        receiptId: completeReceipt.id,
-        outcomeState: "complete",
-        source: "integration-test",
-        outcome: {
-          code: "resolved",
-          summary: "Issue was triaged successfully.",
-        },
-      });
-
-      await appendLedgerEntries({
-        receiptDir,
-        runId: completeReceipt.id,
-        entries: [
-          createArtifactEnvelope({
-            type: "run_event",
-            data: { kind: "triage", status: "success" },
-            runId: completeReceipt.id,
-            producer: { skill: "issue-triage", runner: "agent" },
-          }),
-        ],
-      });
-
-      await writeLocalReceipt({
-        receiptDir,
-        runxHome,
-        skillName: "other-skill",
-        sourceType: "agent",
-        inputs: { issue: 999 },
-        stdout: "ignored",
-        stderr: "",
-        execution: {
-          status: "success",
-          exitCode: 0,
-          signal: null,
-          durationMs: 5,
-        },
-        startedAt: "2026-04-11T00:00:00Z",
-        completedAt: "2026-04-11T00:00:05Z",
-        outcomeState: "pending",
-        disposition: "observing",
-      });
+      await mkdir(directory, { recursive: true });
+      const fixtureDocument = JSON.parse(await readFile(path.resolve("fixtures/contracts/harness-spine/harness-receipt-success.json"), "utf8")) as {
+        expected: { id: string };
+      };
+      const fixture = fixtureDocument.expected;
+      await writeFile(path.join(directory, `${fixture.id}.json`), `${JSON.stringify(fixture, null, 2)}\n`);
 
       const stdout = createMemoryStream();
       const stderr = createMemoryStream();
@@ -108,18 +33,17 @@ describe("trainable receipts export", () => {
           "export-receipts",
           "--trainable",
           "--receipt-dir",
-          receiptDir,
+          directory,
           "--since",
-          "2026-04-09T00:00:00Z",
+          "2026-05-17T00:00:00Z",
           "--status",
-          "complete",
+          "sealed",
           "--source",
-          "cli-tool",
+          "host",
         ],
         { stdin: process.stdin, stdout, stderr },
         {
           ...process.env,
-          RUNX_HOME: runxHome,
           RUNX_CWD: process.cwd(),
         },
       );
@@ -130,97 +54,24 @@ describe("trainable receipts export", () => {
       const rows = stdout.contents().trim().split("\n").map((line) => JSON.parse(line));
       expect(rows).toHaveLength(1);
       expect(rows[0]).toMatchObject({
-        kind: "runx.trainable-receipt-row.v1",
-        receipt_id: completeReceipt.id,
-        receipt_kind: "skill_execution",
-        skill_name: "issue-triage",
-        graph_name: null,
-        owner: null,
-        source_type: "cli-tool",
-        status: "success",
-        disposition: "observing",
-        receipt: {
-          id: completeReceipt.id,
-          kind: "skill_execution",
-          skill_name: "issue-triage",
-          source_type: "cli-tool",
+        kind: "runx.trainable-harness-receipt-row.v1",
+        harness_receipt_id: fixture.id,
+        harness_id: "hrn_123",
+        state: "sealed",
+        disposition: "closed",
+        reason_code: "completed",
+        act_ids: ["act_revision_1"],
+        decision_ids: ["dec_open_1"],
+        host_ref: {
+          type: "host",
+          uri: "runx:host:cli",
         },
-        receipt_verification: { status: "verified" },
-        effective_outcome_state: "complete",
-        input_context: null,
-        surface_refs: [],
-        evidence_refs: [],
-        context_from: [],
-        artifact_ids: [],
-        latest_outcome_resolution: {
-          verification: { status: "verified" },
-          resolution: {
-            receipt_id: completeReceipt.id,
-            outcome_state: "complete",
-          },
-        },
-        ledger_entries: [
-          {
-            type: "run_event",
-          },
-        ],
-        runner_provenance: {
-          provider: "openai",
-          model: "gpt-test",
-          prompt_version: "triage-v1",
+        verification_summary: {
+          signature_valid: true,
         },
       });
       expect(typeof rows[0].exported_at).toBe("string");
-
-      const after = await readFile(completeReceiptPath, "utf8");
-      expect(after).toBe(before);
-    } finally {
-      await rm(tempDir, { recursive: true, force: true });
-    }
-  });
-
-  it("preserves prompt_version from adapter runner metadata into the immutable receipt", async () => {
-    const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-trainable-receipt-metadata-"));
-    const adapter: SkillAdapter = {
-      type: "agent",
-      invoke: async () => ({
-        status: "success",
-        stdout: "ok",
-        stderr: "",
-        exitCode: 0,
-        signal: null,
-        durationMs: 1,
-        metadata: {
-          runner: {
-            provider: "openai",
-            model: "gpt-test",
-            prompt_version: "prompt-v1",
-          },
-        },
-      }),
-    };
-
-    try {
-      const result = await runLocalSkill({
-        skillPath: path.resolve("fixtures/skills/portable"),
-        caller,
-        adapters: [adapter],
-        receiptDir: path.join(tempDir, "receipts"),
-        runxHome: path.join(tempDir, "home"),
-      });
-
-      expect(result.status).toBe("success");
-      if (result.status !== "success" || result.receipt.kind !== "skill_execution") {
-        return;
-      }
-
-      expect(result.receipt.metadata).toMatchObject({
-        runner: {
-          provider: "openai",
-          model: "gpt-test",
-          prompt_version: "prompt-v1",
-        },
-      });
+      expect(rows[0].receipt.id).toBe(fixture.id);
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }

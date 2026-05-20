@@ -96,7 +96,7 @@ expect:
     harness_id: "hrn_request-review-before-mutation_request-review-before-mutation"
     state: "sealed"
     disposition: "closed"
-    reason_code: "request-review-before-mutation_closed"
+    reason_code: "process_closed"
     act_ids:
       - "act_request-review-before-mutation"
     decision_ids:

@@ -11,6 +11,29 @@ export {
 } from "./execution-targets.js";
 export { readPendingRunState, readPendingSkillPath } from "./inputs.js";
 export { createCallerAgentAdapter, createCallerAgentStepAdapter, createCallerApprovalAdapter } from "./caller-adapters.js";
+export type {
+  ActReceiptEnvelope,
+  AdapterActInvocation,
+  NestedSkillInvocation,
+  NestedSkillInvocationResult,
+  NestedSkillInvoker,
+  SkillAdapter,
+} from "./adapter-types.js";
+export {
+  runnerReceiptCategory,
+  runnerReceiptCompletedAt,
+  runnerReceiptDisposition,
+  runnerReceiptDurationMs,
+  runnerReceiptEvidenceRefs,
+  runnerReceiptGraphSteps,
+  runnerReceiptInputContext,
+  runnerReceiptOutcome,
+  runnerReceiptOutcomeState,
+  runnerReceiptSource,
+  runnerReceiptStartedAt,
+  runnerReceiptStatus,
+  runnerReceiptSurfaceRefs,
+} from "./graph-governance.js";
 export {
   cleanupLocalProcessSandbox,
   prepareLocalProcessSandbox,
@@ -37,18 +60,20 @@ import {
   createCallerApprovalAdapter,
 } from "./caller-adapters.js";
 import {
-  type Context,
-  type ContextDocument,
-  executeSkill,
-  type ActReceiptEnvelope,
-  type ApprovalGate,
-  type CredentialEnvelope,
-  type NestedSkillInvocation,
-  type NestedSkillInvocationResult,
-  type ResolutionRequest,
-  type ResolutionResponse,
-  type SkillAdapter,
-} from "@runxhq/core/executor";
+  type ApprovalGateContract as ApprovalGate,
+  type ContextContract as Context,
+  type ContextDocumentContract as ContextDocument,
+  type CredentialEnvelopeContract as CredentialEnvelope,
+  type ResolutionRequestContract as ResolutionRequest,
+  type ResolutionResponseContract as ResolutionResponse,
+} from "@runxhq/contracts";
+import { executeSkill } from "./execute-skill.js";
+import type {
+  ActReceiptEnvelope,
+  NestedSkillInvocation,
+  NestedSkillInvocationResult,
+  SkillAdapter,
+} from "./adapter-types.js";
 import type { MaterializedContextEdge } from "./graph-context.js";
 import {
   loadRunxWorkspacePolicy,
@@ -67,48 +92,40 @@ import {
   parseSkillMarkdown,
   resolvePostRunReflectPolicy,
   validateSkill,
-  type ExecutionGraph,
-  type PostRunReflectPolicy,
-  type ValidatedSkill,
 } from "@runxhq/core/parser";
-import {
-  admitLocalSkill,
-  buildAuthorityProofMetadata,
-  buildLocalScopeAdmission,
-  connectedAuthRequirement,
-  validateCredentialBinding,
-  type GraphScopeGrant,
-  type LocalAdmissionGrant,
-} from "@runxhq/core/policy";
-import {
-  uniqueReceiptId,
-  writeLocalReceipt,
-  type ExecutionSemantics,
-  type GovernedDisposition,
-  type LocalGraphReceipt,
-  type LocalReceipt,
-  type OutcomeState,
-  type ReceiptInputContext,
-  type ReceiptOutcome,
-  type ReceiptSurfaceRef,
-} from "@runxhq/core/receipts";
 import {
   createSingleStepState,
   transitionSingleStep,
-  type SequentialGraphState,
   type SingleStepState,
 } from "@runxhq/core/state-machine";
-import type { RegistryStore } from "@runxhq/core/registry";
 import type { ScopeAdmissionContract } from "@runxhq/contracts";
 import type { ToolCatalogAdapter } from "@runxhq/runtime-local/tool-catalogs";
 import {
   mergeExecutionSemantics,
   normalizeExecutionSemantics,
+  type ExecutionSemantics,
+  type GovernedDisposition,
+  type OutcomeState,
+  type ReceiptInputContext,
+  type ReceiptOutcome,
+  type ReceiptSurfaceRef,
 } from "./execution-semantics.js";
-import type { GraphStepGovernance } from "./graph-governance.js";
+import {
+  uniqueRunnerReceiptId,
+  runnerReceiptCompletedAt,
+  runnerReceiptDurationMs,
+  runnerReceiptStartedAt,
+  writeRunnerSkillReceipt,
+  type GraphStepGovernance,
+  type RunnerGraphReceipt,
+  type RunnerReceipt,
+} from "./graph-governance.js";
 import { readResumedSelectedRunner, resolveInputs } from "./inputs.js";
 import { defaultReceiptDir } from "./receipt-paths.js";
 export { defaultReceiptDir } from "./receipt-paths.js";
+import type { RegistryStore } from "./registry-resolver.js";
+import type { SequentialGraphState } from "./kernel-bridge.js";
+import type { ExecutionGraph, PostRunReflectPolicy, ValidatedSkill } from "../parser-types.js";
 import {
   approvalReceiptMetadata,
   approveSandboxEscalationIfNeeded,
@@ -129,6 +146,14 @@ import {
   runnerTrustMetadata,
   type RetryReceiptContext,
 } from "./runner-helpers.js";
+import {
+  authorityProofMetadataViaKernel,
+  credentialBindingViaKernel,
+  localScopeAdmissionViaKernel,
+  localSkillAdmissionViaKernel,
+  type GraphScopeGrant,
+  type LocalAdmissionGrant,
+} from "./kernel-bridge.js";
 
 export interface ApprovalDecision {
   readonly gate: ApprovalGate;
@@ -163,6 +188,7 @@ export interface Caller {
 
 export interface RunLocalSkillOptions {
   readonly skillPath: string;
+  readonly runId?: string;
   readonly inputs?: Readonly<Record<string, unknown>>;
   readonly answersPath?: string;
   readonly caller: Caller;
@@ -296,7 +322,7 @@ export type RunLocalSkillResult =
       readonly skill: ValidatedSkill;
       readonly reasons: readonly string[];
       readonly approval?: ApprovalDecision;
-      readonly receipt?: LocalReceipt;
+      readonly receipt?: RunnerReceipt;
     }
   | {
       readonly status: "success" | "failure";
@@ -304,7 +330,7 @@ export type RunLocalSkillResult =
       readonly inputs: Readonly<Record<string, unknown>>;
       readonly execution: ActReceiptEnvelope;
       readonly state: SingleStepState;
-      readonly receipt: LocalReceipt;
+      readonly receipt: RunnerReceipt;
     };
 
 export interface RunLocalGraphOptions {
@@ -321,6 +347,7 @@ export interface RunLocalGraphOptions {
   readonly authResolver?: AuthResolver;
   readonly graphGrant?: GraphScopeGrant;
   readonly runId?: string;
+  readonly stepRunIds?: Readonly<Record<string, string>>;
   readonly skillEnvironment?: {
     readonly name: string;
     readonly body: string;
@@ -389,20 +416,20 @@ export type RunLocalGraphResult =
       readonly skill: ValidatedSkill;
       readonly reasons: readonly string[];
       readonly state: SequentialGraphState;
-      readonly receipt?: LocalGraphReceipt;
+      readonly receipt?: RunnerGraphReceipt;
     }
   | {
       readonly status: "success" | "failure" | "escalated";
       readonly graph: ExecutionGraph;
       readonly state: SequentialGraphState;
       readonly steps: readonly GraphStepRun[];
-      readonly receipt: LocalGraphReceipt;
+      readonly receipt: RunnerGraphReceipt;
       readonly output: string;
       readonly errorMessage?: string;
     };
 
 export async function runLocalSkill(options: RunLocalSkillOptions): Promise<RunLocalSkillResult> {
-  const runId = options.resumeFromRunId ?? uniqueReceiptId("rx");
+  const runId = options.runId ?? options.resumeFromRunId ?? uniqueRunnerReceiptId("rx");
   const workspacePolicy = options.workspacePolicy ?? await loadRunxWorkspacePolicy(options.env ?? process.env);
   const resolvedSkill = await resolveSkillReference(options.skillPath);
   const rawMarkdown = await readFile(resolvedSkill.skillPath, "utf8");
@@ -539,7 +566,7 @@ export async function runLocalSkill(options: RunLocalSkillOptions): Promise<RunL
 
 export async function runValidatedSkill(options: RunValidatedSkillOptions): Promise<RunLocalSkillResult> {
   const { skill } = options;
-  const runId = options.runId ?? options.resumeFromRunId ?? uniqueReceiptId("rx");
+  const runId = options.runId ?? options.resumeFromRunId ?? uniqueRunnerReceiptId("rx");
   const contextEnvelopeRunId = options.orchestrationRunId ?? runId;
   const authorityMutating = options.authorityMutating ?? skill.mutating === true;
   const workspacePolicy = options.workspacePolicy ?? await loadRunxWorkspacePolicy(options.env ?? process.env);
@@ -573,16 +600,16 @@ export async function runValidatedSkill(options: RunValidatedSkillOptions): Prom
     options.inputs,
   );
 
-  const structuralAdmission = admitLocalSkill(skill, {
+  const structuralAdmission = await localSkillAdmissionViaKernel(skill, {
     allowedSourceTypes: options.allowedSourceTypes,
     skipConnectedAuth: true,
     skipSandboxEscalation: true,
     executionPolicy: workspacePolicy,
-  });
+  }, { env: options.env });
   if (structuralAdmission.status === "deny") {
-    const structuralScopeAdmission = buildLocalScopeAdmission(skill.auth, [], {
+    const structuralScopeAdmission = await localScopeAdmissionViaKernel(skill.auth, [], {
       deniedBeforeGrantResolution: true,
-    });
+    }, { env: options.env });
     const receipt = await writePolicyDeniedReceipt({
       skill,
       inputs: options.inputs,
@@ -590,7 +617,7 @@ export async function runValidatedSkill(options: RunValidatedSkillOptions): Prom
       runOptions: options,
       receiptMetadata: mergeMetadata(
         inheritedReceiptMetadata,
-        buildAuthorityProofMetadata({
+        await authorityProofMetadataViaKernel({
           runId,
           skillName: skill.name,
           sourceType: skill.source.type,
@@ -599,7 +626,7 @@ export async function runValidatedSkill(options: RunValidatedSkillOptions): Prom
           scopeAdmission: structuralScopeAdmission,
           sandboxDeclaration: skill.source.sandbox,
           mutating: authorityMutating,
-        }),
+        }, { env: options.env }),
       ),
       executionSemantics,
     });
@@ -615,10 +642,10 @@ export async function runValidatedSkill(options: RunValidatedSkillOptions): Prom
     skill,
     inputs: options.inputs,
   });
-  const scopeAdmission = buildLocalScopeAdmission(skill.auth, grantResolution?.grants ?? []);
-  const authorityProofScopeAdmission = connectedAuthRequirement(skill.auth)
-    ? scopeAdmission
-    : options.authorityScopeAdmission ?? scopeAdmission;
+  const scopeAdmission = await localScopeAdmissionViaKernel(skill.auth, grantResolution?.grants ?? [], {}, { env: options.env });
+  const authorityProofScopeAdmission = isNoConnectedAuthScopeAdmission(scopeAdmission)
+    ? options.authorityScopeAdmission ?? scopeAdmission
+    : scopeAdmission;
   if (grantResolution) {
     await options.caller.report({
       type: "auth_resolved",
@@ -629,12 +656,12 @@ export async function runValidatedSkill(options: RunValidatedSkillOptions): Prom
   const sandboxApproval = await approveSandboxEscalationIfNeeded(skill, options.caller);
   const approvedSandboxEscalation = sandboxApproval?.approved ?? false;
 
-  const admission = admitLocalSkill(skill, {
+  const admission = await localSkillAdmissionViaKernel(skill, {
     allowedSourceTypes: options.allowedSourceTypes,
     connectedGrants: grantResolution?.grants,
     approvedSandboxEscalation,
     executionPolicy: workspacePolicy,
-  });
+  }, { env: options.env });
   if (admission.status === "deny") {
     const receipt = await writePolicyDeniedReceipt({
       skill,
@@ -644,7 +671,7 @@ export async function runValidatedSkill(options: RunValidatedSkillOptions): Prom
       runOptions: options,
       receiptMetadata: mergeMetadata(
         inheritedReceiptMetadata,
-        buildAuthorityProofMetadata({
+        await authorityProofMetadataViaKernel({
           runId,
           skillName: skill.name,
           sourceType: skill.source.type,
@@ -654,7 +681,7 @@ export async function runValidatedSkill(options: RunValidatedSkillOptions): Prom
           sandboxDeclaration: skill.source.sandbox,
           approval: sandboxApproval,
           mutating: authorityMutating,
-        }),
+        }, { env: options.env }),
       ),
       executionSemantics,
     });
@@ -678,7 +705,7 @@ export async function runValidatedSkill(options: RunValidatedSkillOptions): Prom
       message: "Executing graph skill source.",
     });
 
-    const graphRunId = options.resumeFromRunId ?? uniqueReceiptId("gx");
+    const graphRunId = options.resumeFromRunId ?? uniqueRunnerReceiptId("gx");
     const graphResult = await runLocalGraph({
       graph: materializeInlineGraph(skill),
       graphDirectory: options.skillDirectory,
@@ -704,7 +731,7 @@ export async function runValidatedSkill(options: RunValidatedSkillOptions): Prom
       toolCatalogAdapters: options.toolCatalogAdapters,
       receiptMetadata: mergeMetadata(
         inheritedReceiptMetadata,
-        buildAuthorityProofMetadata({
+        await authorityProofMetadataViaKernel({
           runId: graphRunId,
           skillName: skill.name,
           sourceType: skill.source.type,
@@ -714,7 +741,7 @@ export async function runValidatedSkill(options: RunValidatedSkillOptions): Prom
           sandboxDeclaration: skill.source.sandbox,
           approval: sandboxApproval,
           mutating: authorityMutating,
-        }),
+        }, { env: options.env }),
       ),
       context: contextSnapshot,
       voiceProfile,
@@ -748,16 +775,16 @@ export async function runValidatedSkill(options: RunValidatedSkillOptions): Prom
 
     let state = createSingleStepState(skill.name);
     state = transitionSingleStep(state, { type: "admit" });
-    state = transitionSingleStep(state, { type: "start", at: graphResult.receipt.started_at ?? new Date().toISOString() });
+    state = transitionSingleStep(state, { type: "start", at: runnerReceiptStartedAt(graphResult.receipt) ?? new Date().toISOString() });
     if (graphResult.status === "success") {
       state = transitionSingleStep(state, {
         type: "succeed",
-        at: graphResult.receipt.completed_at ?? new Date().toISOString(),
+        at: runnerReceiptCompletedAt(graphResult.receipt) ?? new Date().toISOString(),
       });
     } else {
       state = transitionSingleStep(state, {
         type: "fail",
-        at: graphResult.receipt.completed_at ?? new Date().toISOString(),
+        at: runnerReceiptCompletedAt(graphResult.receipt) ?? new Date().toISOString(),
         error: graphResult.errorMessage ?? "graph execution failed",
       });
     }
@@ -781,7 +808,7 @@ export async function runValidatedSkill(options: RunValidatedSkillOptions): Prom
         stderr: graphResult.errorMessage ?? "",
         exitCode: skillExecutionStatus === "success" ? 0 : 1,
         signal: null,
-        durationMs: graphResult.receipt.duration_ms,
+        durationMs: runnerReceiptDurationMs(graphResult.receipt) ?? 0,
         errorMessage: graphResult.errorMessage,
         metadata: {
           composite: {
@@ -820,12 +847,12 @@ export async function runValidatedSkill(options: RunValidatedSkillOptions): Prom
     inputs: options.inputs,
     grants: admittedCredentialGrants,
   });
-  const credentialBinding = validateCredentialBinding({
+  const credentialBinding = await credentialBindingViaKernel({
     auth: skill.auth,
     grants: admittedCredentialGrants,
     scopeAdmission,
     credential: credentialResolution?.credential,
-  });
+  }, { env: options.env });
   if (credentialBinding.status === "deny") {
     const receipt = await writePolicyDeniedReceipt({
       skill,
@@ -837,7 +864,7 @@ export async function runValidatedSkill(options: RunValidatedSkillOptions): Prom
         credentialResolution?.receiptMetadata,
         preparedAgentContext.receiptMetadata,
         sandboxApproval ? approvalReceiptMetadata(sandboxApproval) : undefined,
-        buildAuthorityProofMetadata({
+        await authorityProofMetadataViaKernel({
           runId,
           skillName: skill.name,
           sourceType: skill.source.type,
@@ -848,7 +875,7 @@ export async function runValidatedSkill(options: RunValidatedSkillOptions): Prom
           sandboxDeclaration: skill.source.sandbox,
           approval: sandboxApproval,
           mutating: authorityMutating,
-        }),
+        }, { env: options.env }),
       ),
       executionSemantics,
     });
@@ -1049,7 +1076,7 @@ export async function runValidatedSkill(options: RunValidatedSkillOptions): Prom
   });
 
   await appendPreparedLedgerEntries(ledgerPlan);
-  const receipt = await writeLocalReceipt({
+  const receipt = await writeRunnerSkillReceipt({
     receiptId: runId,
     receiptDir,
     runxHome: options.runxHome ?? options.env?.RUNX_HOME,
@@ -1071,7 +1098,7 @@ export async function runValidatedSkill(options: RunValidatedSkillOptions): Prom
         preparedAgentContext.receiptMetadata,
         sandboxApproval ? approvalReceiptMetadata(sandboxApproval) : undefined,
         inheritedReceiptMetadata,
-        buildAuthorityProofMetadata({
+        await authorityProofMetadataViaKernel({
           runId,
           skillName: skill.name,
           sourceType: skill.source.type,
@@ -1083,7 +1110,7 @@ export async function runValidatedSkill(options: RunValidatedSkillOptions): Prom
           sandboxMetadata: execution.metadata?.sandbox,
           approval: sandboxApproval,
           mutating: authorityMutating,
-        }),
+        }, { env: options.env }),
         createLedgerAnchorMetadata(ledgerPlan.anchor),
       ),
     },
@@ -1147,4 +1174,11 @@ function admittedGrantsForCredential(
     return [];
   }
   return grants.filter((grant) => grant.grant_id === scopeAdmission.grant_id);
+}
+
+function isNoConnectedAuthScopeAdmission(scopeAdmission: ScopeAdmissionContract): boolean {
+  return scopeAdmission.status === "allow"
+    && scopeAdmission.requested_scopes.length === 0
+    && scopeAdmission.granted_scopes.length === 0
+    && scopeAdmission.decision_summary === "no connected auth requested";
 }

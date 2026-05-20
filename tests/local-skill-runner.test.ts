@@ -44,7 +44,8 @@ describe("local skill runner", () => {
         return;
       }
       expect(result.execution.stdout).toBe("super-secret-value");
-      expect(result.receipt.status).toBe("success");
+      expect(result.receipt.schema).toBe("runx.harness_receipt.v1");
+      expect(result.receipt.seal.disposition).toBe("closed");
 
       const files = await readdir(receiptDir);
       expect(files).toContain("ledgers");
@@ -94,11 +95,8 @@ describe("local skill runner", () => {
         status: "done",
         summary: "caller executed the portable skill",
       });
-      expect(result.receipt.kind).toBe("skill_execution");
-      if (result.receipt.kind !== "skill_execution") {
-        return;
-      }
-      expect(result.receipt.source_type).toBe("agent");
+      expect(result.receipt.schema).toBe("runx.harness_receipt.v1");
+      expect(result.receipt.seal.disposition).toBe("closed");
       expect(result.receipt.metadata).toMatchObject({
         agent_runner: {
           skill: "portable",
@@ -134,10 +132,8 @@ describe("local skill runner", () => {
       if (result.status !== "success") {
         return;
       }
-      expect(result.receipt.kind).toBe("skill_execution");
-      if (result.receipt.kind !== "skill_execution") {
-        return;
-      }
+      expect(result.receipt.schema).toBe("runx.harness_receipt.v1");
+      expect(result.receipt.seal.disposition).toBe("closed");
       expect(result.receipt.metadata).toMatchObject({
         runner: {
           type: "cli-tool",
@@ -199,24 +195,15 @@ describe("local skill runner", () => {
       });
 
       expect(result.status).toBe("success");
-      if (result.status !== "success" || result.receipt.kind !== "skill_execution") {
+      if (result.status !== "success") {
         return;
       }
 
-      expect(result.receipt).toMatchObject({
-        disposition: "observing",
-        outcome_state: "pending",
-        outcome: {
-          code: "awaiting_observation",
-        },
-        surface_refs: [{ type: "issue", uri: "github://owner/repo/issues/1" }],
-        evidence_refs: [{ type: "log", uri: "file://receipt-log" }],
-      });
-      expect(result.receipt.input_context).toMatchObject({
-        source: "inputs",
-        truncated: false,
-      });
-      expect(result.receipt.input_context?.snapshot).toEqual({ message: "[redacted]" });
+      expect(result.receipt.schema).toBe("runx.harness_receipt.v1");
+      expect(result.receipt.seal.disposition).toBe("deferred");
+      expect(result.receipt.harness.acts[0]?.surface_refs).toMatchObject([
+        { type: "github_issue", uri: "github://owner/repo/issues/1" },
+      ]);
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }

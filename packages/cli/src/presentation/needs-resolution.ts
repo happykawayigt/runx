@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 
-import type { ResolutionRequest } from "@runxhq/core/executor";
+import type { ResolutionRequestContract as ResolutionRequest } from "@runxhq/contracts";
 
 import { shortId, statusIcon, theme } from "../ui.js";
 import { humanizeLabel } from "./internal.js";

@@ -1,18 +1,17 @@
 import { resolveDefaultSkillAdapters } from "@runxhq/adapters";
+import type { ResolutionRequestContract as ResolutionRequest } from "@runxhq/contracts";
 import { loadLocalSkillPackage, resolvePathFromUserInput, resolveRunxHomeDir } from "@runxhq/core/config";
-import type { ResolutionRequest } from "@runxhq/core/executor";
 import {
   parseSkillMarkdown,
   validateSkill,
-  type SkillInput,
 } from "@runxhq/core/parser";
-import type { RegistryStore } from "@runxhq/core/registry";
 import { asRecord, errorMessage } from "@runxhq/core/util";
 import {
   resolveSkillRunner,
   readPendingSkillPath,
   runLocalSkill,
   type Caller,
+  type RegistryStore,
 } from "@runxhq/runtime-local";
 import { createHostBridge, type HostBoundaryResolver, type HostRunResult } from "@runxhq/runtime-local/sdk";
 import { resolveEnvToolCatalogAdapters } from "@runxhq/runtime-local/tool-catalogs";
@@ -52,6 +51,13 @@ interface McpToolDefinition {
   readonly description: string;
   readonly inputSchema: Readonly<Record<string, unknown>>;
   readonly call: (args: Readonly<Record<string, unknown>>) => Promise<Readonly<Record<string, unknown>>>;
+}
+
+interface SkillInput {
+  readonly type: string;
+  readonly required: boolean;
+  readonly description?: string;
+  readonly default?: unknown;
 }
 
 interface ResumeSubmission {

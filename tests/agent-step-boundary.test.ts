@@ -31,7 +31,6 @@ describe("agent-step and harness-hook boundary", () => {
         id: "agent_step.review-boundary.output",
         kind: "agent_act",
         invocation: {
-          source_type: "agent-step",
           task: "review-boundary",
         },
       },
@@ -72,13 +71,10 @@ describe("agent-step and harness-hook boundary", () => {
         verdict: "pass",
         checked: "caller boundary",
       });
-      expect(result.receipt.kind).toBe("skill_execution");
-      if (result.receipt.kind !== "skill_execution") {
-        return;
-      }
+      expect(result.receipt.schema).toBe("runx.harness_receipt.v1");
+      expect(result.receipt.seal.disposition).toBe("closed");
       expect(result.receipt.metadata).toMatchObject({
         agent_hook: {
-          source_type: "agent-step",
           agent: "codex",
           task: "review-boundary",
           route: "provided",
@@ -115,13 +111,10 @@ describe("agent-step and harness-hook boundary", () => {
       if (result.status !== "success") {
         return;
       }
-      expect(result.receipt.kind).toBe("skill_execution");
-      if (result.receipt.kind !== "skill_execution") {
-        return;
-      }
+      expect(result.receipt.schema).toBe("runx.harness_receipt.v1");
+      expect(result.receipt.seal.disposition).toBe("closed");
       expect(result.receipt.metadata).toMatchObject({
         agent_hook: {
-          source_type: "harness-hook",
           hook: "review-receipt",
           status: "success",
         },

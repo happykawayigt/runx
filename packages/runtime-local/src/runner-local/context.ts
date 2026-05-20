@@ -6,18 +6,19 @@ import {
   readLedgerEntries,
   type ArtifactEnvelope,
 } from "@runxhq/core/artifacts";
-import {
-  type AgentContextProvenance,
-  type Context,
-  type ContextDocument,
-  type QualityProfileContext,
-} from "@runxhq/core/executor";
-import { type ValidatedSkill } from "@runxhq/core/parser";
-import { isPlainRecord, pathExists } from "@runxhq/core/util";
-import { hashStable, hashString, listVerifiedLocalReceipts, type LocalReceipt } from "@runxhq/core/receipts";
+import type {
+  AgentContextProvenanceContract as AgentContextProvenance,
+  ContextContract as Context,
+  ContextDocumentContract as ContextDocument,
+  QualityProfileContextContract as QualityProfileContext,
+} from "@runxhq/contracts";
+import { hashStable, hashString, isPlainRecord, pathExists } from "@runxhq/core/util";
 
+import { listVerifiedRuntimeReceipts, type RuntimeReceipt } from "./history.js";
+import { runnerReceiptDisplayName, runnerReceiptStatus } from "./graph-governance.js";
 import { mergeMetadata } from "./runner-helpers.js";
 import type { MaterializedContextEdge } from "./index.js";
+import type { ValidatedSkill } from "../parser-types.js";
 
 const MAX_HISTORICAL_AGENT_ARTIFACTS = 12;
 
@@ -173,7 +174,7 @@ export async function prepareAgentContext(options: {
       env: options.env,
       voiceProfilePath: options.voiceProfilePath,
     }));
-  const historicalContext = await loadHistoricalAgentContext({
+  const historicalContext = await loadPriorAgentContext({
     receiptDir: options.receiptDir,
     skillName: options.skill.name,
     projectKeyHash,
@@ -345,8 +346,8 @@ function firstString(value: unknown): string | undefined {
   return undefined;
 }
 
-function receiptProjectScopeKeyHash(receipt: LocalReceipt): string | undefined {
-  if (receipt.kind !== "skill_execution" || !isPlainRecord(receipt.metadata)) {
+function receiptProjectScopeKeyHash(receipt: RuntimeReceipt): string | undefined {
+  if (!isPlainRecord(receipt.metadata)) {
     return undefined;
   }
   const contextScope = receipt.metadata.context_scope;
@@ -357,7 +358,7 @@ function receiptProjectScopeKeyHash(receipt: LocalReceipt): string | undefined {
   return typeof keyHash === "string" ? keyHash : undefined;
 }
 
-async function loadHistoricalAgentContext(options: {
+async function loadPriorAgentContext(options: {
   readonly receiptDir: string;
   readonly skillName: string;
   readonly projectKeyHash?: string;
@@ -367,29 +368,17 @@ async function loadHistoricalAgentContext(options: {
   if (!options.projectKeyHash) {
     return [];
   }
-  const verified = await listVerifiedLocalReceipts(options.receiptDir, options.runxHome);
+  const verified = await listVerifiedRuntimeReceipts(options.receiptDir, options.runxHome);
   const candidate = verified.find(({ receipt, verification }) =>
     verification.status === "verified"
-    && receipt.kind === "skill_execution"
     && receipt.id !== options.excludeRunId
-    && receipt.status === "success"
-    && receiptSkillName(receipt) === options.skillName
+    && runnerReceiptStatus(receipt) === "success"
+    && runnerReceiptDisplayName(receipt) === options.skillName
     && receiptProjectScopeKeyHash(receipt) === options.projectKeyHash
-    && Array.isArray(receipt.artifact_ids)
-    && receipt.artifact_ids.length > 0,
   )?.receipt;
-  if (!candidate || candidate.kind !== "skill_execution") {
+  if (!candidate) {
     return [];
   }
   const entries = await readLedgerEntries(options.receiptDir, candidate.id);
   return entries.filter(isDomainArtifactEnvelope).slice(-MAX_HISTORICAL_AGENT_ARTIFACTS);
 }
-
-function receiptSkillName(receipt: LocalReceipt): string | undefined {
-  if (receipt.kind !== "skill_execution") {
-    return undefined;
-  }
-  return receipt.skill_name;
-}
-
-

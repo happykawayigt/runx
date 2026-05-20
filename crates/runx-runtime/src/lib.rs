@@ -18,6 +18,7 @@ mod hosted_http;
 pub mod journal;
 pub mod list;
 pub mod payment_authority;
+pub mod post_merge_observer;
 pub mod receipt_paths;
 pub mod receipt_store;
 pub mod receipt_tree;
@@ -26,6 +27,7 @@ pub mod registry;
 pub mod runner;
 pub mod sandbox;
 pub mod scaffold;
+pub mod target_runner;
 pub mod tool_catalogs;
 
 #[cfg(any(
@@ -93,6 +95,7 @@ pub use registry::{RegistryInstallMetadataInput, registry_install_receipt_metada
 #[cfg(feature = "cli-tool")]
 pub use runner::run_graph_file;
 pub use runner::{GraphCheckpoint, GraphRun, Runtime, RuntimeOptions, StepRun};
+pub use runx_core::kernel_eval;
 pub use scaffold::{
     InitAction, InitGeneratedValues, RunxInitOptions, RunxInitResult, RunxInstallState,
     RunxNewOptions, RunxNewResult, RunxProjectState, ScaffoldError, ensure_runx_install_state,

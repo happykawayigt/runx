@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -10,8 +10,7 @@ import {
   validateRunxListReportContract,
 } from "@runxhq/contracts";
 import { runCli, parseArgs, resolveSkillReference } from "./index.js";
-import { hashString, listLocalReceipts } from "@runxhq/core/receipts";
-import { createFileRegistryStore, ingestSkillMarkdown } from "@runxhq/core/registry";
+import { hashString } from "@runxhq/core/util";
 import { readCliDependencyVersion } from "./metadata.js";
 
 const tempDirs: string[] = [];
@@ -27,6 +26,14 @@ describe("parseArgs", () => {
   it("preserves unknown skill input keys", () => {
     expect(parseArgs(["skill", "skills/example", "--project-url", "https://example.com"]).inputs).toEqual({
       "project-url": "https://example.com",
+    });
+  });
+
+  it("parses structured JSON skill input values", () => {
+    expect(parseArgs(["skill", "skills/example", "--thread", "{\"thread_locator\":\"local://fixture\"}"]).inputs).toEqual({
+      thread: {
+        thread_locator: "local://fixture",
+      },
     });
   });
 
@@ -677,14 +684,8 @@ Read note.txt and produce a grounded summary.
       tool: "fs.read",
       status: "success",
     });
-    const receipts = await listLocalReceipts(receiptDir);
-    const toolReceipt = receipts.find((receipt) =>
-      receipt.kind === "skill_execution" && receipt.source_type === "cli-tool"
-    );
-    expect(toolReceipt).toBeDefined();
-    expect((toolReceipt?.metadata as { runx?: { parent_run_id?: string } } | undefined)?.runx?.parent_run_id).toBe(
-      result.receipt.id,
-    );
+    const storedRuns = await readStoredRunObjects(receiptDir);
+    expect(storedRuns.some((entry) => entry.metadata?.runx?.parent_run_id === result.receipt.id)).toBe(true);
     expect(requestCount).toBe(2);
   });
 
@@ -910,11 +911,16 @@ Answer the prompt directly.
     const stdout = createMemoryStream();
     const stderr = createMemoryStream();
 
-    await ingestSkillMarkdown(createFileRegistryStore(registryDir), await readFile(path.resolve("skills/sourcey/SKILL.md"), "utf8"), {
-      owner: "acme",
-      version: "1.0.0",
-      createdAt: "2026-04-10T00:00:00.000Z",
-    });
+    const publishStdout = createMemoryStream();
+    const publishStderr = createMemoryStream();
+    await expect(
+      runCli(
+        ["skill", "publish", "skills/sourcey", "--owner", "acme", "--version", "1.0.0", "--registry", registryDir, "--json"],
+        { stdin: process.stdin, stdout: publishStdout, stderr: publishStderr },
+        { ...process.env, RUNX_CWD: process.cwd() },
+      ),
+    ).resolves.toBe(0);
+    expect(publishStderr.contents()).toBe("");
 
     const exitCode = await runCli(
       ["skill", "search", "sourcey"],
@@ -1877,7 +1883,6 @@ expect:
           status: "success",
         }),
       ],
-      receipt_id: expect.stringMatching(/^rx_/),
     });
   });
 
@@ -1964,7 +1969,6 @@ expect:
           }),
         }),
       ],
-      receipt_id: expect.stringMatching(/^rx_/),
     });
   });
 
@@ -2064,7 +2068,6 @@ expect:
           },
         }),
       ],
-      receipt_id: expect.stringMatching(/^rx_/),
     });
   });
 
@@ -2156,27 +2159,7 @@ expect:
         },
       ],
     });
-    expect(report.receipt_id).toMatch(/^rx_/);
-
-    stdout.clear();
-    stderr.clear();
-    const inspectExitCode = await runCli(
-      ["skill", "inspect", report.receipt_id ?? "", "--receipt-dir", receiptDir, "--json"],
-      { stdin: process.stdin, stdout, stderr },
-      { ...process.env, RUNX_CWD: tempDir },
-    );
-    expect(inspectExitCode).toBe(0);
-    expect(stderr.contents()).toBe("");
-    expect(JSON.parse(stdout.contents())).toMatchObject({
-      verification: {
-        status: "verified",
-      },
-      summary: {
-        id: report.receipt_id,
-        name: "runx.dev",
-        status: "success",
-      },
-    });
+    expect(report.receipt_id).toBeUndefined();
   });
 });
 
@@ -2200,6 +2183,18 @@ interface MutablePolicyFixture extends Record<string, unknown> {
 
 async function readFixturePolicy(): Promise<MutablePolicyFixture> {
   return JSON.parse(await readFile("fixtures/operational-policy/nitrosend-like.json", "utf8")) as MutablePolicyFixture;
+}
+
+async function readStoredRunObjects(directory: string): Promise<Array<{ metadata?: { runx?: { parent_run_id?: string } } }>> {
+  const entries = await readdir(directory);
+  const objects = await Promise.all(
+    entries
+      .filter((entry) => entry.endsWith(".json"))
+      .map(async (entry) => JSON.parse(await readFile(path.join(directory, entry), "utf8")) as {
+        metadata?: { runx?: { parent_run_id?: string } };
+      }),
+  );
+  return objects;
 }
 
 async function createFakeAgentBin(commands: readonly string[]): Promise<string> {

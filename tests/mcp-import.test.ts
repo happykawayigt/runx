@@ -56,7 +56,7 @@ steps:
           stdout: "hello from imported tool",
         }),
       ]);
-      expect(result.receipt.kind).toBe("graph_execution");
+      expect(result.receipt).toMatchObject({ schema: "runx.harness_receipt.v1" });
       expect(result.output).toContain("hello from imported tool");
     } finally {
       await rm(tempDir, { recursive: true, force: true });

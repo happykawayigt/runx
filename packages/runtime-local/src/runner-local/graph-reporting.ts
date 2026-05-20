@@ -1,9 +1,9 @@
 import path from "node:path";
 
-import type { ResolutionRequest } from "@runxhq/core/executor";
-import type { GraphStep } from "@runxhq/core/parser";
+import type { ResolutionRequestContract as ResolutionRequest } from "@runxhq/contracts";
 
 import type { Caller } from "./index.js";
+import type { GraphStep } from "../parser-types.js";
 
 export function graphStepExecutionDirectory(step: GraphStep, stepExecutablePath: string, graphDirectory: string): string {
   if (step.tool) {

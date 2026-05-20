@@ -1,4 +1,18 @@
 pub mod runx_core
+pub mod runx_core::kernel_eval
+pub enum runx_core::kernel_eval::KernelEvalError
+pub runx_core::kernel_eval::KernelEvalError::InvalidDocument(alloc::string::String)
+pub runx_core::kernel_eval::KernelEvalError::InvalidInput(alloc::string::String)
+pub runx_core::kernel_eval::KernelEvalError::SerializeOutput(alloc::string::String)
+impl runx_core::kernel_eval::KernelEvalError
+pub fn runx_core::kernel_eval::KernelEvalError::code(&self) -> &'static str
+impl core::error::Error for runx_core::kernel_eval::KernelEvalError
+impl core::fmt::Display for runx_core::kernel_eval::KernelEvalError
+pub fn runx_core::kernel_eval::KernelEvalError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum runx_core::kernel_eval::KernelEvalOutput
+pub runx_core::kernel_eval::KernelEvalOutput::Output
+pub runx_core::kernel_eval::KernelEvalOutput::Output::value: runx_contracts::json::JsonValue
+pub fn runx_core::kernel_eval::evaluate_kernel_document_str(source: &str) -> core::result::Result<runx_core::kernel_eval::KernelEvalOutput, runx_core::kernel_eval::KernelEvalError>
 pub mod runx_core::policy
 pub enum runx_core::policy::AdmissionDecision
 pub runx_core::policy::AdmissionDecision::Allow
@@ -273,6 +287,7 @@ pub fn runx_core::policy::build_local_scope_admission(auth: core::option::Option
 pub fn runx_core::policy::default_public_work_policy() -> runx_core::policy::RequiredPublicWorkPolicy
 pub fn runx_core::policy::evaluate_public_comment_opportunity(request: &runx_core::policy::PublicCommentOpportunityRequest, policy: &runx_core::policy::PublicWorkPolicy) -> runx_core::policy::PublicCommentPolicyDecision
 pub fn runx_core::policy::evaluate_public_pull_request_candidate(request: &runx_core::policy::PublicPullRequestCandidateRequest, policy: &runx_core::policy::PublicWorkPolicy) -> runx_core::policy::PublicPolicyDecision
+pub fn runx_core::policy::is_payment_authority_subset(child: &runx_contracts::authority::AuthorityTerm, parent: &runx_contracts::authority::AuthorityTerm) -> bool
 pub fn runx_core::policy::normalize_public_work_policy(policy: &runx_core::policy::PublicWorkPolicy) -> runx_core::policy::RequiredPublicWorkPolicy
 pub fn runx_core::policy::normalize_sandbox_declaration(sandbox: core::option::Option<&runx_core::policy::SandboxDeclaration>) -> runx_core::policy::RequiredSandboxDeclaration
 pub fn runx_core::policy::sandbox_requires_approval(sandbox: core::option::Option<&runx_core::policy::SandboxDeclaration>) -> bool

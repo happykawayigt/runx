@@ -16,16 +16,25 @@ import {
   validateSkillArtifactContract,
   validateSkillSource,
   validateToolManifest,
-  type ExecutionGraph,
-  type GraphStep,
-  type SkillRunnerDefinition,
-  type ValidatedSkill,
-  type ValidatedTool,
 } from "@runxhq/core/parser";
-import type { RegistryStore } from "@runxhq/core/registry";
 import { resolveCatalogTool, type ToolCatalogAdapter } from "@runxhq/runtime-local/tool-catalogs";
+import type {
+  ExecutionGraph,
+  GraphStep,
+  SkillRunnerDefinition,
+  ValidatedSkill,
+  ValidatedTool,
+} from "../parser-types.js";
 
-import { defaultRegistrySkillCacheDir, isRegistryRef, materializeRegistrySkill, parseRegistryRef, type ParsedRegistryRef } from "./registry-resolver.js";
+import {
+  defaultRegistrySkillCacheDir,
+  isRegistryRef,
+  materializeRegistrySkill,
+  nativeRegistryResolveRequested,
+  parseRegistryRef,
+  type ParsedRegistryRef,
+  type RegistryStore,
+} from "./registry-resolver.js";
 
 export interface OfficialSkillResolver {
   resolve(ref: ParsedRegistryRef): Promise<string | undefined>;
@@ -348,7 +357,7 @@ async function resolveGraphStepSkillPath(
         return resolved;
       }
     }
-    if (!registryStore) {
+    if (!registryStore && !nativeRegistryResolveRequested()) {
       throw new Error(
         `Registry ref '${stepSkill}' used in graph step, but no registry store or official-skill resolver is configured. Pass registryStore or officialSkillResolver to runLocalGraph, or set RUNX_REGISTRY_URL / RUNX_REGISTRY_DIR to a local registry path.`,
       );

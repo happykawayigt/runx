@@ -1,5 +1,7 @@
 use runx_contracts::{
-    OperationalPolicy, OperationalPolicyAction, OperationalPolicySchema,
+    OperationalPolicy, OperationalPolicyAction, OperationalPolicyAdmissionRequest,
+    OperationalPolicyAdmissionStatus, OperationalPolicyDedupeStrategy,
+    OperationalPolicyOutcomeCloseMode, OperationalPolicySchema, admit_operational_policy_request,
     lint_operational_policy_contract, project_operational_policy_readback,
     validate_operational_policy_contract, validate_operational_policy_semantics,
 };
@@ -87,6 +89,104 @@ fn readback_redacts_source_locators() -> Result<(), Box<dyn std::error::Error>> 
     assert_eq!(readback.sources[0].locator_count, 1);
     assert!(json.contains(r#""locator_count":1"#));
     assert!(!json.contains("slack://nitrosend"));
+    Ok(())
+}
+
+#[test]
+fn nitrosend_policy_admits_each_target_repo_route() -> Result<(), Box<dyn std::error::Error>> {
+    let policy: OperationalPolicy = serde_json::from_str(NITROSEND_LIKE)?;
+
+    for repo in ["nitrosend/nitrosend", "nitrosend/api", "nitrosend/app"] {
+        let admission = admit_operational_policy_request(
+            &policy,
+            &OperationalPolicyAdmissionRequest {
+                source_id: Some("bugs-fixes".to_owned()),
+                target_repo: Some(repo.to_owned()),
+                action: OperationalPolicyAction::IssueToPr,
+                runner_id: None,
+                source_thread_locator: Some(
+                    "slack://nitrosend/C0APFMY0V8Q/1778834840.485629".to_owned(),
+                ),
+            },
+        )?;
+
+        assert_eq!(admission.status, OperationalPolicyAdmissionStatus::Allow);
+        assert!(admission.findings.is_empty());
+        assert_eq!(admission.policy_id, "nitrosend-issue-flow");
+        assert_eq!(admission.source_id.as_deref(), Some("bugs-fixes"));
+        assert_eq!(admission.target_repo.as_deref(), Some(repo));
+        assert_eq!(admission.runner_id.as_deref(), Some("aster-production"));
+        assert_eq!(admission.owner_route_id.as_deref(), Some("product-surface"));
+        assert_eq!(admission.owners.as_deref(), Some(&["Kam".to_owned()][..]));
+        assert_eq!(
+            admission.dedupe_strategy,
+            OperationalPolicyDedupeStrategy::SourceFingerprint
+        );
+        assert_eq!(
+            admission.outcome_close_mode,
+            OperationalPolicyOutcomeCloseMode::WhenVerified
+        );
+        assert!(admission.source_thread_required);
+        assert!(admission.mutate_target_repo);
+        assert!(admission.require_human_merge_gate);
+    }
+
+    Ok(())
+}
+
+#[test]
+fn nitrosend_policy_denies_unknown_target_before_runner_selection()
+-> Result<(), Box<dyn std::error::Error>> {
+    let policy: OperationalPolicy = serde_json::from_str(NITROSEND_LIKE)?;
+    let admission = admit_operational_policy_request(
+        &policy,
+        &OperationalPolicyAdmissionRequest {
+            source_id: Some("bugs-fixes".to_owned()),
+            target_repo: Some("nitrosend/unknown".to_owned()),
+            action: OperationalPolicyAction::IssueToPr,
+            runner_id: None,
+            source_thread_locator: Some(
+                "slack://nitrosend/C0APFMY0V8Q/1778834840.485629".to_owned(),
+            ),
+        },
+    )?;
+
+    assert_eq!(admission.status, OperationalPolicyAdmissionStatus::Deny);
+    assert!(admission.target_repo.is_none());
+    assert!(admission.runner_id.is_none());
+    assert!(
+        admission
+            .findings
+            .iter()
+            .any(|finding| finding.code == "unknown_target_repo")
+    );
+    Ok(())
+}
+
+#[test]
+fn nitrosend_policy_denies_pr_admission_without_source_thread()
+-> Result<(), Box<dyn std::error::Error>> {
+    let policy: OperationalPolicy = serde_json::from_str(NITROSEND_LIKE)?;
+    let admission = admit_operational_policy_request(
+        &policy,
+        &OperationalPolicyAdmissionRequest {
+            source_id: Some("bugs-fixes".to_owned()),
+            target_repo: Some("nitrosend/api".to_owned()),
+            action: OperationalPolicyAction::IssueToPr,
+            runner_id: Some("aster-production".to_owned()),
+            source_thread_locator: None,
+        },
+    )?;
+
+    assert_eq!(admission.status, OperationalPolicyAdmissionStatus::Deny);
+    assert_eq!(admission.target_repo.as_deref(), Some("nitrosend/api"));
+    assert_eq!(admission.runner_id.as_deref(), Some("aster-production"));
+    assert!(
+        admission
+            .findings
+            .iter()
+            .any(|finding| finding.code == "source_thread_locator_required")
+    );
     Ok(())
 }
 

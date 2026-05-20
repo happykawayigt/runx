@@ -1,6 +1,9 @@
 use runx_cli::config::{ConfigAction, ConfigPlan};
 use runx_cli::connect::{ConnectAction, ConnectAuthorityKind, ConnectPlan};
+use runx_cli::kernel::{KernelInputSource, KernelPlan};
+use runx_cli::mcp::McpPlan;
 use runx_cli::policy::{PolicyAction, PolicyPlan};
+use runx_cli::registry::{RegistryAction, RegistryPlan};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -76,11 +79,19 @@ fn pre_cutover_candidate_commands_delegate_without_native_signals() {
             "fixtures/operational-policy/nitrosend-like.json".into(),
             "--json".into(),
         ],
+        vec![
+            "kernel".into(),
+            "eval".into(),
+            "--input".into(),
+            "fixtures/kernel/policy/retry-admission-denies-mutating-without-key.json".into(),
+            "--json".into(),
+        ],
         vec!["doctor".into(), "--json".into()],
         vec!["list".into(), "tools".into(), "--json".into()],
         vec!["new".into(), "docs-demo".into(), "--json".into()],
         vec!["init".into(), "--json".into()],
         vec!["history".into(), "sourcey".into(), "--json".into()],
+        vec!["mcp".into(), "serve".into(), "fixtures/skills/echo".into()],
         vec![
             "tool".into(),
             "search".into(),
@@ -90,6 +101,112 @@ fn pre_cutover_candidate_commands_delegate_without_native_signals() {
     ] {
         assert_delegates_to_js_bin_without_native_signals(args);
     }
+}
+
+#[test]
+fn rust_cli_signal_routes_mcp_serve_without_runner_to_native_lifecycle() {
+    let action = plan_with_rust_cli(vec![
+        "mcp".into(),
+        "serve".into(),
+        "fixtures/skills/echo".into(),
+        "--receipt-dir=receipts".into(),
+    ]);
+
+    assert_eq!(
+        action,
+        LauncherAction::RunMcp(McpPlan {
+            refs: vec![PathBuf::from("fixtures/skills/echo")],
+            receipt_dir: Some(PathBuf::from("receipts")),
+            runner: None,
+        })
+    );
+}
+
+#[test]
+fn rust_cli_signal_routes_mcp_runner_selection_to_native_fail_closed_plan() {
+    let action = plan_with_rust_cli_and_js(vec![
+        "mcp".into(),
+        "serve".into(),
+        "fixtures/skills/echo".into(),
+        "--runner".into(),
+        "default".into(),
+        "--receipt-dir=receipts".into(),
+    ]);
+
+    assert_eq!(
+        action,
+        LauncherAction::RunMcp(McpPlan {
+            refs: vec![PathBuf::from("fixtures/skills/echo")],
+            receipt_dir: Some(PathBuf::from("receipts")),
+            runner: Some("default".to_owned()),
+        })
+    );
+}
+
+#[test]
+fn rust_cli_signal_rejects_unknown_mcp_serve_flags_instead_of_delegating() {
+    let action = plan_with_rust_cli_and_js(vec![
+        "mcp".into(),
+        "serve".into(),
+        "fixtures/skills/echo".into(),
+        "--legacy-js-only".into(),
+    ]);
+
+    assert_eq!(
+        action,
+        LauncherAction::Error("unknown mcp serve flag --legacy-js-only".to_owned())
+    );
+}
+
+#[test]
+fn rust_cli_signal_rejects_mcp_runner_before_serve_instead_of_delegating() {
+    let action = plan_with_rust_cli_and_js(vec![
+        "mcp".into(),
+        "--runner=default".into(),
+        "serve".into(),
+        "fixtures/skills/echo".into(),
+    ]);
+
+    assert_eq!(
+        action,
+        LauncherAction::Error(
+            "runx mcp --runner requires canonical form: runx mcp serve <skill-ref...> --runner <runner>"
+                .to_owned(),
+        )
+    );
+}
+
+#[test]
+fn native_mcp_runner_selection_fails_closed_without_js_fallback()
+-> Result<(), Box<dyn std::error::Error>> {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_runx"))
+        .args([
+            "mcp",
+            "serve",
+            "fixtures/skills/mcp-echo",
+            "--runner",
+            "default",
+        ])
+        .env("RUNX_RUST_CLI", "1")
+        .env("RUNX_JS_BIN", "/repo/oss/packages/cli/bin/runx.js")
+        .env("RUNX_NPM_PACKAGE", "@runxhq/cli@0.5.22")
+        .current_dir(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.."))
+        .output()?;
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        String::from_utf8(output.stderr)?
+            .contains("runner selection 'default' is not supported by the native runtime yet")
+    );
+    Ok(())
+}
+
+#[test]
+fn rust_cli_mcp_serve_requires_at_least_one_skill_ref() {
+    assert_eq!(
+        plan_with_rust_cli(vec!["mcp".into(), "serve".into()]),
+        LauncherAction::Error("runx mcp serve requires at least one skill reference.".to_owned())
+    );
 }
 
 #[test]
@@ -172,6 +289,27 @@ fn shim_flags_do_not_delegate() {
 fn rust_harness_signal_routes_harness_command_to_native_runner() {
     let action = plan_launcher_with_rust_harness(
         vec!["harness".into(), "fixtures/harness/echo-skill.yaml".into()],
+        Some("@runxhq/cli@0.5.22".into()),
+        Some("/repo/oss/packages/cli/bin/runx.js".into()),
+        Some("1".into()),
+    );
+
+    assert_eq!(
+        action,
+        LauncherAction::RunHarness(HarnessPlan {
+            fixture_path: "fixtures/harness/echo-skill.yaml".into(),
+        })
+    );
+}
+
+#[test]
+fn rust_harness_signal_accepts_matrix_json_flag() {
+    let action = plan_launcher_with_rust_harness(
+        vec![
+            "harness".into(),
+            "fixtures/harness/echo-skill.yaml".into(),
+            "--json".into(),
+        ],
         Some("@runxhq/cli@0.5.22".into()),
         Some("/repo/oss/packages/cli/bin/runx.js".into()),
         Some("1".into()),
@@ -269,6 +407,35 @@ fn rust_cli_empty_signal_still_delegates_to_js() {
             ],
         })
     );
+}
+
+#[test]
+fn rust_harness_zero_and_empty_signals_still_delegate_to_js() {
+    for signal in ["0", ""] {
+        let action = plan_launcher_with_rust_harness(
+            vec![
+                "harness".into(),
+                "fixtures/harness/echo-skill.yaml".into(),
+                "--json".into(),
+            ],
+            Some("@runxhq/cli@0.5.22".into()),
+            Some("/repo/oss/packages/cli/bin/runx.js".into()),
+            Some(signal.into()),
+        );
+
+        assert_eq!(
+            action,
+            LauncherAction::Delegate(CommandPlan {
+                program: node_command().into(),
+                args: vec![
+                    "/repo/oss/packages/cli/bin/runx.js".into(),
+                    "harness".into(),
+                    "fixtures/harness/echo-skill.yaml".into(),
+                    "--json".into(),
+                ],
+            })
+        );
+    }
 }
 
 #[test]
@@ -467,6 +634,87 @@ fn policy_rejects_invalid_native_shape() {
 }
 
 #[test]
+fn kernel_eval_routes_supported_shape_to_native_cli() {
+    let action = plan_with_rust_cli_and_js(vec![
+        "kernel".into(),
+        "eval".into(),
+        "--input".into(),
+        "fixtures/kernel/policy/retry-admission-denies-mutating-without-key.json".into(),
+        "--json".into(),
+    ]);
+
+    assert_eq!(
+        action,
+        LauncherAction::RunKernel(KernelPlan {
+            input: KernelInputSource::Path(PathBuf::from(
+                "fixtures/kernel/policy/retry-admission-denies-mutating-without-key.json",
+            )),
+            json: true,
+        })
+    );
+}
+
+#[test]
+fn kernel_eval_accepts_stdin_input() {
+    let action = plan_with_rust_cli(vec![
+        "kernel".into(),
+        "eval".into(),
+        "--input=-".into(),
+        "--json".into(),
+    ]);
+
+    assert_eq!(
+        action,
+        LauncherAction::RunKernel(KernelPlan {
+            input: KernelInputSource::Stdin,
+            json: true,
+        })
+    );
+}
+
+#[test]
+fn kernel_unsupported_subcommand_still_delegates() {
+    let action = plan_with_rust_cli_and_js(vec!["kernel".into(), "trace".into()]);
+
+    assert_eq!(
+        action,
+        LauncherAction::Delegate(CommandPlan {
+            program: node_command().into(),
+            args: vec![
+                "/repo/oss/packages/cli/bin/runx.js".into(),
+                "kernel".into(),
+                "trace".into(),
+            ],
+        })
+    );
+}
+
+#[test]
+fn kernel_eval_rejects_non_json_shape() {
+    let action = plan_with_rust_cli(vec![
+        "kernel".into(),
+        "eval".into(),
+        "--input".into(),
+        "fixtures/kernel/state-machine/sequential-plan-first-step.json".into(),
+    ]);
+
+    assert_eq!(
+        action,
+        LauncherAction::Error("runx kernel eval requires --json".to_owned())
+    );
+}
+
+#[test]
+fn kernel_eval_rejects_missing_input() {
+    let action = plan_with_rust_cli(vec!["kernel".into(), "eval".into(), "--json".into()]);
+
+    assert_eq!(
+        action,
+        LauncherAction::Error("runx kernel eval requires --input <file|->".to_owned())
+    );
+}
+
+#[test]
 fn doctor_routes_to_native_cli_even_with_js_fallback_configured() {
     let action = plan_with_rust_cli_and_js(vec![
         "doctor".into(),
@@ -579,6 +827,49 @@ fn list_rejects_conflicting_status_filters() {
     assert_eq!(
         action,
         LauncherAction::Error("runx list accepts either --ok-only or --invalid-only".to_owned())
+    );
+}
+
+#[test]
+fn registry_search_routes_to_native_cli_even_with_js_fallback_configured() {
+    let action = plan_with_rust_cli_and_js(vec![
+        "registry".into(),
+        "search".into(),
+        "echo".into(),
+        "--registry-dir".into(),
+        "/tmp/runx-registry".into(),
+        "--limit".into(),
+        "10".into(),
+        "--json".into(),
+    ]);
+
+    assert_eq!(
+        action,
+        LauncherAction::RunRegistry(RegistryPlan {
+            action: RegistryAction::Search,
+            subject: "echo".to_owned(),
+            registry: None,
+            registry_dir: Some(PathBuf::from("/tmp/runx-registry")),
+            version: None,
+            expected_digest: None,
+            destination: None,
+            installation_id: None,
+            owner: None,
+            profile: None,
+            limit: Some(10),
+            upsert: false,
+            json: true,
+        })
+    );
+}
+
+#[test]
+fn registry_install_requires_one_ref() {
+    let action = plan_with_rust_cli(vec!["registry".into(), "install".into()]);
+
+    assert_eq!(
+        action,
+        LauncherAction::Error("runx registry install requires exactly one ref".to_owned())
     );
 }
 
@@ -781,6 +1072,24 @@ fn rust_harness_signal_rejects_unsupported_argument_shape() {
                 .to_owned(),
         )
     );
+}
+
+#[test]
+fn native_launcher_argument_errors_exit_with_usage_code() -> Result<(), Box<dyn std::error::Error>>
+{
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_runx"))
+        .args(["policy", "inspect", "--json"])
+        .env("RUNX_RUST_CLI", "1")
+        .env_remove("RUNX_JS_BIN")
+        .env_remove("RUNX_NPM_PACKAGE")
+        .output()?;
+
+    assert_eq!(output.status.code(), Some(64));
+    assert!(
+        String::from_utf8(output.stderr)?
+            .contains("runx policy inspect|lint requires exactly one policy path")
+    );
+    Ok(())
 }
 
 #[test]

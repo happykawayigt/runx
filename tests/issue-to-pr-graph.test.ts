@@ -6,6 +6,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { createDefaultLocalSkillRuntime } from "../packages/adapters/src/runtime.js";
+import { readLedgerEntries } from "@runxhq/core/artifacts";
 import { parseRunnerManifestYaml, validateRunnerManifest } from "@runxhq/core/parser";
 import { runLocalSkill, type Caller } from "@runxhq/runtime-local";
 
@@ -233,10 +234,7 @@ describe("issue-to-PR composite skill", () => {
       if (result.status !== "success") {
         throw new Error(JSON.stringify(result, null, 2));
       }
-      expect(result.receipt.kind).toBe("graph_execution");
-      if (result.receipt.kind !== "graph_execution") {
-        return;
-      }
+      expect(result.receipt).toMatchObject({ schema: "runx.harness_receipt.v1" });
       const output = JSON.parse(result.execution.stdout);
       expect(output).toMatchObject({
         outbox_entry: {
@@ -299,7 +297,7 @@ describe("issue-to-PR composite skill", () => {
       await expect(readFile(threadPath, "utf8")).resolves.toContain(`pull_request:${taskId}`);
       await expect(readFile(threadPath, "utf8")).resolves.toContain(`message:${taskId}:merge_gate`);
       await expect(readFile(threadPath, "utf8")).resolves.toContain("harness_fixture_issue_to_pr");
-      expect(result.receipt.steps.map((step) => [step.step_id, step.status])).toEqual([
+      await expect(graphStepStatuses(runtime.paths.receiptDir, result.receipt.id)).resolves.toEqual([
         ["scafld-plan", "success"],
         ["author-spec", "success"],
         ["normalize-spec", "success"],
@@ -399,6 +397,12 @@ describe("issue-to-PR composite skill", () => {
     }
   }, 90_000);
 });
+
+async function graphStepStatuses(receiptDir: string, runId: string): Promise<Array<[string, string]>> {
+  return (await readLedgerEntries(receiptDir, runId))
+    .filter((entry) => entry.type === "run_event" && entry.data.kind === "step_completed")
+    .map((entry) => [String(entry.data.step_id), String(entry.data.status)]);
+}
 
 function hasScafld(): boolean {
   const result = spawnSync(scafldBin, ["--version"], { encoding: "utf8" });

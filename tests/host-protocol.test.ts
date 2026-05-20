@@ -59,10 +59,15 @@ describe("host protocol", () => {
         state: {},
         receipt: {
           id: "gx_escalated",
-          kind: "graph_execution",
+          schema: "runx.harness_receipt.v1",
+          harness: {
+            state: "sealed",
+          },
+          seal: {
+            disposition: "blocked",
+          },
           status: "failure",
           duration_ms: 1,
-          disposition: "escalated",
           outcome_state: "pending",
         },
       }) as any,

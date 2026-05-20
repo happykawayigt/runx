@@ -1,6 +1,4 @@
 import type { ArtifactContract, ArtifactEnvelope } from "@runxhq/core/artifacts";
-import type { ExecutionGraph, GraphPolicy, GraphStep, ValidatedSkill } from "@runxhq/core/parser";
-import type { GraphReceiptSyncPoint } from "@runxhq/core/receipts";
 import {
   transitionSequentialGraph,
   type SequentialGraphPlan,
@@ -11,8 +9,10 @@ import { errorMessage } from "@runxhq/core/util";
 import { resolveOutputPath, type GraphStepOutput } from "./graph-context.js";
 import { buildInlineGraphStepSkill } from "./execution-targets.js";
 import { graphStepReference } from "./graph-reporting.js";
+import type { GraphReceiptSyncPoint } from "./graph-governance.js";
 import { isDomainArtifactEnvelope } from "./runner-helpers.js";
 import type { GraphStepRun } from "./index.js";
+import type { ExecutionGraph, GraphPolicy, GraphStep, ValidatedSkill } from "../parser-types.js";
 
 export function admitGraphTransition(
   policy: GraphPolicy | undefined,

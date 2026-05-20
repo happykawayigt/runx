@@ -4,7 +4,10 @@ use std::path::PathBuf;
 
 use crate::config::ConfigPlan;
 use crate::connect::ConnectPlan;
+use crate::kernel::{KernelInputSource, KernelPlan};
+use crate::mcp::McpPlan;
 use crate::policy::{PolicyAction, PolicyPlan};
+use crate::registry::{RegistryAction, RegistryPlan};
 
 pub const DEFAULT_NPM_PACKAGE: &str = "@runxhq/cli@latest";
 
@@ -15,12 +18,15 @@ pub enum LauncherAction {
     RunDoctor(DoctorPlan),
     RunInit(InitPlan),
     RunList(ListPlan),
+    RunMcp(McpPlan),
     RunNew(NewPlan),
     RunHistory(HistoryPlan),
     RunHarness(HarnessPlan),
+    RunKernel(KernelPlan),
     RunConnect(ConnectPlan),
     RunConfig(ConfigPlan),
     RunPolicy(PolicyPlan),
+    RunRegistry(RegistryPlan),
     RunTool(ToolPlan),
     PrintHelp,
     PrintVersion,
@@ -164,6 +170,11 @@ pub fn plan_launcher_with_native_options(
                 .map_or_else(LauncherAction::Error, LauncherAction::RunPolicy);
         }
 
+        if first_arg_is(&args, "kernel") && kernel_subcommand_is_native(&args) {
+            return parse_kernel_plan(&args)
+                .map_or_else(LauncherAction::Error, LauncherAction::RunKernel);
+        }
+
         if first_arg_is(&args, "doctor") {
             if doctor_deferred_to_js(&args) {
                 return delegate_plan(args, npm_package, js_bin);
@@ -194,9 +205,27 @@ pub fn plan_launcher_with_native_options(
             return LauncherAction::RunHistory(HistoryPlan { args });
         }
 
+        if first_arg_is(&args, "mcp") {
+            if mcp_subcommand_is_native(&args) {
+                return crate::mcp::parse_mcp_plan(&args)
+                    .map_or_else(LauncherAction::Error, LauncherAction::RunMcp);
+            }
+            if mcp_args_request_runner_selection(&args) {
+                return LauncherAction::Error(
+                    "runx mcp --runner requires canonical form: runx mcp serve <skill-ref...> --runner <runner>"
+                        .to_owned(),
+                );
+            }
+        }
+
         if first_arg_is(&args, "tool") && tool_subcommand_is_native(&args) {
             return parse_tool_plan(&args)
                 .map_or_else(LauncherAction::Error, LauncherAction::RunTool);
+        }
+
+        if first_arg_is(&args, "registry") && registry_subcommand_is_native(&args) {
+            return parse_registry_plan(&args)
+                .map_or_else(LauncherAction::Error, LauncherAction::RunRegistry);
         }
     }
 
@@ -259,10 +288,13 @@ Native commands:
   runx connect list|revoke <grant-id>|<provider> [--scope scope] [--scope-family family] [--authority-kind read_only|constructive|destructive] [--target-repo owner/repo] [--target-locator locator] [--json]
   runx config set|get|list [agent.provider|agent.model|agent.api_key] [value] [--json]
   runx policy inspect|lint <policy.json> [--json]
+  runx kernel eval --input <file|-> --json
   runx doctor [path] [--json]
+  runx mcp serve <skill-ref...> [--receipt-dir dir]
   runx tool build <tool-dir>|--all [--json]
   runx tool search <query> [--source source] [--json]
   runx tool inspect <ref> [--source source] [--json]
+  runx registry search|read|resolve|install|publish ... --json
 "
     )
 }
@@ -292,15 +324,46 @@ fn native_signal_requested(value: Option<&OsStr>) -> bool {
 }
 
 fn native_harness_plan(args: &[OsString]) -> LauncherAction {
-    if args.len() != 2 {
+    let mut fixture_path = None;
+    let mut index = 1;
+
+    while index < args.len() {
+        let Some(token) = args.get(index).and_then(|arg| arg.to_str()) else {
+            return LauncherAction::Error("harness arguments must be UTF-8".to_owned());
+        };
+
+        if !token.starts_with("--") {
+            if fixture_path.is_some() {
+                return LauncherAction::Error(
+                    "runx harness requires exactly one fixture path when RUNX_RUST_HARNESS is set"
+                        .to_owned(),
+                );
+            }
+            fixture_path = Some(args[index].clone());
+            index += 1;
+            continue;
+        }
+
+        let (flag, inline_value) = split_flag(token);
+        match flag {
+            "--json" => {
+                if inline_value.is_some() {
+                    return LauncherAction::Error("--json does not take a value".to_owned());
+                }
+                index += 1;
+            }
+            _ => return LauncherAction::Error(format!("unknown harness flag {flag}")),
+        }
+    }
+
+    let Some(fixture_path) = fixture_path else {
         return LauncherAction::Error(
             "runx harness requires exactly one fixture path when RUNX_RUST_HARNESS is set"
                 .to_owned(),
         );
-    }
-    LauncherAction::RunHarness(HarnessPlan {
-        fixture_path: args[1].clone(),
-    })
+    };
+
+    LauncherAction::RunHarness(HarnessPlan { fixture_path })
 }
 
 fn parse_new_plan(args: &[OsString]) -> Result<NewPlan, String> {
@@ -546,11 +609,88 @@ fn tool_subcommand_is_native(args: &[OsString]) -> bool {
     )
 }
 
+fn mcp_subcommand_is_native(args: &[OsString]) -> bool {
+    matches!(args.get(1).and_then(|arg| arg.to_str()), Some("serve"))
+}
+
+fn mcp_args_request_runner_selection(args: &[OsString]) -> bool {
+    args.iter().skip(1).any(|arg| {
+        arg.to_str()
+            .map(|token| {
+                let (flag, _inline_value) = split_flag(token);
+                flag == "--runner"
+            })
+            .unwrap_or(false)
+    })
+}
+
 fn policy_subcommand_is_native(args: &[OsString]) -> bool {
     matches!(
         args.get(1).and_then(|arg| arg.to_str()),
         Some("inspect" | "lint")
     )
+}
+
+fn kernel_subcommand_is_native(args: &[OsString]) -> bool {
+    matches!(args.get(1).and_then(|arg| arg.to_str()), Some("eval"))
+}
+
+fn registry_subcommand_is_native(args: &[OsString]) -> bool {
+    matches!(
+        args.get(1).and_then(|arg| arg.to_str()),
+        Some("search" | "read" | "resolve" | "install" | "publish")
+    )
+}
+
+fn parse_kernel_plan(args: &[OsString]) -> Result<KernelPlan, String> {
+    let subcommand = os_arg(args, 1, "kernel")?;
+    if subcommand != "eval" {
+        return Err(format!("unknown kernel subcommand {subcommand}"));
+    }
+
+    let mut input = None;
+    let mut json = false;
+    let mut index = 2;
+
+    while index < args.len() {
+        let token = os_arg(args, index, "kernel")?;
+        if !token.starts_with("--") {
+            return Err(format!("unexpected kernel eval argument {token}"));
+        }
+
+        let (flag, inline_value) = split_flag(token);
+        match flag {
+            "--json" => {
+                if inline_value.is_some() {
+                    return Err("--json does not take a value".to_owned());
+                }
+                json = true;
+                index += 1;
+            }
+            "--input" => {
+                if input.is_some() {
+                    return Err("runx kernel eval accepts exactly one --input".to_owned());
+                }
+                let (value, next_index) = flag_value(args, index, flag, inline_value, "kernel")?;
+                input = Some(if value == "-" {
+                    KernelInputSource::Stdin
+                } else {
+                    KernelInputSource::Path(PathBuf::from(value))
+                });
+                index = next_index;
+            }
+            _ => return Err(format!("unknown kernel eval flag {flag}")),
+        }
+    }
+
+    if !json {
+        return Err("runx kernel eval requires --json".to_owned());
+    }
+
+    Ok(KernelPlan {
+        input: input.ok_or_else(|| "runx kernel eval requires --input <file|->".to_owned())?,
+        json,
+    })
 }
 
 fn parse_policy_plan(args: &[OsString]) -> Result<PolicyPlan, String> {
@@ -721,6 +861,192 @@ fn inspect_tool_plan(
         source,
         json,
     })
+}
+
+fn parse_registry_plan(args: &[OsString]) -> Result<RegistryPlan, String> {
+    let subcommand = os_arg(args, 1, "registry")?;
+    let action = parse_registry_action(subcommand)?;
+    let mut state = RegistryParseState::default();
+    parse_registry_args(args, &mut state)?;
+    let subject = registry_subject(&action, subcommand, &mut state.positionals)?;
+
+    Ok(RegistryPlan {
+        action,
+        subject,
+        registry: state.registry,
+        registry_dir: state.registry_dir,
+        version: state.version,
+        expected_digest: state.expected_digest,
+        destination: state.destination,
+        installation_id: state.installation_id,
+        owner: state.owner,
+        profile: state.profile,
+        limit: state.limit,
+        upsert: state.upsert,
+        json: state.json,
+    })
+}
+
+#[derive(Default)]
+struct RegistryParseState {
+    json: bool,
+    upsert: bool,
+    registry: Option<String>,
+    registry_dir: Option<PathBuf>,
+    version: Option<String>,
+    expected_digest: Option<String>,
+    destination: Option<PathBuf>,
+    installation_id: Option<String>,
+    owner: Option<String>,
+    profile: Option<PathBuf>,
+    limit: Option<usize>,
+    positionals: Vec<String>,
+}
+
+fn parse_registry_action(subcommand: &str) -> Result<RegistryAction, String> {
+    match subcommand {
+        "search" => Ok(RegistryAction::Search),
+        "read" => Ok(RegistryAction::Read),
+        "resolve" => Ok(RegistryAction::Resolve),
+        "install" => Ok(RegistryAction::Install),
+        "publish" => Ok(RegistryAction::Publish),
+        _ => Err(format!("unknown registry subcommand {subcommand}")),
+    }
+}
+
+fn parse_registry_args(args: &[OsString], state: &mut RegistryParseState) -> Result<(), String> {
+    let mut index = 2;
+    while index < args.len() {
+        let token = os_arg(args, index, "registry")?;
+        if !token.starts_with("--") {
+            state.positionals.push(token.to_owned());
+            index += 1;
+            continue;
+        }
+
+        let (flag, inline_value) = split_flag(token);
+        index = parse_registry_flag(args, index, flag, inline_value, state)?;
+    }
+    Ok(())
+}
+
+fn parse_registry_flag(
+    args: &[OsString],
+    index: usize,
+    flag: &str,
+    inline_value: Option<&str>,
+    state: &mut RegistryParseState,
+) -> Result<usize, String> {
+    match flag {
+        "--json" => set_registry_bool_flag(flag, inline_value, &mut state.json, index),
+        "--upsert" => set_registry_bool_flag(flag, inline_value, &mut state.upsert, index),
+        "--registry" => {
+            set_registry_string_flag(args, index, flag, inline_value, &mut state.registry)
+        }
+        "--registry-dir" | "--registryDir" => {
+            set_registry_path_flag(args, index, flag, inline_value, &mut state.registry_dir)
+        }
+        "--version" => {
+            set_registry_string_flag(args, index, flag, inline_value, &mut state.version)
+        }
+        "--digest" => {
+            set_registry_string_flag(args, index, flag, inline_value, &mut state.expected_digest)
+        }
+        "--to" | "--destination" => {
+            set_registry_path_flag(args, index, flag, inline_value, &mut state.destination)
+        }
+        "--installation-id" | "--installationId" => {
+            set_registry_string_flag(args, index, flag, inline_value, &mut state.installation_id)
+        }
+        "--owner" => set_registry_string_flag(args, index, flag, inline_value, &mut state.owner),
+        "--profile" => set_registry_path_flag(args, index, flag, inline_value, &mut state.profile),
+        "--limit" => set_registry_limit_flag(args, index, flag, inline_value, state),
+        _ => Err(format!("unknown registry flag {flag}")),
+    }
+}
+
+fn set_registry_bool_flag(
+    flag: &str,
+    inline_value: Option<&str>,
+    target: &mut bool,
+    index: usize,
+) -> Result<usize, String> {
+    if inline_value.is_some() {
+        return Err(format!("{flag} does not take a value"));
+    }
+    *target = true;
+    Ok(index + 1)
+}
+
+fn set_registry_string_flag(
+    args: &[OsString],
+    index: usize,
+    flag: &str,
+    inline_value: Option<&str>,
+    target: &mut Option<String>,
+) -> Result<usize, String> {
+    let (value, next_index) = flag_value(args, index, flag, inline_value, "registry")?;
+    *target = Some(value);
+    Ok(next_index)
+}
+
+fn set_registry_path_flag(
+    args: &[OsString],
+    index: usize,
+    flag: &str,
+    inline_value: Option<&str>,
+    target: &mut Option<PathBuf>,
+) -> Result<usize, String> {
+    let (value, next_index) = flag_value(args, index, flag, inline_value, "registry")?;
+    *target = Some(PathBuf::from(value));
+    Ok(next_index)
+}
+
+fn set_registry_limit_flag(
+    args: &[OsString],
+    index: usize,
+    flag: &str,
+    inline_value: Option<&str>,
+    state: &mut RegistryParseState,
+) -> Result<usize, String> {
+    let (value, next_index) = flag_value(args, index, flag, inline_value, "registry")?;
+    state.limit = Some(
+        value
+            .parse::<usize>()
+            .map_err(|_| "--limit must be a positive integer".to_owned())?,
+    );
+    Ok(next_index)
+}
+
+fn registry_subject(
+    action: &RegistryAction,
+    subcommand: &str,
+    positionals: &mut Vec<String>,
+) -> Result<String, String> {
+    match action {
+        RegistryAction::Search => {
+            if positionals.is_empty() {
+                return Err("runx registry search requires a query".to_owned());
+            }
+            Ok(positionals.join(" "))
+        }
+        RegistryAction::Read | RegistryAction::Resolve | RegistryAction::Install => {
+            if positionals.len() != 1 {
+                return Err(format!(
+                    "runx registry {subcommand} requires exactly one ref"
+                ));
+            }
+            Ok(positionals.remove(0))
+        }
+        RegistryAction::Publish => {
+            if positionals.len() != 1 {
+                return Err(
+                    "runx registry publish requires exactly one skill markdown path".to_owned(),
+                );
+            }
+            Ok(positionals.remove(0))
+        }
+    }
 }
 
 fn os_arg<'a>(args: &'a [OsString], index: usize, command: &str) -> Result<&'a str, String> {

@@ -1,4 +1,10 @@
-import type { RunLocalSkillResult } from "@runxhq/runtime-local";
+import {
+  runnerReceiptDisposition,
+  runnerReceiptDurationMs,
+  runnerReceiptGraphSteps,
+  runnerReceiptOutcomeState,
+  type RunLocalSkillResult,
+} from "@runxhq/runtime-local";
 
 import type { ParsedArgs } from "../args.js";
 import type { CliIo } from "../index.js";
@@ -19,15 +25,16 @@ export function writeLocalSkillResult(
     return writePolicyDeniedResult(io, parsed, result);
   }
   if (parsed.json) {
-    const status = result.receipt.disposition === "escalated" ? "escalated" : result.status;
+    const disposition = runnerReceiptDisposition(result.receipt);
+    const status = disposition === "blocked" ? "escalated" : result.status;
     io.stdout.write(
       `${JSON.stringify(
         {
           ...result,
           status,
           execution_status: result.status,
-          disposition: result.receipt.disposition ?? "completed",
-          outcome_state: result.receipt.outcome_state ?? "complete",
+          disposition,
+          outcome_state: runnerReceiptOutcomeState(result.receipt) ?? "complete",
         },
         null,
         2,
@@ -88,9 +95,9 @@ function writePolicyDeniedResult(
 ): number {
   if (parsed.json) {
     const approvalRequired = parsed.nonInteractive && result.approval !== undefined;
-    const disposition = approvalRequired ? "approval_required" : (result.receipt?.disposition ?? "policy_denied");
+    const disposition = approvalRequired ? "approval_required" : (result.receipt ? runnerReceiptDisposition(result.receipt) : "declined");
     const executionStatus = approvalRequired ? null : "failure";
-    const outcomeState = approvalRequired ? "pending" : (result.receipt?.outcome_state ?? "complete");
+    const outcomeState = approvalRequired ? "pending" : (result.receipt ? runnerReceiptOutcomeState(result.receipt) ?? "complete" : "complete");
     io.stdout.write(
       `${JSON.stringify(
         {
@@ -117,7 +124,12 @@ function writePolicyDeniedResult(
     );
     return approvalRequired ? 2 : 1;
   }
-  io.stderr.write(renderPolicyDenied(result.skill.name, result.reasons, result.receipt));
+  io.stderr.write(renderPolicyDenied(result.skill.name, result.reasons, result.receipt
+    ? {
+        disposition: runnerReceiptDisposition(result.receipt),
+        outcome_state: runnerReceiptOutcomeState(result.receipt),
+      }
+    : undefined));
   return 1;
 }
 
@@ -128,14 +140,7 @@ function writeRunResult(
     readonly status: "success" | "failure";
     readonly skill: { readonly name: string };
     readonly execution: { readonly stdout: string; readonly stderr: string; readonly errorMessage?: string };
-    readonly receipt: {
-      readonly id: string;
-      readonly kind: string;
-      readonly duration_ms: number;
-      readonly disposition?: string;
-      readonly outcome_state?: string;
-      readonly steps?: readonly unknown[];
-    };
+    readonly receipt: NonNullable<Extract<RunLocalSkillResult, { readonly status: "success" | "failure" }>["receipt"]>;
   },
 ): void {
   if (result.status === "success") {
@@ -149,14 +154,7 @@ function renderRunSuccess(
   result: {
     readonly skill: { readonly name: string };
     readonly execution: { readonly stdout: string };
-    readonly receipt: {
-      readonly id: string;
-      readonly kind: string;
-      readonly duration_ms: number;
-      readonly disposition?: string;
-      readonly outcome_state?: string;
-      readonly steps?: readonly unknown[];
-    };
+    readonly receipt: NonNullable<Extract<RunLocalSkillResult, { readonly status: "success" | "failure" }>["receipt"]>;
   },
   io: CliIo,
   env: NodeJS.ProcessEnv,
@@ -180,9 +178,9 @@ function renderRunSuccess(
       "",
       `  ${statusIcon("success", t)}  ${t.bold}sourcey${t.reset}  ${t.dim}site built${t.reset}`,
       `  ${t.dim}receipt${t.reset}   ${shortId(result.receipt.id)}`,
-      `  ${t.dim}kind${t.reset}      ${result.receipt.kind}`,
+      `  ${t.dim}schema${t.reset}    ${result.receipt.schema}`,
     ];
-    const duration = formatDurationMs(result.receipt.duration_ms);
+    const duration = formatDurationMs(runnerReceiptDurationMs(result.receipt));
     if (duration) lines.push(`  ${t.dim}duration${t.reset}  ${duration}`);
     if (outputDir) lines.push(`  ${t.dim}site${t.reset}      ${outputDir}`);
     if (indexPath) lines.push(`  ${t.dim}index${t.reset}     ${indexPath}`);
@@ -195,15 +193,15 @@ function renderRunSuccess(
     "",
     `  ${statusIcon("success", t)}  ${t.bold}${result.skill.name}${t.reset}  ${t.dim}success${t.reset}`,
     `  ${t.dim}receipt${t.reset}   ${shortId(result.receipt.id)}`,
-    `  ${t.dim}kind${t.reset}      ${result.receipt.kind}`,
+    `  ${t.dim}schema${t.reset}    ${result.receipt.schema}`,
   ];
-  const duration = formatDurationMs(result.receipt.duration_ms);
+  const duration = formatDurationMs(runnerReceiptDurationMs(result.receipt));
   if (duration) lines.push(`  ${t.dim}duration${t.reset}  ${duration}`);
-  if (result.receipt.disposition) lines.push(`  ${t.dim}disposition${t.reset}  ${result.receipt.disposition}`);
-  if (result.receipt.outcome_state) lines.push(`  ${t.dim}outcome${t.reset}      ${result.receipt.outcome_state}`);
-  if (Array.isArray(result.receipt.steps)) {
-    lines.push(`  ${t.dim}steps${t.reset}     ${result.receipt.steps.length}`);
-  }
+  lines.push(`  ${t.dim}closure${t.reset}   ${runnerReceiptDisposition(result.receipt)}`);
+  const outcomeState = runnerReceiptOutcomeState(result.receipt);
+  if (outcomeState) lines.push(`  ${t.dim}outcome${t.reset}      ${outcomeState}`);
+  const steps = runnerReceiptGraphSteps(result.receipt);
+  if (steps.length > 0) lines.push(`  ${t.dim}steps${t.reset}     ${steps.length}`);
   const highlights = extractOutputHighlights(result.execution.stdout);
   for (const [label, value] of highlights) {
     lines.push(`  ${t.dim}${label}${t.reset}  ${value}`);
@@ -220,33 +218,27 @@ function renderRunFailure(
   result: {
     readonly skill: { readonly name: string };
     readonly execution: { readonly stdout: string; readonly stderr: string; readonly errorMessage?: string };
-    readonly receipt: {
-      readonly id: string;
-      readonly kind: string;
-      readonly duration_ms: number;
-      readonly disposition?: string;
-      readonly outcome_state?: string;
-      readonly steps?: readonly unknown[];
-    };
+    readonly receipt: NonNullable<Extract<RunLocalSkillResult, { readonly status: "success" | "failure" }>["receipt"]>;
   },
   io: CliIo,
   env: NodeJS.ProcessEnv,
 ): string {
   const t = theme(io.stderr, env);
-  const status = result.receipt.disposition === "escalated" ? "escalated" : "failure";
+  const disposition = runnerReceiptDisposition(result.receipt);
+  const status = disposition === "blocked" ? "escalated" : "failure";
   const lines = [
     "",
     `  ${statusIcon(status, t)}  ${t.bold}${result.skill.name}${t.reset}  ${t.dim}${status}${t.reset}`,
     `  ${t.dim}receipt${t.reset}   ${shortId(result.receipt.id)}`,
-    `  ${t.dim}kind${t.reset}      ${result.receipt.kind}`,
+    `  ${t.dim}schema${t.reset}    ${result.receipt.schema}`,
   ];
-  const duration = formatDurationMs(result.receipt.duration_ms);
+  const duration = formatDurationMs(runnerReceiptDurationMs(result.receipt));
   if (duration) lines.push(`  ${t.dim}duration${t.reset}  ${duration}`);
-  if (result.receipt.disposition) lines.push(`  ${t.dim}disposition${t.reset}  ${result.receipt.disposition}`);
-  if (result.receipt.outcome_state) lines.push(`  ${t.dim}outcome${t.reset}      ${result.receipt.outcome_state}`);
-  if (Array.isArray(result.receipt.steps)) {
-    lines.push(`  ${t.dim}steps${t.reset}     ${result.receipt.steps.length}`);
-  }
+  lines.push(`  ${t.dim}closure${t.reset}   ${disposition}`);
+  const outcomeState = runnerReceiptOutcomeState(result.receipt);
+  if (outcomeState) lines.push(`  ${t.dim}outcome${t.reset}      ${outcomeState}`);
+  const steps = runnerReceiptGraphSteps(result.receipt);
+  if (steps.length > 0) lines.push(`  ${t.dim}steps${t.reset}     ${steps.length}`);
   const errorText = result.execution.errorMessage ?? result.execution.stderr ?? result.execution.stdout;
   if (errorText.trim()) {
     lines.push(`  ${t.dim}${status === "escalated" ? "reason" : "error"}${t.reset}     ${truncateMultiline(errorText, 8)}`);

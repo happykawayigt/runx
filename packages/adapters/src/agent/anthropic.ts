@@ -1,4 +1,4 @@
-import type { AgentActResolutionRequest } from "@runxhq/core/executor";
+import type { AgentActResolutionRequestContract as AgentActResolutionRequest } from "@runxhq/contracts";
 
 import {
   FINAL_RESULT_TOOL_NAME,

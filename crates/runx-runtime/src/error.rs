@@ -54,6 +54,8 @@ pub enum RuntimeError {
     },
     #[error("unsupported adapter '{adapter_type}'")]
     UnsupportedAdapter { adapter_type: String },
+    #[error("runner selection '{runner}' is not supported by the native runtime yet")]
+    UnsupportedRunnerSelection { runner: String },
     #[error("cli-tool source is missing command")]
     MissingCommand,
     #[error("sandbox violation: {message}")]
