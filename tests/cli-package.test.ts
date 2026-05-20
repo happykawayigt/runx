@@ -45,6 +45,8 @@ describe("CLI package", () => {
     };
     const packageJson = JSON.parse(packageText) as {
       readonly name: string;
+      readonly bin?: { readonly runx?: string };
+      readonly files?: readonly string[];
       readonly optionalDependencies: Record<string, string>;
     };
 
@@ -52,6 +54,14 @@ describe("CLI package", () => {
       schema: "runx.rust_cli_selector_topology.v1",
       selectorPackage: "@runxhq/cli",
     });
+    expect(packageJson).toMatchObject({
+      name: "@runxhq/cli",
+      bin: { runx: "./bin/runx" },
+      files: ["LICENSE", "bin/runx", "native/supported-platforms.json"],
+    });
+    for (const field of ["main", "types", "exports", "dependencies", "devDependencies", "peerDependencies", "scripts"]) {
+      expect(packageJson, `selector manifest contains stale ${field}`).not.toHaveProperty(field);
+    }
     expect(Object.keys(topology.nativePackages).sort()).toEqual([
       "darwin-arm64",
       "darwin-x64",

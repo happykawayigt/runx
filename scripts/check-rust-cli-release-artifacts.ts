@@ -134,6 +134,10 @@ function inspectPackageDir(packageDir: string, output: Finding[]): void {
     readonly optionalDependencies?: Record<string, string>;
     readonly devDependencies?: Record<string, string>;
     readonly peerDependencies?: Record<string, string>;
+    readonly main?: unknown;
+    readonly types?: unknown;
+    readonly exports?: unknown;
+    readonly scripts?: unknown;
   }>(manifestPath, output, "package_manifest_malformed");
   if (!manifest) {
     return;
@@ -144,6 +148,7 @@ function inspectPackageDir(packageDir: string, output: Finding[]): void {
     return;
   }
 
+  inspectForbiddenManifestEntrypoints(manifest, manifestPath, output);
   if (isSelectorPackage(manifest)) {
     inspectSelectorPackage(packageDir, manifestPath, manifest, bin, output);
     return;
@@ -371,6 +376,23 @@ function inspectDependencySections(
       if (spec.startsWith("workspace:")) {
         output.push(finding("workspace_dependency", manifestPath, `${sectionName}.${name} still uses ${spec}`));
       }
+    }
+  }
+}
+
+function inspectForbiddenManifestEntrypoints(
+  manifest: {
+    readonly main?: unknown;
+    readonly types?: unknown;
+    readonly exports?: unknown;
+    readonly scripts?: unknown;
+  },
+  manifestPath: string,
+  output: Finding[],
+): void {
+  for (const field of ["main", "types", "exports", "scripts"] as const) {
+    if (Object.hasOwn(manifest, field)) {
+      output.push(finding("js_package_entrypoint", manifestPath, `Rust CLI artifact must not declare package.json ${field}`));
     }
   }
 }

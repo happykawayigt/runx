@@ -33,14 +33,12 @@ Version: `0.1.4`
 
 ## @runxhq/cli
 
-Runx CLI - governed runtime for agent skills, tools, graphs, and packets.
+Runx CLI - native governed runtime for agent skills, tools, graphs, and packets.
 
 Version: `0.5.22`
 
 | Import | Types | Runtime |
 | --- | --- | --- |
-| `@runxhq/cli` | `./dist/index.d.ts` | `./dist/index.js` |
-| `@runxhq/cli/metadata` | `./dist/src/metadata.d.ts` | `./dist/src/metadata.js` |
 
 ## @runxhq/contracts
 

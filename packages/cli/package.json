@@ -17,18 +17,6 @@
   "publishConfig": {
     "access": "public"
   },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    },
-    "./metadata": {
-      "types": "./dist/src/metadata.d.ts",
-      "import": "./dist/src/metadata.js"
-    }
-  },
   "bin": {
     "runx": "./bin/runx"
   },
@@ -55,7 +43,6 @@
   "files": [
     "LICENSE",
     "bin/runx",
-    "dist",
     "native/supported-platforms.json"
   ]
 }

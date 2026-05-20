@@ -383,6 +383,8 @@ fn package_manifest_is_native_binary_shaped() -> Result<(), Box<dyn std::error::
         manifest["files"],
         serde_json::json!(["LICENSE", "bin/runx", "native/supported-platforms.json"])
     );
+    assert!(manifest.get("main").is_none());
+    assert!(manifest.get("types").is_none());
     assert!(manifest.get("dependencies").is_none());
     assert!(manifest.get("exports").is_none());
     assert!(manifest.get("scripts").is_none());

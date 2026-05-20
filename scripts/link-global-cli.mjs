@@ -28,7 +28,7 @@ const globalNodeModulesDir = path.join(globalPrefix, "lib", "node_modules");
 const globalScopeDir = path.join(globalNodeModulesDir, "@runxhq");
 const globalPackageLink = path.join(globalScopeDir, "cli");
 const globalBinLink = path.join(globalBinDir, "runx");
-const binLinkTarget = "../lib/node_modules/@runxhq/cli/bin/runx.js";
+const binLinkTarget = "../lib/node_modules/@runxhq/cli/bin/runx";
 
 const mode = process.argv.includes("--unlink")
   ? "unlink"
@@ -65,7 +65,7 @@ async function linkGlobal() {
       `package  ${globalPackageLink} -> ${resolvedPackage}`,
       `binary   ${globalBinLink} -> ${resolvedBin}`,
       "",
-      "This is a live workspace link. Rebuild with `pnpm --dir oss build` and the same global `runx` will pick up the current dist.",
+      "This is a live workspace link to the native selector. Install or stage the matching platform package before using the global `runx`.",
     ].join("\n") + "\n",
   );
 }
