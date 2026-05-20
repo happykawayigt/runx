@@ -143,7 +143,7 @@ const cases: readonly OracleCase[] = [
     expect: {
       pendingRuns: 1,
       firstPendingRunId: "gx_needs_agent_oracle",
-      firstPendingRunStatus: "needs_agent",
+      firstPendingRunStatus: "paused",
     },
     stdoutIncludes: ["\"pendingRuns\"", "\"gx_needs_agent_oracle\"", "\"selectedRunner\": \"agent-step\""],
     stderrIncludes: [],

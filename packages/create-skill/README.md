@@ -12,8 +12,8 @@ The canonical runx command remains:
 runx new my-skill
 ```
 
-This package is intentionally thin. It delegates to `@runxhq/cli` so the
-scaffolding logic stays in one place.
+This package is intentionally thin. It invokes the `runx` binary from
+`@runxhq/cli` so the scaffolding logic stays in one native CLI path.
 
 ## Rust takeover boundary
 

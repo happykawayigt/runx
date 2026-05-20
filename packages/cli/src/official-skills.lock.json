@@ -66,8 +66,8 @@
   },
   {
     "skill_id": "runx/payment-execute",
-    "version": "sha-90b388e2a202",
-    "digest": "77cc223562b1057ce6b38113762f91f02f748eb1831cf72db744863da08678c5"
+    "version": "sha-5f48e1926aa3",
+    "digest": "51375570dc926bc419bfbab0811fecc0138b2795a404d07ce0ef287fc81b7338"
   },
   {
     "skill_id": "runx/payment-fulfill-rail",
@@ -75,14 +75,34 @@
     "digest": "c70300bd90ac927a4c54ecf3023f1fe430464e8aef91533a6e799c5953e0ebc8"
   },
   {
+    "skill_id": "runx/payment-quote",
+    "version": "sha-a7c785fd5414",
+    "digest": "2512d76619d463f263a120b1b58c7eb27298efc8fd7c34ddbfe15a38f16d7a36"
+  },
+  {
     "skill_id": "runx/payment-quote-preflight",
     "version": "sha-25efecc72582",
     "digest": "980cb1eb1507552466e8ec30f6295bcaa8bef117f0fb8fa4f3431ed478c8836c"
   },
   {
+    "skill_id": "runx/payment-rail-mock",
+    "version": "sha-5bc8fa10e93c",
+    "digest": "315fb7009056f7e6a08299fd9b9df53483b7cdfc712e48c3d0edf001229e8f87"
+  },
+  {
+    "skill_id": "runx/payment-recover",
+    "version": "sha-92d9b564e192",
+    "digest": "b80862bac9f672e5c4137eeebadb05c3f6ba1b5d2b571db12ba5b43159d19415"
+  },
+  {
     "skill_id": "runx/payment-recover-inspect",
     "version": "sha-5dedbfffe308",
     "digest": "aca3a9f37e62fd55f5abf6a8cd39029450505de46724826bb1e16ad0897a2f4d"
+  },
+  {
+    "skill_id": "runx/payment-reserve",
+    "version": "sha-2b43835cbfe6",
+    "digest": "ee2f760b3674de2593c3457c6cdcf5a4c2d9b141ae9d9d2eb495c78e1e6aaa8e"
   },
   {
     "skill_id": "runx/prior-art",

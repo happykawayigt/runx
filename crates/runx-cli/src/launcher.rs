@@ -199,6 +199,8 @@ Commands:
   runx kernel eval --input <file|-> --json
   runx doctor [path] [--json]
   runx mcp serve <skill-ref...> [--receipt-dir dir]
+  runx skill <skill-ref|skill-dir|SKILL.md> [--input k=v] [--receipt-dir dir] [--run-id id] [--answers file] [--json]
+  runx harness <fixture.yaml|skill-dir|SKILL.md> [--json]
   runx tool build <tool-dir>|--all [--json]
   runx tool search <query> [--source source] [--json]
   runx tool inspect <ref> [--source source] [--json]

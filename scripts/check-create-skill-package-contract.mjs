@@ -10,7 +10,10 @@ const workspaceRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url))
 const packageRoot = path.join(workspaceRoot, "packages", "create-skill");
 const distEntry = path.join(packageRoot, "dist", "index.js");
 const binEntry = path.join(packageRoot, "bin", "create-skill.js");
+const runxBinary = process.env.RUNX_BIN
+  ?? path.join(workspaceRoot, "crates", "target", "debug", process.platform === "win32" ? "runx.exe" : "runx");
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+const cargo = process.platform === "win32" ? "cargo.exe" : "cargo";
 
 const dist = await stat(distEntry);
 if (!dist.isFile()) {
@@ -48,6 +51,13 @@ for (const required of [
 
 const tempRoot = await mkdtemp(path.join(os.tmpdir(), "runx-create-skill-"));
 try {
+  if (!(await statIfExists(runxBinary))?.isFile()) {
+    await execFileAsync(cargo, ["build", "--manifest-path", "crates/Cargo.toml", "-p", "runx-cli"], {
+      cwd: workspaceRoot,
+      timeout: 120_000,
+      maxBuffer: 1024 * 1024,
+    });
+  }
   const targetDir = path.join(tempRoot, "demo-skill");
   await execFileAsync(process.execPath, [binEntry, "demo-skill", "--directory", targetDir], {
     cwd: workspaceRoot,
@@ -56,6 +66,7 @@ try {
     env: {
       ...process.env,
       RUNX_CWD: tempRoot,
+      RUNX_BIN: runxBinary,
     },
   });
   for (const required of [

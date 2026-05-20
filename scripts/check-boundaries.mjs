@@ -226,10 +226,11 @@ async function checkDeclaredWorkspaceImport(rel, packageName, specifier) {
 function isNativeCliArtifactManifest(manifest) {
   const bin = typeof manifest.bin === "string" ? manifest.bin : manifest.bin?.runx;
   const files = Array.isArray(manifest.files) ? manifest.files : [];
+  const includesFileOrDirectory = (entry) => files.includes(entry) || files.some((file) => file.startsWith(`${entry}/`));
   return manifest.name === "@runxhq/cli"
     && bin === "./bin/runx"
-    && files.includes("bin")
-    && files.includes("native")
+    && includesFileOrDirectory("bin")
+    && includesFileOrDirectory("native")
     && !files.includes("src")
     && !files.includes("dist")
     && !files.includes("tools");

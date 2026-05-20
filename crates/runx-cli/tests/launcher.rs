@@ -3,7 +3,7 @@ use runx_cli::connect::{ConnectAction, ConnectAuthorityKind, ConnectPlan};
 use runx_cli::kernel::{KernelInputSource, KernelPlan};
 use runx_cli::launcher::{
     DoctorPlan, HarnessPlan, HistoryPlan, InitPlan, LauncherAction, ListKind, ListPlan, NewPlan,
-    ToolAction, ToolPlan, plan_launcher,
+    ToolAction, ToolPlan, help_text, plan_launcher,
 };
 use runx_cli::mcp::McpPlan;
 use runx_cli::policy::{PolicyAction, PolicyPlan};
@@ -21,6 +21,10 @@ fn top_level_help_and_version_are_native() {
     assert_eq!(plan(&[]), LauncherAction::PrintHelp);
     assert_eq!(plan(&["--help"]), LauncherAction::PrintHelp);
     assert_eq!(plan(&["--version"]), LauncherAction::PrintVersion);
+
+    let help = help_text();
+    assert!(help.contains("runx skill"));
+    assert!(help.contains("runx harness"));
 }
 
 #[test]
@@ -377,7 +381,7 @@ fn package_manifest_is_native_binary_shaped() -> Result<(), Box<dyn std::error::
     assert_eq!(manifest["bin"]["runx"], "./bin/runx");
     assert_eq!(
         manifest["files"],
-        serde_json::json!(["LICENSE", "bin", "native"])
+        serde_json::json!(["LICENSE", "bin/runx", "native/supported-platforms.json"])
     );
     assert!(manifest.get("dependencies").is_none());
     assert!(manifest.get("exports").is_none());

@@ -19,7 +19,6 @@ pub mod harness;
 mod hosted_http;
 pub mod journal;
 pub mod list;
-pub mod payment_authority;
 pub mod post_merge_observer;
 pub mod receipt_paths;
 pub mod receipt_store;
@@ -85,12 +84,6 @@ pub use list::{
     RunxListRequestedKind, RunxListSource, RunxListStatus, default_list_options,
     list_authoring_primitives,
 };
-pub use payment_authority::{
-    PaymentAuthorityError, PaymentRailAdmission, PaymentRailAdmissionDecision,
-    PaymentRailAuthorization, PaymentRailAuthorizationDecision, PaymentSpendCapabilityBinding,
-    admit_payment_rail, authorize_payment_rail, payment_authority_requires_receipt_before_success,
-    payment_authority_spends,
-};
 pub use receipt_paths::{
     INIT_CWD_ENV, RUNTIME_RECEIPTS_DIR_CONFIG_KEY, RUNX_CWD_ENV, RUNX_PROJECT_DIR_ENV,
     RUNX_RECEIPT_DIR_ENV, ReceiptPathInputs, ReceiptPathSource, ReceiptStoreLabel,
@@ -108,6 +101,12 @@ pub use registry::{RegistryInstallMetadataInput, registry_install_receipt_metada
 pub use runner::run_graph_file;
 pub use runner::{GraphCheckpoint, GraphRun, Runtime, RuntimeOptions, StepRun};
 pub use runx_core::kernel_eval;
+pub use runx_core::policy::{
+    PaymentAuthorityError, PaymentRailAdmission, PaymentRailAdmissionDecision,
+    PaymentRailAuthorization, PaymentRailAuthorizationDecision, PaymentSpendCapabilityBinding,
+    admit_payment_rail, authorize_payment_rail, payment_authority_requires_receipt_before_success,
+    payment_authority_spends,
+};
 pub use scaffold::{
     InitAction, InitGeneratedValues, RunxInitOptions, RunxInitResult, RunxInstallState,
     RunxNewOptions, RunxNewResult, RunxProjectState, ScaffoldError, ensure_runx_install_state,

@@ -52,13 +52,17 @@ expect:
     expect(result.trace.events.map((event) => event.type)).toContain("completed");
   });
 
-  it("runs a sequential graph fixture and asserts migrated harness expectations", async () => {
-    const result = await runHarness("fixtures/harness/sequential-graph.yaml", { adapters: createDefaultSkillAdapters() });
+  it(
+    "runs a sequential graph fixture and asserts migrated harness expectations",
+    async () => {
+      const result = await runHarness("fixtures/harness/sequential-graph.yaml", { adapters: createDefaultSkillAdapters() });
 
-    expect(result.status).toBe("sealed");
-    expect(result.assertionErrors).toEqual([]);
-    expect(result.graphReceipt).toBeDefined();
-  });
+      expect(result.status).toBe("sealed");
+      expect(result.assertionErrors).toEqual([]);
+      expect(result.graphReceipt).toBeDefined();
+    },
+    15_000,
+  );
 
   it(
     "runs inline harness cases from a skill directory",

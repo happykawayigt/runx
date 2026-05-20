@@ -23,10 +23,8 @@ use crate::caller::{Caller, NoopCaller};
 use crate::fanout::fanout_policies;
 use crate::graph::{find_step, load_graph, load_skill, output_object, resolve_inputs, skill_dir};
 use crate::journal::ExecutionJournal;
-use crate::payment_authority::{
-    PaymentRailAdmission, PaymentSpendCapabilityBinding, admit_payment_rail,
-};
 use crate::receipts::{graph_receipt, step_receipt};
+use runx_core::policy::{PaymentRailAdmission, PaymentSpendCapabilityBinding, admit_payment_rail};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RuntimeOptions {

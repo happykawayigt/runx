@@ -2,9 +2,7 @@ import { Writable } from "node:stream";
 
 import { describe, expect, it } from "vitest";
 
-import type { CliIo } from "@runxhq/cli";
-
-import { runCreateSkill } from "./index.js";
+import { runCreateSkill, type CliIo } from "./index.js";
 
 class MemoryWritable extends Writable {
   #chunks: string[] = [];
@@ -54,7 +52,7 @@ describe("@runxhq/create-skill", () => {
     expect(stderr.contents()).toBe("");
     expect(calls).toEqual([
       {
-        argv: ["new", "demo-skill", "--directory", "packages/demo-skill"],
+        argv: ["demo-skill", "--directory", "packages/demo-skill"],
         receivedIo: io,
         receivedEnv: env,
       },
