@@ -80,6 +80,11 @@
     "digest": "99f37ca4f3be7fe1fac516295b6c292b0315255e6e209a3a0c405be27cf6502b"
   },
   {
+    "skill_id": "runx/mock-refund",
+    "version": "sha-3d2daa66ea55",
+    "digest": "89e3c65a6af341f6230963b09a0dd9dc2cf585ff229c237106313278cf848cd5"
+  },
+  {
     "skill_id": "runx/moltbook",
     "version": "sha-e7dcc2ebfe1c",
     "digest": "ce3d6628ec0f7337b4acd358a7a005725f61b979a44a1be98070bc05e2d83438"
@@ -88,6 +93,11 @@
     "skill_id": "runx/mpp-charge",
     "version": "sha-e595daeaf95e",
     "digest": "a627a081624299638d211ffc63b897620faf83ed5c65e4ff615f1ff5f38cf641"
+  },
+  {
+    "skill_id": "runx/mpp-refund",
+    "version": "sha-1fed654c95e0",
+    "digest": "ff4a5497f210d2061b63034a0bc0d128fb8962dab54adac2ddc1ea0d941f31cf"
   },
   {
     "skill_id": "runx/payment-authorize-reserve",
@@ -205,6 +215,11 @@
     "digest": "9709a6ae24797ab1d5870e810cc5579cbf6d9175d46055d44aaa5833a979fb16"
   },
   {
+    "skill_id": "runx/stripe-refund",
+    "version": "sha-8d977e9be430",
+    "digest": "a4494af3371ec0dff3fccc159ac0cf8922822f34b2cd0ffc0677145573692057"
+  },
+  {
     "skill_id": "runx/vuln-scan",
     "version": "sha-6387b8d7b0e5",
     "digest": "71af63e20015f3eb6996e72a255d276432b2fff70b98ba01c2b5e490a4a866fd"
@@ -223,5 +238,10 @@
     "skill_id": "runx/x402-charge",
     "version": "sha-bbc555b49244",
     "digest": "d2e20bf5d4843993724af73839945e098da6c308994e09e5de1163194eb15f29"
+  },
+  {
+    "skill_id": "runx/x402-refund",
+    "version": "sha-4dd0723cf55e",
+    "digest": "c27c0ec25d0617a3a6288864cb75508d4f41bfe1897dd1aba02c791fc2ced4d0"
   }
 ]
