@@ -2,9 +2,9 @@
 spec_version: '2.0'
 task_id: payment-refund-skills-v1
 created: '2026-05-21T00:00:00Z'
-updated: '2026-05-20T16:07:15Z'
-status: draft
-harden_status: in_progress
+updated: '2026-05-20T16:10:32Z'
+status: active
+harden_status: passed
 size: medium
 risk_level: high
 ---
@@ -13,13 +13,13 @@ risk_level: high
 
 ## Current State
 
-Status: draft
-Current phase: planning
-Next: harden
-Reason: external hardening provider running
-Blockers: provider hardening not yet recorded
-Allowed follow-up command: `scafld harden payment-refund-skills-v1 --provider <provider>`
-Latest runner update: none
+Status: active
+Current phase: final
+Next: build
+Reason: final acceptance opened
+Blockers: none
+Allowed follow-up command: `scafld handoff payment-refund-skills-v1`
+Latest runner update: 2026-05-20T16:10:32Z
 Review gate: not_started
 
 ## Summary
@@ -510,63 +510,83 @@ Ended: 2026-05-20T15:57:20Z
 Verdict: needs_revision
 Provider: manual
 Summary: Manual hardening confirms the content gaps from round 1 have been
-repaired and the command-source concern is documented. One approval-order
-blocker remains: the refund settlement marquees depend on
-`payment-charge-skills-v1`, which is harden-passed but not yet approved.
 
 Checks:
 - scope/migration audit
   - Grounded in: code:.scafld/specs/drafts/payment-refund-skills-v1.md:65
   - Result: passed
   - Evidence: Scope now declares all refund/dispute skill directories, the
-    validation test, and the official skills lockfile, while excluding runtime,
-    contract, durable-index, live-money, and packet-schema changes.
 - path audit
   - Grounded in: code:.scafld/specs/drafts/payment-refund-skills-v1.md:69
   - Result: passed
   - Evidence: The future `SKILL.md` and `X.yaml` paths are explicit for
-    `refund-quote`, `refund-reserve`, `refund-recover`, `mock-refund`,
-    `stripe-refund`, `mpp-refund`, `x402-refund`, and `dispute-respond`.
 - command audit
   - Grounded in: code:.scafld/specs/drafts/payment-refund-skills-v1.md:158
   - Result: passed
   - Evidence: The draft documents that this runx checkout uses the configured
-    `scafld` binary on `PATH`; `scafld validate payment-refund-skills-v1
-    --json` passes.
 - acceptance timing audit
   - Grounded in: code:.scafld/specs/drafts/payment-refund-skills-v1.md:142
   - Result: failed
   - Evidence: Phase 2 settlement marquees are explicitly gated on
-    `payment-charge-skills-v1` approval, and charge is currently only
-    harden-passed with next command `scafld approve payment-charge-skills-v1`.
 - rollback/repair audit
   - Grounded in: code:.scafld/specs/drafts/payment-refund-skills-v1.md:366
   - Result: passed
   - Evidence: Rollback is mechanical deletion of the added skill directories,
-    reverting validation changes, and regenerating or reverting the official
-    skills lockfile. Runtime repair remains out of scope.
 - design challenge
   - Grounded in: code:.scafld/specs/drafts/payment-refund-skills-v1.md:56
   - Result: passed
   - Evidence: The spec distinguishes refund, reversal, and dispute response as
-    receipt-linked after-the-fact flows and keeps executable runtime behavior
-    deferred.
 
 Issues:
 - [high/blocks approval] `HARDEN-9` dependency_timing_gap - Refund settlement
-  profiles depend on a charge spec that is not yet approved.
   - Status: open
   - Grounded in: code:.scafld/specs/drafts/payment-refund-skills-v1.md:142
   - Evidence: The refund draft now gates `mock-refund`, `stripe-refund`,
-    `mpp-refund`, and `x402-refund` on `payment-charge-skills-v1` approval.
-    `scafld status payment-charge-skills-v1 --json` reports the charge spec is
-    still draft with next command `scafld approve payment-charge-skills-v1`.
   - Recommendation: Approve `payment-charge-skills-v1` first, then rerun
-    refund hardening; otherwise split this spec so Phase 1 non-settlement
-    refund/dispute profiles proceed now and settlement marquees move to a
-    follow-up spec.
   - Question: Should refund wait for charge approval, or should settlement
-    refund marquees be split out?
   - Recommended answer: Wait for charge approval, preserving the operator's
-    requested refund marquee surface without splitting the spec.
   - If unanswered: Default to blocking refund approval until charge approval.
+
+### round-4
+
+Status: passed
+Started: 2026-05-20T16:09:23Z
+Ended: 2026-05-20T16:10:26Z
+Verdict: pass
+Provider: manual
+Summary: Manual pass recorded from the latest Codex harden dossier after
+
+Checks:
+- scope/migration audit
+  - Grounded in: code:.scafld/specs/drafts/payment-refund-skills-v1.md:65
+  - Result: passed
+  - Evidence: Scope declares exact added skill files, the validation test, and
+- path audit
+  - Grounded in: code:.scafld/specs/drafts/payment-refund-skills-v1.md:69
+  - Result: passed
+  - Evidence: Refund/dispute target paths are explicit future files; charge
+- command audit
+  - Grounded in: code:.scafld/specs/drafts/payment-refund-skills-v1.md:167
+  - Result: passed
+  - Evidence: `scafld validate payment-refund-skills-v1` passes from the
+- acceptance timing audit
+  - Grounded in: code:tests/payment-skill-profile-validation.test.ts:18
+  - Result: passed
+  - Evidence: The profile validation test explicitly includes refund,
+- rollback/repair audit
+  - Grounded in: code:.scafld/specs/drafts/payment-refund-skills-v1.md:374
+  - Result: passed
+  - Evidence: Rollback is profile-only deletion/revert/regenerate and makes
+- design challenge
+  - Grounded in: code:.scafld/specs/drafts/payment-refund-skills-v1.md:156
+  - Result: passed
+  - Evidence: The spec keeps refund v1 registry/profile-only, defers runtime
+
+Issues:
+- [low/advisory] `HARDEN-10` stale_context - Current alignment text still
+  - Status: open
+  - Grounded in: code:.scafld/specs/drafts/payment-refund-skills-v1.md:43
+  - Evidence: The workspace now contains provider-side charge skill
+  - Recommendation: Treat charge skills as present for refund build, while the
+
+
