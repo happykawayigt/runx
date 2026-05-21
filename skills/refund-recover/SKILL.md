@@ -1,6 +1,8 @@
 ---
 name: refund-recover
 description: Inspect an ambiguous refund idempotency key and recommend a terminal action.
+runx:
+  category: payments
 ---
 
 # Refund Recover

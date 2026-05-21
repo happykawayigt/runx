@@ -18,10 +18,9 @@ pub use authority_proof::{
 pub use graph_scope::admit_graph_step_scopes;
 pub use local::admit_local_skill;
 pub use payment_authority::{
-    PaymentAuthorityError, PaymentRailAdmission, PaymentRailAdmissionDecision,
-    PaymentRailAuthorization, PaymentRailAuthorizationDecision, PaymentSpendCapabilityBinding,
-    admit_payment_rail, authorize_payment_rail, is_payment_authority_subset,
-    payment_authority_requires_receipt_before_success, payment_authority_spends,
+    PaymentAuthorityError, PaymentSpendCapabilityBinding, StepAuthorityAdmission,
+    StepAuthorityAdmissionDecision, admit_step_authority, authority_term_has_verb,
+    is_payment_authority_subset,
 };
 pub use public_work::{
     default_public_work_policy, evaluate_public_comment_opportunity,

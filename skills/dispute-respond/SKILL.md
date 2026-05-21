@@ -1,6 +1,8 @@
 ---
 name: dispute-respond
 description: Prepare a governed dispute response artifact from a linked charge receipt.
+runx:
+  category: payments
 ---
 
 # Dispute Respond

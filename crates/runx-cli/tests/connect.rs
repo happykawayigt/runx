@@ -124,7 +124,11 @@ fn connect_list_empty_human_output() -> Result<(), Box<dyn std::error::Error>> {
     assert!(String::from_utf8(output.stdout)?.contains("No connections yet."));
     assert_eq!(String::from_utf8(output.stderr)?, "");
     assert!(request.starts_with("GET /v1/grants "));
-    assert!(request.contains("authorization: Bearer SECRET_CONNECT_ACCESS_TOKEN_DO_NOT_LEAK"));
+    assert_header_eq(
+        &request,
+        "authorization",
+        "Bearer SECRET_CONNECT_ACCESS_TOKEN_DO_NOT_LEAK",
+    );
     Ok(())
 }
 
@@ -322,10 +326,27 @@ fn request_is_complete(bytes: &[u8]) -> bool {
     };
     let content_length = request
         .lines()
-        .find_map(|line| line.strip_prefix("content-length: "))
+        .find_map(|line| {
+            line.split_once(':').and_then(|(name, value)| {
+                name.eq_ignore_ascii_case("content-length")
+                    .then(|| value.trim())
+            })
+        })
         .and_then(|value| value.parse::<usize>().ok())
         .unwrap_or(0);
     bytes.len() >= header_end + 4 + content_length
+}
+
+fn assert_header_eq(request: &str, expected_name: &str, expected_value: &str) {
+    let found = request.lines().any(|line| {
+        line.split_once(':').is_some_and(|(name, value)| {
+            name.eq_ignore_ascii_case(expected_name) && value.trim() == expected_value
+        })
+    });
+    assert!(
+        found,
+        "missing expected header {expected_name}: {expected_value}"
+    );
 }
 
 fn join_request(

@@ -1,7 +1,7 @@
 use std::fmt;
 use std::path::Path;
 
-use crate::launcher::{ListKind, ListPlan};
+use crate::launcher::{FilterMode, ListKind, ListPlan};
 use runx_runtime::{
     RunxListItem, RunxListItemKind, RunxListOptions, RunxListRequestedKind, RunxListStatus,
     list_authoring_primitives,
@@ -53,7 +53,7 @@ pub fn run_list_command(plan: &ListPlan, cwd: &Path) -> Result<String, ListCliEr
     let mut report = list_authoring_primitives(&options)?;
     report
         .items
-        .retain(|item| item_visible_for_filter(item, plan.ok_only, plan.invalid_only));
+        .retain(|item| item_visible_for_filter(item, plan.filter));
 
     if plan.json {
         return Ok(format!("{}\n", serde_json::to_string_pretty(&report)?));
@@ -73,13 +73,12 @@ fn requested_kind(kind: ListKind) -> RunxListRequestedKind {
     }
 }
 
-fn item_visible_for_filter(item: &RunxListItem, ok_only: bool, invalid_only: bool) -> bool {
-    matches!(
-        (ok_only, invalid_only, item.status),
-        (true, false, RunxListStatus::Ok)
-            | (false, true, RunxListStatus::Invalid)
-            | (false, false, _)
-    )
+fn item_visible_for_filter(item: &RunxListItem, filter: FilterMode) -> bool {
+    match filter {
+        FilterMode::All => true,
+        FilterMode::OkOnly => item.status == RunxListStatus::Ok,
+        FilterMode::InvalidOnly => item.status == RunxListStatus::Invalid,
+    }
 }
 
 fn render_list_items(items: &[RunxListItem]) -> String {
@@ -159,8 +158,7 @@ mod tests {
         let output = run_list_command(
             &ListPlan {
                 kind: ListKind::Packets,
-                ok_only: true,
-                invalid_only: false,
+                filter: FilterMode::OkOnly,
                 json: true,
             },
             &root,
@@ -184,8 +182,7 @@ mod tests {
         let output = run_list_command(
             &ListPlan {
                 kind: ListKind::Tools,
-                ok_only: false,
-                invalid_only: false,
+                filter: FilterMode::All,
                 json: false,
             },
             &root,

@@ -46,6 +46,9 @@ import {
   validateOperationalPolicyContract,
   validateOperationalPolicySemantics,
   validateSignalContract,
+  validateReferenceContract,
+  proofKinds,
+  proofKindSchema,
 } from "./index.js";
 
 describe("@runxhq/contracts", () => {
@@ -68,6 +71,23 @@ describe("@runxhq/contracts", () => {
       "agent",
       "repo-integration",
     ]);
+  });
+
+  it("accepts typed proof kinds on references", () => {
+    expect(proofKinds).toEqual(["payment_rail"]);
+    expect(proofKindSchema).toMatchObject({
+      const: "payment_rail",
+      type: "string",
+    });
+    expect(validateReferenceContract({
+      type: "verification",
+      uri: "receipt-proof:mock:payment-execution-001",
+      proof_kind: "payment_rail",
+      label: "display-only text",
+    })).toMatchObject({
+      type: "verification",
+      proof_kind: "payment_rail",
+    });
   });
 
   it("owns credential envelope schema and runtime validation", () => {

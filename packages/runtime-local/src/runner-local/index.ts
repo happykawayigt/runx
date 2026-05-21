@@ -51,8 +51,9 @@ import {
   createLedgerAnchorMetadata,
   materializeArtifacts,
   prepareLedgerAppend,
+  type ArtifactEnvelope,
 } from "@runxhq/core/artifacts";
-import { errorMessage } from "@runxhq/core/util";
+import { errorMessage, isRecord } from "@runxhq/core/util";
 import { appendPendingSkillLedgerEntries, buildSkillLedgerEntries } from "./graph-ledger.js";
 import {
   createCallerAgentAdapter,
@@ -64,6 +65,7 @@ import {
   type ContextContract as Context,
   type ContextDocumentContract as ContextDocument,
   type CredentialEnvelopeContract as CredentialEnvelope,
+  type ReferenceContract,
   type ResolutionRequestContract as ResolutionRequest,
   type ResolutionResponseContract as ResolutionResponse,
 } from "@runxhq/contracts";
@@ -1045,6 +1047,7 @@ export async function runValidatedSkill(options: RunValidatedSkillOptions): Prom
     },
     createdAt: completedAt,
   });
+  const verificationRefs = paymentRailProofVerificationRefs(artifactResult.envelopes);
   const receiptDir = options.receiptDir ?? defaultReceiptDir(options.env);
   const skillLedgerEntries = buildSkillLedgerEntries({
     runId,
@@ -1125,6 +1128,7 @@ export async function runValidatedSkill(options: RunValidatedSkillOptions): Prom
     outcome: executionSemantics.outcome,
     surfaceRefs: executionSemantics.surfaceRefs,
     evidenceRefs: executionSemantics.evidenceRefs,
+    verificationRefs,
   });
   try {
     await indexReceiptIfEnabled(receipt, receiptDir, options);
@@ -1164,6 +1168,53 @@ export async function runValidatedSkill(options: RunValidatedSkillOptions): Prom
     state,
     receipt,
   };
+}
+
+function paymentRailProofVerificationRefs(envelopes: readonly ArtifactEnvelope[]): readonly ReferenceContract[] {
+  return envelopes.flatMap((envelope) => {
+    const railProof = findRailProof(envelope.data);
+    const proofRef = stringField(railProof, "proof_ref");
+    if (!proofRef) {
+      return [];
+    }
+    const reference: ReferenceContract = {
+      type: "verification",
+      uri: proofRef,
+      label: "payment rail proof",
+      proof_kind: "payment_rail",
+    };
+    const idempotencyKey = stringField(railProof, "idempotency_key");
+    return idempotencyKey ? [{ ...reference, locator: idempotencyKey }] : [reference];
+  });
+}
+
+function findRailProof(value: unknown): Readonly<Record<string, unknown>> | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const direct = recordField(value, "rail_proof");
+  if (direct) {
+    return direct;
+  }
+  const packet = recordField(value, "payment_rail_packet");
+  const packetData = recordField(packet, "data") ?? packet;
+  return recordField(packetData, "rail_proof");
+}
+
+function recordField(value: unknown, field: string): Readonly<Record<string, unknown>> | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const fieldValue = value[field];
+  return isRecord(fieldValue) ? fieldValue : undefined;
+}
+
+function stringField(value: unknown, field: string): string | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const fieldValue = value[field];
+  return typeof fieldValue === "string" && fieldValue.length > 0 ? fieldValue : undefined;
 }
 
 function admittedGrantsForCredential(

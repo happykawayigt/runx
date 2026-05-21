@@ -1,6 +1,8 @@
 ---
 name: mock-refund
 description: Model a same-family mock refund against a sealed charge receipt.
+runx:
+  category: payments
 ---
 
 # Mock Refund

@@ -1,6 +1,8 @@
 ---
 name: issue-triage
 description: Discover, analyze, and draft high-signal issue-thread responses and follow-up actions.
+runx:
+  category: ops
 ---
 
 # Issue Triage

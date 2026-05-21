@@ -203,6 +203,7 @@ fn receipt_tree_checks_nested_child_receipt_refs() -> Result<(), serde_json::Err
         locator: None,
         label: None,
         observed_at: None,
+        proof_kind: None,
     });
 
     let verification = verify_receipt_tree(&receipt, &[child]);
@@ -229,6 +230,7 @@ fn receipt_tree_rejects_child_receipt_cycles() -> Result<(), serde_json::Error> 
         locator: None,
         label: None,
         observed_at: None,
+        proof_kind: None,
     });
 
     let verification = verify_receipt_tree(&receipt, &[child]);
@@ -437,6 +439,7 @@ fn strict_proof_rejects_unverified_redaction_refs() -> Result<(), serde_json::Er
         locator: None,
         label: None,
         observed_at: None,
+        proof_kind: None,
     });
     refresh_proof_digest_and_signature(&mut receipt)?;
     let verifier = FixtureSignatureVerifier;
@@ -458,6 +461,7 @@ fn strict_proof_accepts_verified_redaction_refs() -> Result<(), serde_json::Erro
         locator: None,
         label: None,
         observed_at: None,
+        proof_kind: None,
     });
     if let Some(seal) = receipt.harness.seal.as_mut() {
         seal.redaction_refs = receipt.seal.redaction_refs.clone();

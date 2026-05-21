@@ -106,7 +106,7 @@ pub use post_merge_observer::{
     plan_post_merge_observer_runtime_dedupe, project_post_merge_observer_publication_from_receipt,
 };
 pub use redaction::{HashAlgorithm, HashCommitment, REDACTION_SCHEMA, Redaction, RedactionSchema};
-pub use reference::{ActRef, Reference, ReferenceType};
+pub use reference::{ActRef, ProofKind, Reference, ReferenceType};
 pub use signal::{
     SIGNAL_SCHEMA, Signal, SignalAuthenticity, SignalSchema, SignalTrustLevel, SignalType,
 };

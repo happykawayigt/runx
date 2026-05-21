@@ -1,6 +1,8 @@
 ---
 name: content-pipeline
 description: Research a topic, draft the content, and package the approved publication bundle.
+runx:
+  category: content
 ---
 
 # Content Pipeline

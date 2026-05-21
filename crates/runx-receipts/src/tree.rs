@@ -1071,6 +1071,7 @@ mod tests {
             locator: None,
             label: None,
             observed_at: None,
+            proof_kind: None,
         }
     }
 

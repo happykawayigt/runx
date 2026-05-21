@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use runx_contracts::{
-    ExecutionEvent, JsonObject, JsonValue, ResolutionRequest, ResolutionResponse,
-    ResolutionResponseActor,
+    AuthorityVerb, ExecutionEvent, JsonObject, JsonValue, ProofKind, ResolutionRequest,
+    ResolutionResponse, ResolutionResponseActor,
 };
 use runx_core::state_machine::GraphStatus;
 use runx_receipts::ReceiptTreeConfig;
@@ -137,7 +137,10 @@ fn payment_graph_seals_with_strict_parent_child_receipt_proof()
         fulfill.receipt.harness.acts[0]
             .verification_refs
             .iter()
-            .any(|reference| reference.uri == "receipt-proof:mock:payment-execution-001"),
+            .any(
+                |reference| reference.uri == "receipt-proof:mock:payment-execution-001"
+                    && reference.proof_kind.as_ref() == Some(&ProofKind::PaymentRail)
+            ),
         "payment fulfillment act must carry the rail proof reference into the sealed receipt"
     );
     Ok(())
@@ -156,7 +159,12 @@ fn payment_spend_success_without_rail_proof_is_denied_before_graph_success()
     let result = runtime.run_graph_file_with_caller(fixture.graph_path(), &mut caller);
 
     match result {
-        Err(RuntimeError::PaymentAuthorityDenied { step_id, reason }) => {
+        Err(RuntimeError::AuthorityDenied {
+            verb,
+            step_id,
+            reason,
+        }) => {
+            assert_eq!(verb, AuthorityVerb::Spend);
             assert_eq!(step_id, "fulfill");
             assert!(
                 reason.contains("rail proof"),
@@ -182,6 +190,45 @@ fn payment_spend_success_without_rail_proof_is_denied_before_graph_success()
             .any(|event| matches!(event, ExecutionEvent::Completed { .. })),
         "graph completion must not be reported after missing rail proof"
     );
+    Ok(())
+}
+
+#[test]
+fn payment_spend_authority_is_detected_from_reserved_authority_not_scope_string()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = GraphFixture::with_fulfill_options(FulfillAdmission::Valid, FulfillScope::None)?;
+    let runtime = Runtime::new(
+        RecordingAdapter::without_rail_proof(),
+        RuntimeOptions::default(),
+    );
+    let mut caller = ApprovalCaller::approved(true);
+
+    let result = runtime.run_graph_file_with_caller(fixture.graph_path(), &mut caller);
+
+    match result {
+        Err(RuntimeError::AuthorityDenied {
+            verb,
+            step_id,
+            reason,
+        }) => {
+            assert_eq!(verb, AuthorityVerb::Spend);
+            assert_eq!(step_id, "fulfill");
+            assert!(
+                reason.contains("rail proof"),
+                "authority denial should still happen without a payment:spend scope string"
+            );
+        }
+        Ok(run) => {
+            return Err(std::io::Error::other(format!(
+                "payment authority in inputs must be enforced even without scope string, ran {:?}",
+                step_ids(&run.steps)
+            ))
+            .into());
+        }
+        Err(error) => {
+            return Err(std::io::Error::other(format!("unexpected runtime error: {error}")).into());
+        }
+    }
     Ok(())
 }
 
@@ -261,7 +308,12 @@ fn assert_payment_admission_denied_before_adapter(
     let result = runtime.run_graph_file_with_caller(fixture.graph_path(), &mut caller);
 
     match result {
-        Err(RuntimeError::PaymentAuthorityDenied { step_id, reason }) => {
+        Err(RuntimeError::AuthorityDenied {
+            verb,
+            step_id,
+            reason,
+        }) => {
+            assert_eq!(verb, AuthorityVerb::Spend);
             assert_eq!(step_id, "fulfill");
             assert!(
                 reason.contains(expected_reason_fragment),

@@ -42,6 +42,12 @@ pub enum ReferenceType {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProofKind {
+    PaymentRail,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Reference {
     #[serde(rename = "type")]
@@ -55,6 +61,8 @@ pub struct Reference {
     pub label: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub observed_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub proof_kind: Option<ProofKind>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

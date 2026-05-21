@@ -1,6 +1,8 @@
 ---
 name: x402-refund
 description: Model a static same-family refund profile for future unpinned dispatch.
+runx:
+  category: payments
 ---
 
 # X402 Refund

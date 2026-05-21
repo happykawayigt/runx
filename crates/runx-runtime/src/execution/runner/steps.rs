@@ -4,10 +4,10 @@ use runx_contracts::{ApprovalGate, JsonObject, JsonValue, ResolutionResponseActo
 use runx_parser::GraphStep;
 
 use super::super::graph::{load_skill, output_object, resolve_inputs, skill_dir};
-use super::inputs::{optional_input_string, required_input_string, string_value, string_value_ref};
-use super::payment::{
-    enforce_payment_rail_admission_inputs, enforce_payment_receipt_before_success,
+use super::authority::{
+    enforce_step_authority_admission, enforce_step_authority_receipt_before_success,
 };
+use super::inputs::{optional_input_string, required_input_string, string_value, string_value_ref};
 use super::{Runtime, StepRun};
 use crate::RuntimeError;
 use crate::adapter::{InvocationStatus, SkillAdapter, SkillInvocation, SkillOutput};
@@ -36,7 +36,7 @@ where
     A: SkillAdapter,
 {
     let inputs = resolve_inputs(step, prior_runs)?;
-    enforce_payment_rail_admission_inputs(step, &inputs)?;
+    let authority = enforce_step_authority_admission(step, &inputs)?;
     if step.run.is_some() {
         return run_native_step(runtime, graph_name, step, attempt, inputs, caller);
     }
@@ -60,7 +60,7 @@ where
         &output,
         &runtime.options.created_at,
     )?;
-    enforce_payment_receipt_before_success(step, &output, &receipt)?;
+    enforce_step_authority_receipt_before_success(step, authority.as_ref(), &output, &receipt)?;
     Ok(StepRun {
         step_id: step.id.clone(),
         attempt,

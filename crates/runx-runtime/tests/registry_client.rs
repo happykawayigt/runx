@@ -37,6 +37,16 @@ impl MockTransport {
         }
     }
 
+    fn with_body(status: u16, body: impl Into<String>) -> Self {
+        Self {
+            responses: RefCell::new(vec![HttpResponse {
+                status,
+                body: body.into(),
+            }]),
+            requests: RefCell::new(Vec::new()),
+        }
+    }
+
     fn requests(&self) -> Vec<HttpRequest> {
         self.requests.borrow().clone()
     }
@@ -92,6 +102,34 @@ fn search_rejects_unknown_trust_tier_with_field_path() -> Result<(), Box<dyn std
 
     assert!(error.to_string().contains("$.skills[0].trust_tier"));
     Ok(())
+}
+
+#[test]
+fn search_reports_invalid_json_with_route() -> Result<(), Box<dyn std::error::Error>> {
+    let transport = MockTransport::with_body(200, "{not-json");
+    let client = RegistryClient::with_transport("https://registry.example", &transport)?;
+
+    let error = match client.search("echo") {
+        Ok(_) => return Err("invalid JSON should fail".into()),
+        Err(error) => error,
+    };
+
+    assert!(matches!(error, RegistryClientError::InvalidJson { .. }));
+    assert!(error.to_string().contains("/v1/skills?q=echo&limit=20"));
+    Ok(())
+}
+
+#[test]
+fn client_rejects_unsupported_registry_base_scheme() {
+    let transport = MockTransport::default();
+    let error = RegistryClient::with_transport("file:///tmp/runx-registry", &transport).err();
+
+    assert!(matches!(
+        error,
+        Some(RegistryClientError::HostedHttp(
+            HostedHttpError::UnsupportedUrlScheme { .. }
+        ))
+    ));
 }
 
 #[test]

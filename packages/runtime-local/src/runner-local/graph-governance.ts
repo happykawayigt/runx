@@ -91,6 +91,7 @@ export interface WriteRunnerSkillReceiptOptions {
   readonly outcome?: NormalizedExecutionSemantics["outcome"];
   readonly surfaceRefs?: NormalizedExecutionSemantics["surfaceRefs"];
   readonly evidenceRefs?: NormalizedExecutionSemantics["evidenceRefs"];
+  readonly verificationRefs?: readonly ReferenceContract[];
 }
 
 export interface WriteRunnerGraphReceiptOptions {
@@ -135,7 +136,10 @@ export async function writeRunnerSkillReceipt(
   const sourceRefs = toReferences(options.evidenceRefs);
   const surfaceRefs = toReferences(options.surfaceRefs);
   const artifactRefs = artifactReferences(options.artifactIds);
-  const verificationRefs = verificationReferences(options.outcome);
+  const verificationRefs = [
+    ...verificationReferences(options.outcome),
+    ...(options.verificationRefs ?? []),
+  ];
   const act = actRecord({
     actId: `act_${safeRefSegment(options.skillName)}`,
     purpose: `Run skill ${options.skillName}`,

@@ -1,6 +1,8 @@
 ---
 name: mpp-refund
 description: Model a same-family MPP refund against a sealed charge receipt.
+runx:
+  category: payments
 ---
 
 # MPP Refund

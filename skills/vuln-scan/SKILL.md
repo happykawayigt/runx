@@ -1,6 +1,8 @@
 ---
 name: vuln-scan
 description: Analyze dependency or ecosystem risk and produce remediation and advisory packets.
+runx:
+  category: security
 ---
 
 # Vulnerability Scan

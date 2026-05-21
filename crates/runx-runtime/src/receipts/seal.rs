@@ -6,7 +6,7 @@ use runx_contracts::{
     ClosureDisposition, CriterionBinding, Decision, DecisionChoice, DecisionInputs,
     DecisionJustification, FanoutReceiptSyncPoint, Harness, HarnessEnforcement, HarnessIdempotency,
     HarnessReceipt, HarnessReceiptSchema, HarnessRevision, HarnessSandbox, HarnessSeal,
-    HarnessState, Intent, JsonObject, JsonValue, ReceiptIssuer, ReceiptIssuerType,
+    HarnessState, Intent, JsonObject, JsonValue, ProofKind, ReceiptIssuer, ReceiptIssuerType,
     ReceiptVerificationSummary, Reference, ReferenceType, SealCriterion, SignatureAlgorithm,
     SuccessCriterion,
 };
@@ -416,6 +416,7 @@ fn output_refs(output: &SkillOutput) -> OutputRefs {
             locator: Some(request_id.to_owned()),
             label: Some("agent act request".to_owned()),
             observed_at: None,
+            proof_kind: None,
         });
     }
     let Ok(JsonValue::Object(payload)) = serde_json::from_str::<JsonValue>(&output.stdout) else {
@@ -508,6 +509,7 @@ fn collect_rail_proof_ref(rail_proof: &JsonObject, refs: &mut OutputRefs) {
             locator: string_field(rail_proof, "idempotency_key").map(str::to_owned),
             label: Some("payment rail proof".to_owned()),
             observed_at: None,
+            proof_kind: Some(ProofKind::PaymentRail),
         });
     }
 }
@@ -521,6 +523,7 @@ fn collect_credential_ref(credential_envelope: &JsonObject, refs: &mut OutputRef
             locator: None,
             label: Some("scoped payment credential".to_owned()),
             observed_at: None,
+            proof_kind: None,
         });
     }
 }
@@ -539,6 +542,7 @@ fn source_event_ref(value: &JsonValue) -> Option<Reference> {
         locator: Some(locator.to_owned()),
         label: string_field(event, "title").map(str::to_owned),
         observed_at: None,
+        proof_kind: None,
     })
 }
 
@@ -604,6 +608,7 @@ fn reference(reference_type: ReferenceType, id: &str) -> Reference {
         locator: None,
         label: None,
         observed_at: None,
+        proof_kind: None,
     }
 }
 

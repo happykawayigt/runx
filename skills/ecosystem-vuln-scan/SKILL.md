@@ -1,6 +1,8 @@
 ---
 name: ecosystem-vuln-scan
 description: Scan one dependency surface, draft the advisory, and package the approved publication bundle.
+runx:
+  category: security
 ---
 
 # Ecosystem Vulnerability Scan

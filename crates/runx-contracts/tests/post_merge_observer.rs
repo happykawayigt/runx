@@ -503,6 +503,7 @@ fn source_issue_ref() -> Reference {
         locator: Some("nitrosend/nitrosend#482".to_owned()),
         label: Some("Nitrosend source issue".to_owned()),
         observed_at: None,
+        proof_kind: None,
     }
 }
 
@@ -514,6 +515,7 @@ fn source_thread_ref() -> Reference {
         locator: Some("nitrosend/C0APFMY0V8Q/1778834840.485629".to_owned()),
         label: Some("Nitrosend source thread".to_owned()),
         observed_at: None,
+        proof_kind: None,
     }
 }
 
@@ -525,6 +527,7 @@ fn reference(reference_type: ReferenceType, uri: &str, label: &str) -> Reference
         locator: None,
         label: Some(label.to_owned()),
         observed_at: None,
+        proof_kind: None,
     }
 }
 

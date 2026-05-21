@@ -1,6 +1,8 @@
 ---
 name: skill-lab
 description: Turn one bounded skill opportunity into a concrete proposal packet with explicit approval before packaging.
+runx:
+  category: authoring
 ---
 
 # Skill Lab

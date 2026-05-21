@@ -1,6 +1,8 @@
 ---
 name: issue-intake
 description: Turn a noisy inbound request into a bounded intake artifact and an explicit next runx lane.
+runx:
+  category: ops
 ---
 
 # Issue Intake

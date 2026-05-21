@@ -14,12 +14,12 @@ deny = [
   { name = "async-std", reason = "No async runtime exception is approved for the Rust parity workspace." },
   { name = "axum", reason = "No HTTP server framework exception is approved for the Rust parity workspace." },
   { name = "clap", reason = "CLI parsing remains hand-rolled for the cargo-installed launcher boundary." },
-  { name = "hyper", reason = "No raw HTTP transport exception is approved; adapter-side HTTP needs a scoped spec first." },
-  { name = "reqwest", reason = "No HTTP client exception is approved; adapter-side HTTP needs a scoped spec first." },
+  { name = "hyper", wrappers = ["reqwest", "hyper-rustls", "hyper-util"], reason = "No direct raw HTTP transport dependency; allowed only as reviewed reqwest transport internals." },
+  { name = "reqwest", wrappers = ["runx-runtime"], reason = "Approved only inside runx-runtime async-http; pure crates must not depend on the HTTP client." },
   { name = "rmcp", reason = "MCP currently uses the narrow local protocol layer; rmcp needs a scoped adapter spec first." },
   { name = "serde_yaml", reason = "Unapproved YAML backend; the parser backend is serde_norway." },
   { name = "serde_yml", reason = "Retired YAML backend candidate; the parser backend is serde_norway." },
-  { name = "tokio", reason = "No async runtime exception is approved for the Rust parity workspace." },
+  { name = "tokio", wrappers = ["runx-runtime", "reqwest", "hyper", "hyper-rustls", "hyper-util", "tokio-rustls", "tower"], reason = "Approved only inside runx-runtime async-http and reviewed reqwest internals; pure crates must not depend on tokio." },
   { name = "ureq", reason = "No HTTP client exception is approved; adapter-side HTTP needs a scoped spec first." },
 ]
 
@@ -31,7 +31,13 @@ allow = [
   "Unicode-3.0",
 ]
 confidence-threshold = 0.8
-exceptions = []
+exceptions = [
+  { name = "aws-lc-rs", version = "=1.17.0", allow = ["ISC"] },
+  { name = "aws-lc-sys", version = "=0.41.0", allow = ["ISC", "MIT-0"] },
+  { name = "rustls-webpki", version = "=0.103.13", allow = ["ISC"] },
+  { name = "untrusted", version = "=0.9.0", allow = ["ISC"] },
+  { name = "webpki-root-certs", version = "=1.0.7", allow = ["CDLA-Permissive-2.0"] },
+]
 
 [sources]
 unknown-git = "deny"

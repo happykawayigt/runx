@@ -164,6 +164,7 @@ runners:
             settlement_proof: verify.charge_verification_packet.data.settlement_proof
           artifacts:
             wrap_as: charge_seal
+            packet: runx.payment.charge_seal.v1
         - id: forward
           run:
             type: modeled-forward

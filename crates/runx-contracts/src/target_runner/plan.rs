@@ -175,6 +175,7 @@ pub fn plan_target_repo_runner_dedupe_lookup(
         locator: Some(plan.source.locator.clone()),
         label: Some("source issue".to_owned()),
         observed_at: None,
+        proof_kind: None,
     });
     let source_thread_ref = Reference {
         reference_type: source_thread_reference_type(plan.source.provider),
@@ -183,6 +184,7 @@ pub fn plan_target_repo_runner_dedupe_lookup(
         locator: Some(plan.source_thread.locator.clone()),
         label: Some("source thread".to_owned()),
         observed_at: None,
+        proof_kind: None,
     };
     TargetRepoRunnerDedupeLookupPlan {
         provider: TargetRepoRunnerProvider::Github,
@@ -439,6 +441,7 @@ fn source_issue_ref(plan: &TargetRepoRunnerPlan) -> Option<Reference> {
         locator: Some(plan.source.locator.clone()),
         label: Some("source issue".to_owned()),
         observed_at: None,
+        proof_kind: None,
     })
 }
 
@@ -450,6 +453,7 @@ fn source_thread_ref(plan: &TargetRepoRunnerPlan) -> Reference {
         locator: Some(plan.source_thread.locator.clone()),
         label: Some("source thread".to_owned()),
         observed_at: None,
+        proof_kind: None,
     }
 }
 
@@ -461,6 +465,7 @@ fn target_repo_ref(repo: &str) -> Reference {
         locator: Some(repo.to_owned()),
         label: Some("target repo".to_owned()),
         observed_at: None,
+        proof_kind: None,
     }
 }
 
@@ -472,6 +477,7 @@ fn pull_request_ref(repo: &str, pull_request: &TargetRepoRunnerExistingPullReque
         locator: pull_request.number.map(|number| format!("{repo}#{number}")),
         label: Some("target pull request".to_owned()),
         observed_at: None,
+        proof_kind: None,
     }
 }
 

@@ -58,9 +58,16 @@ pub struct DoctorPlan {
 #[derive(Debug, Eq, PartialEq)]
 pub struct ListPlan {
     pub kind: ListKind,
-    pub ok_only: bool,
-    pub invalid_only: bool,
+    pub filter: FilterMode,
     pub json: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum FilterMode {
+    #[default]
+    All,
+    OkOnly,
+    InvalidOnly,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -449,8 +456,7 @@ fn parse_doctor_plan(args: &[OsString]) -> Result<DoctorPlan, String> {
 
 fn parse_list_plan(args: &[OsString]) -> Result<ListPlan, String> {
     let mut kind = ListKind::All;
-    let mut ok_only = false;
-    let mut invalid_only = false;
+    let mut filter = FilterMode::All;
     let mut json = false;
     let mut saw_kind = false;
     let mut index = 1;
@@ -473,25 +479,24 @@ fn parse_list_plan(args: &[OsString]) -> Result<ListPlan, String> {
         if inline_value.is_some() {
             return Err(format!("{flag} does not take a value"));
         }
-        match flag {
-            "--json" => json = true,
-            "--ok-only" | "--okOnly" => ok_only = true,
-            "--invalid-only" | "--invalidOnly" => invalid_only = true,
+        let requested = match flag {
+            "--json" => {
+                json = true;
+                index += 1;
+                continue;
+            }
+            "--ok-only" | "--okOnly" => FilterMode::OkOnly,
+            "--invalid-only" | "--invalidOnly" => FilterMode::InvalidOnly,
             _ => return Err(format!("unknown list flag {flag}")),
+        };
+        if filter != FilterMode::All && filter != requested {
+            return Err("runx list accepts either --ok-only or --invalid-only".to_owned());
         }
+        filter = requested;
         index += 1;
     }
 
-    if ok_only && invalid_only {
-        return Err("runx list accepts either --ok-only or --invalid-only".to_owned());
-    }
-
-    Ok(ListPlan {
-        kind,
-        ok_only,
-        invalid_only,
-        json,
-    })
+    Ok(ListPlan { kind, filter, json })
 }
 
 fn parse_list_kind(value: &str) -> Option<ListKind> {

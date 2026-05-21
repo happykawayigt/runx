@@ -5,9 +5,9 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::time::{Duration, Instant};
 
-use crate::hosted_http::{
-    CommandHttpTransport, HostedHttpClient, HostedHttpError, HostedHttpHeader, HostedHttpResponse,
-    HostedTransport, HttpMethod,
+use crate::runtime_http::{
+    HostedHttpClient, HostedHttpError, HostedHttpHeader, HostedHttpResponse, HostedTransport,
+    HttpMethod, ReqwestHttpTransport,
 };
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
@@ -45,7 +45,7 @@ impl fmt::Debug for ConnectClientOptions {
 }
 
 #[derive(Clone)]
-pub struct ConnectClient<T = CommandHttpTransport, O = ProcessConnectOpener> {
+pub struct ConnectClient<T = ReqwestHttpTransport, O = ProcessConnectOpener> {
     http: HostedHttpClient<T>,
     access_token: String,
     opener: O,
@@ -66,7 +66,8 @@ impl<T: fmt::Debug, O: fmt::Debug> fmt::Debug for ConnectClient<T, O> {
     }
 }
 
-impl ConnectClient<CommandHttpTransport, ProcessConnectOpener> {
+#[cfg(feature = "async-http")]
+impl ConnectClient<ReqwestHttpTransport, ProcessConnectOpener> {
     pub fn new(
         options: ConnectClientOptions,
         env: BTreeMap<String, String>,
@@ -74,7 +75,7 @@ impl ConnectClient<CommandHttpTransport, ProcessConnectOpener> {
         Self::with_transport_and_opener(
             options.base_url,
             options.access_token,
-            CommandHttpTransport::new(),
+            ReqwestHttpTransport::new()?,
             ProcessConnectOpener::new(options.open_command, env),
             options.poll_interval_ms,
             options.timeout_ms,

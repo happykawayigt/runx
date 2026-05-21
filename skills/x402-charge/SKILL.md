@@ -1,6 +1,8 @@
 ---
 name: x402-charge
 description: Model unpinned provider-side charge verification selected from the inbound credential family.
+runx:
+  category: payments
 ---
 
 # X402 Charge

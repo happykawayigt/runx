@@ -1,6 +1,8 @@
 ---
 name: deep-research-brief
 description: Produce an approved deep-research brief from bounded research, synthesis, and governed packaging.
+runx:
+  category: research
 ---
 
 # Deep Research Brief

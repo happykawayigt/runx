@@ -72,10 +72,14 @@ fn run_native_connect(plan: runx_cli::connect::ConnectPlan) -> ExitCode {
     write_stdout(&render_connect_result(&plan, &result))
 }
 
-fn execute_connect_plan(
-    client: &runx_runtime::ConnectClient,
+fn execute_connect_plan<T, O>(
+    client: &runx_runtime::ConnectClient<T, O>,
     plan: &runx_cli::connect::ConnectPlan,
-) -> Result<NativeConnectResult, runx_runtime::ConnectError> {
+) -> Result<NativeConnectResult, runx_runtime::ConnectError>
+where
+    T: runx_runtime::connect::HostedTransport,
+    O: runx_runtime::ConnectOpener,
+{
     match plan.action {
         runx_cli::connect::ConnectAction::List => Ok(NativeConnectResult::List(client.list()?)),
         runx_cli::connect::ConnectAction::Revoke => {

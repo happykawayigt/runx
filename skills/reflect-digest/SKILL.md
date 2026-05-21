@@ -1,6 +1,8 @@
 ---
 name: reflect-digest
 description: Aggregate projected reflect knowledge into bounded skill improvement proposals.
+runx:
+  category: authoring
 ---
 
 # Reflect Digest

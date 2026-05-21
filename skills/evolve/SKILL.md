@@ -1,6 +1,8 @@
 ---
 name: evolve
 description: Governed repo evolution with fixed phase semantics and bounded outcomes.
+runx:
+  category: code
 ---
 
 # Evolve

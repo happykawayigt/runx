@@ -197,6 +197,10 @@
           "minLength": 1,
           "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
           "type": "string"
+        },
+        "proof_kind": {
+          "const": "payment_rail",
+          "type": "string"
         }
       }
     },
@@ -380,6 +384,10 @@
           "observed_at": {
             "minLength": 1,
             "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
+            "type": "string"
+          },
+          "proof_kind": {
+            "const": "payment_rail",
             "type": "string"
           }
         }
@@ -566,6 +574,10 @@
             "minLength": 1,
             "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
             "type": "string"
+          },
+          "proof_kind": {
+            "const": "payment_rail",
+            "type": "string"
           }
         }
       }
@@ -751,6 +763,10 @@
             "minLength": 1,
             "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
             "type": "string"
+          },
+          "proof_kind": {
+            "const": "payment_rail",
+            "type": "string"
           }
         }
       }
@@ -935,6 +951,10 @@
           "observed_at": {
             "minLength": 1,
             "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
+            "type": "string"
+          },
+          "proof_kind": {
+            "const": "payment_rail",
             "type": "string"
           }
         }
@@ -1141,6 +1161,10 @@
                 "minLength": 1,
                 "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
                 "type": "string"
+              },
+              "proof_kind": {
+                "const": "payment_rail",
+                "type": "string"
               }
             }
           },
@@ -1322,6 +1346,10 @@
               "observed_at": {
                 "minLength": 1,
                 "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
+                "type": "string"
+              },
+              "proof_kind": {
+                "const": "payment_rail",
                 "type": "string"
               }
             }
@@ -1825,6 +1853,10 @@
                         "minLength": 1,
                         "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
                         "type": "string"
+                      },
+                      "proof_kind": {
+                        "const": "payment_rail",
+                        "type": "string"
                       }
                     }
                   }
@@ -2026,6 +2058,10 @@
                       "minLength": 1,
                       "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
                       "type": "string"
+                    },
+                    "proof_kind": {
+                      "const": "payment_rail",
+                      "type": "string"
                     }
                   }
                 },
@@ -2207,6 +2243,10 @@
                     "observed_at": {
                       "minLength": 1,
                       "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
+                      "type": "string"
+                    },
+                    "proof_kind": {
+                      "const": "payment_rail",
                       "type": "string"
                     }
                   }
@@ -2453,6 +2493,10 @@
                 "minLength": 1,
                 "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
                 "type": "string"
+              },
+              "proof_kind": {
+                "const": "payment_rail",
+                "type": "string"
               }
             }
           },
@@ -2634,6 +2678,10 @@
               "observed_at": {
                 "minLength": 1,
                 "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
+                "type": "string"
+              },
+              "proof_kind": {
+                "const": "payment_rail",
                 "type": "string"
               }
             }
@@ -2829,6 +2877,10 @@
                 "observed_at": {
                   "minLength": 1,
                   "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
+                  "type": "string"
+                },
+                "proof_kind": {
+                  "const": "payment_rail",
                   "type": "string"
                 }
               }
@@ -3032,6 +3084,10 @@
                     "observed_at": {
                       "minLength": 1,
                       "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
+                      "type": "string"
+                    },
+                    "proof_kind": {
+                      "const": "payment_rail",
                       "type": "string"
                     }
                   }
@@ -3258,6 +3314,10 @@
                       "minLength": 1,
                       "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
                       "type": "string"
+                    },
+                    "proof_kind": {
+                      "const": "payment_rail",
+                      "type": "string"
                     }
                   }
                 },
@@ -3453,6 +3513,10 @@
         "observed_at": {
           "minLength": 1,
           "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
+          "type": "string"
+        },
+        "proof_kind": {
+          "const": "payment_rail",
           "type": "string"
         }
       }

@@ -1,6 +1,8 @@
 ---
 name: mock-charge
 description: Model provider-side charge verification through the deterministic mock settlement family.
+runx:
+  category: payments
 ---
 
 # Mock Charge

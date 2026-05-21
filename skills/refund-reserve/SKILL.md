@@ -1,6 +1,8 @@
 ---
 name: refund-reserve
 description: Reserve a profile-level refund decision against a linked charge receipt.
+runx:
+  category: payments
 ---
 
 # Refund Reserve

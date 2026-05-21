@@ -1,6 +1,8 @@
 ---
 name: draft-content
 description: Turn evidence and operator intent into publication-ready drafts and handoff packets.
+runx:
+  category: content
 ---
 
 # Draft Content

@@ -1,7 +1,9 @@
 use runx_contracts::{JsonObject, JsonValue};
 use runx_parser::GraphStep;
 
-use super::payment::payment_authority_denied;
+use runx_contracts::AuthorityVerb;
+
+use super::authority::authority_denied;
 use crate::RuntimeError;
 
 pub(super) fn require_object_input<'a>(
@@ -11,12 +13,14 @@ pub(super) fn require_object_input<'a>(
 ) -> Result<&'a JsonObject, RuntimeError> {
     match inputs.get(field) {
         Some(JsonValue::Object(object)) => Ok(object),
-        Some(_) => Err(payment_authority_denied(
+        Some(_) => Err(authority_denied(
             step,
+            AuthorityVerb::Spend,
             format!("{field} must be an object before payment rail execution"),
         )),
-        None => Err(payment_authority_denied(
+        None => Err(authority_denied(
             step,
+            AuthorityVerb::Spend,
             format!("{field} is required before payment rail execution"),
         )),
     }
@@ -28,14 +32,16 @@ pub(super) fn require_non_empty_string_field(
     field_path: &str,
 ) -> Result<String, RuntimeError> {
     let Some((_, field)) = field_path.rsplit_once('.') else {
-        return Err(payment_authority_denied(
+        return Err(authority_denied(
             step,
+            AuthorityVerb::Spend,
             format!("{field_path} is not a valid payment admission field"),
         ));
     };
     let Some(value) = object.get(field) else {
-        return Err(payment_authority_denied(
+        return Err(authority_denied(
             step,
+            AuthorityVerb::Spend,
             format!("{field_path} is required before payment rail execution"),
         ));
     };
@@ -48,14 +54,16 @@ pub(super) fn require_non_empty_string_value(
     field_path: &str,
 ) -> Result<String, RuntimeError> {
     let JsonValue::String(value) = value else {
-        return Err(payment_authority_denied(
+        return Err(authority_denied(
             step,
+            AuthorityVerb::Spend,
             format!("{field_path} must be a string before payment rail execution"),
         ));
     };
     if value.trim().is_empty() {
-        return Err(payment_authority_denied(
+        return Err(authority_denied(
             step,
+            AuthorityVerb::Spend,
             format!("{field_path} must not be empty before payment rail execution"),
         ));
     }
@@ -69,12 +77,14 @@ pub(super) fn require_reference_input(
 ) -> Result<runx_contracts::Reference, RuntimeError> {
     match inputs.get(field) {
         Some(JsonValue::Object(_)) => required_typed_value(step, inputs.get(field), field),
-        Some(_) => Err(payment_authority_denied(
+        Some(_) => Err(authority_denied(
             step,
+            AuthorityVerb::Spend,
             format!("{field} must be a Reference before payment rail execution"),
         )),
-        None => Err(payment_authority_denied(
+        None => Err(authority_denied(
             step,
+            AuthorityVerb::Spend,
             format!("{field} is required before payment rail execution"),
         )),
     }
@@ -87,8 +97,9 @@ pub(super) fn optional_bool_field(
 ) -> Result<Option<bool>, RuntimeError> {
     match object.get(field) {
         Some(JsonValue::Bool(value)) => Ok(Some(*value)),
-        Some(_) => Err(payment_authority_denied(
+        Some(_) => Err(authority_denied(
             step,
+            AuthorityVerb::Spend,
             format!(
                 "reserved_payment_authority.{field} must be a bool before payment rail execution"
             ),
@@ -133,8 +144,9 @@ pub(super) fn required_typed_value<T: serde::de::DeserializeOwned>(
     field_path: &str,
 ) -> Result<T, RuntimeError> {
     let Some(value) = value else {
-        return Err(payment_authority_denied(
+        return Err(authority_denied(
             step,
+            AuthorityVerb::Spend,
             format!("{field_path} is required before payment rail execution"),
         ));
     };
@@ -143,8 +155,9 @@ pub(super) fn required_typed_value<T: serde::de::DeserializeOwned>(
             .map_err(|source| RuntimeError::json(format!("serializing {field_path}"), source))?,
     )
     .map_err(|source| {
-        payment_authority_denied(
+        authority_denied(
             step,
+            AuthorityVerb::Spend,
             format!("{field_path} is not valid typed payment authority: {source}"),
         )
     })

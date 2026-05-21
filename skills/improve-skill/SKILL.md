@@ -1,6 +1,8 @@
 ---
 name: improve-skill
 description: Turn a failed receipt or harness outcome into a bounded skill improvement proposal.
+runx:
+  category: authoring
 ---
 
 # Improve Skill

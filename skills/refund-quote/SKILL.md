@@ -1,6 +1,8 @@
 ---
 name: refund-quote
 description: Quote refundable bounds from a linked sealed charge receipt.
+runx:
+  category: payments
 ---
 
 # Refund Quote

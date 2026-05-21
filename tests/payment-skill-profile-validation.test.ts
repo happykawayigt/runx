@@ -16,6 +16,27 @@ import { buildRegistryFixtureVersion } from "./registry-fixtures.js";
 const paymentSecretKeyPattern = /(?:^|_)(?:pan|cvv|cvc|card_number|cardnumber|account_number|routing_number|private_key|seed_phrase|mnemonic|secret_key|api_key|access_token|refresh_token|client_secret|merchant_secret|provider_secret|raw_secret|raw_token|bearer_token|password|credential_material|secret_material|key_material)(?:$|_)/i;
 const paymentSecretMetadataFields = new Set(["receives_rail_secret_material"]);
 const retiredReceiptFields = new Set(["schema_version", "source_type"]);
+const canonicalConsumerPaymentSkillNames = new Set([
+  "mock-pay",
+  "mpp-pay",
+  "pay-fulfill-rail",
+  "pay-quote",
+  "pay-recover",
+  "pay-reserve",
+  "stripe-pay",
+  "x402-pay",
+]);
+const retiredConsumerPaymentSkillNames = new Set([
+  "payment-authorize-reserve",
+  "payment-execute",
+  "payment-fulfill-rail",
+  "payment-quote",
+  "payment-quote-preflight",
+  "payment-rail-mock",
+  "payment-recover",
+  "payment-recover-inspect",
+  "payment-reserve",
+]);
 const explicitGovernedPaymentSkillNames = new Set([
   "charge-challenge",
   "charge-price",
@@ -32,9 +53,28 @@ const explicitGovernedPaymentSkillNames = new Set([
   "stripe-refund",
   "x402-charge",
   "x402-refund",
+  ...canonicalConsumerPaymentSkillNames,
 ]);
+const expectedChargePacketMetadata = new Map([
+  ["charge-price", { runner: "price", output: "charge_price_packet", packet: "runx.payment.charge_price.v1" }],
+  ["charge-challenge", { runner: "challenge", output: "charge_challenge_packet", packet: "runx.payment.charge_challenge.v1" }],
+  ["charge-verify", { runner: "verify", output: "charge_verification_packet", packet: "runx.payment.charge_verification.v1" }],
+]);
+const chargeGraphSkillNames = new Set(["mock-charge", "mpp-charge", "stripe-charge", "x402-charge"]);
 
 describe("payment skill execution profiles", () => {
+  it("uses canonical consumer payment skill names without legacy aliases", async () => {
+    const entries = new Set(
+      (await readdir(path.resolve("skills"), { withFileTypes: true }))
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => entry.name),
+    );
+
+    expect([...canonicalConsumerPaymentSkillNames].filter((name) => !entries.has(name))).toEqual([]);
+    expect([...retiredConsumerPaymentSkillNames].filter((name) => entries.has(name))).toEqual([]);
+    expect(entries.has("crypto-pay"), "crypto-pay stays a reserved placeholder, not an exposed skill").toBe(false);
+  });
+
   it("parse payment profiles and ingest packaged skills without raw payment credential fields", async () => {
     const skillDirs = await discoverPaymentSkillDirs();
 
@@ -75,6 +115,13 @@ describe("payment skill execution profiles", () => {
 
       expect(findRetiredReceiptFields(manifest.raw.document), `${skillName} retired receipt fields`).toEqual([]);
       expect(findInvalidPaymentAuthorityTerms(manifest.raw.document), `${skillName} payment authority term examples`).toEqual([]);
+      const expectedPacket = expectedChargePacketMetadata.get(skillName);
+      if (expectedPacket) {
+        const runner = manifest.runners[expectedPacket.runner];
+        expect(runner, `${skillName}.${expectedPacket.runner} runner`).toBeDefined();
+        const outputs = runner ? outputDeclarationsFromArtifacts(runner.raw) : {};
+        expect(outputs[expectedPacket.output]?.packet, `${skillName}.${expectedPacket.output} packet`).toBe(expectedPacket.packet);
+      }
 
       for (const [runnerName, runner] of Object.entries(manifest.runners)) {
         expect(findUnknownPacketRefs(runner.raw, packetIds), `${skillName}.${runnerName} payment packet refs`).toEqual([]);
@@ -89,6 +136,10 @@ describe("payment skill execution profiles", () => {
             expect(nested.error, `${skillName}.${runnerName}.${step.id} nested runner`).toBeUndefined();
           }
           outputDeclarations.set(step.id, await loadStepOutputDeclarations(skillDir, step));
+        }
+        if (chargeGraphSkillNames.has(skillName)) {
+          expect(outputDeclarations.get("seal")?.charge_seal?.packet, `${skillName}.${runnerName}.seal packet`)
+            .toBe("runx.payment.charge_seal.v1");
         }
 
         for (const transition of graph.policy?.transitions ?? []) {

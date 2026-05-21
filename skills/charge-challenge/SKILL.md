@@ -1,6 +1,8 @@
 ---
 name: charge-challenge
 description: Emit a provider-side payment-required challenge from a priced tool call.
+runx:
+  category: payments
 ---
 
 # Charge Challenge

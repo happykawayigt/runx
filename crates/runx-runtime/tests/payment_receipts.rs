@@ -1,4 +1,4 @@
-use runx_contracts::{JsonObject, ReferenceType};
+use runx_contracts::{JsonObject, ProofKind, ReferenceType};
 use runx_runtime::receipts::step_receipt;
 use runx_runtime::{InvocationStatus, SkillOutput};
 
@@ -23,6 +23,7 @@ fn payment_rail_receipts_carry_proof_and_scoped_credential_refs()
         reference.reference_type == ReferenceType::Verification
             && reference.uri == "receipt-proof:mock:demo-search-001"
             && reference.locator.as_deref() == Some("payment:demo-search-001")
+            && reference.proof_kind.as_ref() == Some(&ProofKind::PaymentRail)
     }));
     assert!(
         act.criterion_bindings[0]

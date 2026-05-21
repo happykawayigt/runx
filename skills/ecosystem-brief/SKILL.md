@@ -1,6 +1,8 @@
 ---
 name: ecosystem-brief
 description: Produce an approved ecosystem briefing from bounded research and a governed content pass.
+runx:
+  category: research
 ---
 
 # Ecosystem Brief

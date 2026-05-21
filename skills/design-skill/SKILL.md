@@ -1,6 +1,8 @@
 ---
 name: design-skill
 description: Turn a product or automation objective into a bounded runx skill package proposal.
+runx:
+  category: authoring
 ---
 
 # Design Skill

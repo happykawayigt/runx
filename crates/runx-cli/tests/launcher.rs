@@ -2,8 +2,8 @@ use runx_cli::config::{ConfigAction, ConfigPlan};
 use runx_cli::connect::{ConnectAction, ConnectAuthorityKind, ConnectPlan};
 use runx_cli::kernel::{KernelInputSource, KernelPlan};
 use runx_cli::launcher::{
-    DevPlan, DoctorPlan, HarnessPlan, HistoryPlan, InitPlan, LauncherAction, ListKind, ListPlan,
-    NewPlan, ToolAction, ToolPlan, help_text, plan_launcher,
+    DevPlan, DoctorPlan, FilterMode, HarnessPlan, HistoryPlan, InitPlan, LauncherAction, ListKind,
+    ListPlan, NewPlan, ToolAction, ToolPlan, help_text, plan_launcher,
 };
 use runx_cli::mcp::McpPlan;
 use runx_cli::policy::{PolicyAction, PolicyPlan};
@@ -255,8 +255,7 @@ fn routes_doctor_history_list_new_and_init_to_native_plans() {
         plan(&["list", "packets", "--ok-only", "--json"]),
         LauncherAction::RunList(ListPlan {
             kind: ListKind::Packets,
-            ok_only: true,
-            invalid_only: false,
+            filter: FilterMode::OkOnly,
             json: true,
         })
     );

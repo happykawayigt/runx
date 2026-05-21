@@ -32,6 +32,21 @@ const steps = [
     args: ["exec", "tsx", "packages/cli/src/index.ts", "doctor", "--json"],
   },
   {
+    label: "prove x402 mock payment fixtures",
+    command: pnpm,
+    args: ["exec", "vitest", "run", "tests/x402-pay-dogfood-mock.test.ts"],
+  },
+  {
+    label: "prove payment skill profiles",
+    command: pnpm,
+    args: ["exec", "vitest", "run", "tests/payment-skill-profile-validation.test.ts"],
+  },
+  {
+    label: "prove canonical payment graph harnesses",
+    command: pnpm,
+    args: ["exec", "vitest", "run", "tests/payment-graph-harness.test.ts"],
+  },
+  {
     label: "prove official skills with a fresh caller",
     command: pnpm,
     args: ["exec", "vitest", "run", "tests/external-skill-proving-ground.test.ts"],

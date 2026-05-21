@@ -1,6 +1,8 @@
 ---
 name: review-receipt
 description: Review receipts and harness failures to propose bounded skill improvements.
+runx:
+  category: authoring
 ---
 
 # Receipt Review

@@ -1,6 +1,8 @@
 ---
 name: moltbook
 description: Scan for posting opportunities and prepare governed Moltbook publication packets.
+runx:
+  category: content
 ---
 
 # Moltbook

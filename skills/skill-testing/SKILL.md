@@ -1,6 +1,8 @@
 ---
 name: skill-testing
 description: Evaluate a skill, draft the trust audit, and package the approved recommendation.
+runx:
+  category: authoring
 ---
 
 # Skill Testing

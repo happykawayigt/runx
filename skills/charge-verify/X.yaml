@@ -105,6 +105,7 @@ runners:
       recovery_hint: object
     artifacts:
       wrap_as: charge_verification_packet
+      packet: runx.payment.charge_verification.v1
     runx:
       payment_authority:
         direction: provider_charge

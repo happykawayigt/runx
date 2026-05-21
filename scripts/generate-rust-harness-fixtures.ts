@@ -289,6 +289,7 @@ function paymentRailRefs(): ActRefs {
         uri: "receipt-proof:mock:payment-execution-001",
         locator: "payment:payment-execution-001",
         label: "payment rail proof",
+        proof_kind: "payment_rail",
       },
     ],
   };

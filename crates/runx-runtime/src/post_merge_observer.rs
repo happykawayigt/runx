@@ -289,6 +289,7 @@ fn sealed_receipt_dedupe_plan(
             locator: Some(sealed_receipt.seal.digest.clone()),
             label: Some("post-merge observer harness receipt".to_owned()),
             observed_at: Some(sealed_receipt.seal.closed_at.clone()),
+            proof_kind: None,
         },
         publication_key: format!(
             "post-merge-publication:{}:{}",

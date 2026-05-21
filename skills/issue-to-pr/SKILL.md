@@ -1,6 +1,8 @@
 ---
 name: issue-to-pr
 description: Govern a scafld-backed issue-to-PR lane with native scafld review and handoff surfaces.
+runx:
+  category: code
 ---
 
 # Issue to PR

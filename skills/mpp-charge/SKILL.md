@@ -1,6 +1,8 @@
 ---
 name: mpp-charge
 description: Model provider-side charge verification through the MPP settlement family.
+runx:
+  category: payments
 ---
 
 # MPP Charge

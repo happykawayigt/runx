@@ -1,6 +1,8 @@
 ---
 name: charge-price
 description: Price an inbound provider-side paid tool call without collecting payment.
+runx:
+  category: payments
 ---
 
 # Charge Price

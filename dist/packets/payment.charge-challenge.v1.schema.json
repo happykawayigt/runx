@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.runx.dev/runx/payment/charge-challenge/v1.json",
+  "x-runx-packet-id": "runx.payment.charge_challenge.v1",
+  "type": "object",
+  "properties": {
+    "payment_required_signal": {
+      "type": "object"
+    },
+    "charge_challenge": {
+      "type": "object"
+    },
+    "idempotency": {
+      "type": "object"
+    },
+    "accepted_settlement_families": {
+      "type": "array"
+    },
+    "open_questions": {
+      "type": "array"
+    }
+  },
+  "additionalProperties": true
+}

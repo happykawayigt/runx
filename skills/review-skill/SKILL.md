@@ -1,6 +1,8 @@
 ---
 name: review-skill
 description: Assess a skill package for capability, trust, and operator readiness.
+runx:
+  category: authoring
 ---
 
 # Review Skill

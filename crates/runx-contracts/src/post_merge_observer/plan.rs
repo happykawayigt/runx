@@ -99,6 +99,7 @@ pub fn plan_post_merge_observer_runtime_dedupe(
         locator: Some(plan.idempotency.content_hash.clone()),
         label: Some("post-merge observer harness receipt".to_owned()),
         observed_at: None,
+        proof_kind: None,
     });
     PostMergeObserverRuntimeDedupePlan {
         decision: if already_published {
@@ -212,6 +213,7 @@ fn harness_receipt_ref(receipt: &HarnessReceipt) -> Reference {
         locator: Some(receipt.seal.digest.clone()),
         label: Some("sealed post-merge observer receipt".to_owned()),
         observed_at: Some(receipt.seal.closed_at.clone()),
+        proof_kind: None,
     }
 }
 
@@ -624,6 +626,7 @@ fn pull_request_ref(observation: &PostMergePullRequestObservation) -> Reference 
         locator: Some(format!("{}#{}", observation.repo, observation.number)),
         label: Some("observed pull request".to_owned()),
         observed_at: Some(observation.observed_at.clone()),
+        proof_kind: None,
     }
 }
 

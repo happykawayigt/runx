@@ -221,6 +221,10 @@ export const paymentCredentialForms = [
   "single_use_spend_capability",
 ] as const;
 
+export const proofKinds = [
+  "payment_rail",
+] as const;
+
 export const redactionCommitmentAlgorithms = [
   "sha256",
 ] as const;
@@ -243,6 +247,7 @@ export const authorityVerbSchema = stringEnum(authorityVerbs);
 export const authorityCapabilitySchema = stringEnum(authorityCapabilities);
 export const authorityConditionPredicateSchema = stringEnum(authorityConditionPredicates);
 export const paymentCredentialFormSchema = stringEnum(paymentCredentialForms);
+export const proofKindSchema = stringEnum(proofKinds);
 export const redactionCommitmentAlgorithmSchema = stringEnum(redactionCommitmentAlgorithms);
 
 export const referenceSchema = Type.Object(
@@ -254,6 +259,7 @@ export const referenceSchema = Type.Object(
     locator: Type.Optional(Type.String({ minLength: 1 })),
     label: Type.Optional(Type.String({ minLength: 1 })),
     observed_at: Type.Optional(dateTimeStringSchema()),
+    proof_kind: Type.Optional(proofKindSchema),
   },
   {
     $schema: JSON_SCHEMA_DRAFT_2020_12,
@@ -1141,6 +1147,7 @@ export type AuthorityVerbContract = DeepReadonly<Static<typeof authorityVerbSche
 export type AuthorityCapabilityContract = DeepReadonly<Static<typeof authorityCapabilitySchema>>;
 export type AuthorityConditionPredicateContract = DeepReadonly<Static<typeof authorityConditionPredicateSchema>>;
 export type PaymentCredentialFormContract = DeepReadonly<Static<typeof paymentCredentialFormSchema>>;
+export type ProofKindContract = DeepReadonly<Static<typeof proofKindSchema>>;
 export type ReferenceContract = DeepReadonly<Static<typeof referenceSchema>>;
 export type ActReferenceContract = DeepReadonly<Static<typeof actReferenceSchema>>;
 export type HashCommitmentContract = DeepReadonly<Static<typeof hashCommitmentSchema>>;

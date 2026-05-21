@@ -14,12 +14,12 @@ pub mod dev;
 pub mod doctor;
 pub mod error;
 pub mod execution;
-mod hosted_http;
 pub mod journal;
 pub mod list;
 pub mod post_merge_observer;
 pub mod receipts;
 pub mod registry;
+mod runtime_http;
 pub mod sandbox;
 pub mod scaffold;
 pub mod tool_catalogs;
@@ -90,12 +90,6 @@ pub use registry::{RegistryInstallMetadataInput, registry_install_receipt_metada
 pub use runner::run_graph_file;
 pub use runner::{GraphCheckpoint, GraphRun, Runtime, RuntimeOptions, StepRun};
 pub use runx_core::kernel_eval;
-pub use runx_core::policy::{
-    PaymentAuthorityError, PaymentRailAdmission, PaymentRailAdmissionDecision,
-    PaymentRailAuthorization, PaymentRailAuthorizationDecision, PaymentSpendCapabilityBinding,
-    admit_payment_rail, authorize_payment_rail, payment_authority_requires_receipt_before_success,
-    payment_authority_spends,
-};
 pub use scaffold::{
     InitAction, InitGeneratedValues, RunxInitOptions, RunxInitResult, RunxNewOptions,
     RunxNewResult, ScaffoldError, runx_init, sanitize_runx_package_name, scaffold_runx_package,

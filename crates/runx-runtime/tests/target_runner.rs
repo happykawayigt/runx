@@ -342,6 +342,7 @@ impl TargetRepoRunnerAdapter for FakeTargetRepoRunnerAdapter {
                     .map(|number| format!("nitrosend/api#{number}")),
                 label: Some("Nitrosend API target PR".to_owned()),
                 observed_at: Some(CREATED_AT.to_owned()),
+                proof_kind: None,
             }],
             artifact_refs: vec![Reference {
                 reference_type: ReferenceType::Artifact,
@@ -350,6 +351,7 @@ impl TargetRepoRunnerAdapter for FakeTargetRepoRunnerAdapter {
                 locator: None,
                 label: Some("fake sanitized diff".to_owned()),
                 observed_at: Some(CREATED_AT.to_owned()),
+                proof_kind: None,
             }],
             verification_refs: vec![Reference {
                 reference_type: ReferenceType::Verification,
@@ -358,6 +360,7 @@ impl TargetRepoRunnerAdapter for FakeTargetRepoRunnerAdapter {
                 locator: None,
                 label: Some("fake no-network verification".to_owned()),
                 observed_at: Some(CREATED_AT.to_owned()),
+                proof_kind: None,
             }],
         })
     }

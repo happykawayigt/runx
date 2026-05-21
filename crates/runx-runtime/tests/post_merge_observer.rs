@@ -288,6 +288,7 @@ fn dedupe_plan(
             locator: Some(receipt.seal.digest.clone()),
             label: Some("post-merge observer harness receipt".to_owned()),
             observed_at: None,
+            proof_kind: None,
         },
         publication_key: format!(
             "post-merge-publication:{}:{}",
@@ -377,6 +378,7 @@ impl PostMergeObserverAdapter for FakePostMergeObserverAdapter {
                 locator: None,
                 label: Some("Nitrosend dogfood smoke".to_owned()),
                 observed_at: Some(VERIFIED_AT.to_owned()),
+                proof_kind: None,
             }),
             evidence_refs: vec![Reference {
                 reference_type: ReferenceType::Deployment,
@@ -385,6 +387,7 @@ impl PostMergeObserverAdapter for FakePostMergeObserverAdapter {
                 locator: None,
                 label: Some("Nitrosend dogfood deploy".to_owned()),
                 observed_at: Some(VERIFIED_AT.to_owned()),
+                proof_kind: None,
             }],
             verified_at: Some(VERIFIED_AT.to_owned()),
         })
@@ -399,6 +402,7 @@ fn fixture_source_issue_ref() -> Reference {
         locator: Some("runxhq/nitrosend#77".to_owned()),
         label: Some("Nitrosend dogfood issue".to_owned()),
         observed_at: None,
+        proof_kind: None,
     }
 }
 
@@ -410,6 +414,7 @@ fn fixture_source_thread_ref() -> Reference {
         locator: Some("T01NITRO/C02DOGFOOD/1716180900.000100".to_owned()),
         label: Some("Nitrosend source thread".to_owned()),
         observed_at: None,
+        proof_kind: None,
     }
 }
 
@@ -421,5 +426,6 @@ fn fixture_pull_request_ref() -> Reference {
         locator: Some("runxhq/nitrosend#188".to_owned()),
         label: Some("human-merged PR".to_owned()),
         observed_at: Some(OBSERVED_AT.to_owned()),
+        proof_kind: None,
     }
 }

@@ -1,6 +1,8 @@
 ---
 name: release
 description: Prepare, gate, and publish a versioned release of a package or project.
+runx:
+  category: code
 ---
 
 # Release

@@ -1,6 +1,8 @@
 ---
 name: stripe-refund
 description: Model a same-family Stripe refund against a sealed charge receipt.
+runx:
+  category: payments
 ---
 
 # Stripe Refund

@@ -17,7 +17,8 @@ workspace = true
 
 [features]
 default = []
-cli-tool = []
+async-http = ["dep:reqwest", "dep:tokio"]
+cli-tool = ["async-http"]
 mcp = []
 a2a = []
 agent = []
@@ -30,11 +31,13 @@ runx-contracts.workspace = true
 runx-core.workspace = true
 runx-parser.workspace = true
 runx-receipts.workspace = true
+reqwest = { version = "=0.13.3", default-features = false, features = ["rustls", "json"], optional = true }
 serde.workspace = true
 serde_json.workspace = true
 serde_norway.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
+tokio = { version = "=1.52.3", default-features = false, features = ["rt", "net", "time"], optional = true }
 url = "2.5.7"
 
 [dev-dependencies]

@@ -1,6 +1,8 @@
 ---
 name: stripe-charge
 description: Model provider-side charge verification through the Stripe settlement family.
+runx:
+  category: payments
 ---
 
 # Stripe Charge

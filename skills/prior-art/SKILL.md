@@ -1,6 +1,8 @@
 ---
 name: prior-art
 description: Compare existing approaches, catalog surfaces, and domain patterns before runx designs, drafts, or acts.
+runx:
+  category: authoring
 ---
 
 # Prior Art

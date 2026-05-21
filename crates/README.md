@@ -47,8 +47,9 @@ crates) require an explicit spec before they may be added to `deny.toml`.
   enforcement, journals, registry/connect clients, harness replay, doctor,
   dev loop, scaffold, payment authority gating, and the adapter set. Adapter
   families are opt-in features: `cli-tool`, `mcp`, `a2a`, `agent`, `catalog`.
-  No async runtime today; HTTP runs over a curl subprocess until a spec
-  introduces it. Defaults: no features.
+  The `async-http` feature owns hosted HTTP with reqwest over rustls, disables
+  redirect following, and uses bounded request/connect timeouts. `cli-tool`
+  enables `async-http`; defaults keep the runtime dependency-light.
 - `runx-sdk`: blocking CLI-backed Rust SDK v0. Depends on `runx-contracts`
   only; explicit non-dep on `runx-core` and `runx-runtime`.
 

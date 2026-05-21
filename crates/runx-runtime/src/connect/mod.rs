@@ -3,7 +3,7 @@ mod opener;
 mod redaction;
 mod types;
 
-pub use crate::hosted_http::{
+pub use crate::runtime_http::{
     HostedHttpError, HostedHttpHeader, HostedHttpRequest, HostedHttpResponse, HostedTransport,
     HttpMethod,
 };

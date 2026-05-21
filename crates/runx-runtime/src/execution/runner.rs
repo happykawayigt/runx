@@ -19,9 +19,9 @@ use crate::caller::{Caller, NoopCaller};
 use crate::journal::ExecutionJournal;
 use crate::receipts::graph_receipt;
 
+mod authority;
 mod execution;
 mod inputs;
-mod payment;
 mod steps;
 mod sync;
 

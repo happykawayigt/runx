@@ -1,6 +1,8 @@
 ---
 name: charge-verify
 description: Verify a returned payment credential and produce provider-side charge receipt evidence.
+runx:
+  category: payments
 ---
 
 # Charge Verify

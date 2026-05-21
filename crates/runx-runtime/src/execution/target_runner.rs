@@ -895,6 +895,7 @@ fn reference(reference_type: ReferenceType, id: &str) -> Reference {
         locator: None,
         label: None,
         observed_at: None,
+        proof_kind: None,
     }
 }
 

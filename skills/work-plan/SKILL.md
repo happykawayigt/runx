@@ -1,6 +1,8 @@
 ---
 name: work-plan
 description: Decompose a build objective into governed runx execution steps.
+runx:
+  category: authoring
 ---
 
 # Work Plan

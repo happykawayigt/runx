@@ -1,6 +1,8 @@
 ---
 name: write-harness
 description: Draft replayable runx harness fixtures for a proposed skill package or composite execution plan.
+runx:
+  category: authoring
 ---
 
 # Write Harness

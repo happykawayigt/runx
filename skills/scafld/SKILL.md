@@ -1,6 +1,8 @@
 ---
 name: scafld
 description: Run existing scafld v2 lifecycle commands under runx governance.
+runx:
+  category: code
 ---
 
 # scafld
