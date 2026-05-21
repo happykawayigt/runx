@@ -141,10 +141,8 @@ fn payment_graph_seals_with_strict_parent_child_receipt_proof()
         fulfill.receipt.harness.acts[0]
             .verification_refs
             .iter()
-            .any(
-                |reference| reference.uri == X402_APPROVAL_PROOF_REF
-                    && reference.proof_kind.as_ref() == Some(&ProofKind::PaymentRail)
-            ),
+            .any(|reference| reference.uri == X402_APPROVAL_PROOF_REF
+                && reference.proof_kind.as_ref() == Some(&ProofKind::PaymentRail)),
         "payment fulfillment act must carry the rail proof reference into the sealed receipt"
     );
     Ok(())
@@ -770,7 +768,7 @@ impl GraphFixture {
         fs::create_dir(&fulfill_dir)?;
         fs::write(
             fulfill_dir.join("SKILL.md"),
-r#"---
+            r#"---
 name: pay-fulfill-rail
 description: Fulfill approved payment.
 source:

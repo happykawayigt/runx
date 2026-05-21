@@ -61,7 +61,7 @@ pub(super) fn enforce_step_authority_admission(
         return Ok(None);
     };
     let consumed_spend_capability_refs =
-        consumed_spend_capability_refs_for_admission(step, &input, env, graph_dir)?;
+        consumed_spend_capability_refs_for_admission(&input, env, graph_dir)?;
     let act_id = format!("act_{}", step.id);
     let decision = admit_step_authority(StepAuthorityAdmission {
         parent_authority: &input.parent_authority,
@@ -89,7 +89,6 @@ pub(super) fn enforce_step_authority_admission(
 }
 
 fn consumed_spend_capability_refs_for_admission(
-    _step: &GraphStep,
     input: &OwnedStepAuthoritySubmission,
     env: &BTreeMap<String, String>,
     graph_dir: &Path,
