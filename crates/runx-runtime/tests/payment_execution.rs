@@ -25,9 +25,9 @@ fn approved_payment_approval_emits_approval_output_and_runs_fulfill()
 -> Result<(), Box<dyn std::error::Error>> {
     let fixture = GraphFixture::new()?;
     let runtime = Runtime::new(RecordingAdapter::default(), RuntimeOptions::default());
-    let mut caller = ApprovalCaller::approved(true);
+    let mut host = ApprovalHost::approved(true);
 
-    let run = runtime.run_graph_file_with_caller(fixture.graph_path(), &mut caller)?;
+    let run = runtime.run_graph_file_with_host(fixture.graph_path(), &mut host)?;
 
     assert_eq!(run.state.status, GraphStatus::Succeeded);
     assert_eq!(step_ids(&run.steps), vec!["approve-spend", "fulfill"]);
@@ -46,7 +46,7 @@ fn approved_payment_approval_emits_approval_output_and_runs_fulfill()
             .get("payment_approval")
             .is_some_and(|value| matches!(value, JsonValue::Object(_)))
     );
-    assert_eq!(caller.requests.borrow().len(), 1);
+    assert_eq!(host.requests.borrow().len(), 1);
     Ok(())
 }
 
@@ -55,10 +55,10 @@ fn denied_payment_approval_emits_denied_output_and_blocks_fulfill()
 -> Result<(), Box<dyn std::error::Error>> {
     let fixture = GraphFixture::new()?;
     let runtime = Runtime::new(RecordingAdapter::default(), RuntimeOptions::default());
-    let mut caller = ApprovalCaller::approved(false);
+    let mut host = ApprovalHost::approved(false);
 
     let checkpoint =
-        runtime.run_graph_file_until_steps_with_caller(fixture.graph_path(), 1, &mut caller)?;
+        runtime.run_graph_file_until_steps_with_host(fixture.graph_path(), 1, &mut host)?;
 
     assert_eq!(step_ids(&checkpoint.steps), vec!["approve-spend"]);
     let approval_step = step_run(&checkpoint.steps, "approve-spend")?;
@@ -68,7 +68,7 @@ fn denied_payment_approval_emits_denied_output_and_blocks_fulfill()
     );
 
     let result =
-        runtime.resume_graph_file_with_caller(fixture.graph_path(), checkpoint, &mut caller);
+        runtime.resume_graph_file_with_host(fixture.graph_path(), checkpoint, &mut host);
     match result {
         Err(RuntimeError::GraphBlocked { step_id, reason }) => {
             assert_eq!(step_id, "fulfill");
@@ -95,9 +95,9 @@ fn denied_payment_approval_emits_denied_output_and_blocks_fulfill()
 fn payment_approval_step_is_recorded_with_receipt() -> Result<(), Box<dyn std::error::Error>> {
     let fixture = GraphFixture::new()?;
     let runtime = Runtime::new(RecordingAdapter::default(), RuntimeOptions::default());
-    let mut caller = ApprovalCaller::approved(true);
+    let mut host = ApprovalHost::approved(true);
 
-    let run = runtime.run_graph_file_with_caller(fixture.graph_path(), &mut caller)?;
+    let run = runtime.run_graph_file_with_host(fixture.graph_path(), &mut host)?;
 
     let approval_step = step_run(&run.steps, "approve-spend")?;
     assert_eq!(approval_step.attempt, 1);
@@ -121,9 +121,9 @@ fn payment_graph_seals_with_strict_parent_child_receipt_proof()
 -> Result<(), Box<dyn std::error::Error>> {
     let fixture = GraphFixture::new()?;
     let runtime = Runtime::new(RecordingAdapter::default(), RuntimeOptions::default());
-    let mut caller = ApprovalCaller::approved(true);
+    let mut host = ApprovalHost::approved(true);
 
-    let run = runtime.run_graph_file_with_caller(fixture.graph_path(), &mut caller)?;
+    let run = runtime.run_graph_file_with_host(fixture.graph_path(), &mut host)?;
     let child_receipts = run
         .steps
         .iter()
@@ -157,9 +157,9 @@ fn payment_spend_success_without_rail_proof_is_denied_before_graph_success()
         RecordingAdapter::without_rail_proof(),
         RuntimeOptions::default(),
     );
-    let mut caller = ApprovalCaller::approved(true);
+    let mut host = ApprovalHost::approved(true);
 
-    let result = runtime.run_graph_file_with_caller(fixture.graph_path(), &mut caller);
+    let result = runtime.run_graph_file_with_host(fixture.graph_path(), &mut host);
 
     match result {
         Err(RuntimeError::AuthorityDenied {
@@ -186,7 +186,7 @@ fn payment_spend_success_without_rail_proof_is_denied_before_graph_success()
         }
     }
     assert!(
-        !caller
+        !host
             .events
             .borrow()
             .iter()
@@ -204,9 +204,9 @@ fn payment_spend_authority_is_detected_from_reserved_authority_not_scope_string(
         RecordingAdapter::without_rail_proof(),
         RuntimeOptions::default(),
     );
-    let mut caller = ApprovalCaller::approved(true);
+    let mut host = ApprovalHost::approved(true);
 
-    let result = runtime.run_graph_file_with_caller(fixture.graph_path(), &mut caller);
+    let result = runtime.run_graph_file_with_host(fixture.graph_path(), &mut host);
 
     match result {
         Err(RuntimeError::AuthorityDenied {
@@ -285,9 +285,9 @@ fn non_payment_step_without_rail_admission_inputs_invokes_adapter()
     let adapter = RecordingAdapter::default();
     let invocations = adapter.invocations();
     let runtime = Runtime::new(adapter, RuntimeOptions::default());
-    let mut caller = ApprovalCaller::approved(true);
+    let mut host = ApprovalHost::approved(true);
 
-    let run = runtime.run_graph_file_with_caller(fixture.graph_path(), &mut caller)?;
+    let run = runtime.run_graph_file_with_host(fixture.graph_path(), &mut host)?;
 
     assert_eq!(run.state.status, GraphStatus::Succeeded);
     assert_eq!(
@@ -305,9 +305,9 @@ fn x402_paid_echo_returns_echo_only_after_sealed_payment_proof()
     let adapter = PaidEchoAdapter::new(PaidEchoRailProof::Present);
     let invocations = adapter.invocations();
     let runtime = Runtime::new(adapter, RuntimeOptions::default());
-    let mut caller = ApprovalCaller::approved(true);
+    let mut host = ApprovalHost::approved(true);
 
-    let run = runtime.run_graph_file_with_caller(fixture.graph_path(), &mut caller)?;
+    let run = runtime.run_graph_file_with_host(fixture.graph_path(), &mut host)?;
 
     assert_eq!(run.state.status, GraphStatus::Succeeded);
     assert_eq!(
@@ -383,9 +383,9 @@ fn x402_paid_echo_denied_approval_never_invokes_payment_or_echo()
     let adapter = PaidEchoAdapter::new(PaidEchoRailProof::Present);
     let invocations = adapter.invocations();
     let runtime = Runtime::new(adapter, RuntimeOptions::default());
-    let mut caller = ApprovalCaller::approved(false);
+    let mut host = ApprovalHost::approved(false);
 
-    let result = runtime.run_graph_file_with_caller(fixture.graph_path(), &mut caller);
+    let result = runtime.run_graph_file_with_host(fixture.graph_path(), &mut host);
 
     match result {
         Err(RuntimeError::GraphBlocked { step_id, reason }) => {
@@ -426,9 +426,9 @@ fn x402_paid_echo_missing_rail_proof_never_invokes_echo() -> Result<(), Box<dyn 
     let adapter = PaidEchoAdapter::new(PaidEchoRailProof::Missing);
     let invocations = adapter.invocations();
     let runtime = Runtime::new(adapter, RuntimeOptions::default());
-    let mut caller = ApprovalCaller::approved(true);
+    let mut host = ApprovalHost::approved(true);
 
-    let result = runtime.run_graph_file_with_caller(fixture.graph_path(), &mut caller);
+    let result = runtime.run_graph_file_with_host(fixture.graph_path(), &mut host);
 
     match result {
         Err(RuntimeError::AuthorityDenied {
@@ -475,9 +475,9 @@ fn assert_payment_admission_denied_before_adapter(
     let adapter = RecordingAdapter::default();
     let invocations = adapter.invocations();
     let runtime = Runtime::new(adapter, RuntimeOptions::default());
-    let mut caller = ApprovalCaller::approved(true);
+    let mut host = ApprovalHost::approved(true);
 
-    let result = runtime.run_graph_file_with_caller(fixture.graph_path(), &mut caller);
+    let result = runtime.run_graph_file_with_host(fixture.graph_path(), &mut host);
 
     match result {
         Err(RuntimeError::AuthorityDenied {
@@ -716,13 +716,13 @@ fn paid_echo_rail_packet(rail_proof: PaidEchoRailProof) -> Value {
     json!({ "payment_rail_packet": { "data": data } })
 }
 
-struct ApprovalCaller {
+struct ApprovalHost {
     events: RefCell<Vec<ExecutionEvent>>,
     requests: RefCell<Vec<ResolutionRequest>>,
     responses: RefCell<VecDeque<Option<ResolutionResponse>>>,
 }
 
-impl ApprovalCaller {
+impl ApprovalHost {
     fn approved(approved: bool) -> Self {
         Self {
             events: RefCell::new(Vec::new()),
@@ -735,7 +735,7 @@ impl ApprovalCaller {
     }
 }
 
-impl Host for ApprovalCaller {
+impl Host for ApprovalHost {
     fn report(&mut self, event: ExecutionEvent) -> Result<(), RuntimeError> {
         self.events.borrow_mut().push(event);
         Ok(())

@@ -28,9 +28,9 @@ fn stripe_spt_payment_seals_happy_path_with_scoped_proof() -> Result<(), Box<dyn
     let adapter = StripeSptAdapter::new(StripeSptScenario::Fulfilled);
     let invocations = adapter.invocations();
     let runtime = Runtime::new(adapter, RuntimeOptions::default());
-    let mut caller = ApprovalCaller::approved(true);
+    let mut host = ApprovalHost::approved(true);
 
-    let run = runtime.run_graph_file_with_caller(fixture.graph_path(), &mut caller)?;
+    let run = runtime.run_graph_file_with_host(fixture.graph_path(), &mut host)?;
 
     assert_eq!(run.state.status, GraphStatus::Succeeded);
     assert_eq!(
@@ -100,9 +100,9 @@ fn stripe_spt_payment_decline_returns_governed_error_without_sealing_success()
     let adapter = StripeSptAdapter::new(StripeSptScenario::Declined);
     let invocations = adapter.invocations();
     let runtime = Runtime::new(adapter, RuntimeOptions::default());
-    let mut caller = ApprovalCaller::approved(true);
+    let mut host = ApprovalHost::approved(true);
 
-    let result = runtime.run_graph_file_with_caller(fixture.graph_path(), &mut caller);
+    let result = runtime.run_graph_file_with_host(fixture.graph_path(), &mut host);
 
     match result {
         Err(RuntimeError::SkillFailed {
@@ -139,9 +139,9 @@ fn stripe_spt_payment_timeout_preserves_idempotency_for_recovery()
     let adapter = StripeSptAdapter::new(StripeSptScenario::Timeout);
     let invocations = adapter.invocations();
     let runtime = Runtime::new(adapter, RuntimeOptions::default());
-    let mut caller = ApprovalCaller::approved(true);
+    let mut host = ApprovalHost::approved(true);
 
-    let result = runtime.run_graph_file_with_caller(fixture.graph_path(), &mut caller);
+    let result = runtime.run_graph_file_with_host(fixture.graph_path(), &mut host);
 
     match result {
         Err(RuntimeError::SkillFailed {
@@ -383,12 +383,12 @@ fn skill_failure_with_stdout(value: Value, message: &str) -> SkillOutput {
     }
 }
 
-struct ApprovalCaller {
+struct ApprovalHost {
     requests: RefCell<Vec<ResolutionRequest>>,
     responses: RefCell<VecDeque<Option<ResolutionResponse>>>,
 }
 
-impl ApprovalCaller {
+impl ApprovalHost {
     fn approved(approved: bool) -> Self {
         Self {
             requests: RefCell::new(Vec::new()),
@@ -400,7 +400,7 @@ impl ApprovalCaller {
     }
 }
 
-impl Host for ApprovalCaller {
+impl Host for ApprovalHost {
     fn report(&mut self, _event: runx_contracts::ExecutionEvent) -> Result<(), RuntimeError> {
         Ok(())
     }
