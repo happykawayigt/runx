@@ -134,6 +134,7 @@ impl<T: HostedTransport, O: ConnectOpener> ConnectClient<T, O> {
                 Ok(ready_response(ConnectReadyStatus::Unchanged, grant))
             }
             HttpConnectStartResponse::OauthRequired {
+                session_id: _,
                 flow_id,
                 authorize_url,
                 poll_after_ms,
@@ -146,6 +147,47 @@ impl<T: HostedTransport, O: ConnectOpener> ConnectClient<T, O> {
                 }
                 self.wait_for_connect_flow(&flow_id, poll_after_ms)
             }
+            HttpConnectStartResponse::CredentialRequired {
+                session_id: _,
+                flow_id: _,
+                provider,
+                auth_mode,
+                credential_schema,
+            } => Err(ConnectError::CredentialRequired {
+                provider,
+                auth_mode,
+                field_count: credential_schema.fields.len(),
+            }),
+            HttpConnectStartResponse::Unsupported {
+                provider,
+                provider_status: _,
+                connect_mode: _,
+                demand_id,
+                request_count: _,
+                error,
+            } => Err(ConnectError::UnsupportedProvider {
+                provider: provider.unwrap_or_else(|| "<unknown>".to_owned()),
+                demand_id,
+                message: redact_connect_text(
+                    error
+                        .as_deref()
+                        .unwrap_or("Provider is not supported by hosted Connect yet."),
+                ),
+            }),
+            HttpConnectStartResponse::ConnectUnavailable {
+                provider,
+                provider_status: _,
+                connect_mode: _,
+                error,
+            } => Err(ConnectError::UnsupportedProvider {
+                provider: provider.unwrap_or_else(|| "<unknown>".to_owned()),
+                demand_id: None,
+                message: redact_connect_text(
+                    error
+                        .as_deref()
+                        .unwrap_or("Provider is not supported by hosted Connect yet."),
+                ),
+            }),
         }
     }
 
@@ -195,7 +237,12 @@ impl<T: HostedTransport, O: ConnectOpener> ConnectClient<T, O> {
         let text = self.request_text(HttpMethod::Post, route, body)?;
         let envelope = response_envelope(route, &text)?;
         match envelope.status.as_str() {
-            "created" | "unchanged" | "oauth_required" => {
+            "created"
+            | "unchanged"
+            | "oauth_required"
+            | "credential_required"
+            | "unsupported"
+            | "connect_unavailable" => {
                 serde_json::from_str(&text).map_err(|error| ConnectError::Contract {
                     route: safe_route(route),
                     message: error.to_string(),
@@ -314,6 +361,20 @@ pub enum ConnectError {
     Contract { route: String, message: String },
     #[error("unsupported connect status '{status}' from {route}")]
     UnsupportedStatus { route: String, status: String },
+    #[error(
+        "connect provider '{provider}' requires BYO credential submission ({auth_mode}, {field_count} field(s)); use hosted Connect credential entry"
+    )]
+    CredentialRequired {
+        provider: String,
+        auth_mode: String,
+        field_count: usize,
+    },
+    #[error("connect provider '{provider}' is unsupported: {message}")]
+    UnsupportedProvider {
+        provider: String,
+        demand_id: Option<String>,
+        message: String,
+    },
     #[error("connect flow failed: {message}")]
     FlowFailed { message: String },
     #[error("timed out waiting for OAuth flow to complete")]

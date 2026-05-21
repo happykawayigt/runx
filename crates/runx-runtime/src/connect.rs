@@ -13,7 +13,8 @@ pub use client::{
 pub use opener::{ConnectOpener, ProcessConnectOpener};
 pub use redaction::redact_connect_text;
 pub use types::{
-    ConnectAuthorityKind, ConnectGrantStatus, ConnectReadyStatus, ConnectRevokeStatus,
-    HttpConnectGrant, HttpConnectListResponse, HttpConnectPreprovisionRequest,
-    HttpConnectReadyResponse, HttpConnectRevokeResponse, connect_grant_to_local_admission,
+    ConnectAuthorityKind, ConnectGrantAuthMode, ConnectGrantMaterialKind, ConnectGrantStatus,
+    ConnectGrantVerificationStatus, ConnectReadyStatus, ConnectRevokeStatus, HttpConnectGrant,
+    HttpConnectListResponse, HttpConnectPreprovisionRequest, HttpConnectReadyResponse,
+    HttpConnectRevokeResponse, connect_grant_to_local_admission,
 };

@@ -6,6 +6,8 @@ use serde_json::json;
 
 use connect_support::{MockConnectTransport, RecordingOpener, grant_fixture};
 
+type TestResult = Result<(), Box<dyn std::error::Error>>;
+
 #[test]
 fn connect_list_sends_authorized_get_and_parses_grants() -> Result<(), Box<dyn std::error::Error>> {
     let transport = MockConnectTransport::with_json(vec![json!({
@@ -161,10 +163,11 @@ fn connect_revoke_rejects_active_or_unknown_status() -> Result<(), Box<dyn std::
 }
 
 #[test]
-fn connect_start_rejects_unmodeled_status_without_fallback()
--> Result<(), Box<dyn std::error::Error>> {
+fn connect_start_rejects_unavailable_provider_without_fallback() -> TestResult {
     let transport = MockConnectTransport::with_json(vec![json!({
         "status": "connect_unavailable",
+        "provider": "linear",
+        "connect_mode": "hosted",
         "error": "try device flow"
     })]);
     let opener = RecordingOpener::default();
@@ -189,7 +192,66 @@ fn connect_start_rejects_unmodeled_status_without_fallback()
         Err(error) => error,
     };
 
-    assert!(matches!(error, ConnectError::UnsupportedStatus { .. }));
+    assert!(matches!(
+        error,
+        ConnectError::UnsupportedProvider {
+            provider,
+            demand_id: None,
+            message,
+        } if provider == "linear" && message == "try device flow"
+    ));
+    Ok(())
+}
+
+#[test]
+fn connect_start_rejects_byo_credential_required_without_secret_echo() -> TestResult {
+    let transport = MockConnectTransport::with_json(vec![json!({
+        "status": "credential_required",
+        "session_id": "sess_SECRET_DO_NOT_LEAK",
+        "provider": "github",
+        "auth_mode": "byo",
+        "credential_schema": {
+            "fields": [
+                {
+                    "name": "token",
+                    "label": "Personal access token",
+                    "secret": true,
+                    "required": true
+                }
+            ]
+        }
+    })]);
+    let opener = RecordingOpener::default();
+    let client = ConnectClient::with_transport_and_opener(
+        "https://connect.example",
+        "token",
+        &transport,
+        &opener,
+        None,
+        None,
+    )?;
+
+    let error = match client.preprovision(&HttpConnectPreprovisionRequest {
+        provider: "github".to_owned(),
+        scopes: vec![],
+        scope_family: None,
+        authority_kind: None,
+        target_repo: None,
+        target_locator: None,
+    }) {
+        Ok(_) => return Err("BYO credential requirement should fail closed".into()),
+        Err(error) => error,
+    };
+
+    assert!(matches!(
+        &error,
+        ConnectError::CredentialRequired {
+            provider,
+            auth_mode,
+            field_count: 1,
+        } if provider == "github" && auth_mode == "byo"
+    ));
+    assert!(!format!("{error:?}").contains("sess_SECRET_DO_NOT_LEAK"));
     Ok(())
 }
 

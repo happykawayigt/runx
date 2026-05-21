@@ -258,6 +258,61 @@ fn connect_preprovision_human_output_includes_ready_status()
     Ok(())
 }
 
+#[test]
+fn connect_preprovision_reports_unsupported_provider() -> Result<(), Box<dyn std::error::Error>> {
+    let server = serve_once(
+        &serde_json::json!({
+            "status": "unsupported",
+            "provider": "slack",
+            "provider_status": "catalog",
+            "connect_mode": "none",
+            "demand_id": "integration_demand_1",
+            "request_count": 1,
+            "error": "Provider is listed in the catalog."
+        })
+        .to_string(),
+    )?;
+    let output = run_connect_command(&server.base_url, ["connect", "slack"])?;
+    let _request = join_request(server.handle)?;
+
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(String::from_utf8(output.stdout)?, "");
+    let stderr = String::from_utf8(output.stderr)?;
+    assert!(stderr.contains("slack"));
+    assert!(stderr.contains("unsupported"));
+    Ok(())
+}
+
+#[test]
+fn connect_preprovision_reports_byo_credential_required_without_session_leak()
+-> Result<(), Box<dyn std::error::Error>> {
+    let server = serve_once(
+        &serde_json::json!({
+            "status": "credential_required",
+            "session_id": "sess_SECRET_DO_NOT_LEAK",
+            "flow_id": "sess_SECRET_DO_NOT_LEAK",
+            "provider": "anthropic",
+            "auth_mode": "api_key",
+            "credential_schema": {
+                "fields": [
+                    { "name": "api_key", "label": "API key", "secret": true, "required": true }
+                ]
+            }
+        })
+        .to_string(),
+    )?;
+    let output = run_connect_command(&server.base_url, ["connect", "anthropic"])?;
+    let _request = join_request(server.handle)?;
+
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(String::from_utf8(output.stdout)?, "");
+    let stderr = String::from_utf8(output.stderr)?;
+    assert!(stderr.contains("anthropic"));
+    assert!(stderr.contains("BYO credential submission"));
+    assert!(!stderr.contains("sess_SECRET_DO_NOT_LEAK"));
+    Ok(())
+}
+
 fn args<const N: usize>(values: [&str; N]) -> Vec<OsString> {
     values.into_iter().map(OsString::from).collect()
 }

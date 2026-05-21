@@ -8,7 +8,10 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use runx_cli::launcher::{LauncherAction, help_text};
-use runx_runtime::connect::{ConnectGrantStatus, ConnectReadyStatus, ConnectRevokeStatus};
+use runx_runtime::connect::{
+    ConnectGrantAuthMode, ConnectGrantMaterialKind, ConnectGrantStatus,
+    ConnectGrantVerificationStatus, ConnectReadyStatus, ConnectRevokeStatus,
+};
 use runx_runtime::{
     HttpConnectGrant, HttpConnectListResponse, HttpConnectReadyResponse, HttpConnectRevokeResponse,
     LocalOrchestrator,
@@ -192,6 +195,17 @@ fn render_connect_grant(
     );
     push_optional_row(&mut rows, "repo", grant.target_repo.as_deref());
     push_optional_row(&mut rows, "locator", grant.target_locator.as_deref());
+    push_optional_row(&mut rows, "auth", grant.auth_mode.map(connect_auth_mode));
+    push_optional_row(
+        &mut rows,
+        "material",
+        grant.material_kind.map(connect_material_kind),
+    );
+    push_optional_row(
+        &mut rows,
+        "verification",
+        grant.verification_status.map(connect_verification_status),
+    );
     rows.push(("next", next.to_owned()));
 
     let mut lines = vec![String::new(), format!("  ✓  {title}  {status}")];
@@ -229,6 +243,17 @@ fn render_connect_list(result: &HttpConnectListResponse) -> String {
         );
         push_optional_line(&mut lines, "repo", grant.target_repo.as_deref());
         push_optional_line(&mut lines, "locator", grant.target_locator.as_deref());
+        push_optional_line(&mut lines, "auth", grant.auth_mode.map(connect_auth_mode));
+        push_optional_line(
+            &mut lines,
+            "material",
+            grant.material_kind.map(connect_material_kind),
+        );
+        push_optional_line(
+            &mut lines,
+            "verification",
+            grant.verification_status.map(connect_verification_status),
+        );
         lines.push(String::new());
     }
     lines.join("\n")
@@ -279,6 +304,28 @@ fn connect_authority_kind(kind: runx_runtime::connect::ConnectAuthorityKind) -> 
         runx_runtime::connect::ConnectAuthorityKind::ReadOnly => "read_only",
         runx_runtime::connect::ConnectAuthorityKind::Constructive => "constructive",
         runx_runtime::connect::ConnectAuthorityKind::Destructive => "destructive",
+    }
+}
+
+fn connect_auth_mode(mode: ConnectGrantAuthMode) -> &'static str {
+    match mode {
+        ConnectGrantAuthMode::Oauth => "oauth",
+        ConnectGrantAuthMode::Byo => "byo",
+    }
+}
+
+fn connect_material_kind(kind: ConnectGrantMaterialKind) -> &'static str {
+    match kind {
+        ConnectGrantMaterialKind::NangoConnection => "nango_connection",
+        ConnectGrantMaterialKind::ByoCredential => "byo_credential",
+    }
+}
+
+fn connect_verification_status(status: ConnectGrantVerificationStatus) -> &'static str {
+    match status {
+        ConnectGrantVerificationStatus::Pending => "pending",
+        ConnectGrantVerificationStatus::Verified => "verified",
+        ConnectGrantVerificationStatus::Failed => "failed",
     }
 }
 

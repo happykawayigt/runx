@@ -3,7 +3,8 @@
 use std::cell::RefCell;
 
 use runx_runtime::connect::{
-    ConnectAuthorityKind, ConnectError, ConnectGrantStatus, ConnectOpener, HostedHttpError,
+    ConnectAuthorityKind, ConnectError, ConnectGrantAuthMode, ConnectGrantMaterialKind,
+    ConnectGrantStatus, ConnectGrantVerificationStatus, ConnectOpener, HostedHttpError,
     HostedHttpRequest, HostedHttpResponse, HostedTransport, HttpConnectGrant,
 };
 
@@ -90,6 +91,11 @@ pub fn grant_fixture(id: &str) -> HttpConnectGrant {
         target_repo: Some("runxhq/aster".to_owned()),
         target_locator: Some("github:repo:runxhq/aster".to_owned()),
         connection_id: Some("conn_1".to_owned()),
+        auth_mode: Some(ConnectGrantAuthMode::Oauth),
+        material_kind: Some(ConnectGrantMaterialKind::NangoConnection),
+        material_ref: Some("nango://conn_1".to_owned()),
+        verification_status: Some(ConnectGrantVerificationStatus::Verified),
+        verified_at: Some("2026-05-19T00:00:01Z".to_owned()),
         status: ConnectGrantStatus::Active,
         created_at: Some("2026-05-19T00:00:00Z".to_owned()),
     }

@@ -20,6 +20,28 @@ pub enum ConnectGrantStatus {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+pub enum ConnectGrantAuthMode {
+    Oauth,
+    Byo,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConnectGrantMaterialKind {
+    NangoConnection,
+    ByoCredential,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConnectGrantVerificationStatus {
+    Pending,
+    Verified,
+    Failed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ConnectReadyStatus {
     Created,
     Unchanged,
@@ -49,6 +71,16 @@ pub struct HttpConnectGrant {
     pub target_locator: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub connection_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auth_mode: Option<ConnectGrantAuthMode>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub material_kind: Option<ConnectGrantMaterialKind>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub material_ref: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verification_status: Option<ConnectGrantVerificationStatus>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verified_at: Option<String>,
     pub status: ConnectGrantStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub created_at: Option<String>,
@@ -89,6 +121,22 @@ pub struct HttpConnectRevokeResponse {
     pub grant: HttpConnectGrant,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HttpConnectCredentialSchema {
+    pub fields: Vec<HttpConnectCredentialField>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HttpConnectCredentialField {
+    pub name: String,
+    pub label: String,
+    pub secret: bool,
+    #[serde(default)]
+    pub required: bool,
+}
+
 #[derive(Clone, Eq, PartialEq, Deserialize)]
 #[serde(tag = "status", rename_all = "snake_case", deny_unknown_fields)]
 pub(crate) enum HttpConnectStartResponse {
@@ -99,10 +147,32 @@ pub(crate) enum HttpConnectStartResponse {
         grant: HttpConnectGrant,
     },
     OauthRequired {
+        session_id: Option<String>,
         flow_id: String,
         authorize_url: String,
         poll_after_ms: Option<u64>,
         expires_at: Option<String>,
+    },
+    CredentialRequired {
+        session_id: String,
+        flow_id: Option<String>,
+        provider: String,
+        auth_mode: String,
+        credential_schema: HttpConnectCredentialSchema,
+    },
+    Unsupported {
+        provider: Option<String>,
+        provider_status: Option<String>,
+        connect_mode: Option<String>,
+        demand_id: Option<String>,
+        request_count: Option<u64>,
+        error: Option<String>,
+    },
+    ConnectUnavailable {
+        provider: Option<String>,
+        provider_status: Option<String>,
+        connect_mode: Option<String>,
+        error: Option<String>,
     },
 }
 
@@ -118,16 +188,60 @@ impl fmt::Debug for HttpConnectStartResponse {
                 .field("grant", grant)
                 .finish(),
             Self::OauthRequired {
+                session_id: _,
                 flow_id: _,
                 authorize_url: _,
                 poll_after_ms,
                 expires_at,
             } => formatter
                 .debug_struct("OauthRequired")
+                .field("session_id", &"[redacted]")
                 .field("flow_id", &"[redacted]")
                 .field("authorize_url", &"[redacted-url]")
                 .field("poll_after_ms", poll_after_ms)
                 .field("expires_at", expires_at)
+                .finish(),
+            Self::CredentialRequired {
+                session_id: _,
+                flow_id: _,
+                provider,
+                auth_mode,
+                credential_schema,
+            } => formatter
+                .debug_struct("CredentialRequired")
+                .field("session_id", &"[redacted]")
+                .field("flow_id", &"[redacted]")
+                .field("provider", provider)
+                .field("auth_mode", auth_mode)
+                .field("field_count", &credential_schema.fields.len())
+                .finish(),
+            Self::Unsupported {
+                provider,
+                provider_status,
+                connect_mode,
+                demand_id,
+                request_count,
+                error: _,
+            } => formatter
+                .debug_struct("Unsupported")
+                .field("provider", provider)
+                .field("provider_status", provider_status)
+                .field("connect_mode", connect_mode)
+                .field("demand_id", demand_id)
+                .field("request_count", request_count)
+                .field("error", &"[redacted]")
+                .finish(),
+            Self::ConnectUnavailable {
+                provider,
+                provider_status,
+                connect_mode,
+                error: _,
+            } => formatter
+                .debug_struct("ConnectUnavailable")
+                .field("provider", provider)
+                .field("provider_status", provider_status)
+                .field("connect_mode", connect_mode)
+                .field("error", &"[redacted]")
                 .finish(),
         }
     }
