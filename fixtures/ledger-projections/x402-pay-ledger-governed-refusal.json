@@ -1,0 +1,27 @@
+{
+  "schema_version": "runx.payment_ledger_projection.v1",
+  "payment_profile": "x402-pay",
+  "scenario_id": "P1.3",
+  "source_receipt_id": "runx:harness_receipt:hrn_rcpt_x402-pay-negative-cap-exceeded_graph",
+  "disposition": "refused",
+  "accrual": {
+    "amount_minor": 0,
+    "currency": "USD",
+    "rail": "mock",
+    "counterparty": "merchant:paid-echo",
+    "operation": "paid.echo",
+    "idempotency_key": "payment:paid-echo-cap-exceeded-001",
+    "rail_proof_refs": []
+  },
+  "refusal": {
+    "reason_code": "cap_exceeded",
+    "refused_stage": "reserve",
+    "rail_call_performed": false,
+    "ledger_spend_recorded": false
+  },
+  "evidence_refs": [
+    "runx:harness:x402-pay-negative-cap-exceeded_reserve",
+    "runx:harness_receipt:hrn_rcpt_x402-pay-negative-cap-exceeded_reserve",
+    "runx:payment-capability:paid-echo-cap-exceeded-spend"
+  ]
+}
