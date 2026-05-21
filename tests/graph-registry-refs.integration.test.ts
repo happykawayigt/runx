@@ -13,6 +13,42 @@ import { createFileRegistryStore } from "./registry-fixtures.js";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REAL_REGISTRY_ROOT = path.resolve(HERE, "..", "..", "cloud", ".data", "runx-registry");
 const REGISTRY_AVAILABLE = existsSync(path.join(REAL_REGISTRY_ROOT, "runx", "scafld"));
+const currentPaymentRegistrySkillIds = [
+  "runx/charge-challenge",
+  "runx/charge-price",
+  "runx/charge-verify",
+  "runx/dispute-respond",
+  "runx/mock-charge",
+  "runx/mock-pay",
+  "runx/mock-refund",
+  "runx/mpp-charge",
+  "runx/mpp-pay",
+  "runx/mpp-refund",
+  "runx/pay-fulfill-rail",
+  "runx/pay-quote",
+  "runx/pay-recover",
+  "runx/pay-reserve",
+  "runx/refund-quote",
+  "runx/refund-recover",
+  "runx/refund-reserve",
+  "runx/stripe-charge",
+  "runx/stripe-pay",
+  "runx/stripe-refund",
+  "runx/x402-pay",
+] as const;
+const retiredPaymentRegistrySkillIds = [
+  "runx/payment-authorize-reserve",
+  "runx/payment-execute",
+  "runx/payment-fulfill-rail",
+  "runx/payment-quote",
+  "runx/payment-quote-preflight",
+  "runx/payment-rail-mock",
+  "runx/payment-recover",
+  "runx/payment-recover-inspect",
+  "runx/payment-reserve",
+  "runx/x402-charge",
+  "runx/x402-refund",
+] as const;
 
 // Skipped automatically when the local seeded registry isn't on disk
 // (CI nodes, fresh clones without the cloud .data layout, etc.).
@@ -36,6 +72,15 @@ runIfSeeded("graph registry refs — real seeded registry", () => {
       "runx/prior-art",
       "runx/skill-testing",
     ]));
+  });
+
+  it("keeps the seeded local payment registry on the current skill shape", async () => {
+    const store = createFileRegistryStore(REAL_REGISTRY_ROOT);
+    const skills = await store.listSkills();
+    const skillIds = new Set(skills.map((skill) => skill.skill_id));
+
+    expect(currentPaymentRegistrySkillIds.filter((skillId) => !skillIds.has(skillId))).toEqual([]);
+    expect(retiredPaymentRegistrySkillIds.filter((skillId) => skillIds.has(skillId))).toEqual([]);
   });
 
   it("materializes a real seeded skill to disk, parseable as a valid skill", async () => {

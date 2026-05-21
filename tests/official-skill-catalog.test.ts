@@ -4,36 +4,95 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { beforeAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { parseSkillMarkdown, parseRunnerManifestYaml, validateRunnerManifest, validateSkill } from "@runxhq/core/parser";
 
 const officialSkillPackages = [
+  "charge-challenge",
+  "charge-price",
+  "charge-verify",
   "content-pipeline",
   "deep-research-brief",
+  "design-skill",
+  "dispute-respond",
   "draft-content",
+  "ecosystem-brief",
   "ecosystem-vuln-scan",
   "evolve",
+  "improve-skill",
   "issue-intake",
   "issue-triage",
   "issue-to-pr",
-  "ecosystem-brief",
+  "mock-charge",
+  "mock-pay",
+  "mock-refund",
   "moltbook",
-  "work-plan",
-  "design-skill",
+  "mpp-charge",
+  "mpp-pay",
+  "mpp-refund",
+  "pay-fulfill-rail",
+  "pay-quote",
+  "pay-recover",
+  "pay-reserve",
   "prior-art",
-  "write-harness",
+  "reflect-digest",
+  "refund-quote",
+  "refund-recover",
+  "refund-reserve",
+  "release",
+  "research",
   "review-receipt",
   "review-skill",
-  "improve-skill",
-  "reflect-digest",
-  "release",
-  "skill-lab",
-  "research",
   "scafld",
+  "skill-lab",
   "skill-testing",
   "sourcey",
+  "stripe-charge",
+  "stripe-pay",
+  "stripe-refund",
   "vuln-scan",
+  "work-plan",
+  "write-harness",
+  "x402-pay",
+] as const;
+
+const currentPaymentRegistrySkillIds = [
+  "runx/charge-challenge",
+  "runx/charge-price",
+  "runx/charge-verify",
+  "runx/dispute-respond",
+  "runx/mock-charge",
+  "runx/mock-pay",
+  "runx/mock-refund",
+  "runx/mpp-charge",
+  "runx/mpp-pay",
+  "runx/mpp-refund",
+  "runx/pay-fulfill-rail",
+  "runx/pay-quote",
+  "runx/pay-recover",
+  "runx/pay-reserve",
+  "runx/refund-quote",
+  "runx/refund-recover",
+  "runx/refund-reserve",
+  "runx/stripe-charge",
+  "runx/stripe-pay",
+  "runx/stripe-refund",
+  "runx/x402-pay",
+] as const;
+
+const retiredPaymentRegistrySkillIds = [
+  "runx/payment-authorize-reserve",
+  "runx/payment-execute",
+  "runx/payment-fulfill-rail",
+  "runx/payment-quote",
+  "runx/payment-quote-preflight",
+  "runx/payment-rail-mock",
+  "runx/payment-recover",
+  "runx/payment-recover-inspect",
+  "runx/payment-reserve",
+  "runx/x402-charge",
+  "runx/x402-refund",
 ] as const;
 
 const harnessedShowcasePackages = [
@@ -68,21 +127,6 @@ const cargo = process.platform === "win32" ? "cargo.exe" : "cargo";
 const nativeRunx = path.resolve("crates", "target", "debug", process.platform === "win32" ? "runx.exe" : "runx");
 
 describe("official skill catalog", () => {
-  beforeAll(() => {
-    const result = spawnSync(
-      cargo,
-      ["build", "--quiet", "--manifest-path", "crates/Cargo.toml", "-p", "runx-cli", "--bin", "runx"],
-      {
-        cwd: workspaceRoot,
-        encoding: "utf8",
-        env: process.env,
-        maxBuffer: 8 * 1024 * 1024,
-      },
-    );
-
-    expect(result.status, result.stderr || result.stdout).toBe(0);
-  }, 60_000);
-
   it("ships official skills as portable packages plus checked-in execution profiles", async () => {
     for (const skillName of officialSkillPackages) {
       const skillDir = path.resolve("skills", skillName);
@@ -102,7 +146,18 @@ describe("official skill catalog", () => {
     }
   });
 
+  it("keeps the official payment catalog on the current skill shape", async () => {
+    const entries = JSON.parse(
+      await readFile(path.resolve("packages", "cli", "src", "official-skills.lock.json"), "utf8"),
+    ) as ReadonlyArray<{ readonly skill_id: string }>;
+    const ids = new Set(entries.map((entry) => entry.skill_id));
+
+    expect(currentPaymentRegistrySkillIds.filter((skillId) => !ids.has(skillId))).toEqual([]);
+    expect(retiredPaymentRegistrySkillIds.filter((skillId) => ids.has(skillId))).toEqual([]);
+  });
+
   it("keeps evaluator-facing packages runnable through native inline harness fixtures", async () => {
+    ensureNativeRunxBuilt();
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-official-native-harness-"));
     let executedCases = 0;
     try {
@@ -145,3 +200,18 @@ describe("official skill catalog", () => {
     expect(executedCases).toBeGreaterThan(0);
   }, 60_000);
 });
+
+function ensureNativeRunxBuilt(): void {
+  const result = spawnSync(
+    cargo,
+    ["build", "--quiet", "--manifest-path", "crates/Cargo.toml", "-p", "runx-cli", "--bin", "runx"],
+    {
+      cwd: workspaceRoot,
+      encoding: "utf8",
+      env: process.env,
+      maxBuffer: 8 * 1024 * 1024,
+    },
+  );
+
+  expect(result.status, result.stderr || result.stdout).toBe(0);
+}
