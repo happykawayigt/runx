@@ -32,7 +32,7 @@ describe("runx mcp serve", () => {
     if (result.status !== 0) {
       throw new Error(`failed to build runx binary for MCP test: ${result.stderr || result.stdout}`);
     }
-  });
+  }, 120_000);
 
   it("lists served skills and executes through the local kernel", async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-mcp-serve-"));

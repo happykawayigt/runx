@@ -2,8 +2,8 @@
 spec_version: '2.0'
 task_id: rust-ts-sunset-runtime-local-cli-mcp-importer-routing
 created: '2026-05-21T04:11:00Z'
-updated: '2026-05-21T04:11:00Z'
-status: draft
+updated: '2026-05-21T04:47:17Z'
+status: completed
 harden_status: not_run
 size: small
 risk_level: medium
@@ -13,17 +13,14 @@ risk_level: medium
 
 ## Current State
 
-Status: draft
-Current phase: implementation
-Next: validation
-Reason: executable MCP/CLI importer slice carved out of
-`rust-ts-sunset-runtime-local-cli-importers`. The Rust MCP server and CLI
-runner-selection work are archived completed, so the remaining clean cutover is
-to remove the legacy TypeScript in-process MCP server implementation from
-`packages/cli/src/commands/mcp.ts` and route the unshipped TS source handler to
-the native `runx mcp serve` process boundary.
-Allowed follow-up command: `scafld validate rust-ts-sunset-runtime-local-cli-mcp-importer-routing`
-Review gate: not_started
+Status: completed
+Current phase: final
+Next: done
+Reason: task completed
+Blockers: none
+Allowed follow-up command: `none`
+Latest runner update: 2026-05-21T04:47:17Z
+Review gate: pass
 
 ## Summary
 
@@ -128,3 +125,19 @@ git diff --check -- .scafld/specs/drafts/rust-ts-sunset-runtime-local-cli-mcp-im
   native MCP delegation cannot preserve MCP JSON-RPC framing.
 - Do not repair by adding a runtime-local compatibility facade; route through a
   durable native CLI contract or keep the broader runtime-local sunset blocked.
+
+## Review
+
+Status: completed
+Verdict: pass
+Mode: verify
+Provider: claude:claude-opus-4-7
+Output: claude.mcp_submit_review
+Summary: Human-reviewed override accepted: Claude review found no completion-blocking implementation issues; only blocking finding was concurrent workspace mutation outside this MCP slice, and low-severity notes are non-blocking.
+
+Attack log:
+- `review gate`: manual human audit -> clean (Claude review found no completion-blocking implementation issues; only blocking finding was concurrent workspace mutation outside this MCP slice, and low-severity notes are non-blocking.)
+
+Findings:
+- none
+
