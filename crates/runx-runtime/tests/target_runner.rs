@@ -203,6 +203,8 @@ fn live_adapter_composes_observations_into_revision_receipt_without_network()
     let plan = plan_target_repo_runner(&policy, &nitrosend_request("nitrosend/api"))?;
     let mut adapter = FakeTargetRepoRunnerAdapter {
         created_pull_request: created_pull_request(),
+        provider_pull_requests: Vec::new(),
+        expected_disposition: TargetRepoRunnerPullRequestDisposition::Create,
         events: Vec::new(),
     };
 
@@ -274,6 +276,68 @@ fn live_adapter_composes_observations_into_revision_receipt_without_network()
     Ok(())
 }
 
+#[test]
+fn live_adapter_reuses_provider_pull_request_without_runner_and_seals_reuse_metadata()
+-> Result<(), Box<dyn std::error::Error>> {
+    let policy: OperationalPolicy = serde_json::from_str(NITROSEND_LIKE)?;
+    let plan = plan_target_repo_runner(&policy, &nitrosend_request("nitrosend/api"))?;
+    let lookup = plan_target_repo_runner_execution(&plan, &readiness(true))?.provider_lookup;
+    let existing = TargetRepoRunnerProviderPullRequest {
+        url: "https://github.com/nitrosend/api/pull/144".to_owned(),
+        number: Some(144),
+        branch: Some("runx/source-482".to_owned()),
+        open: true,
+        markers: lookup.query.markers.clone(),
+        refs: lookup.query.required_refs.clone(),
+    };
+    let mut adapter = FakeTargetRepoRunnerAdapter {
+        created_pull_request: created_pull_request(),
+        provider_pull_requests: vec![existing],
+        expected_disposition: TargetRepoRunnerPullRequestDisposition::Reuse,
+        events: Vec::new(),
+    };
+
+    let live = execute_target_repo_runner_with_adapter(&plan, &mut adapter, CREATED_AT)?;
+
+    assert_eq!(adapter.events, vec!["checkout", "dedupe", "pull_request"]);
+    assert!(live.runner_observation.is_none());
+    assert_eq!(
+        live.execution.disposition,
+        TargetRepoRunnerPullRequestDisposition::Reuse
+    );
+    assert_eq!(
+        live.execution.dedupe_execution.result,
+        TargetRepoRunnerDedupeResult::Reused
+    );
+    assert_eq!(live.execution.pull_request.number, Some(144));
+    assert_eq!(
+        nested_string(
+            &live.execution.source_publication_receipt.metadata,
+            &["dedupe", "result"]
+        ),
+        Some("reused")
+    );
+    assert_eq!(
+        nested_string(&live.revision_projection.metadata, &["dedupe", "result"]),
+        Some("reused")
+    );
+    assert_eq!(
+        live.revision_receipt.harness.acts[0].closure.reason_code,
+        "target_runner_pr_reused"
+    );
+    assert_eq!(
+        live.revision_projection.pull_request_ref.uri,
+        "https://github.com/nitrosend/api/pull/144"
+    );
+    assert_eq!(
+        live.revision_projection.disposition,
+        TargetRepoRunnerPullRequestDisposition::Reuse
+    );
+    assert_public_only(&live.revision_receipt)?;
+    assert_hard_cutover_vocabulary_only(&live.revision_receipt)?;
+    Ok(())
+}
+
 fn nitrosend_request(target_repo: &str) -> TargetRepoRunnerPlanRequest {
     TargetRepoRunnerPlanRequest {
         source_id: Some("bugs-fixes".to_owned()),
@@ -294,6 +358,8 @@ fn nitrosend_request(target_repo: &str) -> TargetRepoRunnerPlanRequest {
 
 struct FakeTargetRepoRunnerAdapter {
     created_pull_request: TargetRepoRunnerExistingPullRequest,
+    provider_pull_requests: Vec<TargetRepoRunnerProviderPullRequest>,
+    expected_disposition: TargetRepoRunnerPullRequestDisposition,
     events: Vec<&'static str>,
 }
 
@@ -319,7 +385,7 @@ impl TargetRepoRunnerAdapter for FakeTargetRepoRunnerAdapter {
             provider: lookup.provider,
             target_repo: lookup.target_repo.clone(),
             key: lookup.key.clone(),
-            pull_requests: Vec::new(),
+            pull_requests: self.provider_pull_requests.clone(),
         })
     }
 
@@ -370,13 +436,23 @@ impl TargetRepoRunnerAdapter for FakeTargetRepoRunnerAdapter {
         request: &TargetRepoRunnerPullRequestObservationRequest,
     ) -> Result<TargetRepoRunnerExistingPullRequest, TargetRepoRunnerAdapterError> {
         self.events.push("pull_request");
-        assert_eq!(
-            request.disposition,
-            TargetRepoRunnerPullRequestDisposition::Create
-        );
-        assert!(request.existing_pull_request.is_none());
-        assert!(request.runner_observation.is_some());
-        Ok(self.created_pull_request.clone())
+        assert_eq!(request.disposition, self.expected_disposition);
+        match request.disposition {
+            TargetRepoRunnerPullRequestDisposition::Create => {
+                assert!(request.existing_pull_request.is_none());
+                assert!(request.runner_observation.is_some());
+                Ok(self.created_pull_request.clone())
+            }
+            TargetRepoRunnerPullRequestDisposition::Reuse => {
+                assert!(request.runner_observation.is_none());
+                request.existing_pull_request.clone().ok_or_else(|| {
+                    TargetRepoRunnerAdapterError::new(
+                        "pull_request",
+                        "expected existing pull request for reuse",
+                    )
+                })
+            }
+        }
     }
 }
 
