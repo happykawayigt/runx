@@ -3,7 +3,7 @@ spec_version: '2.0'
 task_id: x402-pay-ledger-projection-v1
 created: '2026-05-21T00:00:00Z'
 updated: '2026-05-21T00:00:00Z'
-status: blocked
+status: active
 harden_status: not_run
 size: medium
 risk_level: medium
@@ -13,12 +13,12 @@ risk_level: medium
 
 ## Current State
 
-Status: blocked
-Current phase: planning
-Next: implement projection boundary
-Reason: no payment-specific ledger projection API or persisted projection file
-boundary exists yet
-Blockers: missing projection surface
+Status: active
+Current phase: persistence boundary
+Next: persist projection artifact and append ledger event
+Reason: Rust-native pure projection builder exists; persisted projection output
+and ledger event integration are still missing
+Blockers: missing persistence integration
 Allowed follow-up command: `implement`
 Latest runner update: 2026-05-21T00:00:00Z
 Review gate: not_run
@@ -152,10 +152,13 @@ Validation:
   - Expected kind: `exit_code_zero`
   - Status: pass
   - Evidence: exit code was 0
-- [ ] `v3` projection tests - Rust runtime projection distinguishes settlement from
+- [x] `v3` projection tests - Rust runtime projection distinguishes settlement from
   governed refusal.
   - Command: `cargo test --manifest-path crates/Cargo.toml -p runx-runtime --test payment_ledger_projection`
   - Expected kind: `exit_code_zero`
+  - Status: pass
+  - Evidence: exit code was 0; happy settlement and governed refusal projections
+    matched `fixtures/ledger-projections/x402-pay-ledger-*.json`
 - [ ] `v4` x402 dogfood - Native x402 fixture lane remains green.
   - Command: `cargo test --manifest-path crates/Cargo.toml -p runx-cli --test x402_native_dogfood native_x402_negative_fixtures_refuse_without_settlement`
   - Expected kind: `exit_code_zero`
@@ -182,8 +185,11 @@ Commands:
 
 - 2026-05-21T00:00:00Z: Filed after P1.3, P1.4, and P1.12 refusal fixtures
   existed. The current repo has no Rust-native payment-specific ledger
-  projection API, so this active blocked spec records the missing boundary and
+  projection API, so this spec recorded the missing boundary and
   executable acceptance commands.
+- 2026-05-21T00:00:00Z: Added the Rust-native pure projection builder and
+  focused runtime tests for the happy settlement and governed refusal golden
+  fixtures. Persistence remains a follow-up boundary.
 
 ## Review
 
