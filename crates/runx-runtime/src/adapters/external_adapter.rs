@@ -5,32 +5,41 @@ use std::collections::BTreeMap;
 use std::io::{Read, Write};
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use runx_contracts::{
-    EXTERNAL_ADAPTER_PROTOCOL_VERSION, ExternalAdapterCancellationFrame,
-    ExternalAdapterCredentialRequest, ExternalAdapterInvocation, ExternalAdapterManifest,
-    ExternalAdapterResponse, ExternalAdapterStatus, ExternalAdapterTransportKind, JsonNumber,
+    CredentialDeliveryPurpose, EXTERNAL_ADAPTER_PROTOCOL_VERSION, ExternalAdapterCancellationFrame,
+    ExternalAdapterCredentialPurpose, ExternalAdapterCredentialReference,
+    ExternalAdapterCredentialRequest, ExternalAdapterHostResolutionFrame,
+    ExternalAdapterInvocation, ExternalAdapterManifest, ExternalAdapterResponse,
+    ExternalAdapterStatus, ExternalAdapterTelemetryValue, ExternalAdapterTransportKind, JsonNumber,
     JsonObject, JsonValue, Reference, ReferenceType,
 };
 use thiserror::Error;
 
 use crate::RuntimeError;
 use crate::adapter::{InvocationStatus, SkillAdapter, SkillInvocation, SkillOutput};
+use crate::credentials::CredentialDelivery;
 use crate::receipts::paths::RUNX_RECEIPT_DIR_ENV;
 use crate::time::now_iso8601;
 
 const MANIFEST_INLINE_FIELD: &str = "external_adapter_manifest";
+const MANIFEST_PATH_FIELD: &str = "external_adapter_manifest_path";
 const MANIFEST_NESTED_FIELD: &str = "external_adapter";
 const MANIFEST_NESTED_MANIFEST_FIELD: &str = "manifest";
+const MANIFEST_NESTED_PATH_FIELD: &str = "manifest_path";
 const INVOCATION_SCHEMA: &str = "runx.external_adapter.invocation.v1";
 const MANIFEST_SCHEMA: &str = "runx.external_adapter.manifest.v1";
 const RESPONSE_SCHEMA: &str = "runx.external_adapter.response.v1";
 const CREDENTIAL_REQUEST_SCHEMA: &str = "runx.external_adapter.credential_request.v1";
+const HOST_RESOLUTION_SCHEMA: &str = "runx.external_adapter.host_resolution.v1";
 const CANCELLATION_SCHEMA: &str = "runx.external_adapter.cancellation.v1";
+const CREDENTIAL_DELIVERY_OBSERVATIONS_METADATA: &str = "credential_delivery_observations";
+const HOST_RESOLUTION_FRAME_ID_METADATA: &str = "external_adapter_host_resolution_frame_id";
+const HOST_RESOLUTION_REQUEST_METADATA: &str = "external_adapter_host_resolution_request";
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
 const FORCE_KILL_GRACE: Duration = Duration::from_millis(100);
 const RESPONSE_LIMIT_BYTES: usize = 1024 * 1024;
@@ -112,6 +121,7 @@ pub trait ExternalAdapterSupervisor {
         &self,
         manifest: &ExternalAdapterManifest,
         invocation: &ExternalAdapterInvocation,
+        credential_delivery: &CredentialDelivery,
     ) -> Result<ExternalAdapterProcessOutcome, ExternalAdapterSupervisorError>;
 }
 
@@ -120,8 +130,14 @@ impl ExternalAdapterSupervisor for ExternalAdapterProcessSupervisor {
         &self,
         manifest: &ExternalAdapterManifest,
         invocation: &ExternalAdapterInvocation,
+        credential_delivery: &CredentialDelivery,
     ) -> Result<ExternalAdapterProcessOutcome, ExternalAdapterSupervisorError> {
-        ExternalAdapterProcessSupervisor::invoke(self, manifest, invocation)
+        ExternalAdapterProcessSupervisor::invoke_with_delivery(
+            self,
+            manifest,
+            invocation,
+            credential_delivery,
+        )
     }
 }
 
@@ -133,23 +149,44 @@ impl ExternalAdapterManifestResolver for InlineExternalAdapterManifestResolver {
         &self,
         request: &SkillInvocation,
     ) -> Result<ExternalAdapterManifest, ExternalAdapterSkillAdapterError> {
-        let value = inline_manifest_value(&request.source.raw)
-            .ok_or(ExternalAdapterSkillAdapterError::MissingInlineManifest)?;
-        let JsonValue::Object(_) = value else {
-            return Err(ExternalAdapterSkillAdapterError::InvalidInlineManifestShape);
-        };
-        manifest_from_value(value)
+        if let Some(value) = inline_manifest_value(&request.source.raw) {
+            let JsonValue::Object(_) = value else {
+                return Err(ExternalAdapterSkillAdapterError::InvalidInlineManifestShape);
+            };
+            return manifest_from_value(value);
+        }
+        if let Some(relative_path) = manifest_path_value(&request.source.raw)? {
+            return manifest_from_path(&request.skill_directory, &relative_path);
+        }
+        Err(ExternalAdapterSkillAdapterError::MissingManifest)
     }
 }
 
 #[derive(Debug, Error)]
 pub enum ExternalAdapterSkillAdapterError {
     #[error(
-        "external adapter source is missing an inline manifest at source.external_adapter.manifest or source.external_adapter_manifest"
+        "external adapter source is missing a manifest at source.external_adapter.manifest, source.external_adapter.manifest_path, source.external_adapter_manifest, or source.external_adapter_manifest_path"
     )]
-    MissingInlineManifest,
+    MissingManifest,
     #[error("external adapter inline manifest must be an object")]
     InvalidInlineManifestShape,
+    #[error(
+        "external adapter manifest_path must be a relative path below the skill directory: '{path}'"
+    )]
+    InvalidManifestPath { path: String },
+    #[error(
+        "external adapter manifest_path '{path}' escapes the skill directory '{skill_directory}'"
+    )]
+    ManifestPathEscapesSkillDirectory {
+        path: String,
+        skill_directory: String,
+    },
+    #[error("external adapter manifest file '{path}' could not be read: {source}")]
+    ManifestRead {
+        path: String,
+        #[source]
+        source: std::io::Error,
+    },
     #[error("external adapter source metadata '{field}' must be a string when present")]
     InvalidSourceMetadata { field: &'static str },
     #[error(
@@ -248,10 +285,19 @@ impl ExternalAdapterProcessSupervisor {
         manifest: &ExternalAdapterManifest,
         invocation: &ExternalAdapterInvocation,
     ) -> Result<ExternalAdapterProcessOutcome, ExternalAdapterSupervisorError> {
+        self.invoke_with_delivery(manifest, invocation, &CredentialDelivery::none())
+    }
+
+    pub fn invoke_with_delivery(
+        &self,
+        manifest: &ExternalAdapterManifest,
+        invocation: &ExternalAdapterInvocation,
+        credential_delivery: &CredentialDelivery,
+    ) -> Result<ExternalAdapterProcessOutcome, ExternalAdapterSupervisorError> {
         validate_invocation_contract(manifest, invocation)?;
         let started = Instant::now();
         let command = process_command(manifest)?;
-        let mut child = spawn_process(command, manifest, invocation)?;
+        let mut child = spawn_process(command, manifest, invocation, credential_delivery)?;
         let stdout = capture_pipe(child.stdout.take(), "opening external adapter stdout pipe")?;
         let stderr = capture_pipe(child.stderr.take(), "opening external adapter stderr pipe")?;
         if let Err(error) = write_invocation(&mut child, invocation) {
@@ -291,7 +337,7 @@ impl ExternalAdapterProcessSupervisor {
                 limit_bytes: RESPONSE_LIMIT_BYTES,
             });
         }
-        let response = parse_response(&stdout.bytes)?;
+        let response = parse_response(&stdout.bytes, credential_delivery)?;
         validate_response_contract(invocation, &response)?;
         Ok(ExternalAdapterProcessOutcome {
             response,
@@ -312,8 +358,9 @@ where
 {
     let manifest = manifest_resolver.resolve_manifest(&request)?;
     let invocation = skill_invocation_contract(&request, &manifest)?;
-    let outcome = supervisor.invoke_external_adapter(&manifest, &invocation)?;
-    skill_output_from_outcome(outcome)
+    let outcome =
+        supervisor.invoke_external_adapter(&manifest, &invocation, &request.credential_delivery)?;
+    skill_output_from_outcome(outcome, &request.credential_delivery)
 }
 
 fn inline_manifest_value(source: &JsonObject) -> Option<&JsonValue> {
@@ -325,6 +372,29 @@ fn inline_manifest_value(source: &JsonObject) -> Option<&JsonValue> {
     })
 }
 
+fn manifest_path_value(
+    source: &JsonObject,
+) -> Result<Option<String>, ExternalAdapterSkillAdapterError> {
+    if let Some(value) = source.get(MANIFEST_PATH_FIELD) {
+        let JsonValue::String(path) = value else {
+            return Err(ExternalAdapterSkillAdapterError::InvalidSourceMetadata {
+                field: MANIFEST_PATH_FIELD,
+            });
+        };
+        return Ok(Some(path.clone()));
+    }
+    let Some(JsonValue::Object(external_adapter)) = source.get(MANIFEST_NESTED_FIELD) else {
+        return Ok(None);
+    };
+    match external_adapter.get(MANIFEST_NESTED_PATH_FIELD) {
+        Some(JsonValue::String(path)) => Ok(Some(path.clone())),
+        Some(_) => Err(ExternalAdapterSkillAdapterError::InvalidSourceMetadata {
+            field: MANIFEST_NESTED_PATH_FIELD,
+        }),
+        None => Ok(None),
+    }
+}
+
 fn manifest_from_value(
     value: &JsonValue,
 ) -> Result<ExternalAdapterManifest, ExternalAdapterSkillAdapterError> {
@@ -333,6 +403,61 @@ fn manifest_from_value(
     })?;
     serde_json::from_value(value)
         .map_err(|source| json_adapter_error("validating external adapter inline manifest", source))
+}
+
+fn manifest_from_path(
+    skill_directory: &Path,
+    relative_path: &str,
+) -> Result<ExternalAdapterManifest, ExternalAdapterSkillAdapterError> {
+    validate_manifest_relative_path(relative_path)?;
+    let skill_directory_display = skill_directory.to_string_lossy().into_owned();
+    let skill_directory = skill_directory.canonicalize().map_err(|source| {
+        ExternalAdapterSkillAdapterError::ManifestRead {
+            path: skill_directory_display.clone(),
+            source,
+        }
+    })?;
+    let manifest_path = skill_directory.join(relative_path);
+    let canonical_manifest_path = manifest_path.canonicalize().map_err(|source| {
+        ExternalAdapterSkillAdapterError::ManifestRead {
+            path: manifest_path.to_string_lossy().into_owned(),
+            source,
+        }
+    })?;
+    if !canonical_manifest_path.starts_with(&skill_directory) {
+        return Err(
+            ExternalAdapterSkillAdapterError::ManifestPathEscapesSkillDirectory {
+                path: relative_path.to_owned(),
+                skill_directory: skill_directory_display,
+            },
+        );
+    }
+    let bytes = std::fs::read(canonical_manifest_path.as_path()).map_err(|source| {
+        ExternalAdapterSkillAdapterError::ManifestRead {
+            path: canonical_manifest_path.to_string_lossy().into_owned(),
+            source,
+        }
+    })?;
+    serde_json::from_slice(&bytes)
+        .map_err(|source| json_adapter_error("validating external adapter manifest file", source))
+}
+
+fn validate_manifest_relative_path(
+    relative_path: &str,
+) -> Result<(), ExternalAdapterSkillAdapterError> {
+    let path = Path::new(relative_path);
+    let valid = !relative_path.trim().is_empty()
+        && path.is_relative()
+        && path
+            .components()
+            .all(|component| matches!(component, Component::Normal(_)));
+    if valid {
+        Ok(())
+    } else {
+        Err(ExternalAdapterSkillAdapterError::InvalidManifestPath {
+            path: relative_path.to_owned(),
+        })
+    }
 }
 
 fn skill_invocation_contract(
@@ -369,9 +494,40 @@ fn skill_invocation_contract(
         cwd: Some(invocation_cwd(request)),
         receipt_dir: request.env.get(RUNX_RECEIPT_DIR_ENV).cloned(),
         env: invocation_env(&request.env),
-        credential_refs: None,
+        credential_refs: external_adapter_credential_refs(&request.credential_delivery),
         metadata: None,
     })
+}
+
+fn external_adapter_credential_refs(
+    credential_delivery: &CredentialDelivery,
+) -> Option<Vec<ExternalAdapterCredentialReference>> {
+    let observation = credential_delivery.public_observation()?;
+    (!observation.credential_refs.is_empty()).then(|| {
+        observation
+            .credential_refs
+            .iter()
+            .cloned()
+            .map(|credential_ref| ExternalAdapterCredentialReference {
+                credential_ref,
+                provider: observation.provider.clone(),
+                purpose: external_adapter_credential_purpose(&observation.purpose),
+            })
+            .collect()
+    })
+}
+
+const fn external_adapter_credential_purpose(
+    purpose: &CredentialDeliveryPurpose,
+) -> ExternalAdapterCredentialPurpose {
+    match purpose {
+        CredentialDeliveryPurpose::ProviderApi => ExternalAdapterCredentialPurpose::ProviderApi,
+        CredentialDeliveryPurpose::Registry => ExternalAdapterCredentialPurpose::Registry,
+        CredentialDeliveryPurpose::ArtifactStore => ExternalAdapterCredentialPurpose::ArtifactStore,
+        CredentialDeliveryPurpose::WebhookVerification => {
+            ExternalAdapterCredentialPurpose::WebhookVerification
+        }
+    }
 }
 
 fn optional_source_string(
@@ -410,6 +566,7 @@ fn invocation_env(env: &BTreeMap<String, String>) -> Option<JsonObject> {
 
 fn skill_output_from_outcome(
     outcome: ExternalAdapterProcessOutcome,
+    credential_delivery: &CredentialDelivery,
 ) -> Result<SkillOutput, ExternalAdapterSkillAdapterError> {
     let response = outcome.response;
     let status = runtime_status(&response.status);
@@ -431,6 +588,7 @@ fn skill_output_from_outcome(
             JsonValue::Number(JsonNumber::I64(i64::from(process_exit_code))),
         );
     }
+    add_credential_delivery_metadata(&mut metadata, credential_delivery)?;
 
     Ok(SkillOutput {
         status,
@@ -440,6 +598,25 @@ fn skill_output_from_outcome(
         duration_ms: outcome.duration_ms,
         metadata,
     })
+}
+
+fn add_credential_delivery_metadata(
+    metadata: &mut JsonObject,
+    credential_delivery: &CredentialDelivery,
+) -> Result<(), ExternalAdapterSkillAdapterError> {
+    let Some(observation) = credential_delivery.public_observation() else {
+        return Ok(());
+    };
+    let observation: JsonValue = serde_json::to_value(observation)
+        .and_then(serde_json::from_value)
+        .map_err(|source| {
+            json_adapter_error("serializing credential delivery observation", source)
+        })?;
+    metadata.insert(
+        CREDENTIAL_DELIVERY_OBSERVATIONS_METADATA.to_owned(),
+        JsonValue::Array(vec![observation]),
+    );
+    Ok(())
 }
 
 fn runtime_status(status: &ExternalAdapterStatus) -> InvocationStatus {
@@ -598,6 +775,7 @@ fn spawn_process(
     process_command: &str,
     manifest: &ExternalAdapterManifest,
     invocation: &ExternalAdapterInvocation,
+    credential_delivery: &CredentialDelivery,
 ) -> Result<Child, ExternalAdapterSupervisorError> {
     let mut command = Command::new(process_command);
     if let Some(args) = manifest.transport.args.as_ref() {
@@ -608,7 +786,7 @@ fn spawn_process(
     }
     command
         .env_clear()
-        .envs(process_env(invocation)?)
+        .envs(process_env(invocation, credential_delivery)?)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -620,6 +798,7 @@ fn spawn_process(
 
 fn process_env(
     invocation: &ExternalAdapterInvocation,
+    credential_delivery: &CredentialDelivery,
 ) -> Result<BTreeMap<String, String>, ExternalAdapterSupervisorError> {
     let mut env = BTreeMap::new();
     if let Some(scoped_env) = invocation.env.as_ref() {
@@ -632,6 +811,9 @@ fn process_env(
     }
     if let Some(receipt_dir) = invocation.receipt_dir.as_ref() {
         env.insert("RUNX_RECEIPT_DIR".to_owned(), receipt_dir.clone());
+    }
+    for (key, value) in credential_delivery.secret_env().iter() {
+        env.insert(key.to_owned(), value.to_owned());
     }
     Ok(env)
 }
@@ -651,7 +833,10 @@ fn write_invocation(
     Ok(())
 }
 
-fn parse_response(bytes: &[u8]) -> Result<ExternalAdapterResponse, ExternalAdapterSupervisorError> {
+fn parse_response(
+    bytes: &[u8],
+    credential_delivery: &CredentialDelivery,
+) -> Result<ExternalAdapterResponse, ExternalAdapterSupervisorError> {
     let bytes = trim_ascii_whitespace(bytes);
     if bytes.is_empty() {
         return Err(ExternalAdapterSupervisorError::EmptyResponse);
@@ -659,8 +844,14 @@ fn parse_response(bytes: &[u8]) -> Result<ExternalAdapterResponse, ExternalAdapt
     let frame: ExternalAdapterFrameSchema = serde_json::from_slice(bytes)
         .map_err(|source| json_error("parsing external adapter response frame", source))?;
     match frame.schema.as_str() {
-        RESPONSE_SCHEMA => serde_json::from_slice(bytes)
-            .map_err(|source| json_error("validating external adapter response frame", source)),
+        RESPONSE_SCHEMA => {
+            let mut response: ExternalAdapterResponse =
+                serde_json::from_slice(bytes).map_err(|source| {
+                    json_error("validating external adapter response frame", source)
+                })?;
+            redact_response(&mut response, credential_delivery);
+            Ok(response)
+        }
         CREDENTIAL_REQUEST_SCHEMA => {
             let request: ExternalAdapterCredentialRequest =
                 serde_json::from_slice(bytes).map_err(|source| {
@@ -671,12 +862,19 @@ fn parse_response(bytes: &[u8]) -> Result<ExternalAdapterResponse, ExternalAdapt
                 })?;
             Err(
                 ExternalAdapterSupervisorError::UnexpectedCredentialRequest {
-                    request_id: request.request_id,
+                    request_id: credential_delivery.redact_text(request.request_id),
                 },
             )
         }
+        HOST_RESOLUTION_SCHEMA => {
+            let frame: ExternalAdapterHostResolutionFrame =
+                serde_json::from_slice(bytes).map_err(|source| {
+                    json_error("validating external adapter host-resolution frame", source)
+                })?;
+            host_resolution_response(frame, credential_delivery)
+        }
         other => Err(ExternalAdapterSupervisorError::UnsupportedFrameSchema {
-            schema: other.to_owned(),
+            schema: credential_delivery.redact_text(other),
         }),
     }
 }
@@ -684,6 +882,116 @@ fn parse_response(bytes: &[u8]) -> Result<ExternalAdapterResponse, ExternalAdapt
 #[derive(Debug, serde::Deserialize)]
 struct ExternalAdapterFrameSchema {
     schema: String,
+}
+
+fn host_resolution_response(
+    frame: ExternalAdapterHostResolutionFrame,
+    credential_delivery: &CredentialDelivery,
+) -> Result<ExternalAdapterResponse, ExternalAdapterSupervisorError> {
+    let request: JsonValue = serde_json::to_value(&frame.request)
+        .and_then(serde_json::from_value)
+        .map_err(|source| {
+            json_error(
+                "serializing external adapter host-resolution request",
+                source,
+            )
+        })?;
+    let mut metadata = JsonObject::new();
+    metadata.insert(
+        HOST_RESOLUTION_FRAME_ID_METADATA.to_owned(),
+        JsonValue::String(frame.frame_id.clone()),
+    );
+    metadata.insert(HOST_RESOLUTION_REQUEST_METADATA.to_owned(), request);
+    let mut response = ExternalAdapterResponse {
+        schema: RESPONSE_SCHEMA.to_owned(),
+        protocol_version: frame.protocol_version,
+        invocation_id: frame.invocation_id,
+        adapter_id: frame.adapter_id,
+        status: ExternalAdapterStatus::HostResolutionRequested,
+        stdout: None,
+        stderr: Some("external adapter requested host resolution".to_owned()),
+        exit_code: Some(None),
+        output: None,
+        artifacts: None,
+        errors: None,
+        telemetry: None,
+        metadata: Some(metadata),
+        observed_at: frame.requested_at,
+    };
+    redact_response(&mut response, credential_delivery);
+    Ok(response)
+}
+
+fn redact_response(
+    response: &mut ExternalAdapterResponse,
+    credential_delivery: &CredentialDelivery,
+) {
+    response.schema = credential_delivery.redact_text(std::mem::take(&mut response.schema));
+    response.protocol_version =
+        credential_delivery.redact_text(std::mem::take(&mut response.protocol_version));
+    response.invocation_id =
+        credential_delivery.redact_text(std::mem::take(&mut response.invocation_id));
+    response.adapter_id = credential_delivery.redact_text(std::mem::take(&mut response.adapter_id));
+    response.observed_at =
+        credential_delivery.redact_text(std::mem::take(&mut response.observed_at));
+    if let Some(stdout) = response.stdout.take() {
+        response.stdout = Some(credential_delivery.redact_text(stdout));
+    }
+    if let Some(stderr) = response.stderr.take() {
+        response.stderr = Some(credential_delivery.redact_text(stderr));
+    }
+    if let Some(output) = response.output.as_mut() {
+        redact_json_object(output, credential_delivery);
+    }
+    if let Some(metadata) = response.metadata.as_mut() {
+        redact_json_object(metadata, credential_delivery);
+    }
+    if let Some(artifacts) = response.artifacts.as_mut() {
+        for artifact in artifacts {
+            if let Some(summary) = artifact.summary.take() {
+                artifact.summary = Some(credential_delivery.redact_text(summary));
+            }
+        }
+    }
+    if let Some(errors) = response.errors.as_mut() {
+        for error in errors {
+            error.code = credential_delivery.redact_text(std::mem::take(&mut error.code));
+            error.message = credential_delivery.redact_text(std::mem::take(&mut error.message));
+        }
+    }
+    if let Some(telemetry) = response.telemetry.as_mut() {
+        for observation in telemetry {
+            observation.name =
+                credential_delivery.redact_text(std::mem::take(&mut observation.name));
+            if let Some(unit) = observation.unit.take() {
+                observation.unit = Some(credential_delivery.redact_text(unit));
+            }
+            if let ExternalAdapterTelemetryValue::String(value) = &mut observation.value {
+                *value = credential_delivery.redact_text(std::mem::take(value));
+            }
+        }
+    }
+}
+
+fn redact_json_object(object: &mut JsonObject, credential_delivery: &CredentialDelivery) {
+    for value in object.values_mut() {
+        redact_json_value(value, credential_delivery);
+    }
+}
+
+fn redact_json_value(value: &mut JsonValue, credential_delivery: &CredentialDelivery) {
+    match value {
+        JsonValue::String(text) => {
+            *text = credential_delivery.redact_text(std::mem::take(text));
+        }
+        JsonValue::Array(values) => {
+            for value in values {
+                redact_json_value(value, credential_delivery);
+            }
+        }
+        JsonValue::Object(object) => redact_json_object(object, credential_delivery),
+        JsonValue::Null | JsonValue::Bool(_) | JsonValue::Number(_) => {}
+    }
 }
 
 fn validate_response_contract(

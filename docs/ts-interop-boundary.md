@@ -50,6 +50,10 @@ Rust runtime. Each crossing has a contract surface that owns the wire shape.
    without a core fork. `external-adapter-plugin-protocol-v1` is the external
    execution-adapter lane only; it must not be used as the umbrella answer for
    source ingress, hosted runtime binding, catalog/read-model, or outbox queues.
+   Thread/outbox provider mutation is owned by
+   `thread-outbox-provider-protocol-v1`; provider adapters that need tokens must
+   consume Rust-supervised `CredentialDelivery`, while the existing file-thread
+   helper remains a credential-free local persistence path.
 
 No fifth boundary is added without updating this document. No published
 TypeScript package is silently broken: each package disposition is named here.

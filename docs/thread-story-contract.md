@@ -25,6 +25,13 @@ The thread outbox tools use those helpers to produce:
 - `outbox_entry.metadata.milestone_kind`
 - `outbox_entry.metadata.body_markdown`
 
+Provider publication is not owned by these helpers. Local file-thread outbox
+pushes are credential-free persistence for fixtures and local dogfood. GitHub,
+Slack, support-channel, or other provider mutations require the separate
+`thread-outbox-provider-protocol-v1` lane and Rust-supervised credential
+delivery; they must not be implemented as hidden `@runxhq/core` provider
+side effects.
+
 The canonical milestone kinds for issue-to-PR style flows are:
 
 - `intake`
@@ -74,6 +81,8 @@ such as Slack channel names, Sentry project ids, or owner maps.
 ## Non-goals
 
 - This contract does not admit Slack, Sentry, or support-channel messages.
+- This contract does not push outbox entries to providers; provider mutation is
+  blocked on `thread-outbox-provider-protocol-v1`.
 - This contract does not decide whether an issue deserves a PR.
 - This contract does not merge PRs.
 - This contract does not replace receipts, ledgers, or scafld status.

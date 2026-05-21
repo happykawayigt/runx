@@ -4,7 +4,8 @@
 use std::path::Path;
 
 use runx_contracts::{
-    ApprovalGate, AuthorityVerb, JsonObject, JsonValue, ProofKind, ResolutionResponseActor,
+    ApprovalGate, AuthorityVerb, ExecutionEvent, JsonObject, JsonValue, ProofKind,
+    ResolutionRequest, ResolutionResponseActor,
 };
 use runx_parser::GraphStep;
 
@@ -22,6 +23,11 @@ use crate::approval::{ApprovalResolution, request_approval};
 use crate::host::Host;
 use crate::payment_state::{PaymentStepStateInput, persist_payment_step_state};
 use crate::receipts::step_receipt;
+
+const EXTERNAL_ADAPTER_HOST_RESOLUTION_REQUEST_METADATA: &str =
+    "external_adapter_host_resolution_request";
+const EXTERNAL_ADAPTER_HOST_RESOLUTION_RESPONSE_METADATA: &str =
+    "external_adapter_host_resolution_response";
 
 pub(super) fn output_error(run: &StepRun) -> String {
     if run.output.stderr.is_empty() {
@@ -57,7 +63,7 @@ where
     let skill_dir = skill_dir(graph_dir, step)?;
     let skill = load_skill(&skill_dir)?;
     let skill_name = skill.name.clone();
-    let output = runtime.adapter.invoke(SkillInvocation {
+    let mut output = runtime.adapter.invoke(SkillInvocation {
         skill_name: skill.name,
         source: skill.source,
         inputs,
@@ -66,6 +72,7 @@ where
         env: runtime.options.env.clone(),
         credential_delivery: crate::credentials::CredentialDelivery::none(),
     })?;
+    route_external_adapter_host_resolution(step, host, &mut output)?;
     let outputs = output_object(&output);
     let receipt = step_receipt(
         graph_name,
@@ -86,6 +93,68 @@ where
         outputs,
         receipt,
     })
+}
+
+fn route_external_adapter_host_resolution(
+    step: &GraphStep,
+    host: &mut dyn Host,
+    output: &mut SkillOutput,
+) -> Result<(), RuntimeError> {
+    let Some(JsonValue::Object(request_object)) = output
+        .metadata
+        .get(EXTERNAL_ADAPTER_HOST_RESOLUTION_REQUEST_METADATA)
+        .cloned()
+    else {
+        return Ok(());
+    };
+    let request: ResolutionRequest =
+        serde_json::to_value(JsonValue::Object(request_object.clone()))
+            .and_then(serde_json::from_value)
+            .map_err(|source| {
+                RuntimeError::json("parsing external adapter host-resolution request", source)
+            })?;
+    host.report(ExecutionEvent::ResolutionRequested {
+        message: format!(
+            "external adapter step '{}' requested host resolution",
+            step.id
+        ),
+        data: Some(JsonValue::Object(host_resolution_event_data(
+            step,
+            JsonValue::Object(request_object),
+        ))),
+    })?;
+    let Some(response) = host.resolve(request)? else {
+        return Ok(());
+    };
+    let response_value: JsonValue = serde_json::to_value(&response)
+        .and_then(serde_json::from_value)
+        .map_err(|source| {
+            RuntimeError::json(
+                "serializing external adapter host-resolution response",
+                source,
+            )
+        })?;
+    output.metadata.insert(
+        EXTERNAL_ADAPTER_HOST_RESOLUTION_RESPONSE_METADATA.to_owned(),
+        response_value.clone(),
+    );
+    host.report(ExecutionEvent::ResolutionResolved {
+        message: format!(
+            "external adapter step '{}' host resolution resolved",
+            step.id
+        ),
+        data: Some(JsonValue::Object(host_resolution_event_data(
+            step,
+            response_value,
+        ))),
+    })
+}
+
+fn host_resolution_event_data(step: &GraphStep, payload: JsonValue) -> JsonObject {
+    let mut data = JsonObject::new();
+    data.insert("step_id".to_owned(), JsonValue::String(step.id.clone()));
+    data.insert("payload".to_owned(), payload);
+    data
 }
 
 fn persist_payment_state_for_step<A>(

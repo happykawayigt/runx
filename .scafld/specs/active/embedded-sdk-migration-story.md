@@ -2,8 +2,8 @@
 spec_version: '2.0'
 task_id: embedded-sdk-migration-story
 created: '2026-05-21T12:19:24Z'
-updated: '2026-05-22T00:19:44+10:00'
-status: draft
+updated: '2026-05-22T01:40:00+10:00'
+status: active
 harden_status: not_run
 size: large
 risk_level: high
@@ -13,20 +13,24 @@ risk_level: high
 
 ## Current State
 
-Status: draft
+Status: active
 Current phase: planning
 Next: complete cloud inventory, then harden
 Reason: `@runxhq/runtime-local/sdk` is a real in-process embedding surface, but
 the current Rust `runx-sdk` is explicitly CLI-backed and does not execute skills
 natively.
-Blockers: `skill-author-runtime-contract-v1` must define the author-facing
-runtime ABI, and `external-adapter-plugin-protocol-v1` must define the
-language-neutral custom adapter/plugin path, before this spec decides how
-embedded consumers preserve richer runtime-local semantics.
+Blockers: cloud worker/agent-runner inventory is still unavailable in this OSS
+checkout. `skill-author-runtime-contract-v1` is archived complete for the
+author-facing subprocess ABI, and `external-adapter-plugin-protocol-v1` now owns
+the language-neutral custom adapter path; richer embedded host continuation
+semantics still require a Rust host/service/native-binding decision before
+runtime-local SDK deletion.
 Allowed follow-up command: `scafld harden embedded-sdk-migration-story`
-Latest runner update: 2026-05-22T00:19:44+10:00 added an OSS-only inventory
-slice. Cloud worker and agent-runner callers remain unverified in this checkout
-and are recorded as a follow-up blocker rather than inferred from stale context.
+Latest runner update: 2026-05-22T01:40:00+10:00 promoted this executed inventory
+spec from drafts to active, revalidated boundary guardrails, and confirmed the
+TS-free Rust CLI smoke test exists as the local execution proof. Cloud worker
+and agent-runner callers remain unverified in this checkout and are recorded as
+a follow-up blocker rather than inferred from stale context.
 Previous update: 2026-05-21T22:52:32+10:00 aligned with
 `ts-extension-survivorship-boundary` and
 `external-adapter-plugin-protocol-v1`; embedded migration must not preserve a
@@ -189,6 +193,16 @@ Validation:
   - Expected kind: `exit_code_zero`
   - Status: pending
   - Evidence: none
+- [x] `v5` Native Rust CLI can run representative local workflows without a
+  Node/TypeScript runtime environment.
+  - Command:
+    `cargo test --manifest-path crates/Cargo.toml -p runx-cli --test native_no_ts -- --nocapture`
+  - Expected kind: `exit_code_zero`
+  - Status: passed
+  - Evidence: 2026-05-22T01:40:00+10:00 passed 1 test,
+    `native_cli_smoke_runs_without_node_or_typescript_env`, covering doctor,
+    list, history, agent-step needs-agent, and harness receipt sealing with
+    `env_clear()` and no Node/TypeScript runtime variables.
 
 ## Phase 1: Inventory
 

@@ -37,7 +37,7 @@ export async function pushOutboxEntryViaAdapter(
   if (request.thread.adapter.type !== "file") {
     return {
       status: "skipped",
-      reason: `no thread adapter is registered for '${request.thread.adapter.type}'`,
+      reason: `no thread adapter is registered for '${request.thread.adapter.type}'; provider outbox adapters require a ratified thread-outbox provider protocol and Rust-supervised CredentialDelivery`,
       outbox_entry: request.entry,
       thread: request.thread,
     };

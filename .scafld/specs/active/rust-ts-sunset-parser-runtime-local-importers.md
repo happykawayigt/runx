@@ -2,8 +2,8 @@
 spec_version: '2.0'
 task_id: rust-ts-sunset-parser-runtime-local-importers
 created: '2026-05-22T00:26:00+10:00'
-updated: '2026-05-22T00:38:21+10:00'
-status: draft
+updated: '2026-05-22T01:36:00+10:00'
+status: active
 harden_status: not_run
 size: small
 risk_level: medium
@@ -13,7 +13,7 @@ risk_level: medium
 
 ## Current State
 
-Status: draft
+Status: active
 Current phase: partial safe migration complete
 Next: resolve remaining full parser-validation importers through a
 Rust/contract-owned parser ingress before removing more runtime-local imports
@@ -26,8 +26,10 @@ Blockers: replacement Rust/contract parser ingress must be identified for each
 full skill, graph, runner manifest, tool manifest, install, and reflect-policy
 value importer before production imports move.
 Allowed follow-up command: `scafld validate rust-ts-sunset-parser-runtime-local-importers --json`
-Latest runner update: 2026-05-22T00:26:00+10:00
-Review gate: not_started
+Latest runner update: 2026-05-22T01:36:00+10:00 promoted the executed child
+spec from drafts to active and revalidated the current importer census. The
+remaining parser value importers are explicit blockers, not hidden work.
+Review gate: partial_migration_recorded; remaining_importers_blocked
 
 ## Summary
 
@@ -227,7 +229,7 @@ Acceptance:
   - Status: passed
   - Evidence: remaining direct imports are the six blocked files listed above.
 - [x] `ac2` command - Value importer assignments are recorded in this spec.
-  - Command: `rg -n "Value importers:" .scafld/specs/drafts/rust-ts-sunset-parser-runtime-local-importers.md`
+  - Command: `rg -n "Value importers:" .scafld/specs/active/rust-ts-sunset-parser-runtime-local-importers.md`
   - Expected kind: `exit_code_zero`
   - Status: passed
   - Evidence: migrated and blocked assignments recorded under Importer Census.

@@ -613,7 +613,7 @@ describe("thread contract", () => {
 
     expect(result).toEqual({
       status: "skipped",
-      reason: "no thread adapter is registered for 'github'",
+      reason: "no thread adapter is registered for 'github'; provider outbox adapters require a ratified thread-outbox provider protocol and Rust-supervised CredentialDelivery",
       outbox_entry: {
         entry_id: "pull_request:fixture-task",
         kind: "pull_request",

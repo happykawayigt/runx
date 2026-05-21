@@ -2,7 +2,7 @@
 spec_version: '2.0'
 task_id: rust-mcp-rmcp-server-cutover
 created: '2026-05-21T12:12:00Z'
-updated: '2026-05-21T16:42:00Z'
+updated: '2026-05-22T01:32:00+10:00'
 status: active
 harden_status: not_run
 size: large
@@ -14,23 +14,28 @@ risk_level: high
 ## Current State
 
 Status: active
-Current phase: staged rmcp server proof landed; deletion gate still blocked
-Next: decide whether to approve a byte-level lifecycle fixture change or keep
-the hand-rolled server as the canonical Content-Length fixture oracle
+Current phase: lifecycle fixture request repaired; deletion gate still blocked
+Next: decide whether rmcp response-byte differences are acceptable or keep the
+hand-rolled server as the canonical Content-Length fixture oracle
 Reason: `rust-mcp-rmcp-cutover` now owns only the completed Stage 1-2 client
 transport slice. This draft owns the remaining server-loop migration,
 rmcp-served wire parity, and deletion gate. It must not be executed blindly:
 the current tree still depends on hand-rolled Content-Length framing for
 `serve_mcp_json_rpc`, and rmcp 1.7.0's default async read/write transport is
 newline-delimited rather than runx's recorded Content-Length stdio wire shape.
-Blockers: rmcp 1.7.0 rejects the current recorded `basic-lifecycle` fixture's
-`initialize` request because it uses `params: {}` rather than the MCP-required
-`protocolVersion`, `capabilities`, and `clientInfo` fields. The staged rmcp
-path now proves a valid rmcp lifecycle over the shared Content-Length
-transport, but it does not justify deleting `framing.rs`, `jsonrpc.rs`, or the
-canonical `mcp` fixture oracle yet.
+Blockers: the recorded `basic-lifecycle` request now uses a valid MCP
+`initialize` payload and the staged rmcp path semantically replays it over the
+shared Content-Length transport. Deletion remains blocked because rmcp response
+bytes are not identical to the canonical hand-rolled fixture oracle: field
+ordering differs and rmcp includes `isError:false` on successful tool calls.
+This does not justify deleting `framing.rs`, `jsonrpc.rs`, or the canonical
+`mcp` fixture oracle yet.
 Allowed follow-up command: `scafld harden rust-mcp-rmcp-server-cutover`
-Latest runner update: 2026-05-21T16:42:00Z
+Latest runner update: 2026-05-22T01:32:00+10:00 approved the request-side
+fixture change (`initialize.params` now includes protocolVersion,
+capabilities, and clientInfo), added rmcp semantic replay coverage for the
+recorded lifecycle fixture, and revalidated canonical `mcp`, staged
+`mcp-rmcp`, rmcp adapter, and shared Content-Length transport tests.
 Review gate: not_started
 
 ## Summary
@@ -126,11 +131,12 @@ Runx-specific surfaces that must stay:
 - `cargo test --manifest-path crates/Cargo.toml -p runx-runtime --features mcp --test mcp_adapter --test mcp_server -- --nocapture`
   passes for the canonical legacy `mcp` wire fixture path while deletion is
   blocked.
-- A wire-contract test compares rmcp-served raw stdout bytes against
+- A wire-contract test compares the canonical hand-rolled server raw stdout
+  bytes against
   `fixtures/runtime/adapters/mcp/wire-contract/basic-lifecycle.responses.jsonl`
-  and `error-paths.responses.jsonl`. This is still blocked by the fixture
-  lifecycle mismatch above; do not delete the hand-rolled server until this
-  check is resolved by an approved fixture diff or a narrowed objective.
+  and `error-paths.responses.jsonl`. The staged rmcp server now semantically
+  replays the recorded `basic-lifecycle` request fixture, but raw response-byte
+  parity is still blocked by JSON field ordering and `isError:false`.
 - A production `runx mcp serve` deletion gate must prove the rmcp server loop
   streams responses without waiting for stdin EOF. The current `mcp-rmcp`
   server slice is finite-input proof only.
@@ -144,6 +150,16 @@ Runx-specific surfaces that must stay:
   is removed and `mcp-rmcp` collapses into `mcp`.
 - `rg "^mod (framing|jsonrpc)" crates/runx-runtime/src/adapters/mcp.rs`
   returns no matches after deletion.
+
+Validation evidence, 2026-05-22T01:32:00+10:00:
+- `cargo test --manifest-path crates/Cargo.toml -p runx-runtime --features mcp-rmcp --test mcp_server -- --nocapture`
+  passed 3 tests, including `mcp_rmcp_server_replays_recorded_basic_lifecycle_fixture`.
+- `cargo test --manifest-path crates/Cargo.toml -p runx-runtime --features mcp --test mcp_server -- --nocapture`
+  passed 11 tests, including the canonical raw stdio wire-contract test.
+- `cargo test --manifest-path crates/Cargo.toml -p runx-runtime --features mcp-rmcp --test mcp_adapter -- --nocapture`
+  passed 11 tests for the staged rmcp client path.
+- `cargo test --manifest-path crates/Cargo.toml -p runx-runtime --features mcp-rmcp --lib rmcp_transport_tests -- --nocapture`
+  passed 4 shared Content-Length transport tests.
 
 ## Acceptance
 

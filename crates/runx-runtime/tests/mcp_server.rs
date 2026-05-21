@@ -1,7 +1,7 @@
 #![cfg(any(feature = "mcp", feature = "mcp-rmcp"))]
 
 use std::io::Cursor;
-#[cfg(feature = "mcp")]
+#[cfg(any(feature = "mcp", feature = "mcp-rmcp"))]
 use std::path::PathBuf;
 
 #[cfg(feature = "mcp")]
@@ -83,6 +83,28 @@ fn mcp_rmcp_server_runs_basic_lifecycle() -> Result<(), Box<dyn std::error::Erro
             .into(),
         ),
     ])?;
+
+    assert_eq!(
+        path(&responses[0], &["result", "protocolVersion"]),
+        Some(&JsonValue::String("2025-06-18".to_owned()))
+    );
+    assert_eq!(
+        path(&responses[1], &["result", "tools", "0", "name"]),
+        Some(&JsonValue::String("echo".to_owned()))
+    );
+    assert_eq!(
+        path(&responses[2], &["result", "content", "0", "text"]),
+        Some(&JsonValue::String("hello from server".to_owned()))
+    );
+    Ok(())
+}
+
+#[test]
+#[cfg(feature = "mcp-rmcp")]
+fn mcp_rmcp_server_replays_recorded_basic_lifecycle_fixture()
+-> Result<(), Box<dyn std::error::Error>> {
+    let input = frame_jsonl_fixture("basic-lifecycle", "requests")?;
+    let responses = run_raw_with_options(input, server_options())?;
 
     assert_eq!(
         path(&responses[0], &["result", "protocolVersion"]),
@@ -528,7 +550,7 @@ fn mcp_server_execution_options(
     })
 }
 
-#[cfg(feature = "mcp")]
+#[cfg(any(feature = "mcp", feature = "mcp-rmcp"))]
 fn repo_root() -> Result<PathBuf, Box<dyn std::error::Error>> {
     Ok(PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
@@ -633,7 +655,7 @@ fn frame(message: &JsonValue) -> Result<Vec<u8>, serde_json::Error> {
     Ok(framed)
 }
 
-#[cfg(feature = "mcp")]
+#[cfg(any(feature = "mcp", feature = "mcp-rmcp"))]
 fn frame_jsonl_fixture(
     fixture_name: &str,
     kind: &str,

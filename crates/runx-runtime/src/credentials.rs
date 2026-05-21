@@ -27,6 +27,7 @@ impl CredentialDeliveryProfile {
             env_bindings: vec![CredentialEnvBinding {
                 role: CredentialMaterialRole::AccessToken,
                 env_var,
+                required: true,
             }],
         })
     }
@@ -51,11 +52,16 @@ impl CredentialDeliveryProfile {
         }
         let mut env_bindings = Vec::with_capacity(profile.env_bindings.len());
         for binding in &profile.env_bindings {
-            let role = CredentialMaterialRole::from_contract_role(binding.role.clone())?;
+            let role = match CredentialMaterialRole::from_contract_role(binding.role.clone()) {
+                Ok(role) => role,
+                Err(_) if !binding.required => continue,
+                Err(error) => return Err(error),
+            };
             validate_env_name(&binding.env_var)?;
             env_bindings.push(CredentialEnvBinding {
                 role,
                 env_var: binding.env_var.clone(),
+                required: binding.required,
             });
         }
         Ok(Self {
@@ -70,6 +76,7 @@ impl CredentialDeliveryProfile {
 struct CredentialEnvBinding {
     role: CredentialMaterialRole,
     env_var: String,
+    required: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -198,6 +205,7 @@ impl SecretEnv {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct CredentialDelivery {
     secret_env: SecretEnv,
+    public_observation: Option<runx_contracts::CredentialDeliveryObservation>,
 }
 
 impl CredentialDelivery {
@@ -207,6 +215,7 @@ impl CredentialDelivery {
             secret_env: SecretEnv {
                 values: BTreeMap::new(),
             },
+            public_observation: None,
         }
     }
 
@@ -232,12 +241,34 @@ impl CredentialDelivery {
         }
         Ok(Self {
             secret_env: apply_profile(profile, &material)?,
+            public_observation: None,
         })
     }
 
     #[must_use]
     pub fn secret_env(&self) -> &SecretEnv {
         &self.secret_env
+    }
+
+    #[must_use]
+    pub fn with_public_observation(
+        mut self,
+        observation: runx_contracts::CredentialDeliveryObservation,
+    ) -> Self {
+        self.public_observation = Some(observation);
+        self
+    }
+
+    #[must_use]
+    pub fn public_observation(&self) -> Option<&runx_contracts::CredentialDeliveryObservation> {
+        self.public_observation.as_ref()
+    }
+
+    #[must_use]
+    pub fn credential_refs(&self) -> Option<Vec<runx_contracts::Reference>> {
+        self.public_observation.as_ref().and_then(|observation| {
+            (!observation.credential_refs.is_empty()).then(|| observation.credential_refs.clone())
+        })
     }
 
     #[must_use]
@@ -307,6 +338,9 @@ fn apply_profile(
     let mut values = BTreeMap::new();
     for binding in &profile.env_bindings {
         let Some(secret) = material.values.get(&binding.role) else {
+            if !binding.required {
+                continue;
+            }
             return Err(CredentialDeliveryError::MissingRole {
                 role: binding.role.label().to_owned(),
             });
@@ -345,4 +379,54 @@ fn truncate_utf8_string(text: &str, limit_bytes: usize) -> String {
         end -= 1;
     }
     text[..end].to_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn optional_env_binding_is_skipped_when_material_role_is_missing() {
+        let profile = CredentialDeliveryProfile {
+            provider: "github".to_owned(),
+            auth_mode: "oauth_bearer".to_owned(),
+            env_bindings: vec![CredentialEnvBinding {
+                role: CredentialMaterialRole::AccessToken,
+                env_var: "GITHUB_TOKEN".to_owned(),
+                required: false,
+            }],
+        };
+        let material = ResolvedCredentialMaterial {
+            material_ref: "secret://github/main".to_owned(),
+            values: BTreeMap::new(),
+        };
+
+        let env = apply_profile(&profile, &material).expect("optional binding should be skipped");
+
+        assert!(env.is_empty());
+    }
+
+    #[test]
+    fn required_env_binding_fails_when_material_role_is_missing() {
+        let profile = CredentialDeliveryProfile {
+            provider: "github".to_owned(),
+            auth_mode: "oauth_bearer".to_owned(),
+            env_bindings: vec![CredentialEnvBinding {
+                role: CredentialMaterialRole::AccessToken,
+                env_var: "GITHUB_TOKEN".to_owned(),
+                required: true,
+            }],
+        };
+        let material = ResolvedCredentialMaterial {
+            material_ref: "secret://github/main".to_owned(),
+            values: BTreeMap::new(),
+        };
+
+        let result = apply_profile(&profile, &material);
+
+        assert!(matches!(
+            result,
+            Err(CredentialDeliveryError::MissingRole { role }) if role == "access_token"
+        ));
+    }
 }

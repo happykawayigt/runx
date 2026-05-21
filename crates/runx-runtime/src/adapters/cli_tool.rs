@@ -74,7 +74,7 @@ fn spawn_cli_tool_process(
 fn capture_pipe<R>(
     pipe: Option<R>,
     context: &'static str,
-) -> Result<JoinHandle<std::io::Result<Vec<u8>>>, RuntimeError>
+) -> Result<JoinHandle<std::io::Result<CapturedOutput>>, RuntimeError>
 where
     R: Read + Send + 'static,
 {
@@ -82,23 +82,43 @@ where
 }
 
 fn collect_redacted_output(
-    handle: JoinHandle<std::io::Result<Vec<u8>>>,
+    handle: JoinHandle<std::io::Result<CapturedOutput>>,
     credential_delivery: &CredentialDelivery,
     context: &'static str,
-) -> Result<String, RuntimeError> {
-    Ok(credential_delivery
-        .redact_bytes_to_string(join_capture(handle, context)?, OUTPUT_LIMIT_BYTES))
+) -> Result<CapturedText, RuntimeError> {
+    let output = join_capture(handle, context)?;
+    if output.truncated {
+        return Ok(CapturedText {
+            text: String::new(),
+            truncated: true,
+        });
+    }
+    Ok(CapturedText {
+        text: credential_delivery.redact_bytes_to_string(output.bytes, OUTPUT_LIMIT_BYTES),
+        truncated: false,
+    })
 }
 
 fn cli_tool_output(
     started: Instant,
     status: ExitStatus,
     timed_out: bool,
-    stdout: String,
-    stderr: String,
+    stdout: CapturedText,
+    stderr: CapturedText,
     sandbox: SandboxPlan,
 ) -> SkillOutput {
-    let success = status.success() && !timed_out;
+    let output_truncated = stdout.truncated || stderr.truncated;
+    let success = status.success() && !timed_out && !output_truncated;
+    let (stdout, stderr) = if output_truncated {
+        (
+            String::new(),
+            format!(
+                "runx cli-tool output exceeded {OUTPUT_LIMIT_BYTES} byte capture limit; stdout/stderr omitted"
+            ),
+        )
+    } else {
+        (stdout.text, stderr.text)
+    };
     SkillOutput {
         status: if success {
             InvocationStatus::Success
@@ -130,30 +150,37 @@ fn write_stdin(
     Ok(())
 }
 
-fn capture_stream<R>(mut reader: R) -> JoinHandle<std::io::Result<Vec<u8>>>
+fn capture_stream<R>(mut reader: R) -> JoinHandle<std::io::Result<CapturedOutput>>
 where
     R: Read + Send + 'static,
 {
     thread::spawn(move || {
         let mut captured = Vec::new();
+        let mut truncated = false;
         let mut buffer = [0_u8; 8192];
         loop {
             let count = reader.read(&mut buffer)?;
             if count == 0 {
-                return Ok(captured);
+                return Ok(CapturedOutput {
+                    bytes: captured,
+                    truncated,
+                });
             }
             let remaining = OUTPUT_LIMIT_BYTES.saturating_sub(captured.len());
             if remaining > 0 {
                 captured.extend_from_slice(&buffer[..count.min(remaining)]);
+            }
+            if count > remaining {
+                truncated = true;
             }
         }
     })
 }
 
 fn join_capture(
-    handle: JoinHandle<std::io::Result<Vec<u8>>>,
+    handle: JoinHandle<std::io::Result<CapturedOutput>>,
     context: &'static str,
-) -> Result<Vec<u8>, RuntimeError> {
+) -> Result<CapturedOutput, RuntimeError> {
     match handle.join() {
         Ok(Ok(bytes)) => Ok(bytes),
         Ok(Err(source)) => Err(RuntimeError::io(context, source)),
@@ -162,6 +189,16 @@ fn join_capture(
             std::io::Error::other("output reader thread failed"),
         )),
     }
+}
+
+struct CapturedOutput {
+    bytes: Vec<u8>,
+    truncated: bool,
+}
+
+struct CapturedText {
+    text: String,
+    truncated: bool,
 }
 
 fn wait_for_exit(

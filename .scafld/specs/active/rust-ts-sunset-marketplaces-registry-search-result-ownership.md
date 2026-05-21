@@ -2,8 +2,8 @@
 spec_version: '2.0'
 task_id: rust-ts-sunset-marketplaces-registry-search-result-ownership
 created: '2026-05-22T00:00:00+10:00'
-updated: '2026-05-22T12:00:00+10:00'
-status: draft
+updated: '2026-05-22T01:36:00+10:00'
+status: active
 harden_status: not_run
 size: small
 risk_level: medium
@@ -13,7 +13,7 @@ risk_level: medium
 
 ## Current State
 
-Status: draft
+Status: active
 Current phase: safe import migration completed
 Next: parent marketplaces deletion remains blocked on marketplace adapter,
 fixture adapter, marketplace ref, runtime-local SDK/install, and test fixture
@@ -28,10 +28,11 @@ Blockers: marketplace adapter behavior still has live consumers in CLI
 fixture marketplace search, runtime-local install/SDK surfaces, and focused
 marketplace fixture tests. Parent marketplace deletion must stay blocked.
 Allowed follow-up command: `scafld validate rust-ts-sunset-marketplaces-registry-search-result-ownership --json`
-Latest runner update: 2026-05-22T12:00:00+10:00 - registry-owned
-`SkillSearchResult` added and narrow registry/CLI result-shape imports moved.
-Marketplace adapter behavior was intentionally left in place.
-Review gate: not_started
+Latest runner update: 2026-05-22T01:36:00+10:00 promoted the executed child
+spec from drafts to active. Registry-owned `SkillSearchResult` is already in
+place and narrow registry/CLI result-shape imports have moved. Marketplace
+adapter behavior was intentionally left in place.
+Review gate: result_shape_migrated; adapter_behavior_blocked
 
 ## Summary
 
@@ -173,7 +174,7 @@ a narrow runtime/CLI boundary.
 
 Acceptance:
 - [x] `ac1` command - Current result-shape consumers are listed in this spec.
-  - Command: `rg -n "Observed result-shape consumers" .scafld/specs/drafts/rust-ts-sunset-marketplaces-registry-search-result-ownership.md`
+  - Command: `rg -n "Observed result-shape consumers" .scafld/specs/active/rust-ts-sunset-marketplaces-registry-search-result-ownership.md`
   - Expected kind: `exit_code_zero`
   - Status: passed
   - Evidence: section remains present with migrated imports recorded.

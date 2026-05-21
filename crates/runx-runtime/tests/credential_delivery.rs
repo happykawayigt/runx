@@ -99,6 +99,38 @@ fn delivery_profile_maps_process_env_contract_profile() -> Result<(), Box<dyn st
 }
 
 #[test]
+fn delivery_profile_skips_optional_unsupported_contract_binding()
+-> Result<(), Box<dyn std::error::Error>> {
+    let mut contract = contract_profile(vec![CredentialMaterialRole::AccessToken], "GITHUB_TOKEN");
+    contract
+        .material_roles
+        .push(CredentialMaterialRole::RefreshToken);
+    contract
+        .env_bindings
+        .push(runx_contracts::CredentialDeliveryEnvBinding {
+            role: CredentialMaterialRole::RefreshToken,
+            env_var: "GITHUB_REFRESH_TOKEN".to_owned(),
+            required: false,
+        });
+    let profile = CredentialDeliveryProfile::from_contract_profile(&contract)?;
+    let delivery = CredentialDelivery::from_allowed_binding(
+        &CredentialBindingDecision::Allow {
+            reasons: vec!["allowed".to_owned()],
+        },
+        &credential(),
+        &profile,
+        &resolver(),
+    )?;
+
+    assert_eq!(
+        delivery.secret_env().get("GITHUB_TOKEN"),
+        Some("ghs_secret_token")
+    );
+    assert_eq!(delivery.secret_env().get("GITHUB_REFRESH_TOKEN"), None);
+    Ok(())
+}
+
+#[test]
 fn delivery_profile_rejects_unsupported_contract_role() {
     let result = CredentialDeliveryProfile::from_contract_profile(&contract_profile(
         vec![CredentialMaterialRole::RefreshToken],
@@ -154,6 +186,26 @@ fn cli_tool_injects_secret_env_and_redacts_process_output() -> Result<(), Box<dy
         !serde_json::to_string(&output.metadata)?.contains("ghs_secret_token"),
         "credential material must not enter sandbox metadata"
     );
+    Ok(())
+}
+
+#[test]
+fn cli_tool_omits_truncated_output_before_redaction() -> Result<(), Box<dyn std::error::Error>> {
+    let output = CliToolAdapter.invoke(SkillInvocation {
+        skill_name: "credential.large-output".to_owned(),
+        source: large_output_cli_source(),
+        inputs: Default::default(),
+        resolved_inputs: Default::default(),
+        skill_directory: std::env::current_dir()?,
+        env: process_env(),
+        credential_delivery: allowed_delivery()?,
+    })?;
+
+    assert_eq!(output.status, InvocationStatus::Failure);
+    assert_eq!(output.stdout, "");
+    assert!(output.stderr.contains("stdout/stderr omitted"));
+    assert!(!output.stdout.contains("ghs_secret_token"));
+    assert!(!output.stderr.contains("ghs_secret_token"));
     Ok(())
 }
 
@@ -312,6 +364,17 @@ fn cli_source() -> SkillSource {
         graph: None,
         raw: Default::default(),
     }
+}
+
+fn large_output_cli_source() -> SkillSource {
+    let mut source = cli_source();
+    source.command = Some("node".to_owned());
+    source.args = vec![
+        "-e".to_owned(),
+        "process.stdout.write('x'.repeat(1024 * 1024 - 4)); process.stdout.write(process.env.GITHUB_TOKEN || '');"
+            .to_owned(),
+    ];
+    source
 }
 
 fn mcp_source() -> SkillSource {

@@ -1,21 +1,29 @@
 #![cfg(feature = "external-adapter")]
 
+use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use runx_contracts::{
-    EXTERNAL_ADAPTER_PROTOCOL_VERSION, ExternalAdapterInvocation, ExternalAdapterManifest,
-    ExternalAdapterResponse, ExternalAdapterSandboxIntent, ExternalAdapterStatus,
-    ExternalAdapterTimeouts, ExternalAdapterTransport, ExternalAdapterTransportKind, JsonNumber,
-    JsonObject, JsonValue, Reference, ReferenceType,
+    CredentialDeliveryMode, CredentialDeliveryObservation, CredentialDeliveryObservationStatus,
+    CredentialDeliveryPurpose, CredentialMaterialRole, EXTERNAL_ADAPTER_PROTOCOL_VERSION,
+    ExecutionEvent, ExternalAdapterHostResolutionFrame, ExternalAdapterInvocation,
+    ExternalAdapterManifest, ExternalAdapterResponse, ExternalAdapterSandboxIntent,
+    ExternalAdapterStatus, ExternalAdapterTimeouts, ExternalAdapterTransport,
+    ExternalAdapterTransportKind, JsonNumber, JsonObject, JsonValue, Question, Reference,
+    ReferenceType, ResolutionRequest, ResolutionResponse, ResolutionResponseActor,
 };
+use runx_core::policy::{CredentialBindingDecision, CredentialEnvelope};
 use runx_core::state_machine::GraphStatus;
 use runx_parser::SkillSource;
 use runx_runtime::adapters::external_adapter::{
     ExternalAdapterProcessSupervisor, ExternalAdapterSkillAdapter, ExternalAdapterSupervisorError,
 };
 use runx_runtime::{
-    CredentialDelivery, Runtime, RuntimeError, RuntimeOptions, SkillAdapter, SkillInvocation,
+    CredentialDelivery, CredentialDeliveryError, CredentialDeliveryProfile, Host,
+    InMemoryMaterialResolver, ResolvedCredentialMaterial, Runtime, RuntimeError, RuntimeOptions,
+    SkillAdapter, SkillInvocation,
 };
 
 const MANIFEST_SCHEMA: &str = "runx.external_adapter.manifest.v1";
@@ -261,6 +269,255 @@ printf '%s' "$invocation" > captured-invocation.json
 }
 
 #[test]
+fn external_adapter_manifest_path_resolves_below_skill_directory()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempfile::tempdir()?;
+    let response_path = temp.path().join("response.json");
+    let mut response = completed_response();
+    response.invocation_id = "external_adapter.external-smoke.invoke".to_owned();
+    fs::write(&response_path, serde_json::to_vec(&response)?)?;
+    let script = write_cat_response_script(temp.path())?;
+    let manifest = manifest_for_script(&script)?;
+    fs::write(
+        temp.path().join("external-adapter.manifest.json"),
+        serde_json::to_vec(&manifest)?,
+    )?;
+
+    let output = ExternalAdapterSkillAdapter::default().invoke(skill_invocation_with_source(
+        temp.path(),
+        skill_source_manifest_path("external-adapter.manifest.json")?,
+        [("RUNX_RESPONSE_PATH", path_string(&response_path)?)],
+        CredentialDelivery::none(),
+    )?)?;
+
+    assert_eq!(output.status, runx_runtime::InvocationStatus::Success);
+    Ok(())
+}
+
+#[test]
+fn external_adapter_manifest_path_rejects_directory_escape()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempfile::tempdir()?;
+
+    let Err(error) = ExternalAdapterSkillAdapter::default().invoke(skill_invocation_with_source(
+        temp.path(),
+        skill_source_manifest_path("../external-adapter.manifest.json")?,
+        [],
+        CredentialDelivery::none(),
+    )?) else {
+        return Err("manifest path escape must fail closed".into());
+    };
+
+    assert!(matches!(
+        error,
+        RuntimeError::SkillFailed { message, .. }
+            if message.contains("relative path below the skill directory")
+    ));
+    Ok(())
+}
+
+#[test]
+fn external_adapter_process_supervisor_delivers_credentials_and_redacts_observations()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempfile::tempdir()?;
+    let script = write_script(
+        temp.path(),
+        r#"set -eu
+IFS= read -r _invocation
+if [ "${GITHUB_TOKEN:-}" != "ghs_secret_token" ]; then
+  printf 'missing delivered credential env\n' >&2
+  exit 18
+fi
+if [ "${SCOPED_ONLY:-}" != "scoped" ]; then
+  printf 'missing scoped env\n' >&2
+  exit 19
+fi
+printf '{"schema":"runx.external_adapter.response.v1","protocol_version":"runx.external_adapter.v1","invocation_id":"external_inv_123","adapter_id":"adapter.github.issue-intake","status":"completed","stdout":"stdout:%s","stderr":"stderr:%s","exit_code":0,"output":{"token":"%s","nested":["%s"]},"artifacts":[{"artifact_ref":{"type":"artifact","uri":"runx:artifact:secret"},"summary":"artifact:%s"}],"errors":[{"code":"secret_%s","message":"error:%s","retryable":false}],"telemetry":[{"name":"metric_%s","value":"value:%s","unit":"unit:%s"}],"metadata":{"token":"%s"},"observed_at":"2026-05-21T15:00:00Z"}' "$GITHUB_TOKEN" "$GITHUB_TOKEN" "$GITHUB_TOKEN" "$GITHUB_TOKEN" "$GITHUB_TOKEN" "$GITHUB_TOKEN" "$GITHUB_TOKEN" "$GITHUB_TOKEN" "$GITHUB_TOKEN" "$GITHUB_TOKEN" "$GITHUB_TOKEN"
+"#,
+    )?;
+    let invocation = invocation_with_env([
+        ("GITHUB_TOKEN", "scoped_token".to_owned()),
+        ("SCOPED_ONLY", "scoped".to_owned()),
+    ]);
+
+    let outcome = ExternalAdapterProcessSupervisor.invoke_with_delivery(
+        &manifest_for_script(&script)?,
+        &invocation,
+        &allowed_delivery()?,
+    )?;
+
+    assert_eq!(
+        outcome.response.stdout.as_deref(),
+        Some("stdout:[redacted-credential]")
+    );
+    assert_eq!(
+        outcome.response.stderr.as_deref(),
+        Some("stderr:[redacted-credential]")
+    );
+    assert!(
+        !serde_json::to_string(&outcome.response)?.contains("ghs_secret_token"),
+        "external adapter observations must be redacted before runtime mapping"
+    );
+    assert!(
+        !serde_json::to_string(&outcome.response)?.contains("scoped_token"),
+        "delivered credential env must override scoped env for the credential binding"
+    );
+    Ok(())
+}
+
+#[test]
+fn external_adapter_skill_adapter_projects_public_credential_refs_and_observation()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempfile::tempdir()?;
+    let capture_path = temp.path().join("captured-invocation.json");
+    let response_path = temp.path().join("response.json");
+    let mut response = completed_response();
+    response.invocation_id = "external_adapter.external-smoke.invoke".to_owned();
+    fs::write(&response_path, serde_json::to_vec(&response)?)?;
+    let script = write_script(
+        temp.path(),
+        r#"set -eu
+IFS= read -r invocation
+printf '%s' "$invocation" > "$RUNX_CAPTURE_INVOCATION"
+/bin/cat "$RUNX_RESPONSE_PATH"
+"#,
+    )?;
+    let manifest = manifest_for_script(&script)?;
+
+    let output = ExternalAdapterSkillAdapter::default().invoke(skill_invocation_with_source(
+        temp.path(),
+        skill_source(Some(manifest))?,
+        [
+            (
+                "RUNX_CAPTURE_INVOCATION",
+                path_string(capture_path.as_path())?,
+            ),
+            ("RUNX_RESPONSE_PATH", path_string(response_path.as_path())?),
+        ],
+        allowed_delivery_with_public_observation()?,
+    )?)?;
+
+    assert_eq!(output.status, runx_runtime::InvocationStatus::Success);
+    let captured: ExternalAdapterInvocation =
+        serde_json::from_slice(&fs::read(capture_path.as_path())?)?;
+    let credential_refs = captured
+        .credential_refs
+        .as_ref()
+        .ok_or("credential refs must cross the external adapter boundary")?;
+    assert_eq!(credential_refs.len(), 1);
+    assert_eq!(
+        credential_refs[0].credential_ref.uri,
+        "runx:credential:grant_github_main"
+    );
+    assert_eq!(credential_refs[0].provider, "github");
+    let observations = output
+        .metadata
+        .get("credential_delivery_observations")
+        .ok_or("credential delivery observation must be receipt metadata")?;
+    assert!(matches!(observations, JsonValue::Array(values) if values.len() == 1));
+    assert!(
+        !serde_json::to_string(&captured)?.contains("ghs_secret_token")
+            && !serde_json::to_string(&output.metadata)?.contains("ghs_secret_token"),
+        "public external adapter frames must not contain raw credential material"
+    );
+    Ok(())
+}
+
+#[test]
+fn external_adapter_process_supervisor_maps_host_resolution_frame()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempfile::tempdir()?;
+    let response_path = temp.path().join("host-resolution.json");
+    fs::write(
+        &response_path,
+        serde_json::to_vec(&host_resolution_frame("external_inv_123"))?,
+    )?;
+    let script = write_cat_response_script(temp.path())?;
+    let invocation = invocation_with_env([("RUNX_RESPONSE_PATH", path_string(&response_path)?)]);
+
+    let outcome =
+        ExternalAdapterProcessSupervisor.invoke(&manifest_for_script(&script)?, &invocation)?;
+
+    assert_eq!(
+        outcome.response.status,
+        ExternalAdapterStatus::HostResolutionRequested
+    );
+    assert_eq!(
+        outcome
+            .response
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("external_adapter_host_resolution_frame_id")),
+        Some(&JsonValue::String("host_resolution_1".to_owned()))
+    );
+    assert!(matches!(
+        outcome
+            .response
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("external_adapter_host_resolution_request")),
+        Some(JsonValue::Object(_))
+    ));
+    Ok(())
+}
+
+#[test]
+fn external_adapter_graph_host_resolution_frame_reaches_host()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempfile::tempdir()?;
+    let skill_dir = temp.path().join("external-skill");
+    fs::create_dir_all(&skill_dir)?;
+    let response_path = skill_dir.join("response.json");
+    fs::write(
+        &response_path,
+        serde_json::to_vec(&host_resolution_frame(
+            "external_adapter.external-smoke.invoke",
+        ))?,
+    )?;
+    write_script(
+        &skill_dir,
+        r#"set -eu
+IFS= read -r _invocation
+/bin/cat response.json
+"#,
+    )?;
+    write_external_adapter_skill(&skill_dir)?;
+    let graph_path = temp.path().join("graph.yaml");
+    fs::write(
+        &graph_path,
+        "name: external-adapter-host-resolution\nsteps:\n  - id: invoke\n    skill: ./external-skill\n",
+    )?;
+    let mut host = RecordingHost::with_responses([Some(ResolutionResponse {
+        actor: ResolutionResponseActor::Human,
+        payload: JsonValue::String("approved".to_owned()),
+    })]);
+
+    let result = Runtime::new(
+        ExternalAdapterSkillAdapter::default(),
+        RuntimeOptions::default(),
+    )
+    .run_graph_file_with_host(&graph_path, &mut host);
+
+    assert!(matches!(result, Err(RuntimeError::SkillFailed { .. })));
+    assert_eq!(host.requests.borrow().len(), 1);
+    assert!(matches!(
+        host.events
+            .borrow()
+            .iter()
+            .find(|event| matches!(event, ExecutionEvent::ResolutionRequested { .. })),
+        Some(ExecutionEvent::ResolutionRequested { .. })
+    ));
+    assert!(matches!(
+        host.events
+            .borrow()
+            .iter()
+            .find(|event| matches!(event, ExecutionEvent::ResolutionResolved { .. })),
+        Some(ExecutionEvent::ResolutionResolved { .. })
+    ));
+    Ok(())
+}
+
+#[test]
 fn external_adapter_skill_adapter_fails_closed_without_inline_manifest()
 -> Result<(), Box<dyn std::error::Error>> {
     let temp = tempfile::tempdir()?;
@@ -274,7 +531,7 @@ fn external_adapter_skill_adapter_fails_closed_without_inline_manifest()
     assert!(matches!(
         error,
         RuntimeError::SkillFailed { message, .. }
-            if message.contains("missing an inline manifest")
+            if message.contains("missing a manifest")
     ));
     Ok(())
 }
@@ -304,6 +561,39 @@ fn external_adapter_skill_adapter_preserves_supervisor_fail_closed_response_mism
         RuntimeError::SkillFailed { message, .. }
             if message.contains("adapter_id") && message.contains("adapter.other")
     ));
+    Ok(())
+}
+
+#[test]
+fn external_adapter_skill_adapter_passes_credential_delivery_to_supervisor()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempfile::tempdir()?;
+    let script = write_script(
+        temp.path(),
+        r#"set -eu
+IFS= read -r _invocation
+if [ "${GITHUB_TOKEN:-}" != "ghs_secret_token" ]; then
+  printf 'missing delivered credential env\n' >&2
+  exit 18
+fi
+printf '{"schema":"runx.external_adapter.response.v1","protocol_version":"runx.external_adapter.v1","invocation_id":"external_adapter.external-smoke.invoke","adapter_id":"adapter.github.issue-intake","status":"completed","stdout":"%s","stderr":"stderr:%s","exit_code":0,"metadata":{"token":"%s"},"observed_at":"2026-05-21T15:00:00Z"}' "$GITHUB_TOKEN" "$GITHUB_TOKEN" "$GITHUB_TOKEN"
+"#,
+    )?;
+    let manifest = manifest_for_script(&script)?;
+
+    let output = ExternalAdapterSkillAdapter::default().invoke(skill_invocation_with_source(
+        temp.path(),
+        skill_source(Some(manifest))?,
+        [("GITHUB_TOKEN", "scoped_token".to_owned())],
+        allowed_delivery()?,
+    )?)?;
+
+    assert_eq!(output.stdout, "[redacted-credential]");
+    assert_eq!(output.stderr, "stderr:[redacted-credential]");
+    let metadata_json = serde_json::to_string(&output.metadata)?;
+    assert!(metadata_json.contains("[redacted-credential]"));
+    assert!(!metadata_json.contains("ghs_secret_token"));
+    assert!(!metadata_json.contains("scoped_token"));
     Ok(())
 }
 
@@ -395,9 +685,23 @@ fn skill_invocation<const N: usize>(
     manifest: Option<ExternalAdapterManifest>,
     env: [(&str, String); N],
 ) -> Result<SkillInvocation, Box<dyn std::error::Error>> {
+    skill_invocation_with_source(
+        skill_dir,
+        skill_source(manifest)?,
+        env,
+        CredentialDelivery::none(),
+    )
+}
+
+fn skill_invocation_with_source<const N: usize>(
+    skill_dir: &Path,
+    source: SkillSource,
+    env: [(&str, String); N],
+    credential_delivery: CredentialDelivery,
+) -> Result<SkillInvocation, Box<dyn std::error::Error>> {
     Ok(SkillInvocation {
         skill_name: "external-smoke".to_owned(),
-        source: skill_source(manifest)?,
+        source,
         inputs: [(
             "issue_number".to_owned(),
             JsonValue::Number(JsonNumber::I64(77)),
@@ -410,7 +714,7 @@ fn skill_invocation<const N: usize>(
             .into_iter()
             .map(|(key, value)| (key.to_owned(), value))
             .collect(),
-        credential_delivery: CredentialDelivery::none(),
+        credential_delivery,
     })
 }
 
@@ -430,6 +734,44 @@ fn skill_source(
             JsonValue::Object(external_adapter),
         );
     }
+    Ok(SkillSource {
+        source_type: "external-adapter".to_owned(),
+        command: None,
+        args: Vec::new(),
+        cwd: None,
+        timeout_seconds: None,
+        input_mode: None,
+        sandbox: None,
+        server: None,
+        catalog_ref: None,
+        tool: None,
+        arguments: None,
+        agent_card_url: None,
+        agent_identity: None,
+        agent: None,
+        task: None,
+        hook: None,
+        outputs: None,
+        graph: None,
+        raw,
+    })
+}
+
+fn skill_source_manifest_path(path: &str) -> Result<SkillSource, Box<dyn std::error::Error>> {
+    let mut external_adapter = JsonObject::new();
+    external_adapter.insert(
+        "manifest_path".to_owned(),
+        JsonValue::String(path.to_owned()),
+    );
+    let mut raw = JsonObject::new();
+    raw.insert(
+        "type".to_owned(),
+        JsonValue::String("external-adapter".to_owned()),
+    );
+    raw.insert(
+        "external_adapter".to_owned(),
+        JsonValue::Object(external_adapter),
+    );
     Ok(SkillSource {
         source_type: "external-adapter".to_owned(),
         command: None,
@@ -530,6 +872,87 @@ fn completed_response() -> ExternalAdapterResponse {
     }
 }
 
+fn host_resolution_frame(invocation_id: &str) -> ExternalAdapterHostResolutionFrame {
+    ExternalAdapterHostResolutionFrame {
+        schema: "runx.external_adapter.host_resolution.v1".to_owned(),
+        protocol_version: EXTERNAL_ADAPTER_PROTOCOL_VERSION.to_owned(),
+        frame_id: "host_resolution_1".to_owned(),
+        invocation_id: invocation_id.to_owned(),
+        adapter_id: "adapter.github.issue-intake".to_owned(),
+        request: ResolutionRequest::Input {
+            id: "input_request_1".to_owned(),
+            questions: vec![Question {
+                id: "triage_label".to_owned(),
+                prompt: "Triage label".to_owned(),
+                description: None,
+                required: true,
+                question_type: "text".to_owned(),
+            }],
+        },
+        requested_at: "2026-05-21T15:00:00Z".to_owned(),
+    }
+}
+
+fn allowed_delivery() -> Result<CredentialDelivery, CredentialDeliveryError> {
+    CredentialDelivery::from_allowed_binding(
+        &CredentialBindingDecision::Allow {
+            reasons: vec!["credential material matches admitted grant".to_owned()],
+        },
+        &credential(),
+        &CredentialDeliveryProfile::env_token("github", "oauth_bearer", "GITHUB_TOKEN")?,
+        &InMemoryMaterialResolver::with_material(
+            "secret://github/main",
+            ResolvedCredentialMaterial::access_token("secret://github/main", "ghs_secret_token"),
+        ),
+    )
+}
+
+fn allowed_delivery_with_public_observation() -> Result<CredentialDelivery, CredentialDeliveryError>
+{
+    Ok(allowed_delivery()?.with_public_observation(credential_delivery_observation()))
+}
+
+fn credential_delivery_observation() -> CredentialDeliveryObservation {
+    CredentialDeliveryObservation {
+        schema: "runx.credential_delivery.observation.v1".to_owned(),
+        observation_id: "credential_delivery_observation_1".to_owned(),
+        request_id: "credential_delivery_request_1".to_owned(),
+        response_id: Some("credential_delivery_response_1".to_owned()),
+        status: CredentialDeliveryObservationStatus::Delivered,
+        harness_ref: reference(ReferenceType::Harness, "runx:harness:hrn_123"),
+        host_ref: Some(reference(ReferenceType::Host, "runx:host:local-cli")),
+        profile_id: "github-oauth-env".to_owned(),
+        provider: "github".to_owned(),
+        purpose: CredentialDeliveryPurpose::ProviderApi,
+        delivery_mode: Some(CredentialDeliveryMode::ProcessEnv),
+        credential_refs: vec![reference(
+            ReferenceType::Credential,
+            "runx:credential:grant_github_main",
+        )],
+        material_ref_hash: Some("sha256:material-ref-hash".to_owned()),
+        delivered_roles: vec![CredentialMaterialRole::AccessToken],
+        redaction_refs: Some(vec![reference(
+            ReferenceType::RedactionPolicy,
+            "runx:evidence:redaction-policy/github-token",
+        )]),
+        observed_at: "2026-05-21T15:00:00Z".to_owned(),
+    }
+}
+
+fn credential() -> CredentialEnvelope {
+    CredentialEnvelope {
+        kind: "runx.credential-envelope.v1".to_owned(),
+        grant_id: "grant_github_main".to_owned(),
+        provider: "github".to_owned(),
+        auth_mode: "oauth_bearer".to_owned(),
+        material_kind: "access_token".to_owned(),
+        connection_id: Some("conn_github_main".to_owned()),
+        scopes: vec!["repo".to_owned()],
+        grant_reference: None,
+        material_ref: "secret://github/main".to_owned(),
+    }
+}
+
 fn reference(reference_type: ReferenceType, uri: &str) -> Reference {
     Reference {
         reference_type,
@@ -552,4 +975,35 @@ fn path_string(path: &Path) -> Result<String, Box<dyn std::error::Error>> {
 fn contract_json_value(value: &impl serde::Serialize) -> Result<JsonValue, serde_json::Error> {
     let value = serde_json::to_value(value)?;
     serde_json::from_value(value)
+}
+
+struct RecordingHost {
+    events: RefCell<Vec<ExecutionEvent>>,
+    requests: RefCell<Vec<ResolutionRequest>>,
+    responses: RefCell<VecDeque<Option<ResolutionResponse>>>,
+}
+
+impl RecordingHost {
+    fn with_responses<const N: usize>(responses: [Option<ResolutionResponse>; N]) -> Self {
+        Self {
+            events: RefCell::new(Vec::new()),
+            requests: RefCell::new(Vec::new()),
+            responses: RefCell::new(VecDeque::from(responses)),
+        }
+    }
+}
+
+impl Host for RecordingHost {
+    fn report(&mut self, event: ExecutionEvent) -> Result<(), RuntimeError> {
+        self.events.borrow_mut().push(event);
+        Ok(())
+    }
+
+    fn resolve(
+        &mut self,
+        request: ResolutionRequest,
+    ) -> Result<Option<ResolutionResponse>, RuntimeError> {
+        self.requests.borrow_mut().push(request);
+        Ok(self.responses.borrow_mut().pop_front().flatten())
+    }
 }

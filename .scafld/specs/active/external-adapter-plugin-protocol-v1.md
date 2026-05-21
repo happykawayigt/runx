@@ -2,8 +2,8 @@
 spec_version: '2.0'
 task_id: external-adapter-plugin-protocol-v1
 created: '2026-05-21T13:04:12Z'
-updated: '2026-05-22T00:58:00+10:00'
-status: blocked
+updated: '2026-05-22T01:22:00+10:00'
+status: active
 harden_status: not_run
 size: large
 risk_level: high
@@ -13,33 +13,34 @@ risk_level: high
 
 ## Current State
 
-Status: blocked
-Current phase: Phase 2a process supervisor and focused Phase 2b runtime wiring
-slice landed; remaining Phase 2 credential/host-resolution/receipt policy and
-Phase 3 SDK/conformance work remain blocked
-Next: keep final credential material delivery, host-resolution routing,
-receipt-metadata conversion, helper SDKs, and conformance adapters blocked under
-this protocol until the sibling credential and SDK survivorship decisions land
+Status: active
+Current phase: Phase 2 runtime hardening landed; Phase 3 SDK/conformance remains blocked
+Next: build helper SDKs and conformance adapters only after SDK survivorship
+decisions land; keep registry-backed discovery and non-execution queues out of
+this protocol
 Reason: built-in adapters are moving into Rust, but custom execution-adapter
 authors still need a no-Rust-required extension surface after
 `@runxhq/adapters` and `@runxhq/runtime-local` sunset.
-Blockers: full credential delivery, host-resolution routing, receipt metadata,
-helper SDKs, and conformance adapters remain blocked on runtime-local sunset
-sequencing, `credential-broker-delivery-contract-v1`, and SDK survivorship
-decisions. Phase 1 is no longer blocked by
-`skill-author-runtime-contract-v1`; the simpler subprocess ABI is fixture-backed
-and this spec now owns only the richer execution-adapter protocol above it.
+Blockers: helper SDKs and conformance adapters remain blocked on SDK
+survivorship decisions. Registry-backed manifest discovery, source-event
+ingress, hosted runtime binding, catalog/read-model access, and thread/outbox
+provider writes remain sibling specs or explicit non-goals. Phase 1 is no
+longer blocked by `skill-author-runtime-contract-v1`; the simpler subprocess
+ABI is fixture-backed and this spec owns only the richer execution-adapter
+protocol above it.
 Allowed follow-up command: `scafld harden external-adapter-plugin-protocol-v1`
-Latest runner update: 2026-05-22T00:58:00+10:00 reconciled this parent protocol
-with `external-adapter-runtime-wiring-v1`: the feature-gated
-`ExternalAdapterSkillAdapter` now proves graph/skill invocation reaches the Rust
-process supervisor through explicit inline manifests or injected resolvers. The
-broad protocol is still not the umbrella for source-event ingress, hosted
+Latest runner update: 2026-05-22T01:22:00+10:00 advanced the Rust runtime slice:
+`ExternalAdapterSkillAdapter` now supports explicit inline manifests and
+package-relative `manifest_path` files, passes `CredentialDelivery` into the
+supervised process env, projects public credential refs and delivery-observation
+metadata, redacts adapter observations, normalizes host-resolution frames, and
+routes them through `Host` at graph execution. The broad protocol is still not
+the umbrella for source-event ingress, hosted
 embedded runtime binding, catalog/read-model access, thread/outbox provider
 writes, auth storage, registry control, or general plugin orchestration. Those
-surfaces still require runtime-local sunset sequencing, credential-broker
-delivery, SDK survivorship decisions, or sibling protocol specs.
-Review gate: phase2_runtime_wiring_ready; overall_spec_blocked_on_credential_host_resolution_and_phase3
+surfaces still require runtime-local sunset sequencing, SDK survivorship
+decisions, or sibling protocol specs.
+Review gate: phase2_runtime_hardening_ready; overall_spec_blocked_on_phase3_sdk_conformance
 
 ## Summary
 
@@ -178,18 +179,19 @@ Definition of done:
     `fixtures/contracts/external-adapter/*.json`.
   - Receipt boundary: adapter responses are observations only; Rust
     supervision converts accepted observations into sealed harness receipts.
-- [ ] `dod2` Rust runtime has a fail-closed adapter supervisor that validates
+- [x] `dod2` Rust runtime has a fail-closed adapter supervisor that validates
   every frame against `runx-contracts`.
   - Phase 2a evidence: `crates/runx-runtime/src/adapters/external_adapter.rs`
     and `crates/runx-runtime/tests/external_adapter.rs` provide an explicit
     feature-gated process-supervisor API and focused tests.
   - Phase 2b evidence: `external-adapter-runtime-wiring-v1` adds the
-    feature-gated `ExternalAdapterSkillAdapter`, inline-manifest resolver,
-    injectable manifest resolver/supervisor traits, graph routing coverage, and
-    fail-closed tests. Full `dod2` remains open until receipt metadata
-    integration, credential delivery through
-    `credential-broker-delivery-contract-v1`, redaction policy, and
-    host-resolution routing are wired under Rust authority.
+    feature-gated `ExternalAdapterSkillAdapter`, inline and package-relative
+    manifest resolution, injectable manifest resolver/supervisor traits, graph
+    routing coverage, credential delivery through
+    `credential-broker-delivery-contract-v1`, observation redaction,
+    host-resolution frame normalization/routing, and fail-closed tests. Startup
+    readiness remains a non-goal for v1 because the frozen contract has no
+    ready frame; the one-shot invocation deadline is enforced.
 - [ ] `dod3` TypeScript helper SDK exists only as a protocol client/server
   helper and does not import runtime-local/adapters.
 - [ ] `dod4` At least one TypeScript sample adapter and one non-TypeScript
@@ -213,14 +215,16 @@ Validation:
     `cargo test --manifest-path crates/Cargo.toml -p runx-runtime --features external-adapter,cli-tool external_adapter`
   - Expected kind: `exit_code_zero`
   - Status: passed
-  - Evidence: 2026-05-22T00:16:09+10:00 passed with 6 focused
+  - Evidence: 2026-05-22T01:22:00+10:00 passed 16 focused
     `tests/external_adapter.rs` tests covering process launch, invocation
     frame serialization, response parsing, mismatched response identity,
     timeout-to-cancellation mapping, unexpected credential-request rejection,
-    unknown protocol pre-spawn rejection, and crashed-process failure. The
-    narrower command
+    unknown protocol pre-spawn rejection, crashed-process failure,
+    package-relative manifest path success/escape rejection, credential
+    delivery/redaction, public credential refs/delivery-observation projection,
+    host-resolution frame parsing, and graph-level host routing. The narrower command
     `cargo test --manifest-path crates/Cargo.toml -p runx-runtime --features external-adapter --test external_adapter`
-    also passed 6 tests. Running the old no-feature filtered command still hits
+    also passed 16 tests. Running the old no-feature filtered command still hits
     the pre-existing `cli_tool_contract.rs` integration-test discovery import,
     so this feature-gated slice records the explicit feature set.
 - [ ] `v3` TypeScript helper tests pass.
@@ -292,25 +296,24 @@ Acceptance:
 
 Goal: run external execution adapters under Rust authority.
 
-Status: partial; Phase 2a process supervisor skeleton complete and focused
-Phase 2b runtime adapter-selection slice complete
+Status: complete for v1 one-shot process supervision and runtime routing
 Dependencies: Phase 1
-Blocker: runtime-local sunset sequencing and
-`credential-broker-delivery-contract-v1` must settle before final credential
-delivery, redaction policy, host-resolution routing, or receipt authority paths.
+Blocker: helper SDK/conformance work remains in Phase 3. Startup readiness is
+not part of v1 because the protocol has no ready frame.
 
 Changes:
 - [x] Add an external adapter supervisor behind an explicit runtime feature.
 - [x] Wire the supervisor into runtime adapter selection for explicit inline
   manifests or injected resolvers.
-- [ ] Enforce startup timeout, per-invocation timeout, frame validation,
-  credential delivery through `credential-broker-delivery-contract-v1`,
-  redaction, and receipt metadata.
+- [x] Enforce per-invocation timeout, frame validation, credential delivery
+  through `credential-broker-delivery-contract-v1`, redaction, host-resolution
+  frame routing, and response metadata mapping into `SkillOutput`.
 - [x] Fail closed on unknown protocol version, malformed frames, unexpected
   credential requests, and adapter crashes for the feature-gated one-shot
   process API.
-- [ ] Route host-resolution frames and accepted observations into sealed
-  runtime receipts.
+- [x] Route host-resolution frames through the existing host resolution protocol
+  before receipt construction. Accepted adapter response metadata maps into
+  `SkillOutput` for normal receipt construction.
 
 Acceptance:
 - Rust remains the only trusted local execution and receipt authority.
@@ -346,29 +349,35 @@ Remaining blockers:
 
 ### Phase 2b: Feature-Gated Runtime Wiring
 
-Status: complete for the focused runtime-selection slice
+Status: complete for the runtime-selection and hardening slice
 Dependencies: Phase 2a
 
 Changes:
 - [x] Added `ExternalAdapterSkillAdapter` behind `features =
   ["external-adapter"]`.
 - [x] Added explicit inline-manifest resolution from `SkillSource.raw` and
-  injectable manifest resolver/supervisor traits for tests and future host
-  wiring.
+  package-relative `manifest_path` resolution that canonicalizes below the
+  skill directory, plus injectable manifest resolver/supervisor traits for
+  tests and future host wiring.
 - [x] Built `ExternalAdapterInvocation` frames from `SkillInvocation` without
   provider-specific runtime logic.
 - [x] Mapped accepted adapter observations to `SkillOutput` while keeping
   adapter responses as untrusted observations, not receipts.
+- [x] Passed `CredentialDelivery` into the supervised process env after scoped
+  env admission, and redacted stdout/stderr/output/metadata/errors/artifacts
+  before runtime mapping.
+- [x] Normalized host-resolution frames into response metadata and routed them
+  through `Host::resolve` in graph execution.
 - [x] Added graph/skill routing coverage proving `source_type:
   external-adapter` reaches the supervisor and fails closed when manifest
   identity or response identity is unsafe.
 
 Evidence:
 - `external-adapter-runtime-wiring-v1` validated at
-  2026-05-22T00:42:00+10:00.
+  2026-05-22T01:22:00+10:00.
 - `cargo test --manifest-path crates/Cargo.toml -p runx-runtime --features
-  external-adapter --test external_adapter -- --nocapture` passed 9 focused
-  tests at 2026-05-22T00:42:00+10:00.
+  external-adapter --test external_adapter -- --nocapture` passed 16 focused
+  tests at 2026-05-22T01:22:00+10:00.
 
 ## Phase 3: Author SDKs And Fixtures
 

@@ -2,8 +2,8 @@
 spec_version: '2.0'
 task_id: ts-extension-survivorship-boundary
 created: '2026-05-21T13:04:12Z'
-updated: '2026-05-22T00:47:00+10:00'
-status: draft
+updated: '2026-05-22T01:40:00+10:00'
+status: active
 harden_status: not_run
 size: medium
 risk_level: high
@@ -13,7 +13,7 @@ risk_level: high
 
 ## Current State
 
-Status: draft
+Status: active
 Current phase: boundary language, spec alignment, and static guardrails landed
 Next: leave runtime-local/adapters deletion blocked on the child sunset specs
 and external adapter/credential/SDK protocol work
@@ -24,11 +24,11 @@ runtime-local/adapters deletion remains blocked because
 `external-adapter-plugin-protocol-v1`, `credential-broker-delivery-contract-v1`,
 and non-execution extension lanes still need their final runtime/SDK protocols.
 Allowed follow-up command: `scafld harden ts-extension-survivorship-boundary`
-Latest runner update: 2026-05-22T00:47:00+10:00 revalidated the guardrail:
-`node scripts/check-boundaries.mjs` passes, and docs/specs contain the required
-trusted-runtime/language-neutral external-adapter boundary language. This spec
-now serves as a boundary ledger; it must not be used to delete runtime-local
-directly.
+Latest runner update: 2026-05-22T01:40:00+10:00 promoted this guardrail spec
+from drafts to active and revalidated `node scripts/check-boundaries.mjs`.
+Docs/specs contain the required trusted-runtime/language-neutral extension
+boundary language. This spec now serves as a boundary ledger; it must not be
+used to delete runtime-local directly.
 Review gate: boundary_ready
 
 ## Summary
@@ -111,7 +111,7 @@ Out of scope:
 - `oss/docs/rust-kernel-architecture.md`
 - `oss/README.md`
 - `oss/scripts/check-boundaries.mjs`
-- `oss/.scafld/specs/drafts/embedded-sdk-migration-story.md`
+- `oss/.scafld/specs/active/embedded-sdk-migration-story.md`
 - `oss/.scafld/specs/drafts/rust-ts-sunset-runtime-local.md`
 - `oss/.scafld/specs/drafts/rust-aster-runtime-cutover.md`
 
@@ -138,7 +138,7 @@ Validation:
   - Expected kind: `exit_code_zero`
   - Status: passed
   - Evidence: 2026-05-21T14:15:21Z returned
-    `{"ok":true,"command":"validate","result":{"task_id":"ts-extension-survivorship-boundary","path":"/Users/kam/dev/runx/runx/oss/.scafld/specs/drafts/ts-extension-survivorship-boundary.md","valid":true,"errors":null}}`.
+    `{"ok":true,"command":"validate","result":{"task_id":"ts-extension-survivorship-boundary","path":"/Users/kam/dev/runx/runx/oss/.scafld/specs/active/ts-extension-survivorship-boundary.md","valid":true,"errors":null}}`.
 - [ ] `v2` Boundary checks pass after guardrail changes.
   - Command: `node scripts/check-boundaries.mjs`
   - Expected kind: `exit_code_zero`
