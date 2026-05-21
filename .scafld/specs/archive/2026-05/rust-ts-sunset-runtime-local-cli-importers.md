@@ -2,9 +2,9 @@
 spec_version: '2.0'
 task_id: rust-ts-sunset-runtime-local-cli-importers
 created: '2026-05-21T00:00:00Z'
-updated: '2026-05-21T00:00:00Z'
-status: draft
-harden_status: not_run
+updated: '2026-05-21T04:31:00Z'
+status: completed
+harden_status: passed
 size: small
 risk_level: medium
 ---
@@ -13,16 +13,18 @@ risk_level: medium
 
 ## Current State
 
-Status: draft
-Current phase: none
-Next: none
+Status: completed
+Current phase: final
+Next: `rust-ts-sunset-runtime-local-cli-mcp-importer-routing`
 Reason: executable first slice carved out of
 `rust-ts-sunset-runtime-local`. The npm `@runxhq/cli` package now ships only the
 native selector (`bin/runx` plus native package metadata); `packages/cli/src/**`
-is no longer the shipped command backend, but it remains active test/source
-surface and still imports `@runxhq/runtime-local` and `@runxhq/adapters`.
+is no longer the shipped command backend, and the remaining
+`@runxhq/runtime-local` / `@runxhq/adapters` imports are pinned by a focused
+CLI boundary test to execution-owned blockers only.
 Allowed follow-up command: `scafld validate rust-ts-sunset-runtime-local-cli-importers`
-Review gate: not_started
+Latest runner update: 2026-05-21T04:31:00Z
+Review gate: pass
 
 ## Summary
 
@@ -104,8 +106,8 @@ Out of scope:
 scafld validate rust-ts-sunset-runtime-local-cli-importers
 rg -n "@runxhq/(runtime-local|adapters)" packages/cli/src --glob '!**/dist/**'
 pnpm exec tsc -p tsconfig.typecheck.json --noEmit --pretty false
-pnpm exec vitest run packages/cli/src/cli-presentation.test.ts packages/cli/src/commands/history.test.ts tests/cli-package.test.ts
-git diff --check -- .scafld/specs/drafts/rust-ts-sunset-runtime-local-cli-importers.md packages/cli/src packages/cli/package.json tests
+pnpm exec vitest run packages/cli/src/import-boundary.test.ts packages/cli/src/cli-presentation.test.ts packages/cli/src/commands/history.test.ts tests/cli-package.test.ts
+git diff --check -- .scafld/specs/archive/2026-05/rust-ts-sunset-runtime-local-cli-importers.md packages/cli/src packages/cli/package.json tests
 ```
 
 ## Remaining Blockers Expected After This Slice
@@ -132,7 +134,7 @@ git diff --check -- .scafld/specs/drafts/rust-ts-sunset-runtime-local-cli-import
 
 ## Rollback And Repair
 
-- Roll back this slice by restoring the edited CLI files and this draft spec.
+- Roll back this slice by restoring the edited CLI files and this archived spec.
 - If validation finds a removed import was still needed for execution, route
   that execution path through Rust in a follow-up slice rather than adding a
   runtime-local compatibility facade.
