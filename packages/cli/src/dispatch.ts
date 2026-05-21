@@ -50,14 +50,8 @@ import {
   renderDoctorResult,
 } from "./commands/doctor.js";
 import {
-  handleDiffCommand,
   handleHistoryCommand,
-  handleInspectRunCommand,
-  handleReplaySeedCommand,
   renderHistory,
-  renderPausedRunInspection,
-  renderReceiptInspection,
-  renderRunDiff,
 } from "./commands/history.js";
 import { handleInitCommand } from "./commands/init.js";
 import { handleListCommand } from "./commands/list.js";
@@ -313,53 +307,6 @@ export async function dispatchCli(
     pushOptionalFlag(args, "--owner", parsed.publishOwner);
     pushOptionalFlag(args, "--version", parsed.publishVersion);
     return await writeNativeRunx(io, args, env);
-  }
-
-  if (parsed.command === "skill" && parsed.skillAction === "inspect" && parsed.receiptId) {
-    const inspection = await handleInspectRunCommand({
-      receiptId: parsed.receiptId,
-      receiptDir: parsed.receiptDir,
-    }, env);
-    if (parsed.json) {
-      io.stdout.write(`${JSON.stringify(inspection, null, 2)}\n`);
-    } else if (inspection.kind === "paused") {
-      io.stdout.write(renderPausedRunInspection(inspection.summary, env));
-    } else {
-      io.stdout.write(renderReceiptInspection(inspection.summary, env));
-    }
-    return 0;
-  }
-
-  if (parsed.command === "replay" && parsed.replayRef) {
-    const replaySeed = await handleReplaySeedCommand({
-      replayRef: parsed.replayRef,
-      receiptDir: parsed.receiptDir,
-    }, env);
-    const result = await executeLocalSkillCommand({
-      skillPath: replaySeed.skillPath,
-      inputs: replaySeed.inputs,
-      parsed: {
-        ...parsed,
-        runner: parsed.runner ?? replaySeed.selectedRunner,
-      },
-      caller,
-      env,
-    });
-    return writeLocalSkillResult(io, env, parsed, result);
-  }
-
-  if (parsed.command === "diff" && parsed.diffLeft && parsed.diffRight) {
-    const diff = await handleDiffCommand({
-      diffLeft: parsed.diffLeft,
-      diffRight: parsed.diffRight,
-      receiptDir: parsed.receiptDir,
-    }, env);
-    if (parsed.json) {
-      io.stdout.write(`${JSON.stringify({ status: "success", diff }, null, 2)}\n`);
-    } else {
-      io.stdout.write(renderRunDiff(diff, env));
-    }
-    return 0;
   }
 
   if (parsed.command === "history") {

@@ -389,19 +389,10 @@ export function isSupportedCommand(parsed: ParsedArgs): boolean {
   if (parsed.command === "skill" && parsed.skillAction === "publish" && parsed.publishPath) {
     return true;
   }
-  if (parsed.command === "skill" && parsed.skillAction === "inspect" && parsed.receiptId) {
-    return true;
-  }
   if (parsed.skillPath) {
     return true;
   }
   if (parsed.command === "evolve") {
-    return true;
-  }
-  if (parsed.command === "replay" && parsed.replayRef) {
-    return true;
-  }
-  if (parsed.command === "diff" && parsed.diffLeft && parsed.diffRight) {
     return true;
   }
   if (parsed.command === "history") {

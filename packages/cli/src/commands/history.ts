@@ -1,12 +1,7 @@
 import { resolvePathFromUserInput } from "@runxhq/core/config";
 
 import { runNativeRunxJson } from "../native-runx.js";
-import { renderKeyValue, relativeTime, shortId, statusIcon, theme } from "../ui.js";
-
-export interface InspectCommandArgs {
-  readonly receiptId: string;
-  readonly receiptDir?: string;
-}
+import { relativeTime, shortId, statusIcon, theme } from "../ui.js";
 
 export interface HistoryCommandArgs {
   readonly receiptDir?: string;
@@ -18,17 +13,6 @@ export interface HistoryCommandArgs {
   readonly historyArtifactType?: string;
   readonly historySince?: string;
   readonly historyUntil?: string;
-}
-
-export interface ReplayCommandArgs {
-  readonly replayRef: string;
-  readonly receiptDir?: string;
-}
-
-export interface DiffCommandArgs {
-  readonly diffLeft: string;
-  readonly diffRight: string;
-  readonly receiptDir?: string;
 }
 
 export interface LocalReceiptSummary {
@@ -79,43 +63,6 @@ export interface PausedRunSummary {
   };
 }
 
-export type InspectLocalRunResult =
-  | { readonly kind: "paused"; readonly summary: PausedRunSummary }
-  | { readonly kind: "receipt"; readonly summary: LocalReceiptSummary };
-
-export interface RunSummaryDiff {
-  readonly changed: boolean;
-  readonly left: { readonly id: string; readonly name: string };
-  readonly right: { readonly id: string; readonly name: string };
-  readonly fields: Readonly<Record<string, { readonly left: unknown; readonly right: unknown }>>;
-  readonly actors: { readonly added: readonly string[]; readonly removed: readonly string[] };
-  readonly artifactTypes: { readonly added: readonly string[]; readonly removed: readonly string[] };
-}
-
-interface ReplaySeed {
-  readonly skillPath: string;
-  readonly inputs: Readonly<Record<string, unknown>>;
-  readonly selectedRunner?: string;
-}
-
-export async function handleInspectCommand(
-  parsed: InspectCommandArgs,
-  env: NodeJS.ProcessEnv,
-): Promise<{ readonly summary: LocalReceiptSummary }> {
-  void parsed;
-  void env;
-  throw new Error("native receipt inspection is not implemented yet; use `runx history --json` for sealed harness receipts.");
-}
-
-export async function handleInspectRunCommand(
-  parsed: InspectCommandArgs,
-  env: NodeJS.ProcessEnv,
-): Promise<InspectLocalRunResult> {
-  void parsed;
-  void env;
-  throw new Error("native receipt inspection is not implemented yet; use `runx history --json` for sealed harness receipts.");
-}
-
 export async function handleHistoryCommand(
   parsed: HistoryCommandArgs,
   env: NodeJS.ProcessEnv,
@@ -132,24 +79,6 @@ export async function handleHistoryCommand(
   pushOptionalFlag(args, "--until", parsed.historyUntil);
   args.push("--json");
   return normalizeHistoryProjection(await runNativeRunxJson(args, { env }));
-}
-
-export async function handleReplaySeedCommand(
-  parsed: ReplayCommandArgs,
-  env: NodeJS.ProcessEnv,
-): Promise<ReplaySeed> {
-  void parsed;
-  void env;
-  throw new Error("native replay is not implemented yet; rerun the skill with explicit inputs and --answers.");
-}
-
-export async function handleDiffCommand(
-  parsed: DiffCommandArgs,
-  env: NodeJS.ProcessEnv,
-): Promise<RunSummaryDiff> {
-  void parsed;
-  void env;
-  throw new Error("native run diff is not implemented yet; compare `runx history --json` outputs.");
 }
 
 function normalizeHistoryProjection(value: unknown): {
@@ -235,30 +164,6 @@ function stringArray(value: unknown): readonly string[] {
   return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
 }
 
-export function renderReceiptInspection(summary: LocalReceiptSummary, env: NodeJS.ProcessEnv = process.env): string {
-  const t = theme(undefined, env);
-  const rows: Array<[string, string]> = [
-    ["id", summary.id],
-    ["kind", summary.kind],
-    ["status", summary.status],
-  ];
-  if (summary.sourceType) rows.push(["source", summary.sourceType]);
-  if (summary.disposition) rows.push(["disposition", summary.disposition]);
-  if (summary.outcomeState) rows.push(["outcome", summary.outcomeState]);
-  if (summary.startedAt) rows.push(["started", relativeTime(summary.startedAt)]);
-  if (summary.completedAt) rows.push(["completed", relativeTime(summary.completedAt)]);
-  if (summary.actors && summary.actors.length > 0) rows.push(["actors", summary.actors.join(", ")]);
-  if (summary.artifactTypes && summary.artifactTypes.length > 0) rows.push(["artifacts", summary.artifactTypes.join(", ")]);
-  if (summary.runnerProvider) rows.push(["runner", summary.runnerProvider]);
-  if (summary.approval?.decision) rows.push(["approval", `${summary.approval.decision}${summary.approval.gateType ? ` · ${summary.approval.gateType}` : ""}`]);
-  if (summary.lineage) rows.push(["lineage", `${summary.lineage.kind} of ${summary.lineage.sourceRunId}`]);
-  if (summary.verification) rows.push(["verify", `${summary.verification.status}${summary.verification.reason ? ` (${summary.verification.reason})` : ""}`]);
-  if (summary.ledgerVerification) rows.push(["ledger", `${summary.ledgerVerification.status}${summary.ledgerVerification.reason ? ` (${summary.ledgerVerification.reason})` : ""}`]);
-  rows.push(["history", "runx history"]);
-  rows.push(["json", "runx history --json"]);
-  return renderKeyValue(summary.name, summary.status, rows, t);
-}
-
 export function renderHistory(
   receipts: readonly LocalReceiptSummary[],
   env: NodeJS.ProcessEnv = process.env,
@@ -326,60 +231,8 @@ function formatHarnessHistoryStatus(receipt: LocalReceiptSummary): string | unde
   return parts.join(" · ");
 }
 
-export function renderPausedRunInspection(
-  summary: PausedRunSummary,
-  env: NodeJS.ProcessEnv = process.env,
-): string {
-  const t = theme(undefined, env);
-  const rows: Array<[string, string]> = [
-    ["id", summary.id],
-    ["kind", summary.kind],
-    ["status", summary.status],
-  ];
-  if (summary.selectedRunner) rows.push(["runner", summary.selectedRunner]);
-  if (summary.stepIds.length > 0) rows.push(["step", summary.stepIds.join(", ")]);
-  if (summary.stepLabels.length > 0) rows.push(["label", summary.stepLabels.join(", ")]);
-  if (summary.ledgerVerification) rows.push(["ledger", `${summary.ledgerVerification.status}${summary.ledgerVerification.reason ? ` (${summary.ledgerVerification.reason})` : ""}`]);
-  rows.push(["continue", `runx skill <same-skill-ref> --run-id ${summary.id} --answers answers.json`]);
-  rows.push(["json", "runx history --json"]);
-  return renderKeyValue(summary.name, summary.status, rows, t);
-}
-
-export function renderRunDiff(diff: RunSummaryDiff, env: NodeJS.ProcessEnv = process.env): string {
-  const t = theme(undefined, env);
-  const lines: string[] = [""];
-  lines.push(`  ${t.bold}diff${t.reset}  ${t.dim}${shortId(diff.left.id)} -> ${shortId(diff.right.id)}${t.reset}`);
-  lines.push(`  ${t.dim}${diff.left.name}${t.reset}  ${t.dim}vs${t.reset}  ${t.dim}${diff.right.name}${t.reset}`);
-  lines.push("");
-  if (!diff.changed) {
-    lines.push(`  ${t.dim}No material run deltas found.${t.reset}`);
-  } else {
-    for (const [field, delta] of Object.entries(diff.fields)) {
-      lines.push(`  ${t.bold}${field}${t.reset}  ${formatDeltaValue(delta.left)} -> ${formatDeltaValue(delta.right)}`);
-    }
-    if (diff.actors.added.length > 0 || diff.actors.removed.length > 0) {
-      lines.push(`  ${t.bold}actors${t.reset}  +${diff.actors.added.join(", ") || "none"}  -${diff.actors.removed.join(", ") || "none"}`);
-    }
-    if (diff.artifactTypes.added.length > 0 || diff.artifactTypes.removed.length > 0) {
-      lines.push(`  ${t.bold}artifacts${t.reset}  +${diff.artifactTypes.added.join(", ") || "none"}  -${diff.artifactTypes.removed.join(", ") || "none"}`);
-    }
-  }
-  lines.push("");
-  return lines.join("\n");
-}
-
 function formatHistoryVerification(receipt: LocalReceiptSummary): string {
   const signature = receipt.verification?.status ?? "unknown";
   const ledger = receipt.ledgerVerification?.status ?? "unknown";
   return `${signature}/${ledger}`;
-}
-
-function formatDeltaValue(value: unknown): string {
-  if (value === undefined) {
-    return "none";
-  }
-  if (typeof value === "string") {
-    return value;
-  }
-  return JSON.stringify(value);
 }

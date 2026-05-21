@@ -1078,21 +1078,24 @@ Answer the prompt directly.
 
     expect(exitCode).toBe(0);
     expect(stderr.contents()).toBe("");
-    expect(stdout.contents()).toContain("Core Flow:");
-    expect(stdout.contents()).toContain("runx skill search docs");
-    expect(stdout.contents()).toContain("runx skill <skill-ref> --project .");
-    expect(stdout.contents()).toContain("runx evolve");
-    expect(stdout.contents()).toContain("runx skill inspect <receipt-id>");
-    expect(stdout.contents()).toContain("runx export-receipts --trainable");
-    expect(stdout.contents()).toContain("Manage Skills:");
-    expect(stdout.contents()).toContain("runx skill publish");
+    expect(stdout.contents()).toContain("Commands:");
+    expect(stdout.contents()).toContain("runx history [query]");
+    expect(stdout.contents()).toContain("runx skill <skill-ref|skill-dir|SKILL.md>");
+    expect(stdout.contents()).toContain("runx harness <fixture.yaml>");
+    expect(stdout.contents()).toContain("runx tool inspect <ref>");
+    expect(stdout.contents()).not.toContain("runx evolve");
+    expect(stdout.contents()).not.toContain("runx skill inspect <receipt-id>");
+    expect(stdout.contents()).not.toContain("runx export-receipts --trainable");
   });
 
-  it("rejects retired top-level skill aliases", async () => {
+  it("rejects retired command aliases and TS-only history helpers", async () => {
     for (const argv of [
       ["search", "docs"],
       ["add", "acme/sourcey@1.0.0"],
       ["inspect", "rx_123"],
+      ["skill", "inspect", "rx_123"],
+      ["replay", "rx_123"],
+      ["diff", "rx_left", "rx_right"],
     ]) {
       const stdout = createMemoryStream();
       const stderr = createMemoryStream();
@@ -1117,9 +1120,10 @@ Answer the prompt directly.
     expect(exitCode).toBe(0);
     expect(stderr.contents()).toBe("");
     expect(stdout.contents()).toContain("No receipts yet. Try a run first:");
-    expect(stdout.contents()).toContain("runx evolve");
-    expect(stdout.contents()).toContain("runx skill search docs");
-    expect(stdout.contents()).not.toContain("runx skill search sourcey");
+    expect(stdout.contents()).toContain("runx skill <skill-dir> --json");
+    expect(stdout.contents()).toContain("runx list skills");
+    expect(stdout.contents()).not.toContain("runx evolve");
+    expect(stdout.contents()).not.toContain("runx skill search docs");
   });
 
   it("renders connect results as human-readable summaries", async () => {
