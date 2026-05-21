@@ -178,13 +178,17 @@ Validation:
   - Status: pass
   - Evidence: exit code was 0 on 2026-05-21
   - Source event: local
-- [ ] `v2` state-layer - Durable payment state has executable coverage.
+- [x] `v2` state-layer - Durable payment state has executable coverage.
   - Command: `rg -n "idempotency.*lookup|consumed_spend_capability|rail.*mutation|payment.*recovery" crates/runx-runtime crates/runx-core fixtures/harness fixtures/graphs`
   - Expected kind: `exit_code_zero`
-  - Status: blocked
-  - Evidence: current matches are admission inputs and receipt refs only, not a
-    durable replay/recovery state layer
-  - Source event: none
+  - Status: pass
+  - Evidence: `crates/runx-runtime/src/payment_state.rs` now exposes typed
+    idempotency lookup, consumed spend capability lookup, and mock rail mutation
+    persistence. Duplicate idempotency keys and duplicate rail mutations are
+    rejected without overwriting the first recorded state.
+    `cargo test --manifest-path crates/Cargo.toml -p runx-runtime --test
+    payment_state` passed on 2026-05-21 with 4 tests.
+  - Source event: local
 - [ ] `v3` fixture - Idempotency replay fixture passes.
   - Command: `runx harness fixtures/harness/x402-pay-idempotency-replay.yaml`
   - Expected kind: `exit_code_zero`

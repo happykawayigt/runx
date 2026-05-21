@@ -15,10 +15,11 @@ risk_level: medium
 
 Status: active
 Current phase: persistence boundary
-Next: persist projection artifact and append ledger event
-Reason: Rust-native pure projection builder exists; persisted projection output
-and ledger event integration are still missing
-Blockers: missing persistence integration
+Next: wire projection artifact writer into native harness completion and append
+ledger event
+Reason: Rust-native pure projection builder and deterministic artifact writer
+exist; native harness/ledger event integration is still missing
+Blockers: missing native harness event append integration
 Allowed follow-up command: `implement`
 Latest runner update: 2026-05-21T00:00:00Z
 Review gate: not_run
@@ -47,16 +48,22 @@ The existing ledger can record emitted artifacts, receipt links, step events,
 and generic run history, but it does not expose a payment-specific projection
 contract that folds x402 payment packets into an accrual/refusal view.
 
-Missing boundary to add:
+Boundary status:
 
 - Rust API: `runx_runtime::payment_ledger::build_payment_ledger_projection`,
   accepting sealed graph/harness receipts plus typed child receipt evidence.
-- Native file output: a deterministic projection artifact under the configured
-  receipt directory, keyed by `x402-pay:<receipt-id>`, without requiring
-  TypeScript knowledge-store code.
-- Ledger event: append a system run event `payment_ledger_projected` after the
-  projection write, including the projection artifact id and source receipt id.
-- Contract: `runx.payment_ledger_projection.v1` with stable JSON fields for
+- Native file output: `write_payment_ledger_projection_artifact` writes a
+  deterministic projection artifact under
+  `<receipt-dir>/artifacts/payment-ledger/x402-pay/<receipt-id>.json`, keyed by
+  `x402-pay:<source-receipt-id>`, without requiring TypeScript knowledge-store
+  code.
+- Event payload: the writer returns a `payment_ledger_projected` payload with
+  the projection artifact id, projection artifact path, source receipt id,
+  scenario id, profile, and disposition.
+- Missing ledger event append: native harness completion still must append the
+  returned `payment_ledger_projected` payload to the run ledger after the
+  projection write.
+- Contract: `runx.payment_ledger_projection.v1` has stable JSON fields for
   `scenario_id`, `disposition`, `accrual`, `refusal`, `evidence_refs`, and
   `source_receipt_id`.
 
@@ -129,8 +136,12 @@ Phase 1: projection boundary.
 fold existing x402 ledger artifact envelopes into the v1 projection.
 
 Phase 2: persistence boundary.
-: Persist the native projection artifact under the configured receipt directory,
-then append `payment_ledger_projected` to the ledger.
+: Persist the native projection artifact under the configured receipt directory
+and return the `payment_ledger_projected` payload.
+
+Phase 2b: native ledger integration.
+: Invoke the projection artifact writer from the native harness completion path
+and append `payment_ledger_projected` to the run ledger.
 
 Phase 3: dogfood evidence.
 : Run the happy and refusal fixtures, assert projection differences against the
@@ -158,14 +169,49 @@ Validation:
   - Expected kind: `exit_code_zero`
   - Status: pass
   - Evidence: exit code was 0; happy settlement and governed refusal projections
-    matched `fixtures/ledger-projections/x402-pay-ledger-*.json`
+    matched `fixtures/ledger-projections/x402-pay-ledger-*.json`, and the
+    artifact writer persisted/read back a projection under a receipt dir while
+    returning `payment_ledger_projected`
 - [ ] `v4` x402 dogfood - Native x402 fixture lane remains green.
   - Command: `cargo test --manifest-path crates/Cargo.toml -p runx-cli --test x402_native_dogfood native_x402_negative_fixtures_refuse_without_settlement`
   - Expected kind: `exit_code_zero`
-- [ ] `v5` projection persistence - Native CLI harness run writes the
+- [x] `v5` projection persistence writer - Runtime writer persists the
+  payment-ledger projection artifact and returns the event payload without
+  TypeScript.
+  - Command: `cargo test --manifest-path crates/Cargo.toml -p runx-runtime --test payment_ledger_projection x402_projection_artifact_writer_persists_under_receipt_dir_and_returns_event_payload`
+  - Expected kind: `exit_code_zero`
+  - Status: pass
+  - Evidence: exit code was 0
+- [ ] `v6` projection ledger integration - Native CLI harness run writes the
   payment-ledger projection artifact and ledger event without TypeScript.
   - Command: `cargo test --manifest-path crates/Cargo.toml -p runx-cli --test x402_native_dogfood native_x402_ledger_projection`
   - Expected kind: `exit_code_zero`
+
+## Remaining Native Integration
+
+The minimal Rust-native persistence piece is complete in `runx-runtime`. The
+remaining ledger event integration should be implemented in the native harness
+completion path, not in CLI history display.
+
+Exact next files:
+
+- `crates/runx-runtime/src/execution/harness/runner.rs`: detect the x402
+  payment graph completion, build typed evidence, call
+  `build_payment_ledger_projection`, then call
+  `write_payment_ledger_projection_artifact` with the resolved receipt dir.
+- `crates/runx-runtime/src/journal.rs` or the existing execution journal writer
+  call site: append a `run_event` with kind `payment_ledger_projected` and the
+  writer's returned event payload after the artifact write succeeds.
+- `crates/runx-cli/tests/x402_native_dogfood.rs`: add/enable
+  `native_x402_ledger_projection` to assert artifact presence and ledger event
+  presence without TypeScript.
+
+Validation commands:
+
+- `cargo test --manifest-path crates/Cargo.toml -p runx-runtime --test payment_ledger_projection`
+- `cargo test --manifest-path crates/Cargo.toml -p runx-cli --test x402_native_dogfood native_x402_negative_fixtures_refuse_without_settlement`
+- `cargo test --manifest-path crates/Cargo.toml -p runx-cli --test x402_native_dogfood native_x402_ledger_projection`
+- `scafld validate x402-pay-ledger-projection-v1 --json`
 
 ## Rollback
 
@@ -190,6 +236,9 @@ Commands:
 - 2026-05-21T00:00:00Z: Added the Rust-native pure projection builder and
   focused runtime tests for the happy settlement and governed refusal golden
   fixtures. Persistence remains a follow-up boundary.
+- 2026-05-21T00:00:00Z: Added the narrow Rust-native projection artifact writer
+  and runtime persistence test. Full native ledger event append remains blocked
+  on wiring the writer into harness completion and the run ledger writer.
 
 ## Review
 

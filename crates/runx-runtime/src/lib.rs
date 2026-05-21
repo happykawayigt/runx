@@ -18,6 +18,7 @@ pub mod host;
 pub mod journal;
 pub mod list;
 pub mod payment_ledger;
+pub mod payment_state;
 pub mod post_merge_observer;
 pub mod receipts;
 pub mod registry;

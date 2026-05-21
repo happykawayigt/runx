@@ -1,8 +1,9 @@
 use runx_contracts::{HarnessReceipt, JsonObject};
 use runx_runtime::payment_ledger::{
     PaidToolEvidence, PaymentLedgerEvidence, PaymentLedgerEvidencePacket,
-    PaymentLedgerProjectionInput, PaymentRailSettlementEvidence, PaymentRefusalEvidence,
-    PaymentReservationEvidence, build_payment_ledger_projection,
+    PaymentLedgerProjectedEventPayload, PaymentLedgerProjection, PaymentLedgerProjectionInput,
+    PaymentRailSettlementEvidence, PaymentRefusalEvidence, PaymentReservationEvidence,
+    build_payment_ledger_projection, write_payment_ledger_projection_artifact,
 };
 use runx_runtime::receipts::{graph_receipt, step_receipt};
 use runx_runtime::{InvocationStatus, SkillOutput, StepRun};
@@ -114,6 +115,46 @@ fn x402_governed_refusal_projection_matches_golden_fixture()
         serde_json::to_value(projection)?,
         golden("fixtures/ledger-projections/x402-pay-ledger-governed-refusal.json")?
     );
+    Ok(())
+}
+
+#[test]
+fn x402_projection_artifact_writer_persists_under_receipt_dir_and_returns_event_payload()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempfile::tempdir()?;
+    let projection: PaymentLedgerProjection = serde_json::from_value(golden(
+        "fixtures/ledger-projections/x402-pay-ledger-happy-settlement.json",
+    )?)?;
+
+    let artifact = write_payment_ledger_projection_artifact(temp.path(), &projection)?;
+    let persisted: PaymentLedgerProjection =
+        serde_json::from_str(&std::fs::read_to_string(&artifact.path)?)?;
+
+    assert_eq!(persisted, projection);
+    assert_eq!(
+        artifact.path,
+        temp.path()
+            .join("artifacts")
+            .join("payment-ledger")
+            .join("x402-pay")
+            .join("hrn_rcpt_x402-pay-paid-echo_graph.json")
+    );
+    assert_eq!(
+        artifact.event_payload,
+        PaymentLedgerProjectedEventPayload {
+            kind: "payment_ledger_projected".to_owned(),
+            payment_profile: "x402-pay".to_owned(),
+            projection_artifact_id:
+                "x402-pay:runx:harness_receipt:hrn_rcpt_x402-pay-paid-echo_graph".to_owned(),
+            projection_artifact_path: artifact.path.to_string_lossy().into_owned(),
+            source_receipt_id: "runx:harness_receipt:hrn_rcpt_x402-pay-paid-echo_graph".to_owned(),
+            scenario_id: "P1.5".to_owned(),
+            disposition: projection.disposition.clone(),
+        }
+    );
+
+    let second_write = write_payment_ledger_projection_artifact(temp.path(), &projection)?;
+    assert_eq!(second_write.event_payload, artifact.event_payload);
     Ok(())
 }
 

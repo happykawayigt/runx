@@ -1,4 +1,6 @@
 use std::collections::HashSet;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use runx_contracts::{HarnessReceipt, ProofKind, Reference, ReferenceType};
 use serde::{Deserialize, Serialize};
@@ -6,6 +8,7 @@ use thiserror::Error;
 
 pub const PAYMENT_LEDGER_PROJECTION_SCHEMA_VERSION: &str = "runx.payment_ledger_projection.v1";
 pub const X402_PAY_PAYMENT_PROFILE: &str = "x402-pay";
+pub const PAYMENT_LEDGER_PROJECTED_EVENT_KIND: &str = "payment_ledger_projected";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -18,6 +21,27 @@ pub struct PaymentLedgerProjection {
     pub accrual: PaymentLedgerAccrual,
     pub refusal: Option<PaymentLedgerRefusal>,
     pub evidence_refs: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PaymentLedgerProjectionArtifact {
+    pub artifact_id: String,
+    pub artifact_type: String,
+    pub path: PathBuf,
+    pub event_payload: PaymentLedgerProjectedEventPayload,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PaymentLedgerProjectedEventPayload {
+    pub kind: String,
+    pub payment_profile: String,
+    pub projection_artifact_id: String,
+    pub projection_artifact_path: String,
+    pub source_receipt_id: String,
+    pub scenario_id: String,
+    pub disposition: PaymentLedgerDisposition,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -126,6 +150,16 @@ pub enum PaymentLedgerProjectionError {
     },
     #[error("settlement evidence does not match reservation evidence")]
     SettlementReservationMismatch,
+    #[error(
+        "payment ledger projection source receipt id {source_receipt_id} is not a harness receipt ref"
+    )]
+    InvalidSourceReceiptId { source_receipt_id: String },
+    #[error("payment ledger projection artifact already exists with different contents at {path}")]
+    ArtifactConflict { path: PathBuf },
+    #[error("payment ledger projection artifact I/O failed at {path}: {message}")]
+    ArtifactIo { path: PathBuf, message: String },
+    #[error("payment ledger projection artifact JSON failed at {path}: {message}")]
+    ArtifactJson { path: PathBuf, message: String },
 }
 
 pub fn build_payment_ledger_projection(
@@ -199,6 +233,74 @@ pub fn build_payment_ledger_projection(
         accrual,
         refusal,
         evidence_refs: evidence_refs(&input.evidence),
+    })
+}
+
+pub fn write_payment_ledger_projection_artifact(
+    receipt_dir: impl AsRef<Path>,
+    projection: &PaymentLedgerProjection,
+) -> Result<PaymentLedgerProjectionArtifact, PaymentLedgerProjectionError> {
+    let receipt_id = source_receipt_file_stem(&projection.source_receipt_id)?;
+    let artifact_id = format!(
+        "{}:{}",
+        projection.payment_profile, projection.source_receipt_id
+    );
+    let artifact_dir = receipt_dir
+        .as_ref()
+        .join("artifacts")
+        .join("payment-ledger")
+        .join(&projection.payment_profile);
+    let artifact_path = artifact_dir.join(format!("{receipt_id}.json"));
+    let mut contents = serde_json::to_vec_pretty(projection).map_err(|source| {
+        PaymentLedgerProjectionError::ArtifactJson {
+            path: artifact_path.clone(),
+            message: source.to_string(),
+        }
+    })?;
+    contents.push(b'\n');
+
+    fs::create_dir_all(&artifact_dir).map_err(|source| {
+        PaymentLedgerProjectionError::ArtifactIo {
+            path: artifact_dir.clone(),
+            message: source.to_string(),
+        }
+    })?;
+
+    if artifact_path.exists() {
+        let existing = fs::read(&artifact_path).map_err(|source| {
+            PaymentLedgerProjectionError::ArtifactIo {
+                path: artifact_path.clone(),
+                message: source.to_string(),
+            }
+        })?;
+        if existing != contents {
+            return Err(PaymentLedgerProjectionError::ArtifactConflict {
+                path: artifact_path,
+            });
+        }
+    } else {
+        fs::write(&artifact_path, &contents).map_err(|source| {
+            PaymentLedgerProjectionError::ArtifactIo {
+                path: artifact_path.clone(),
+                message: source.to_string(),
+            }
+        })?;
+    }
+
+    let projection_artifact_path = artifact_path.to_string_lossy().into_owned();
+    Ok(PaymentLedgerProjectionArtifact {
+        artifact_id: artifact_id.clone(),
+        artifact_type: PAYMENT_LEDGER_PROJECTION_SCHEMA_VERSION.to_owned(),
+        path: artifact_path,
+        event_payload: PaymentLedgerProjectedEventPayload {
+            kind: PAYMENT_LEDGER_PROJECTED_EVENT_KIND.to_owned(),
+            payment_profile: projection.payment_profile.clone(),
+            projection_artifact_id: artifact_id,
+            projection_artifact_path,
+            source_receipt_id: projection.source_receipt_id.clone(),
+            scenario_id: projection.scenario_id.clone(),
+            disposition: projection.disposition.clone(),
+        },
     })
 }
 
@@ -319,6 +421,25 @@ fn evidence_refs(evidence: &[PaymentLedgerEvidence<'_>]) -> Vec<String> {
 
 fn receipt_ref(receipt: &HarnessReceipt) -> String {
     format!("runx:harness_receipt:{}", receipt.id)
+}
+
+fn source_receipt_file_stem(source_receipt_id: &str) -> Result<&str, PaymentLedgerProjectionError> {
+    const PREFIX: &str = "runx:harness_receipt:";
+    let Some(receipt_id) = source_receipt_id.strip_prefix(PREFIX) else {
+        return Err(PaymentLedgerProjectionError::InvalidSourceReceiptId {
+            source_receipt_id: source_receipt_id.to_owned(),
+        });
+    };
+    if receipt_id.is_empty()
+        || !receipt_id
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '-'))
+    {
+        return Err(PaymentLedgerProjectionError::InvalidSourceReceiptId {
+            source_receipt_id: source_receipt_id.to_owned(),
+        });
+    }
+    Ok(receipt_id)
 }
 
 fn push_unique(refs: &mut Vec<String>, reference: String) {
