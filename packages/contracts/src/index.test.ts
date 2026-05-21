@@ -285,6 +285,14 @@ describe("@runxhq/contracts", () => {
     expect(runxGeneratedSchemaArtifacts["handoff-state.schema.json"]).toBe(runxContractSchemas.handoffState);
     expect(runxGeneratedSchemaArtifacts["suppression-record.schema.json"]).toBe(runxContractSchemas.suppressionRecord);
     expect(runxGeneratedSchemaArtifacts["operational-policy.schema.json"]).toBe(runxContractSchemas.operationalPolicy);
+    expect(runxGeneratedSchemaArtifacts["thread-outbox-provider-manifest.schema.json"])
+      .toBe(runxContractSchemas.threadOutboxProviderManifest);
+    expect(runxGeneratedSchemaArtifacts["thread-outbox-provider-push.schema.json"])
+      .toBe(runxContractSchemas.threadOutboxProviderPush);
+    expect(runxGeneratedSchemaArtifacts["thread-outbox-provider-fetch.schema.json"])
+      .toBe(runxContractSchemas.threadOutboxProviderFetch);
+    expect(runxGeneratedSchemaArtifacts["thread-outbox-provider-observation.schema.json"])
+      .toBe(runxContractSchemas.threadOutboxProviderObservation);
     const retiredIssueArtifact = `${"issue"}-to-pr-${"out"}come.schema.json` as keyof typeof runxGeneratedSchemaArtifacts;
     expect(runxGeneratedSchemaArtifacts[retiredIssueArtifact]).toBeUndefined();
     expect(runxGeneratedSchemaArtifacts["review-receipt-output.schema.json"]).toBe(reviewReceiptOutputSchema);

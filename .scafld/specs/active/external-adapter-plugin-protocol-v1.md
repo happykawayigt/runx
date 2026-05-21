@@ -2,7 +2,7 @@
 spec_version: '2.0'
 task_id: external-adapter-plugin-protocol-v1
 created: '2026-05-21T13:04:12Z'
-updated: '2026-05-22T01:22:00+10:00'
+updated: '2026-05-22T02:07:19+10:00'
 status: active
 harden_status: not_run
 size: large
@@ -14,33 +14,29 @@ risk_level: high
 ## Current State
 
 Status: active
-Current phase: Phase 2 runtime hardening landed; Phase 3 SDK/conformance remains blocked
-Next: build helper SDKs and conformance adapters only after SDK survivorship
-decisions land; keep registry-backed discovery and non-execution queues out of
-this protocol
-Reason: built-in adapters are moving into Rust, but custom execution-adapter
-authors still need a no-Rust-required extension surface after
-`@runxhq/adapters` and `@runxhq/runtime-local` sunset.
-Blockers: helper SDKs and conformance adapters remain blocked on SDK
-survivorship decisions. Registry-backed manifest discovery, source-event
-ingress, hosted runtime binding, catalog/read-model access, and thread/outbox
-provider writes remain sibling specs or explicit non-goals. Phase 1 is no
-longer blocked by `skill-author-runtime-contract-v1`; the simpler subprocess
-ABI is fixture-backed and this spec owns only the richer execution-adapter
-protocol above it.
-Allowed follow-up command: `scafld harden external-adapter-plugin-protocol-v1`
-Latest runner update: 2026-05-22T01:22:00+10:00 advanced the Rust runtime slice:
-`ExternalAdapterSkillAdapter` now supports explicit inline manifests and
-package-relative `manifest_path` files, passes `CredentialDelivery` into the
-supervised process env, projects public credential refs and delivery-observation
-metadata, redacts adapter observations, normalizes host-resolution frames, and
-routes them through `Host` at graph execution. The broad protocol is still not
-the umbrella for source-event ingress, hosted
-embedded runtime binding, catalog/read-model access, thread/outbox provider
-writes, auth storage, registry control, or general plugin orchestration. Those
-surfaces still require runtime-local sunset sequencing, SDK survivorship
-decisions, or sibling protocol specs.
-Review gate: phase2_runtime_hardening_ready; overall_spec_blocked_on_phase3_sdk_conformance
+Current phase: Phase 3 SDK/conformance unblocked
+Next: implement TypeScript protocol helpers and conformance adapters without
+runtime-local/adapters imports
+Reason: Phase 1 contract shape and Phase 2 Rust runtime supervision are landed.
+`embedded-sdk-migration-story` now records that `runx-sdk` remains CLI-backed,
+cloud hosted execution moves to a Rust-supervised runtime service/native
+boundary, and custom adapter/provider glue moves to this protocol instead of
+runtime-local.
+Remaining work: Phase 3 implementation: helper SDKs, TypeScript sample adapter,
+non-TypeScript sample adapter, conformance fixtures, and negative import guards.
+Registry-backed manifest discovery, source-event ingress, hosted runtime
+binding, catalog/read-model access, and thread/outbox provider writes remain
+sibling specs or explicit non-goals.
+Allowed follow-up command: `scafld handoff external-adapter-plugin-protocol-v1`
+Latest runner update: 2026-05-22T02:07:19+10:00 consumed
+`embedded-sdk-migration-story`'s target-shape decision. Phase 3 is no longer
+blocked on SDK survivorship; it must build protocol-only helpers over generated
+contracts and prove they do not import `@runxhq/runtime-local` or
+`@runxhq/adapters`.
+Previous update: 2026-05-22T01:54:08+10:00 confirmed
+`external-adapter-runtime-wiring-v1` is completed and archived after a passing
+review. The remaining work is Phase 3 helper SDK/conformance implementation.
+Review gate: phase2_runtime_hardening_complete; phase3_ready_for_helper_sdk_conformance
 
 ## Summary
 
@@ -230,15 +226,15 @@ Validation:
 - [ ] `v3` TypeScript helper tests pass.
   - Command: `pnpm test -- --run packages/authoring`
   - Expected kind: `exit_code_zero`
-  - Status: blocked
-  - Evidence: blocked on Phase 3 helper SDK work and SDK survivorship
-    decisions; not run in this Phase 1 contract-surface validation pass.
+  - Status: pending
+  - Evidence: unblocked by `embedded-sdk-migration-story` at
+    2026-05-22T02:07:19+10:00; helper SDK work not implemented yet.
 - [ ] `v4` No helper imports deleted runtime packages.
   - Command: `! rg -n "@runxhq/(runtime-local|adapters)|packages/(runtime-local|adapters)" packages/{authoring,create-skill,contracts,host-adapters,langchain} --glob '!**/dist/**'`
   - Expected kind: `exit_code_zero`
-  - Status: blocked
-  - Evidence: blocked on Phase 3 helper SDK/package surface decisions; not run
-    in this Phase 1 contract-surface validation pass.
+  - Status: pending
+  - Evidence: unblocked by `embedded-sdk-migration-story`; run after helper
+    SDK/conformance adapter implementation.
 - [x] `v5` TypeScript protocol schema fixtures pass.
   - Command:
     `pnpm vitest run packages/contracts/src/schemas/external-adapter.test.ts`
@@ -273,7 +269,7 @@ Validation:
 Goal: freeze the v1 external execution-adapter wire shape before deleting the
 TS adapter package.
 
-Status: complete
+Status: completed
 Dependencies: `ts-extension-survivorship-boundary`
 
 Changes:
@@ -339,13 +335,14 @@ Changes:
   process env, credential-request frames on the response channel, malformed
   JSON, oversized responses, and crashed adapter processes fail closed.
 
-Remaining blockers:
+Remaining v1 limits:
 - Startup readiness has no separate ready frame in the frozen contract; the
   current slice validates non-zero startup timeout but only enforces the
   one-shot invocation deadline.
 - Credential material delivery, redaction policy, host-resolution routing, and
-  sealed receipt conversion remain blocked by the runtime-local sunset,
-  credential-broker delivery, and SDK survivorship sequence.
+  normal `SkillOutput` mapping are covered by Phase 2b and the completed
+  `external-adapter-runtime-wiring-v1` slice. Helper SDKs and conformance
+  adapters remain Phase 3 work.
 
 ### Phase 2b: Feature-Gated Runtime Wiring
 
@@ -383,10 +380,12 @@ Evidence:
 
 Goal: keep adoption easy without keeping runtime-local.
 
-Status: blocked
+Status: active
 Dependencies: Phase 2
-Blocker: Phase 2 supervisor and SDK survivorship decisions must settle before
-helper SDKs and conformance adapters can be added.
+Decision: `embedded-sdk-migration-story` keeps `runx-sdk` CLI-backed for v1 and
+routes custom adapter/provider glue here. Phase 3 helpers may live in
+`@runxhq/authoring` or a future helper package named by this spec, but must be
+protocol-only over generated contracts.
 
 Changes:
 - Add TypeScript helpers that implement the protocol server/client boilerplate
@@ -397,6 +396,10 @@ Changes:
 Acceptance:
 - A custom execution-adapter author can write TypeScript without depending on a
   TypeScript local runtime.
+- At least one non-TypeScript sample adapter consumes the same fixture contract,
+  proving this is not a TypeScript-only replacement runtime.
+- Hosted-agent adapter migration can reference this protocol without pulling
+  provider SDK code into Rust.
 
 ## Rollback
 

@@ -2,7 +2,7 @@
 spec_version: '2.0'
 task_id: embedded-sdk-migration-story
 created: '2026-05-21T12:19:24Z'
-updated: '2026-05-22T01:40:00+10:00'
+updated: '2026-05-22T02:07:19+10:00'
 status: active
 harden_status: not_run
 size: large
@@ -14,23 +14,26 @@ risk_level: high
 ## Current State
 
 Status: active
-Current phase: planning
-Next: complete cloud inventory, then harden
+Current phase: target shape recorded; fixture work remains
+Next: add migration fixtures for the Rust-supervised runtime service/native
+binding boundary and external-adapter hosted-agent replacement
 Reason: `@runxhq/runtime-local/sdk` is a real in-process embedding surface, but
 the current Rust `runx-sdk` is explicitly CLI-backed and does not execute skills
 natively.
-Blockers: cloud worker/agent-runner inventory is still unavailable in this OSS
-checkout. `skill-author-runtime-contract-v1` is archived complete for the
-author-facing subprocess ABI, and `external-adapter-plugin-protocol-v1` now owns
-the language-neutral custom adapter path; richer embedded host continuation
-semantics still require a Rust host/service/native-binding decision before
-runtime-local SDK deletion.
-Allowed follow-up command: `scafld harden embedded-sdk-migration-story`
-Latest runner update: 2026-05-22T01:40:00+10:00 promoted this executed inventory
-spec from drafts to active, revalidated boundary guardrails, and confirmed the
-TS-free Rust CLI smoke test exists as the local execution proof. Cloud worker
-and agent-runner callers remain unverified in this checkout and are recorded as
-a follow-up blocker rather than inferred from stale context.
+Blockers: runtime-local SDK deletion remains blocked on implementation fixtures:
+cloud hosted execution needs a Rust-supervised runtime service or native binding
+that preserves host continuation, auth resolution, receipts, and resume; hosted
+agent/custom adapter behavior needs external-adapter conformance fixtures.
+Allowed follow-up command: `scafld handoff embedded-sdk-migration-story`
+Latest runner update: 2026-05-22T02:07:19+10:00 completed the cloud inventory in
+the full checkout and recorded the target shape. `runx-sdk` stays CLI-backed for
+v1; TypeScript remains only as cloud/product code, protocol/client helpers, and
+external-adapter authoring over Rust-supervised contracts. No target keeps
+`@runxhq/runtime-local` as a hidden executor, and no target forces integration
+authors to rewrite provider SDK glue as Rust crates.
+Previous update: 2026-05-22T01:40:00+10:00 promoted this executed inventory spec
+from drafts to active, revalidated boundary guardrails, and confirmed the
+TS-free Rust CLI smoke test exists as the local execution proof.
 Previous update: 2026-05-21T22:52:32+10:00 aligned with
 `ts-extension-survivorship-boundary` and
 `external-adapter-plugin-protocol-v1`; embedded migration must not preserve a
@@ -154,15 +157,15 @@ Out of scope:
 Profile: strict
 
 Definition of done:
-- [ ] `dod1` Every production embedded SDK consumer has a migration disposition.
-- [ ] `dod2` The chosen target shape is documented with package/API boundaries.
+- [x] `dod1` Every production embedded SDK consumer has a migration disposition.
+- [x] `dod2` The chosen target shape is documented with package/API boundaries.
 - [ ] `dod3` Custom `SkillAdapter`, `ToolCatalogAdapter`, `AuthResolver`,
   caller, host bridge, receipt, and continuation semantics have migration
   tests or explicit blockers.
 - [ ] `dod4` No TypeScript SDK fallback remains hidden behind the Rust path.
-- [ ] `dod5` TypeScript sunset specs can reference this migration state rather
+- [x] `dod5` TypeScript sunset specs can reference this migration state rather
   than rediscovering embedded consumers.
-- [ ] `dod6` Custom adapter/plugin authoring has a language-neutral disposition
+- [x] `dod6` Custom adapter/plugin authoring has a language-neutral disposition
   and is not reduced to Rust-only `SkillAdapter` implementations.
 
 Validation:
@@ -172,12 +175,14 @@ Validation:
   - Expected kind: `reviewed_output`
   - Status: reviewed
   - Evidence: 2026-05-22 OSS inventory below.
-- [ ] `v1_cloud` Cloud embedded consumer inventory is current.
+- [x] `v1_cloud` Cloud embedded consumer inventory is current.
   - Command: `rg -n "@runxhq/runtime-local|@runxhq/runtime-local/sdk|runLocalSkill|createHostBridge|SkillAdapter|ToolCatalogAdapter|AuthResolver|Caller|HostBridge" cloud --glob '*.ts' --glob '!**/node_modules/**'`
   - Expected kind: `reviewed_output`
-  - Status: blocked
-  - Evidence: Cloud tree is not present in this OSS checkout; do not infer
-    migration disposition from stale context.
+  - Status: reviewed
+  - Evidence: 2026-05-22T02:07:19+10:00 in the full runx checkout. Production
+    hits are classified in the Cloud Inventory Slice below. Test-only hits in
+    `cloud/tests/*` and `*.test.ts` remain migration fixtures, not target
+    runtime surfaces.
 - [ ] `v2` Cloud worker migration tests pass.
   - Command: `pnpm vitest run packages/worker/src`
   - Expected kind: `exit_code_zero`
@@ -208,7 +213,7 @@ Validation:
 
 Goal: identify every embedded SDK caller and classify it.
 
-Status: partial
+Status: completed
 Dependencies: none
 
 Changes:
@@ -218,8 +223,7 @@ Changes:
 - Mark each caller as CLI-backed candidate, Rust-native embedding candidate,
   hosted HTTP or service candidate, Node/native binding candidate,
   external-adapter/plugin-protocol candidate, or runtime-local-retained blocker.
-- OSS inventory is recorded below. Cloud inventory remains blocked until the
-  cloud tree is available to this spec runner.
+- OSS and cloud inventories are recorded below.
 
 Acceptance:
 - The inventory is complete enough that `rust-ts-sunset-runtime-local` can fail
@@ -266,10 +270,26 @@ Reviewed non-embedded hits:
   TypeScript runner. They are part of the `runLocalSkill`/`runLocalGraph`
   runtime-local blocker, not standalone public embedding surfaces.
 
-OSS production inventory blockers:
-- No cloud tree is available here, so `cloud/packages/worker`,
-  `cloud/packages/agent-runner`, and `cloud/packages/api` dispositions remain
-  unverified.
+### Cloud Inventory Slice: 2026-05-22
+
+Command reviewed:
+`rg -n "@runxhq/runtime-local|@runxhq/runtime-local/sdk|runLocalSkill|createHostBridge|SkillAdapter|ToolCatalogAdapter|AuthResolver|Caller|HostBridge" cloud --glob '*.ts' --glob '!**/node_modules/**'`
+
+Dispositions are for production code. Test files remain useful fixture coverage
+until the target boundary has parity tests.
+
+| Consumer | Current surface | Semantics at risk | Disposition |
+| --- | --- | --- | --- |
+| `cloud/packages/worker/src/index.ts` | Imports `resolveDefaultSkillAdapters`, `SkillAdapter`, `runLocalSkill`, `AuthResolver`, `Caller`, `createHostBridge`, and host outcome helpers; hosted runs execute through `runLocalSkill` inside a TypeScript host bridge. | Core hosted execution, auth resolution, custom adapters, default adapters, host continuation, resume, receipt/ledger capture, workspace policy. | Migrate to a Rust-supervised runtime service or native binding. A thin TypeScript client may claim hosted runs and call the boundary, but it must not execute skills. Minimal API must accept run id, skill ref/path, inputs, principal, resume id, receipt/runx dirs, workspace policy, submitted resolutions, and credential/host-resolution handles; it returns host status, kernel run id, receipt/ledger refs, resolution requests, denial reasons, and receipt-safe metadata. |
+| `cloud/packages/api/src/server-agent-support.ts` | Builds `SkillAdapter[]` for hosted durable agent and agent-step execution. | First-party hosted agent source routing currently masquerades as runtime-local adapters. | Replace with registered external-adapter manifests or a Rust-supervised hosted-agent adapter process. The cloud API may choose provider config and credential refs, but execution goes through the external adapter protocol or built-in Rust adapter registration, not in-process TypeScript `SkillAdapter`. |
+| `cloud/packages/agent-runner/src/hosted-agent-adapter.ts` and `durable-step.ts` | Implements `SkillAdapter` for `agent` and `agent-step`, using runtime-local `AdapterActInvocation` and `ActReceiptEnvelope`. | Provider SDK/model invocation, durable loading of agent config/secrets, needs-agent/agent-step receipts. | First conformance fixture for `external-adapter-plugin-protocol-v1`: a TypeScript hosted-agent adapter process over generated contracts. Secrets remain delivered through credential broker handles; no raw agent key enters public frames or receipts. |
+| `cloud/packages/auth/src/index.ts` | Exports `createGrantAuthResolver` typed as runtime-local `AuthResolver`; returns runtime-local-shaped credential resolution envelopes. | Grant lookup, BYO/OAuth credential envelope delivery, receipt metadata. | Move resolver types to `@runxhq/contracts` or cloud-local contract types, then wire resolution into the runtime service credential/host-resolution channel. This is not a runtime-local execution surface; it is a credential broker input. |
+| `cloud/packages/api/src/public-api-service.ts` | Imports runtime-local tool-catalog search/inspect helpers and `ToolCatalogAdapter`. | Public tool search/inspect currently depends on TypeScript catalog callbacks. | Move stable search/inspect result contracts to `@runxhq/contracts`/Rust tool-catalog read model. Provider-specific catalog invocation, if needed, must use external adapter/provider protocol rather than callback execution. |
+| `cloud/packages/api/src/summaries.ts` and `run-control-service.ts` | Imports runtime-local summary types and `diffRunSummaries`. | Type-only/read-model coupling to runtime-local package. | Contracts-only or cloud-local pure helper migration. These are not execution blockers once types/diff helper move out of runtime-local. |
+| `cloud/packages/api/src/registry-publication.ts` and `cloud/scripts/publish-registry-skill.ts` | Imports `validatePublishHarness` and `PublishHarnessSummary` from runtime-local harness. | Registry publication relies on TypeScript harness validation. | Replace with Rust harness CLI/service JSON (`runx harness validate --json`) or a Rust runtime service harness endpoint. Keep current imports as pre-sunset legacy until harness-spine fixtures prove parity. |
+| `cloud/packages/api/src/index.ts` | Accepts `ToolCatalogAdapter[]` as public API configuration. | Injection point for TypeScript catalog adapters. | Retarget to a contracts/Rust read-model adapter or hosted service client before runtime-local deletion. |
+
+Cloud inventory blockers now explicit:
 - The Rust `runx-sdk` is still CLI-backed and cannot satisfy the in-process
   `RunxSdk.runSkill`/host bridge semantics by itself.
 - `AuthResolver` parity is not yet assigned to a concrete Rust host-resolution
@@ -282,7 +302,7 @@ OSS production inventory blockers:
 
 Goal: choose the migration shape for embedded consumers.
 
-Status: pending
+Status: completed
 Dependencies: Phase 1, `skill-author-runtime-contract-v1`,
 `external-adapter-plugin-protocol-v1`
 
@@ -299,6 +319,61 @@ Changes:
 
 Acceptance:
 - No caller is migrated by assumption.
+- Target decision is recorded here and may be referenced by runtime-local sunset
+  and external-adapter helper SDK work.
+
+### Target Shape Decision: 2026-05-22
+
+`runx-sdk` remains CLI-backed for v1. It may grow typed JSON/report helpers over
+`runx --json`, but it is not the native skill executor and must not hide a
+TypeScript fallback. Rust-native embedding, if later needed for Rust hosts,
+belongs behind a separate feature/spec with explicit runtime ownership tests.
+
+Cloud and host/runtime consumers migrate to a Rust-supervised runtime service or
+native binding boundary. Because the cloud worker is TypeScript product code,
+the target is a thin client over Rust execution, not direct in-process TS
+execution. The minimal boundary is:
+- `start/run`: skill reference or path, inputs, principal/run ids, resume id,
+  receipt directory, runx home, workspace policy, submitted resolutions, and
+  credential/host-resolution handles.
+- `events/result`: host status, kernel run id, resolution requests, request
+  routes, denial reasons, receipt id/document reference, ledger entries, stdout,
+  stderr, exit code, duration, and receipt-safe metadata.
+- `resume`: host resolution responses keyed by request id and prior kernel run
+  id.
+- `inspect`: run state, pending requests, and terminal projection for host
+  adapters.
+
+If packaging pressure requires a Node/native binding, the package must be a
+thin Rust binding such as future `@runxhq/runtime-native`, with the same API
+shape as the service client and no dependency on `@runxhq/runtime-local` or
+`@runxhq/adapters`. That binding is not selected for immediate implementation;
+the service/client boundary is the portable target.
+
+Custom adapter/plugin behavior moves to `external-adapter-plugin-protocol-v1`.
+The TypeScript helper surface is allowed only as protocol authoring/client code
+over generated contracts, likely under `@runxhq/authoring` or a future external
+adapter helper package named by that spec. It replaces the old in-process
+`SkillAdapter` hook with a manifest, process protocol, host-resolution frames,
+credential delivery handles, timeout/cancel frames, and receipt-safe responses.
+Rust remains the supervisor.
+
+TypeScript packages that survive are client/helper packages:
+- `@runxhq/host-adapters` may adapt host protocol responses for OpenAI,
+  Anthropic, Vercel AI, LangChain, and similar callers, but it must consume a
+  Rust-backed host bridge/service client.
+- `@runxhq/contracts` owns shared wire types, schema validation, canonical JSON,
+  and pure projection helpers where appropriate.
+- Cloud-local product code may stay in TypeScript while delegating execution to
+  the Rust boundary.
+
+The following are explicit non-targets:
+- Rebranding `@runxhq/runtime-local` as an internal cloud executor.
+- Treating the Rust `SkillAdapter` trait as the only plugin extension point.
+- Moving provider SDK glue into Rust crates solely to finish sunset.
+- Claiming `runx --json` parity for callers that need host continuation,
+  custom adapters, auth resolver, tool catalog injection, or resume semantics
+  without replacement fixtures.
 
 ## Phase 3: Migration Fixtures
 

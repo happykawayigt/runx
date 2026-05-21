@@ -143,6 +143,26 @@ const CONTRACT_FIXTURE_SCHEMA_MAPPINGS: &[FixtureSchemaMapping] = &[
         "external-adapter-response.schema.json",
     ),
     FixtureSchemaMapping::new(
+        "fixtures/contracts/thread-outbox-provider/fetch.json",
+        "/expected",
+        "thread-outbox-provider-fetch.schema.json",
+    ),
+    FixtureSchemaMapping::new(
+        "fixtures/contracts/thread-outbox-provider/manifest.json",
+        "/expected",
+        "thread-outbox-provider-manifest.schema.json",
+    ),
+    FixtureSchemaMapping::new(
+        "fixtures/contracts/thread-outbox-provider/observation.json",
+        "/expected",
+        "thread-outbox-provider-observation.schema.json",
+    ),
+    FixtureSchemaMapping::new(
+        "fixtures/contracts/thread-outbox-provider/push.json",
+        "/expected",
+        "thread-outbox-provider-push.schema.json",
+    ),
+    FixtureSchemaMapping::new(
         "fixtures/contracts/harness-spine/harness-receipt-abnormal.json",
         "/expected",
         "harness-receipt.schema.json",
@@ -261,6 +281,7 @@ fn contract_fixture_schema_mapping_has_only_declared_exemptions()
         "fixtures/contracts/external-adapter",
         "fixtures/contracts/harness-spine",
         "fixtures/contracts/host-protocol",
+        "fixtures/contracts/thread-outbox-provider",
     ] {
         for fixture_path in json_files_in(directory)? {
             let fixture_path = fixture_path_string(&fixture_path)?;

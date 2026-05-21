@@ -25,6 +25,7 @@ pub mod reference;
 pub mod registry;
 pub mod signal;
 pub mod target_runner;
+pub mod thread_outbox_provider;
 pub mod tools;
 pub mod verification;
 
@@ -145,6 +146,20 @@ pub use target_runner::{
     plan_target_repo_runner, plan_target_repo_runner_dedupe_lookup,
     plan_target_repo_runner_execution, plan_target_repo_runner_pull_request_receipt,
     plan_target_repo_runner_source_publication_receipt,
+};
+pub use thread_outbox_provider::{
+    THREAD_OUTBOX_PROVIDER_PROTOCOL_VERSION, ThreadOutboxProviderCredentialNeed,
+    ThreadOutboxProviderCredentialProfile, ThreadOutboxProviderError, ThreadOutboxProviderFetch,
+    ThreadOutboxProviderFetchProviderTarget, ThreadOutboxProviderFetchTarget,
+    ThreadOutboxProviderFetchThreadTarget, ThreadOutboxProviderIdempotency,
+    ThreadOutboxProviderIdempotencyObservation, ThreadOutboxProviderIdempotencyStatus,
+    ThreadOutboxProviderLocator, ThreadOutboxProviderManifest, ThreadOutboxProviderObservation,
+    ThreadOutboxProviderObservationStatus, ThreadOutboxProviderOperation,
+    ThreadOutboxProviderPayloadFormat, ThreadOutboxProviderPush,
+    ThreadOutboxProviderReadbackSummary, ThreadOutboxProviderReceiptCapabilities,
+    ThreadOutboxProviderReceiptContext, ThreadOutboxProviderRedactionCapabilities,
+    ThreadOutboxProviderRenderedPayload, ThreadOutboxProviderThreadLocator,
+    ThreadOutboxProviderTransport, ThreadOutboxProviderTransportKind,
 };
 pub use verification::{
     ReceiptVerificationSummary, Verification, VerificationCheck, VerificationStatus,
