@@ -2,8 +2,8 @@
 spec_version: '2.0'
 task_id: runx-security-hardening-v1
 created: '2026-05-22T00:55:00Z'
-updated: '2026-05-22T01:12:52Z'
-status: review
+updated: '2026-05-22T02:05:00Z'
+status: active
 harden_status: in_progress
 size: large
 risk_level: high
@@ -13,13 +13,16 @@ risk_level: high
 
 ## Current State
 
-Status: review
-Current phase: final
-Next: review
-Reason: build completed; ready for review
-Blockers: none
-Allowed follow-up command: `scafld review runx-security-hardening-v1`
-Latest runner update: 2026-05-22T01:12:52Z
+Status: active
+Current phase: follow-up mechanisms
+Next: execute R1/R2/R3 implementation specs
+Reason: C1/C2/C4/C5/C6/C7/R7 are implemented and validated. The remaining
+critical controls require dedicated mechanism specs rather than paper completion:
+R1 sandbox enforcement, R2 production receipt signing, and R3 supervisor-verified
+payment rail proof.
+Blockers: R1/R2/R3 mechanism specs
+Allowed follow-up command: `scafld exec runx-security-hardening-v1`
+Latest runner update: 2026-05-22T12:05:00+10:00
 Review gate: not_started
 
 ## Summary
@@ -80,11 +83,13 @@ exploitable bypass or secret exposure; **Medium** = hardening / defense-in-depth
   authority before per-call caps can pass subset comparison. The policy fixture
   `payment-authority-denies-unbounded-aggregate-spend` covers the fail-closed
   path.
-- **C5 [Medium] — `scope_allows("*", …)` is god-mode; prefix is coarse.**
-  `policy/scope.rs`: `granted == "*"` allows everything, and `repo:*` matches
-  `repo:admin:keys`. → never accept `*` from untrusted grant data (consider
-  removing the universal wildcard); decide whether prefix wildcards are
-  single-segment.
+- **C5 [Medium] — DONE (untrusted wildcard denied; prefix narrowed).**
+  `scope_allows` now gates universal `*` behind an explicit trusted-callsite
+  flag. Graph scope propagation can still use first-party `*`, but connected
+  auth / credential grants fail closed on universal wildcard input. Prefix
+  wildcards are single-segment: `repo:*` admits `repo:read` and denies
+  `repo:admin:keys`. Added kernel parity fixtures and TS/Rust policy coverage for
+  both edges.
 - **C6 [Medium, design] — DONE (success requires admission witness).** The pure
   single-step and sequential graph state machines now require a
   `StepAdmissionWitness` on success transitions. Sequential success also checks
@@ -226,7 +231,7 @@ Acceptance:
 - [x] `dod1` C1 fail-closed on missing grant status, tests green.
 - [x] `dod2` grant expiry/not_before added and enforced in core OSS.
 - [x] `dod3` spend verbs require at least one aggregate cap (C4).
-- [ ] `dod4` `*` scope not acceptable from untrusted grants (C5).
+- [x] `dod4` `*` scope not acceptable from untrusted grants (C5).
 - [ ] `dod5` receipts signed + verified by default in non-local modes (R2).
 - [ ] `dod6` sandbox profiles OS-enforced or documented as non-enforcing (R1).
 - [ ] `dod7` payment rail settlement proofs are supervisor-verified, not
@@ -258,6 +263,23 @@ work.
 - 2026-05-22T11:00:00+10:00: `pnpm exec vitest run --config vitest.config.ts
   packages/runtime-local/src/runner-local/kernel-bridge.test.ts
   --fileParallelism=false --maxWorkers=1` passed.
+- 2026-05-22T12:05:00+10:00: `cargo build --manifest-path crates/Cargo.toml
+  -p runx-cli --bin runx` passed.
+- 2026-05-22T12:05:00+10:00:
+  `RUNX_KERNEL_EVAL_BIN=$PWD/crates/target/debug/runx pnpm fixtures:kernel:generate`
+  regenerated 67 kernel parity fixtures.
+- 2026-05-22T12:05:00+10:00:
+  `RUNX_KERNEL_EVAL_BIN=$PWD/crates/target/debug/runx pnpm fixtures:kernel:check`
+  passed for 67 kernel parity fixtures.
+- 2026-05-22T12:05:00+10:00: `pnpm exec vitest run --config
+  vitest.config.ts packages/core/src/policy/index.test.ts
+  packages/core/src/policy/scope-narrowing.test.ts --fileParallelism=false
+  --maxWorkers=1` passed.
+- 2026-05-22T12:05:00+10:00: `CARGO_TARGET_DIR=crates/target-codex-security
+  cargo test --manifest-path crates/Cargo.toml -p runx-core policy --
+  --nocapture` passed.
+- 2026-05-22T12:05:00+10:00: `pnpm exec tsc -p tsconfig.typecheck.json
+  --noEmit --pretty false` passed.
 - 2026-05-22T11:05:00+10:00: `cargo test --manifest-path crates/Cargo.toml -p
   runx-runtime --test payment_execution -- --nocapture` passed.
 - 2026-05-22T11:08:00+10:00: `cargo test --manifest-path crates/Cargo.toml -p

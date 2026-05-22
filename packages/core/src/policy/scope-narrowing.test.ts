@@ -17,8 +17,8 @@ import {
  * The matching rule (defined in `scopeAllows`):
  *   - exact-match grant covers an exact-match request
  *   - the wildcard grant `*` covers any requested scope
- *   - a prefix wildcard grant of the form `prefix:*` covers any
- *     request that starts with `prefix:`
+ *   - a prefix wildcard grant of the form `prefix:*` covers one segment
+ *     below `prefix:`
  *   - nothing else covers the request
  */
 
@@ -75,9 +75,9 @@ describe("scope narrowing across graph edges", () => {
       expect(decision.grantedScopes).toEqual(["*"]);
     });
 
-    it("allows any matching scope under a prefix wildcard grant `prefix:*`", () => {
+    it("allows one-segment matching scopes under a prefix wildcard grant `prefix:*`", () => {
       const decision = admit({
-        requestedScopes: ["repo:read", "repo:write", "repo:branch:create"],
+        requestedScopes: ["repo:read", "repo:write"],
         grantScopes: ["repo:*"],
       });
       expect(decision.status).toBe("allow");
@@ -135,6 +135,14 @@ describe("scope narrowing across graph edges", () => {
     it("denies a request that exceeds a prefix wildcard's prefix", () => {
       const decision = admit({
         requestedScopes: ["secrets:read"],
+        grantScopes: ["repo:*"],
+      });
+      expect(decision.status).toBe("deny");
+    });
+
+    it("denies a nested request under a prefix wildcard grant", () => {
+      const decision = admit({
+        requestedScopes: ["repo:admin:keys"],
         grantScopes: ["repo:*"],
       });
       expect(decision.status).toBe("deny");

@@ -179,7 +179,7 @@ export function admitRetryPolicy(request: RetryAdmissionRequest): AdmissionDecis
 export function admitGraphStepScopes(request: GraphScopeAdmissionRequest): GraphScopeAdmissionDecision {
   const requestedScopes = unique(request.requestedScopes);
   const grantedScopes = unique(request.grant.scopes);
-  const deniedScopes = requestedScopes.filter((scope) => !grantedScopes.some((grantedScope) => scopeAllows(grantedScope, scope)));
+  const deniedScopes = requestedScopes.filter((scope) => !grantedScopes.some((grantedScope) => scopeAllows(grantedScope, scope, true)));
 
   if (deniedScopes.length > 0) {
     return {
@@ -357,12 +357,16 @@ function hasGrantReference(value: {
   return Boolean(value.scope_family || value.authority_kind || value.target_repo || value.target_locator);
 }
 
-function scopeAllows(grantedScope: string, requestedScope: string): boolean {
-  if (grantedScope === "*" || grantedScope === requestedScope) {
+function scopeAllows(grantedScope: string, requestedScope: string, allowUniversalWildcard = false): boolean {
+  if (grantedScope === "*") {
+    return allowUniversalWildcard;
+  }
+  if (grantedScope === requestedScope) {
     return true;
   }
   if (grantedScope.endsWith(":*")) {
-    return requestedScope.startsWith(grantedScope.slice(0, -1));
+    const suffix = requestedScope.slice(grantedScope.length - 1);
+    return requestedScope.startsWith(grantedScope.slice(0, -1)) && suffix.length > 0 && !suffix.includes(":");
   }
   return false;
 }

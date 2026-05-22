@@ -421,12 +421,16 @@ function grantReferenceMismatches(
   return reasons;
 }
 
-function scopeAllows(grantedScope: string, requestedScope: string): boolean {
-  if (grantedScope === "*" || grantedScope === requestedScope) {
+function scopeAllows(grantedScope: string, requestedScope: string, allowUniversalWildcard = false): boolean {
+  if (grantedScope === "*") {
+    return allowUniversalWildcard;
+  }
+  if (grantedScope === requestedScope) {
     return true;
   }
   if (grantedScope.endsWith(":*")) {
-    return requestedScope.startsWith(grantedScope.slice(0, -1));
+    const suffix = requestedScope.slice(grantedScope.length - 1);
+    return requestedScope.startsWith(grantedScope.slice(0, -1)) && suffix.length > 0 && !suffix.includes(":");
   }
   return false;
 }

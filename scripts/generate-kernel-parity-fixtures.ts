@@ -1010,6 +1010,30 @@ function fixtureCases(): readonly KernelFixtureCase[] {
       },
     },
     {
+      name: "local-admission-denies-connected-universal-wildcard",
+      input: {
+        kind: "policy.admitLocalSkill",
+        skill: {
+          name: "connected-universal-wildcard",
+          source: { type: "cli-tool" },
+          auth: { type: "nango", provider: "github", scopes: ["repo:read"] },
+        },
+        options: {
+          connectedGrants: [
+            {
+              grant_id: "grant_universal",
+              provider: "github",
+              scopes: ["*"],
+              status: "active",
+              not_before: connectedAuthNotBefore,
+              expires_at: connectedAuthExpiresAt,
+            },
+          ],
+          connectedAuthCheckedAt,
+        },
+      },
+    },
+    {
       name: "sandbox-normalize-defaults",
       input: {
         kind: "policy.normalizeSandboxDeclaration",
@@ -1149,6 +1173,17 @@ function fixtureCases(): readonly KernelFixtureCase[] {
         request: {
           stepId: "repository-read",
           requestedScopes: ["repository:read"],
+          grant: { scopes: ["repo:*"] },
+        },
+      },
+    },
+    {
+      name: "graph-scope-denies-prefix-nested-segment",
+      input: {
+        kind: "policy.admitGraphStepScopes",
+        request: {
+          stepId: "repo-admin",
+          requestedScopes: ["repo:admin:keys"],
           grant: { scopes: ["repo:*"] },
         },
       },

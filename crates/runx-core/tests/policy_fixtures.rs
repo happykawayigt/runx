@@ -98,6 +98,12 @@ const FIXTURES: &[(&str, &str)] = &[
         include_str!("../../../fixtures/kernel/policy/graph-scope-denies-prefix-substring.json"),
     ),
     (
+        "graph-scope-denies-prefix-nested-segment",
+        include_str!(
+            "../../../fixtures/kernel/policy/graph-scope-denies-prefix-nested-segment.json"
+        ),
+    ),
+    (
         "graph-scope-denies-widening",
         include_str!("../../../fixtures/kernel/policy/graph-scope-denies-widening.json"),
     ),
@@ -119,6 +125,12 @@ const FIXTURES: &[(&str, &str)] = &[
         "local-admission-denies-connected-prefix-substring",
         include_str!(
             "../../../fixtures/kernel/policy/local-admission-denies-connected-prefix-substring.json"
+        ),
+    ),
+    (
+        "local-admission-denies-connected-universal-wildcard",
+        include_str!(
+            "../../../fixtures/kernel/policy/local-admission-denies-connected-universal-wildcard.json"
         ),
     ),
     (

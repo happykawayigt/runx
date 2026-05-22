@@ -193,6 +193,31 @@ describe("admitLocalSkill", () => {
     }).status).toBe("allow");
   });
 
+  it("does not allow universal wildcard connected auth grants by default", () => {
+    const decision = admitLocalSkill(
+      {
+        name: "connected",
+        source: { type: "cli-tool" },
+        auth: { type: "nango", provider: "github", scopes: ["repo:read"] },
+      },
+      {
+        connectedGrants: [
+          {
+            grant_id: "grant_wildcard",
+            provider: "github",
+            scopes: ["*"],
+            status: "active",
+          },
+        ],
+      },
+    );
+
+    expect(decision).toEqual({
+      status: "deny",
+      reasons: ["connected auth grant required for provider 'github'"],
+    });
+  });
+
   it("requires targeted connected auth grants to match the requested reference", () => {
     const skill = {
       name: "targeted-connected",
@@ -365,6 +390,19 @@ describe("admitGraphStepScopes", () => {
         grant: { scopes: ["checks:*", "repo:read"] },
       }).status,
     ).toBe("allow");
+  });
+
+  it("denies nested scopes under prefix wildcard grants", () => {
+    expect(
+      admitGraphStepScopes({
+        stepId: "admin",
+        requestedScopes: ["repo:admin:keys"],
+        grant: { scopes: ["repo:*"] },
+      }),
+    ).toMatchObject({
+      status: "deny",
+      reasons: ["step 'admin' requested scope(s) outside graph grant: repo:admin:keys"],
+    });
   });
 
   it("allows empty step scopes", () => {
