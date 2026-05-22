@@ -1,17 +1,19 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use runx_contracts::{AuthorityTerm, AuthorityVerb, Decision, JsonObject, ProofKind};
+use runx_contracts::{
+    AuthoritySubsetProof, AuthorityTerm, AuthorityVerb, Decision, JsonObject, ProofKind,
+};
 use runx_core::policy::{
     PaymentSpendCapabilityBinding, StepAuthorityAdmission, admit_step_authority,
     authority_term_has_verb,
 };
+use runx_core::state_machine::AuthorityAdmissionWitness;
 use runx_parser::GraphStep;
 
 use super::inputs::{
-    optional_bool_field, optional_typed_input, optional_typed_vec_input,
-    require_non_empty_string_field, require_object_input, require_reference_input,
-    required_typed_input,
+    optional_typed_input, optional_typed_vec_input, require_non_empty_string_field,
+    require_object_input, require_reference_input, required_typed_input,
 };
 use crate::RuntimeError;
 use crate::adapter::SkillOutput;
@@ -69,7 +71,7 @@ pub(super) fn enforce_step_authority_admission(
         parent_authority: &input.parent_authority,
         child_authority: &input.child_authority,
         reservation_decision: input.reservation_decision.as_ref(),
-        subset_proof_present: input.subset_proof_present,
+        subset_proof: input.subset_proof.as_ref(),
         child_harness_ref: &input.child_harness_ref,
         act_id: &act_id,
         idempotency_key: Some(&input.idempotency_key),
@@ -80,12 +82,23 @@ pub(super) fn enforce_step_authority_admission(
     .map_err(|source| authority_denied(step, AuthorityVerb::Spend, source.to_string()))?;
     let payment = payment_context(&input);
     Ok(decision.verb.map(|verb| {
+        let admission_witness = AuthorityAdmissionWitness {
+            verb: verb.clone(),
+            parent_term_id: decision.parent_term_id.to_owned(),
+            child_term_id: decision.child_term_id.to_owned(),
+            idempotency_key: decision.idempotency_key.map(str::to_owned),
+            spend_capability_ref: decision.spend_capability_ref.cloned(),
+        };
         let payment = if verb == AuthorityVerb::Spend {
             payment
         } else {
             None
         };
-        StepAuthorityContext { verb, payment }
+        StepAuthorityContext {
+            verb,
+            payment,
+            admission_witness,
+        }
     }))
 }
 
@@ -114,7 +127,7 @@ pub(super) fn sealed_payment_replay(
         parent_authority: &input.parent_authority,
         child_authority: &input.child_authority,
         reservation_decision: input.reservation_decision.as_ref(),
-        subset_proof_present: input.subset_proof_present,
+        subset_proof: input.subset_proof.as_ref(),
         child_harness_ref: &input.child_harness_ref,
         act_id: &act_id,
         idempotency_key: Some(&input.idempotency_key),
@@ -180,7 +193,7 @@ pub(super) fn escalate_in_flight_payment_recovery(
         parent_authority: &input.parent_authority,
         child_authority: &input.child_authority,
         reservation_decision: input.reservation_decision.as_ref(),
-        subset_proof_present: input.subset_proof_present,
+        subset_proof: input.subset_proof.as_ref(),
         child_harness_ref: &input.child_harness_ref,
         act_id: &act_id,
         idempotency_key: Some(&input.idempotency_key),
@@ -280,7 +293,7 @@ fn step_authority_submission(
         parent_authority: reserved.parent_authority,
         child_authority: reserved.child_authority,
         reservation_decision: reserved.reservation_decision,
-        subset_proof_present: reserved.subset_proof_present,
+        subset_proof: reserved.subset_proof,
         child_harness_ref: reserved.child_harness_ref,
         spend_capability_binding: reserved.spend_capability_binding,
         consumed_spend_capability_refs: reserved.consumed_spend_capability_refs,
@@ -331,8 +344,12 @@ fn parse_reserved_payment_authority(
             "reserved_payment_authority.reservation_decision",
             "reservation_decision",
         )?,
-        subset_proof_present: optional_bool_field(step, object, "subset_proof_present")?
-            .unwrap_or(false),
+        subset_proof: optional_typed_input(
+            step,
+            object,
+            "reserved_payment_authority.subset_proof",
+            "subset_proof",
+        )?,
         child_harness_ref: required_typed_input(
             step,
             object,
@@ -371,6 +388,7 @@ pub(super) fn authority_denied(
 pub(super) struct StepAuthorityContext {
     pub(super) verb: AuthorityVerb,
     pub(super) payment: Option<StepPaymentAuthorityContext>,
+    pub(super) admission_witness: AuthorityAdmissionWitness,
 }
 
 #[derive(Clone, Debug)]
@@ -397,7 +415,7 @@ struct OwnedStepAuthoritySubmission {
     parent_authority: AuthorityTerm,
     child_authority: AuthorityTerm,
     reservation_decision: Option<Decision>,
-    subset_proof_present: bool,
+    subset_proof: Option<AuthoritySubsetProof>,
     child_harness_ref: runx_contracts::Reference,
     spend_capability_binding: Option<PaymentSpendCapabilityBinding>,
     consumed_spend_capability_refs: Vec<runx_contracts::Reference>,
@@ -410,7 +428,7 @@ struct ReservedAuthorityInput {
     parent_authority: AuthorityTerm,
     child_authority: AuthorityTerm,
     reservation_decision: Option<Decision>,
-    subset_proof_present: bool,
+    subset_proof: Option<AuthoritySubsetProof>,
     child_harness_ref: runx_contracts::Reference,
     spend_capability_binding: Option<PaymentSpendCapabilityBinding>,
     consumed_spend_capability_refs: Vec<runx_contracts::Reference>,

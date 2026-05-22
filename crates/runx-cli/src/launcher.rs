@@ -6,6 +6,7 @@ use crate::config::ConfigPlan;
 use crate::connect::ConnectPlan;
 use crate::kernel::{KernelInputSource, KernelPlan};
 use crate::mcp::McpPlan;
+use crate::parser::{ParserInputSource, ParserPlan};
 use crate::policy::{PolicyAction, PolicyPlan};
 use crate::registry::{RegistryAction, RegistryPlan};
 use crate::skill::SkillPlan;
@@ -18,6 +19,7 @@ pub enum LauncherAction {
     RunInit(InitPlan),
     RunList(ListPlan),
     RunMcp(McpPlan),
+    RunParser(ParserPlan),
     RunNew(NewPlan),
     RunHistory(HistoryPlan),
     RunHarness(HarnessPlan),
@@ -146,6 +148,11 @@ pub fn plan_launcher(args: Vec<OsString>) -> LauncherAction {
             .map_or_else(LauncherAction::Error, LauncherAction::RunKernel);
     }
 
+    if first_arg_is(&args, "parser") {
+        return parse_parser_plan(&args)
+            .map_or_else(LauncherAction::Error, LauncherAction::RunParser);
+    }
+
     if first_arg_is(&args, "doctor") {
         return parse_doctor_plan(&args)
             .map_or_else(LauncherAction::Error, LauncherAction::RunDoctor);
@@ -221,6 +228,7 @@ Commands:
   runx config set|get|list [agent.provider|agent.model|agent.api_key] [value] [--json]
   runx policy inspect|lint <policy.json> [--json]
   runx kernel eval --input <file|-> --json
+  runx parser eval --input <file|-> --json
   runx doctor [path] [--json]
   runx dev [root] [--lane lane] [--json]
   runx mcp serve <skill-ref...> [--receipt-dir dir]
@@ -567,6 +575,57 @@ fn parse_kernel_plan(args: &[OsString]) -> Result<KernelPlan, String> {
 
     Ok(KernelPlan {
         input: input.ok_or_else(|| "runx kernel eval requires --input <file|->".to_owned())?,
+        json,
+    })
+}
+
+fn parse_parser_plan(args: &[OsString]) -> Result<ParserPlan, String> {
+    let subcommand = os_arg(args, 1, "parser")?;
+    if subcommand != "eval" {
+        return Err(format!("unknown parser subcommand {subcommand}"));
+    }
+
+    let mut input = None;
+    let mut json = false;
+    let mut index = 2;
+
+    while index < args.len() {
+        let token = os_arg(args, index, "parser")?;
+        if !token.starts_with("--") {
+            return Err(format!("unexpected parser eval argument {token}"));
+        }
+
+        let (flag, inline_value) = split_flag(token);
+        match flag {
+            "--json" => {
+                if inline_value.is_some() {
+                    return Err("--json does not take a value".to_owned());
+                }
+                json = true;
+                index += 1;
+            }
+            "--input" => {
+                if input.is_some() {
+                    return Err("runx parser eval accepts exactly one --input".to_owned());
+                }
+                let (value, next_index) = flag_value(args, index, flag, inline_value, "parser")?;
+                input = Some(if value == "-" {
+                    ParserInputSource::Stdin
+                } else {
+                    ParserInputSource::Path(PathBuf::from(value))
+                });
+                index = next_index;
+            }
+            _ => return Err(format!("unknown parser eval flag {flag}")),
+        }
+    }
+
+    if !json {
+        return Err("runx parser eval requires --json".to_owned());
+    }
+
+    Ok(ParserPlan {
+        input: input.ok_or_else(|| "runx parser eval requires --input <file|->".to_owned())?,
         json,
     })
 }

@@ -18,6 +18,7 @@ pub mod host;
 pub mod journal;
 pub mod list;
 pub mod outbox_provider;
+pub mod parser_eval;
 pub mod payment_ledger;
 pub mod payment_packets;
 pub mod payment_state;
@@ -90,6 +91,7 @@ pub use outbox_provider::{
     ThreadOutboxProviderSupervisorError, ThreadOutboxProviderSupervisorOptions,
     thread_outbox_provider_forbidden_secret_fields,
 };
+pub use parser_eval::{ParserEvalError, ParserEvalOutput, evaluate_parser_document_str};
 pub use receipts::paths::{
     INIT_CWD_ENV, RUNTIME_RECEIPTS_DIR_CONFIG_KEY, RUNX_CWD_ENV, RUNX_PROJECT_DIR_ENV,
     RUNX_RECEIPT_DIR_ENV, ReceiptPathInputs, ReceiptPathSource, ReceiptStoreLabel,

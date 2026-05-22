@@ -55,14 +55,12 @@ fn thread_outbox_provider_public_frames_reject_raw_secret_material() -> Result<(
 }
 
 #[test]
-fn thread_outbox_provider_push_requires_thread_locator() -> Result<(), serde_json::Error> {
+fn thread_outbox_provider_push_requires_thread_locator() -> Result<(), Box<dyn std::error::Error>> {
     let fixture: Fixture = serde_json::from_str(include_str!(
         "../../../fixtures/contracts/thread-outbox-provider/push.json"
     ))?;
     let mut push = fixture.expected;
-    push.as_object_mut()
-        .expect("push fixture expected object")
-        .remove("thread_locator");
+    remove_object_field(&mut push, "thread_locator")?;
 
     let result = serde_json::from_value::<ThreadOutboxProviderPush>(push);
 
@@ -71,15 +69,12 @@ fn thread_outbox_provider_push_requires_thread_locator() -> Result<(), serde_jso
 }
 
 #[test]
-fn thread_outbox_provider_fetch_requires_target() -> Result<(), serde_json::Error> {
+fn thread_outbox_provider_fetch_requires_target() -> Result<(), Box<dyn std::error::Error>> {
     let fixture: Fixture = serde_json::from_str(include_str!(
         "../../../fixtures/contracts/thread-outbox-provider/fetch.json"
     ))?;
     let mut fetch = fixture.expected;
-    fetch
-        .as_object_mut()
-        .expect("fetch fixture expected object")
-        .remove("target");
+    remove_object_field(&mut fetch, "target")?;
 
     let result = serde_json::from_value::<ThreadOutboxProviderFetch>(fetch);
 
@@ -121,5 +116,16 @@ where
     let parsed: T = serde_json::from_value(expected.clone())?;
     let actual = serde_json::to_value(parsed)?;
     assert_eq!(actual, expected);
+    Ok(())
+}
+
+fn remove_object_field(
+    value: &mut serde_json::Value,
+    key: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let Some(object) = value.as_object_mut() else {
+        return Err(format!("fixture expected object before removing `{key}`").into());
+    };
+    object.remove(key);
     Ok(())
 }

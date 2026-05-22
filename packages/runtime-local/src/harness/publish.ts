@@ -2,10 +2,10 @@ import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
 import { resolveLocalSkillProfile } from "@runxhq/core/config";
-import { parseRunnerManifestYaml, validateRunnerManifest } from "@runxhq/core/parser";
 
 import { runHarnessTarget, type HarnessRunOptions, type HarnessSuiteResult } from "./runner.js";
 import { parseSkillFrontmatter } from "./skill-frontmatter.js";
+import { validateRunnerManifestYamlViaParser } from "../runner-local/parser-bridge.js";
 
 export interface PublishHarnessSummary {
   readonly status: "passed" | "failed" | "not_declared";
@@ -28,7 +28,7 @@ export async function validatePublishHarness(
     return emptyHarnessSummary();
   }
 
-  const manifest = validateRunnerManifest(parseRunnerManifestYaml(profileDocument));
+  const manifest = await validateRunnerManifestYamlViaParser(profileDocument, { env: options.env });
   if (!manifest.harness || manifest.harness.cases.length === 0) {
     return emptyHarnessSummary();
   }

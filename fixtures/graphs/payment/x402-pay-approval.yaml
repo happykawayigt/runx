@@ -116,7 +116,17 @@ steps:
             evidence_refs: []
           closure: null
           artifact_refs: []
-        subset_proof_present: true
+        subset_proof:
+          parent_authority_ref:
+            type: grant
+            uri: runx:payment-grant:checkout
+          comparison_algorithm: runx.payment-authority-subset.v1
+          result: subset
+          compared_terms:
+            - child_term_id: child
+              parent_term_id: parent
+              relation: subset
+          checked_at: "2026-05-22T00:00:00Z"
         child_harness_ref:
           type: harness
           uri: runx:harness:x402-pay-approval_fulfill

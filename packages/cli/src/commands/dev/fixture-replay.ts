@@ -117,10 +117,10 @@ export async function validateReplayFixture(
 
 export function fixtureFingerprint(fixture: Readonly<Record<string, unknown>>): string {
   return sha256Stable({
-    target: fixture.target,
-    inputs: fixture.inputs,
-    agent: fixture.agent,
-    expect: fixture.expect,
+    ...("target" in fixture ? { target: fixture.target } : {}),
+    ...("inputs" in fixture ? { inputs: fixture.inputs } : {}),
+    ...("agent" in fixture ? { agent: fixture.agent } : {}),
+    ...("expect" in fixture ? { expect: fixture.expect } : {}),
   });
 }
 

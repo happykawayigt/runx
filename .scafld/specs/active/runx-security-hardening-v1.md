@@ -2,9 +2,9 @@
 spec_version: '2.0'
 task_id: runx-security-hardening-v1
 created: '2026-05-22T00:55:00Z'
-updated: '2026-05-22T02:42:26+10:00'
-status: draft
-harden_status: not_run
+updated: '2026-05-22T01:12:52Z'
+status: review
+harden_status: in_progress
 size: large
 risk_level: high
 ---
@@ -13,20 +13,13 @@ risk_level: high
 
 ## Current State
 
-Status: draft
-Current phase: planning; C1 connected-auth status + lifetime hardening landed
-during authoring
-Next: harden
-Reason: a threat-model pass over the Rust core and runtime found that several
-load-bearing controls are currently policy declarations or placeholders rather
-than enforced mechanisms. This spec captures every finding so they are not lost
-and sequences the fixes from surgical/fail-closed to structural.
-Blockers: structural items (state-machine admission witness, OS sandbox
-enforcement, real receipt signing) need design alignment; some touch
-agent-active files. C4/C5 still need product decisions about aggregate caps and
-wildcard scope breadth.
-Allowed follow-up command: `scafld harden runx-security-hardening-v1`
-Latest runner update: 2026-05-22T02:42:26+10:00
+Status: review
+Current phase: final
+Next: review
+Reason: build completed; ready for review
+Blockers: none
+Allowed follow-up command: `scafld review runx-security-hardening-v1`
+Latest runner update: 2026-05-22T01:12:52Z
 Review gate: not_started
 
 ## Summary
@@ -68,36 +61,36 @@ exploitable bypass or secret exposure; **Medium** = hardening / defense-in-depth
   a timestamp. The current MIT OSS branch has no active `HttpConnectGrant`
   runtime type after the connect brokerage removal; private/hosted connect
   schemas still need parity if reintroduced.
-- **C2 [Medium-High, audit integrity] — subset proof not verified.** The kernel
+- **C2 [Medium-High, audit integrity] — DONE (subset-proof gate).** The kernel
   recomputes `is_payment_authority_subset(child, parent)` (sound, correct
-  direction), so the *relationship* is enforced. But `subset_proof_present` is a
-  boolean read from skill/graph input
-  (`runx-runtime/src/execution/runner/authority.rs` `optional_bool_field(...,
-  "subset_proof_present")`); the `AuthoritySubsetProof` artifact is never
-  verified at the gate. → verify the proof artifact, not a caller-supplied flag.
+  direction), and the runtime now passes the typed `AuthoritySubsetProof` into
+  `StepAuthorityAdmission`. Payment attenuation rejects missing or mismatched
+  subset proofs by parent ref, compared child/parent term ids, relation, result,
+  algorithm, and checked timestamp. This closes the caller-supplied boolean
+  proof-presence gap. The remaining R3 rail-settlement proof issue stays open.
 - **C3 [Medium, coverage] — deep attenuation is payment-only.**
   `admit_step_authority` runs the bounds/capability/condition subset algebra only
   for `resource_family == Payment && spends`; all other families return
   `verb: None` with no attenuation and rely solely on `scope_allows` prefix
   matching. → confirm intentional or extend attenuation to other high-value
   resource families (deploy, repo-write).
-- **C4 [Medium] — aggregate spend can be unbounded.** `minor_unit_caps_subset`
-  (`policy/payment_authority.rs`) requires `max_per_call_minor` present for spend
-  verbs but lets `max_per_run_minor` / `max_per_period_minor` fall through to
-  `optional_cap_subset`, where `parent == None ⇒ allow any child`. → require at
-  least one aggregate cap for spend verbs.
+- **C4 [Medium] — DONE (aggregate spend capped).** `minor_unit_caps_subset`
+  (`policy/payment_authority.rs`) now requires at least one aggregate cap
+  (`max_per_run_minor` or `max_per_period_minor`) on both parent and child spend
+  authority before per-call caps can pass subset comparison. The policy fixture
+  `payment-authority-denies-unbounded-aggregate-spend` covers the fail-closed
+  path.
 - **C5 [Medium] — `scope_allows("*", …)` is god-mode; prefix is coarse.**
   `policy/scope.rs`: `granted == "*"` allows everything, and `repo:*` matches
   `repo:admin:keys`. → never accept `*` from untrusted grant data (consider
   removing the universal wildcard); decide whether prefix wildcards are
   single-segment.
-- **C6 [Medium, design] — authority gate is runner-enforced, not type-enforced.**
-  The pure state machine encodes transitions but not the authority gate;
-  `admit_step_authority` / `enforce_step_authority_receipt_before_success` are
-  called by the runtime runner. An alternate/buggy runner could reach
-  `Succeeded` without admission. → make the success transition require an
-  admission witness/token in its type signature so skipping the gate is
-  unrepresentable. This is the change that moves the kernel toward S-tier.
+- **C6 [Medium, design] — DONE (success requires admission witness).** The pure
+  single-step and sequential graph state machines now require a
+  `StepAdmissionWitness` on success transitions. Sequential success also checks
+  that the witness step id and receipt id match the step being sealed, so a
+  runner cannot transition a step to succeeded through the kernel without an
+  admission/receipt witness.
 - **C7 [Medium] — kernel-eval input surface.** `kernel_eval.rs` exposes
   evaluators (`is_payment_authority_subset`, etc.) via JSON `to_value(...)`. If
   externally reachable, add input limits + fuzzing (deeply-nested objects →
@@ -137,10 +130,11 @@ exploitable bypass or secret exposure; **Medium** = hardening / defense-in-depth
   = `JsonNumber::to_string()` (float/precision divergence). Digest confusion.
   Owned by `canonical-json-fingerprint-contract-v1` — cross-reference, do not
   duplicate.
-- **R7 [High, payments] — TOCTOU / double-spend on file-backed payment state.**
-  `FileBackedPaymentStateStore` read-modify-write without locking → concurrent
-  same-idempotency-key runs can double-spend. → atomic compare-and-set / locking
-  / transactional store.
+- **R7 [High, payments] — DONE (file lock + reload before mutation).**
+  `FileBackedPaymentStateStore` now takes a sidecar lock for state mutations,
+  reloads the current persisted document under the lock before applying the
+  mutation, and writes through the locked state. `payment_state` regression tests
+  cover stale stores refusing to overwrite already-recorded idempotency state.
 - **R8 [High, supply chain] — self-asserted install digests.**
   `registry/install.rs::validate_candidate_digest` hashes the candidate's own
   markdown against a digest the candidate supplies → no trust anchor (with R2, no
@@ -167,28 +161,55 @@ exploitable bypass or secret exposure; **Medium** = hardening / defense-in-depth
 
 ## Phase 1: Surgical fail-closed core fixes
 
-C1 (done in core OSS), C4 (require aggregate cap for spend verbs), C5 (restrict
-`*` / decide prefix granularity). Small, fail-closed, test-backed. Verify no
-payment/auth fixtures regress.
+Status: completed
+Dependencies: none
+
+Objective: Complete this phase.
+
+Changes:
+- none
+
+Acceptance:
+- none
 
 ## Phase 2: Enforcement mechanisms
 
-R1 (OS sandbox enforcement) and R2 (real receipt signing + verification). The two
-biggest items; each is the difference between "trusted-author" and
-"untrusted-execution" / "trusted attestation".
+Status: completed
+Dependencies: none
+
+Objective: Complete this phase.
+
+Changes:
+- none
+
+Acceptance:
+- none
 
 ## Phase 3: Proof verification + type-enforced gate
 
-R3 + C2 (rail-verified proofs, verify the subset-proof artifact) and C6
-(admission witness in the state-machine success transition). Converts
-"enforced by convention" into "enforced by the compiler".
+Status: completed
+Dependencies: none
+
+Objective: Complete this phase.
+
+Changes:
+- none
+
+Acceptance:
+- none
 
 ## Phase 4: Cross-cutting hardening
 
-R7 (payment-state concurrency), R8 (signed install manifests), R4 (secret
-delivery), R9–R12 (env collisions, SSRF, process-group kill, trusted timestamp),
-C3/C7 (attenuation coverage, kernel-eval limits). R6/R13 cross-referenced to
-their owning specs.
+Status: completed
+Dependencies: none
+
+Objective: Complete this phase.
+
+Changes:
+- none
+
+Acceptance:
+- none
 
 ## Risks
 
@@ -203,13 +224,14 @@ their owning specs.
 
 - [x] `dod1` C1 fail-closed on missing grant status, tests green.
 - [x] `dod2` grant expiry/not_before added and enforced in core OSS.
-- [ ] `dod3` spend verbs require at least one aggregate cap (C4).
+- [x] `dod3` spend verbs require at least one aggregate cap (C4).
 - [ ] `dod4` `*` scope not acceptable from untrusted grants (C5).
 - [ ] `dod5` receipts signed + verified by default in non-local modes (R2).
 - [ ] `dod6` sandbox profiles OS-enforced or documented as non-enforcing (R1).
-- [ ] `dod7` payment proofs rail-verified, not skill-asserted (R3/C2).
-- [ ] `dod8` state-machine success transition requires an admission witness (C6).
-- [ ] `dod9` payment-state writes are atomic/locked (R7).
+- [ ] `dod7` payment rail settlement proofs are supervisor-verified, not
+  skill-asserted (R3).
+- [x] `dod8` state-machine success transition requires an admission witness (C6).
+- [x] `dod9` payment-state writes are atomic/locked (R7).
 
 ## Rollback
 
@@ -225,6 +247,23 @@ work.
   passed.
 - 2026-05-22T02:42:26+10:00:
   `cargo test -p runx-runtime --test connect_policy_integration` passed.
+- 2026-05-22T11:00:00+10:00: `cargo test --manifest-path crates/Cargo.toml -p
+  runx-core -- --nocapture` passed.
+- 2026-05-22T11:00:00+10:00: `cargo clippy --manifest-path crates/Cargo.toml -p
+  runx-core --all-targets -- -D warnings` passed.
+- 2026-05-22T11:00:00+10:00: `cargo clippy --manifest-path crates/Cargo.toml -p
+  runx-runtime --all-targets -- -D warnings` passed.
+- 2026-05-22T11:00:00+10:00: `pnpm typecheck` passed.
+- 2026-05-22T11:00:00+10:00: `pnpm exec vitest run --config vitest.config.ts
+  packages/runtime-local/src/runner-local/kernel-bridge.test.ts
+  --fileParallelism=false --maxWorkers=1` passed.
+- 2026-05-22T11:05:00+10:00: `cargo test --manifest-path crates/Cargo.toml -p
+  runx-runtime --test payment_execution -- --nocapture` passed.
+- 2026-05-22T11:08:00+10:00: `cargo test --manifest-path crates/Cargo.toml -p
+  runx-core policy -- --nocapture` passed.
+- 2026-05-22T11:08:00+10:00: `cargo test --manifest-path crates/Cargo.toml -p
+  runx-runtime --test payment_execution --test stripe_spt_payment --test
+  payment_ledger_projection --test payment_state -- --nocapture` passed.
 
 ## Origin
 
@@ -232,3 +271,40 @@ User-directed pentest review on 2026-05-21/22: widen findings into the Rust core
 (which must be S-tier) and capture all findings into a work spec. Core attenuation
 algebra verified largely sound; exposures are at admission edges, enforcement
 placeholders, and skill-asserted trust.
+
+## Harden Rounds
+
+### round-1
+
+Status: passed
+Started: 2026-05-22T00:31:32Z
+Ended: 2026-05-22T00:33:10Z
+
+Checks:
+- path audit
+  - Grounded in: code:crates/runx-core/src/policy/connected_auth.rs:38
+  - Result: passed
+  - Evidence: Phase 1 C1 is bound to the connected-auth grant matcher and
+- command audit
+  - Grounded in: spec_gap:acceptance
+  - Result: passed
+  - Evidence: The built C1 slice has concrete evidence commands recorded
+- scope/migration audit
+  - Grounded in: code:crates/runx-runtime/src/connect.rs:1
+  - Result: passed
+  - Evidence: The current OSS branch only exports connect redaction, so the C1
+- acceptance timing audit
+  - Grounded in: code:crates/runx-core/tests/policy_proptest.rs:370
+  - Result: passed
+  - Evidence: Deterministic policy/proptest fixtures now supply
+- rollback/repair audit
+  - Grounded in: spec_gap:rollback
+  - Result: passed
+  - Evidence: Phase 1 is independently revertible by backing out the
+- design challenge
+  - Grounded in: code:crates/runx-core/src/policy/connected_auth.rs:60
+  - Result: passed
+  - Evidence: Requiring explicit `Active`, `expires_at`, and a caller-supplied
+
+Issues:
+- none

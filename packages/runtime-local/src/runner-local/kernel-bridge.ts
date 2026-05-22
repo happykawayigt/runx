@@ -27,6 +27,8 @@ export interface LocalAdmissionGrant {
   readonly provider: string;
   readonly scopes: readonly string[];
   readonly status?: "active" | "revoked";
+  readonly not_before?: string;
+  readonly expires_at?: string;
   readonly scope_family?: string;
   readonly authority_kind?: "read_only" | "constructive" | "destructive";
   readonly target_repo?: string;
@@ -50,6 +52,7 @@ export interface LocalAdmissionOptions {
   readonly allowedSourceTypes?: readonly string[];
   readonly maxTimeoutSeconds?: number;
   readonly connectedGrants?: readonly LocalAdmissionGrant[];
+  readonly connectedAuthCheckedAt?: string;
   readonly skipConnectedAuth?: boolean;
   readonly approvedSandboxEscalation?: boolean;
   readonly skipSandboxEscalation?: boolean;
@@ -96,6 +99,8 @@ export interface LocalScopeAdmission {
 
 export interface LocalScopeAdmissionOptions {
   readonly deniedBeforeGrantResolution?: boolean;
+  readonly connectedAuthCheckedAt?: string;
+  readonly wildcardScopesTrusted?: boolean;
 }
 
 export interface CredentialBindingRequest {
@@ -121,6 +126,30 @@ export interface BuildAuthorityProofMetadataRequest {
 
 export type GraphStatus = "pending" | "running" | "succeeded" | "failed" | "paused" | "escalated";
 export type GraphStepStatus = "pending" | "running" | "succeeded" | "failed";
+export type StepStatus = "pending" | "admitted" | "running" | "succeeded" | "failed";
+export type FanoutSyncStrategy = "all" | "any" | "quorum";
+export type FanoutBranchFailurePolicy = "halt" | "continue";
+export type FanoutGateAction = "pause" | "escalate";
+
+export interface SingleStepState {
+  readonly stepId: string;
+  readonly status: StepStatus;
+  readonly startedAt?: string;
+  readonly completedAt?: string;
+  readonly error?: string;
+}
+
+export interface StepAdmissionWitness {
+  readonly stepId: string;
+  readonly receiptId: string;
+  readonly authority?: unknown;
+}
+
+export type SingleStepEvent =
+  | { readonly type: "admit" }
+  | { readonly type: "start"; readonly at: string }
+  | { readonly type: "succeed"; readonly at: string; readonly admissionWitness: StepAdmissionWitness }
+  | { readonly type: "fail"; readonly at: string; readonly error: string };
 
 export interface SequentialGraphStepDefinition {
   readonly id: string;
@@ -148,6 +177,91 @@ export interface SequentialGraphState {
   readonly steps: readonly SequentialGraphStepState[];
 }
 
+export interface FanoutThresholdGate {
+  readonly step: string;
+  readonly field: string;
+  readonly above: number;
+  readonly action: FanoutGateAction;
+}
+
+export interface FanoutConflictGate {
+  readonly field: string;
+  readonly steps: readonly string[];
+  readonly action: FanoutGateAction;
+}
+
+export interface FanoutGroupPolicy {
+  readonly groupId: string;
+  readonly strategy: FanoutSyncStrategy;
+  readonly minSuccess?: number;
+  readonly onBranchFailure: FanoutBranchFailurePolicy;
+  readonly thresholdGates?: readonly FanoutThresholdGate[];
+  readonly conflictGates?: readonly FanoutConflictGate[];
+}
+
+export interface FanoutBranchResult {
+  readonly stepId: string;
+  readonly status: GraphStepStatus;
+  readonly outputs?: Readonly<Record<string, unknown>>;
+}
+
+export interface FanoutSyncDecision {
+  readonly groupId: string;
+  readonly decision: "proceed" | "halt" | "pause" | "escalate";
+  readonly strategy: FanoutSyncStrategy;
+  readonly ruleFired: string;
+  readonly reason: string;
+  readonly branchCount: number;
+  readonly successCount: number;
+  readonly failureCount: number;
+  readonly requiredSuccesses: number;
+  readonly gate?: {
+    readonly type: "threshold" | "conflict";
+    readonly stepId?: string;
+    readonly field: string;
+    readonly value?: unknown;
+    readonly comparedTo?: number;
+    readonly values?: Readonly<Record<string, unknown>>;
+    readonly action: FanoutGateAction;
+  };
+}
+
+export type SequentialGraphEvent =
+  | { readonly type: "start_step"; readonly stepId: string; readonly at: string }
+  | {
+      readonly type: "step_succeeded";
+      readonly stepId: string;
+      readonly at: string;
+      readonly receiptId: string;
+      readonly admissionWitness: StepAdmissionWitness;
+      readonly outputs?: Readonly<Record<string, unknown>>;
+    }
+  | { readonly type: "step_failed"; readonly stepId: string; readonly at: string; readonly error: string }
+  | { readonly type: "complete" }
+  | { readonly type: "pause_graph"; readonly reason: string }
+  | { readonly type: "escalate_graph"; readonly reason: string }
+  | { readonly type: "fail_graph"; readonly error: string };
+
+export type SequentialGraphPlan =
+  | {
+      readonly type: "run_step";
+      readonly stepId: string;
+      readonly attempt: number;
+      readonly contextFrom: readonly string[];
+    }
+  | {
+      readonly type: "run_fanout";
+      readonly groupId: string;
+      readonly stepIds: readonly string[];
+      readonly attempts: Readonly<Record<string, number>>;
+      readonly contextFrom: Readonly<Record<string, readonly string[]>>;
+    }
+  | { readonly type: "complete" }
+  | { readonly type: "failed"; readonly stepId: string; readonly reason: string; readonly syncDecision?: FanoutSyncDecision }
+  | { readonly type: "blocked"; readonly stepId: string; readonly reason: string; readonly syncDecision?: FanoutSyncDecision }
+  | { readonly type: "paused"; readonly stepId: string; readonly reason: string; readonly syncDecision: FanoutSyncDecision }
+  | { readonly type: "escalated"; readonly stepId: string; readonly reason: string; readonly syncDecision: FanoutSyncDecision };
+
 export interface KernelBridgeOptions {
   readonly env?: NodeJS.ProcessEnv;
   readonly cwd?: string;
@@ -162,6 +276,36 @@ interface KernelSuccessEnvelope {
     readonly kind: "output";
     readonly value: unknown;
   };
+}
+
+export async function createSingleStepStateViaKernel(
+  stepId: string,
+  bridgeOptions: KernelBridgeOptions = {},
+): Promise<SingleStepState> {
+  const result = await evaluateKernelDocument(
+    {
+      kind: "state-machine.createSingleStepState",
+      stepId,
+    },
+    bridgeOptions,
+  );
+  return parseSingleStepState(result);
+}
+
+export async function transitionSingleStepViaKernel(
+  state: SingleStepState,
+  event: SingleStepEvent,
+  bridgeOptions: KernelBridgeOptions = {},
+): Promise<SingleStepState> {
+  const result = await evaluateKernelDocument(
+    {
+      kind: "state-machine.transitionSingleStep",
+      state,
+      event,
+    },
+    bridgeOptions,
+  );
+  return parseSingleStepState(result);
 }
 
 export async function admitRetryPolicyViaKernel(
@@ -286,6 +430,79 @@ export async function createSequentialGraphStateViaKernel(
     bridgeOptions,
   );
   return parseSequentialGraphState(result);
+}
+
+export async function planSequentialGraphTransitionViaKernel(
+  state: SequentialGraphState,
+  steps: readonly SequentialGraphStepDefinition[],
+  fanoutPolicies: Readonly<Record<string, FanoutGroupPolicy>> = {},
+  options: { readonly resolvedFanoutGateKeys?: ReadonlySet<string> } = {},
+  bridgeOptions: KernelBridgeOptions = {},
+): Promise<SequentialGraphPlan> {
+  const result = await evaluateKernelDocument(
+    {
+      kind: "state-machine.planSequentialGraphTransition",
+      state,
+      steps,
+      fanoutPolicies,
+      resolvedFanoutGateKeys: options.resolvedFanoutGateKeys
+        ? Array.from(options.resolvedFanoutGateKeys)
+        : undefined,
+    },
+    bridgeOptions,
+  );
+  return parseSequentialGraphPlan(result);
+}
+
+export async function transitionSequentialGraphViaKernel(
+  state: SequentialGraphState,
+  event: SequentialGraphEvent,
+  bridgeOptions: KernelBridgeOptions = {},
+): Promise<SequentialGraphState> {
+  const result = await evaluateKernelDocument(
+    {
+      kind: "state-machine.transitionSequentialGraph",
+      state,
+      event,
+    },
+    bridgeOptions,
+  );
+  return parseSequentialGraphState(result);
+}
+
+export async function evaluateFanoutSyncViaKernel(
+  policy: FanoutGroupPolicy,
+  results: readonly FanoutBranchResult[],
+  options: { readonly resolvedGateKeys?: ReadonlySet<string> } = {},
+  bridgeOptions: KernelBridgeOptions = {},
+): Promise<FanoutSyncDecision> {
+  const result = await evaluateKernelDocument(
+    {
+      kind: "state-machine.evaluateFanoutSync",
+      policy,
+      results,
+      resolvedGateKeys: options.resolvedGateKeys ? Array.from(options.resolvedGateKeys) : undefined,
+    },
+    bridgeOptions,
+  );
+  return parseFanoutSyncDecision(result);
+}
+
+export async function fanoutSyncDecisionKeyViaKernel(
+  decision: Pick<FanoutSyncDecision, "groupId" | "ruleFired">,
+  bridgeOptions: KernelBridgeOptions = {},
+): Promise<string> {
+  const result = await evaluateKernelDocument(
+    {
+      kind: "state-machine.fanoutSyncDecisionKey",
+      decision,
+    },
+    bridgeOptions,
+  );
+  if (typeof result !== "string" || result.length === 0) {
+    throw new Error("Rust kernel eval returned an invalid fanout sync decision key.");
+  }
+  return result;
 }
 
 export async function evaluateKernelDocument(
@@ -545,6 +762,34 @@ function parseAuthorityProofMetadata(value: unknown): Readonly<Record<string, un
   return value;
 }
 
+function parseSingleStepState(value: unknown): SingleStepState {
+  if (!isRecord(value)) {
+    throw new Error("Rust kernel eval returned a non-object single step state.");
+  }
+  if (typeof value.stepId !== "string") {
+    throw new Error("Rust kernel eval returned invalid single step state stepId.");
+  }
+  if (!isStepStatus(value.status)) {
+    throw new Error("Rust kernel eval returned invalid single step state status.");
+  }
+  if (value.startedAt !== undefined && typeof value.startedAt !== "string") {
+    throw new Error("Rust kernel eval returned invalid single step state startedAt.");
+  }
+  if (value.completedAt !== undefined && typeof value.completedAt !== "string") {
+    throw new Error("Rust kernel eval returned invalid single step state completedAt.");
+  }
+  if (value.error !== undefined && typeof value.error !== "string") {
+    throw new Error("Rust kernel eval returned invalid single step state error.");
+  }
+  return {
+    stepId: value.stepId,
+    status: value.status,
+    startedAt: value.startedAt,
+    completedAt: value.completedAt,
+    error: value.error,
+  };
+}
+
 function parseSequentialGraphState(value: unknown): SequentialGraphState {
   if (!isRecord(value)) {
     throw new Error("Rust kernel eval returned a non-object sequential graph state.");
@@ -606,6 +851,170 @@ function parseSequentialGraphStepState(value: unknown): SequentialGraphStepState
   };
 }
 
+function parseSequentialGraphPlan(value: unknown): SequentialGraphPlan {
+  if (!isRecord(value)) {
+    throw new Error("Rust kernel eval returned a non-object sequential graph plan.");
+  }
+  const type = value.type;
+  switch (type) {
+    case "run_step": {
+      if (typeof value.stepId !== "string") {
+        throw new Error("Rust kernel eval returned invalid run_step plan stepId.");
+      }
+      if (!isNonNegativeInteger(value.attempt) || value.attempt < 1) {
+        throw new Error("Rust kernel eval returned invalid run_step plan attempt.");
+      }
+      if (!isStringArray(value.contextFrom)) {
+        throw new Error("Rust kernel eval returned invalid run_step plan contextFrom.");
+      }
+      return {
+        type,
+        stepId: value.stepId,
+        attempt: value.attempt,
+        contextFrom: value.contextFrom,
+      };
+    }
+    case "run_fanout": {
+      if (typeof value.groupId !== "string") {
+        throw new Error("Rust kernel eval returned invalid run_fanout plan groupId.");
+      }
+      if (!isStringArray(value.stepIds)) {
+        throw new Error("Rust kernel eval returned invalid run_fanout plan stepIds.");
+      }
+      if (!isNumberRecord(value.attempts)) {
+        throw new Error("Rust kernel eval returned invalid run_fanout plan attempts.");
+      }
+      if (!isStringArrayRecord(value.contextFrom)) {
+        throw new Error("Rust kernel eval returned invalid run_fanout plan contextFrom.");
+      }
+      return {
+        type,
+        groupId: value.groupId,
+        stepIds: value.stepIds,
+        attempts: value.attempts,
+        contextFrom: value.contextFrom,
+      };
+    }
+    case "complete":
+      return { type };
+    case "failed":
+    case "blocked": {
+      if (typeof value.stepId !== "string") {
+        throw new Error(`Rust kernel eval returned invalid ${type} plan stepId.`);
+      }
+      if (typeof value.reason !== "string") {
+        throw new Error(`Rust kernel eval returned invalid ${type} plan reason.`);
+      }
+      return {
+        type,
+        stepId: value.stepId,
+        reason: value.reason,
+        syncDecision: value.syncDecision === undefined ? undefined : parseFanoutSyncDecision(value.syncDecision),
+      };
+    }
+    case "paused":
+    case "escalated": {
+      if (typeof value.stepId !== "string") {
+        throw new Error(`Rust kernel eval returned invalid ${type} plan stepId.`);
+      }
+      if (typeof value.reason !== "string") {
+        throw new Error(`Rust kernel eval returned invalid ${type} plan reason.`);
+      }
+      return {
+        type,
+        stepId: value.stepId,
+        reason: value.reason,
+        syncDecision: parseFanoutSyncDecision(value.syncDecision),
+      };
+    }
+    default:
+      throw new Error("Rust kernel eval returned an invalid sequential graph plan type.");
+  }
+}
+
+function parseFanoutSyncDecision(value: unknown): FanoutSyncDecision {
+  if (!isRecord(value)) {
+    throw new Error("Rust kernel eval returned a non-object fanout sync decision.");
+  }
+  if (typeof value.groupId !== "string") {
+    throw new Error("Rust kernel eval returned invalid fanout sync decision groupId.");
+  }
+  if (!isFanoutSyncOutcome(value.decision)) {
+    throw new Error("Rust kernel eval returned invalid fanout sync decision outcome.");
+  }
+  if (!isFanoutSyncStrategy(value.strategy)) {
+    throw new Error("Rust kernel eval returned invalid fanout sync decision strategy.");
+  }
+  if (typeof value.ruleFired !== "string") {
+    throw new Error("Rust kernel eval returned invalid fanout sync decision ruleFired.");
+  }
+  if (typeof value.reason !== "string") {
+    throw new Error("Rust kernel eval returned invalid fanout sync decision reason.");
+  }
+  if (
+    !isNonNegativeInteger(value.branchCount)
+    || !isNonNegativeInteger(value.successCount)
+    || !isNonNegativeInteger(value.failureCount)
+    || !isNonNegativeInteger(value.requiredSuccesses)
+  ) {
+    throw new Error("Rust kernel eval returned invalid fanout sync decision counts.");
+  }
+  return {
+    groupId: value.groupId,
+    decision: value.decision,
+    strategy: value.strategy,
+    ruleFired: value.ruleFired,
+    reason: value.reason,
+    branchCount: value.branchCount,
+    successCount: value.successCount,
+    failureCount: value.failureCount,
+    requiredSuccesses: value.requiredSuccesses,
+    gate: value.gate === undefined ? undefined : parseFanoutGate(value.gate),
+  };
+}
+
+function parseFanoutGate(value: unknown): FanoutSyncDecision["gate"] {
+  if (!isRecord(value)) {
+    throw new Error("Rust kernel eval returned invalid fanout gate.");
+  }
+  const type = value.type;
+  if (type !== "threshold" && type !== "conflict") {
+    throw new Error("Rust kernel eval returned invalid fanout gate type.");
+  }
+  if (typeof value.field !== "string") {
+    throw new Error("Rust kernel eval returned invalid fanout gate field.");
+  }
+  if (!isFanoutGateAction(value.action)) {
+    throw new Error("Rust kernel eval returned invalid fanout gate action.");
+  }
+  if (value.stepId !== undefined && typeof value.stepId !== "string") {
+    throw new Error("Rust kernel eval returned invalid fanout gate stepId.");
+  }
+  if (value.comparedTo !== undefined && typeof value.comparedTo !== "number") {
+    throw new Error("Rust kernel eval returned invalid fanout gate comparedTo.");
+  }
+  if (value.values !== undefined && !isRecord(value.values)) {
+    throw new Error("Rust kernel eval returned invalid fanout gate values.");
+  }
+  return {
+    type,
+    field: value.field,
+    action: value.action,
+    stepId: value.stepId,
+    value: value.value,
+    comparedTo: value.comparedTo,
+    values: value.values,
+  };
+}
+
+function isStepStatus(value: unknown): value is StepStatus {
+  return value === "pending"
+    || value === "admitted"
+    || value === "running"
+    || value === "succeeded"
+    || value === "failed";
+}
+
 function isGraphStatus(value: unknown): value is GraphStatus {
   return value === "pending"
     || value === "running"
@@ -619,6 +1028,18 @@ function isGraphStepStatus(value: unknown): value is GraphStepStatus {
   return value === "pending" || value === "running" || value === "succeeded" || value === "failed";
 }
 
+function isFanoutSyncStrategy(value: unknown): value is FanoutSyncStrategy {
+  return value === "all" || value === "any" || value === "quorum";
+}
+
+function isFanoutSyncOutcome(value: unknown): value is FanoutSyncDecision["decision"] {
+  return value === "proceed" || value === "halt" || value === "pause" || value === "escalate";
+}
+
+function isFanoutGateAction(value: unknown): value is FanoutGateAction {
+  return value === "pause" || value === "escalate";
+}
+
 function isKernelSuccessEnvelope(value: unknown): value is KernelSuccessEnvelope {
   if (!isRecord(value) || value.status !== "success" || !isRecord(value.result)) {
     return false;
@@ -628,6 +1049,23 @@ function isKernelSuccessEnvelope(value: unknown): value is KernelSuccessEnvelope
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isStringArray(value: unknown): value is readonly string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "string");
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+function isNumberRecord(value: unknown): value is Readonly<Record<string, number>> {
+  return isRecord(value)
+    && Object.values(value).every((entry) => typeof entry === "number" && Number.isInteger(entry) && entry >= 0);
+}
+
+function isStringArrayRecord(value: unknown): value is Readonly<Record<string, readonly string[]>> {
+  return isRecord(value) && Object.values(value).every(isStringArray);
 }
 
 function firstNonEmpty(...values: readonly string[]): string {

@@ -11,7 +11,7 @@ use std::path::Path;
 use runx_contracts::{
     ClosureDisposition, ExecutionEvent, FanoutReceiptSyncPoint, HarnessReceipt, JsonObject,
 };
-use runx_core::state_machine::SequentialGraphState;
+use runx_core::state_machine::{SequentialGraphState, StepAdmissionWitness};
 use runx_parser::ExecutionGraph;
 
 use super::graph::load_graph;
@@ -70,6 +70,7 @@ pub struct StepRun {
     pub output: SkillOutput,
     pub outputs: JsonObject,
     pub receipt: HarnessReceipt,
+    pub admission_witness: StepAdmissionWitness,
 }
 
 #[derive(Clone, Debug)]

@@ -287,6 +287,34 @@ fn input_env_names_match_author_visible_typescript_normalization()
 }
 
 #[test]
+fn input_env_name_collisions_fail_closed() -> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempfile::tempdir()?;
+    let skill_dir = temp.path().join("skill");
+    fs::create_dir_all(&skill_dir)?;
+
+    let Err(error) = prepare_process_sandbox(
+        &source(None, Some(sandbox("skill-directory", "readonly"))),
+        &skill_dir,
+        &[
+            ("foo-bar".to_owned(), JsonValue::String("one".to_owned())),
+            ("foo.bar".to_owned(), JsonValue::String("two".to_owned())),
+        ]
+        .into_iter()
+        .collect(),
+        &BTreeMap::new(),
+    ) else {
+        return Err("colliding input env names must fail closed".into());
+    };
+
+    assert!(matches!(
+        error,
+        RuntimeError::SandboxViolation { message }
+            if message.contains("collide on environment variable RUNX_INPUT_FOO_BAR")
+    ));
+    Ok(())
+}
+
+#[test]
 #[cfg(feature = "cli-tool")]
 fn cli_tool_drains_large_stdout_and_omits_truncated_output()
 -> Result<(), Box<dyn std::error::Error>> {

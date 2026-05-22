@@ -2,9 +2,10 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { errorMessage, hashStable, isRecord as isPlainRecord, safeReadDir, stableStringify } from "@runxhq/core/util";
+import { canonicalJsonStringify, sha256Prefixed } from "@runxhq/contracts";
+import { errorMessage, isRecord as isPlainRecord, safeReadDir } from "@runxhq/core/util";
 
-export { isPlainRecord, safeReadDir, stableStringify };
+export { isPlainRecord, safeReadDir };
 
 export interface LocalPacketIndexResult {
   readonly packets: readonly {
@@ -188,10 +189,17 @@ export async function writeJsonFile(filePath: string, value: unknown): Promise<v
 }
 
 export function sha256Stable(value: unknown): string {
-  return `sha256:${hashStable(value)}`;
+  return sha256Prefixed(canonicalJsonStringify(value));
 }
 
 
 export function deepEqual(left: unknown, right: unknown): boolean {
-  return stableStringify(left) === stableStringify(right);
+  if (left === undefined || right === undefined) {
+    return left === right;
+  }
+  try {
+    return canonicalJsonStringify(left) === canonicalJsonStringify(right);
+  } catch {
+    return false;
+  }
 }

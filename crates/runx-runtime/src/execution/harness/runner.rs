@@ -10,6 +10,7 @@ use runx_contracts::{
     ClosureDisposition, ExecutionEvent, HarnessReceipt, JsonObject, JsonValue, ResolutionRequest,
     ResolutionResponse, ResolutionResponseActor,
 };
+use runx_core::state_machine::StepAdmissionWitness;
 use runx_parser::{
     SkillRunnerDefinition, SkillRunnerManifest, parse_runner_manifest_yaml,
     validate_runner_manifest,
@@ -343,6 +344,8 @@ fn run_graph_replay_fixture(
         })?;
         let outputs = skill_output_object(&output);
         let succeeded = output.succeeded();
+        let admission_witness =
+            StepAdmissionWitness::local_runtime(&replay_step.step_id, &receipt.id);
         runs.push(StepRun {
             step_id: replay_step.step_id,
             attempt: 1,
@@ -352,6 +355,7 @@ fn run_graph_replay_fixture(
             output,
             outputs,
             receipt,
+            admission_witness,
         });
         if !succeeded {
             break;

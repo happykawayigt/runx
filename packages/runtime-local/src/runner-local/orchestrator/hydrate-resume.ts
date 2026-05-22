@@ -1,5 +1,4 @@
 import { readLedgerEntries } from "@runxhq/core/artifacts";
-import { transitionSequentialGraph, type SequentialGraphState } from "@runxhq/core/state-machine";
 
 import { resolveGraphStepExecution } from "../execution-targets.js";
 import {
@@ -7,6 +6,10 @@ import {
   readPendingFanoutGate,
 } from "../graph-fanout-gates.js";
 import { hydrateGraphFromLedger } from "../graph-hydration.js";
+import {
+  transitionSequentialGraphViaKernel,
+  type SequentialGraphState,
+} from "../kernel-bridge.js";
 import { isAgentMediatedSource } from "../runner-helpers.js";
 import type { RunLocalGraphOptions, RunLocalGraphResult } from "../index.js";
 
@@ -21,7 +24,7 @@ export async function hydrateResumedRun(
   }
 
   const resumeEntries = await readLedgerEntries(ctx.receiptDir, options.resumeFromRunId);
-  hydrateGraphFromLedger({
+  await hydrateGraphFromLedger({
     entries: resumeEntries,
     graph: ctx.graph,
     graphStepCache: ctx.graphStepCache,
@@ -46,6 +49,7 @@ export async function hydrateResumedRun(
         ctx.lastReceiptId = next;
       },
     },
+    kernel: { env: options.env },
   });
 
   const pendingFanoutGate = readPendingFanoutGate(resumeEntries);
@@ -66,6 +70,7 @@ export async function hydrateResumedRun(
         skillCacheDir: options.skillCacheDir,
         toolCatalogAdapters: options.toolCatalogAdapters,
         officialSkillResolver: options.officialSkillResolver,
+        env: options.env,
       });
       return {
         status: "needs_agent",
@@ -84,7 +89,11 @@ export async function hydrateResumedRun(
       ctx.resolvedFanoutGateKeys.add(pendingFanoutGate.gateKey);
     } else {
       ctx.finalError = `fanout gate denied: ${pendingFanoutGate.syncPoint.reason}`;
-      ctx.state = transitionSequentialGraph(ctx.state, { type: "fail_graph", error: ctx.finalError });
+      ctx.state = await transitionSequentialGraphViaKernel(
+        ctx.state,
+        { type: "fail_graph", error: ctx.finalError },
+        { env: options.env },
+      );
       ctx.graphAlreadyTerminal = true;
     }
   }

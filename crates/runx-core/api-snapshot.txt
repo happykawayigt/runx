@@ -65,6 +65,7 @@ pub runx_core::policy::LocalAdmissionGrantStatus::Active
 pub runx_core::policy::LocalAdmissionGrantStatus::Revoked
 pub enum runx_core::policy::PaymentAuthorityError
 pub runx_core::policy::PaymentAuthorityError::AuthorityNotSubset
+pub runx_core::policy::PaymentAuthorityError::InvalidSubsetProof
 pub runx_core::policy::PaymentAuthorityError::MissingIdempotencyKey
 pub runx_core::policy::PaymentAuthorityError::MissingReservationDecision
 pub runx_core::policy::PaymentAuthorityError::MissingSubsetProof
@@ -168,6 +169,7 @@ pub runx_core::policy::AuthorityProofSandboxRuntime::reason: core::option::Optio
 pub struct runx_core::policy::BuildAuthorityProofOptions
 pub runx_core::policy::BuildAuthorityProofOptions::approval: core::option::Option<runx_core::policy::AuthorityProofApproval>
 pub runx_core::policy::BuildAuthorityProofOptions::auth: core::option::Option<runx_contracts::json::JsonValue>
+pub runx_core::policy::BuildAuthorityProofOptions::connected_auth_checked_at: core::option::Option<alloc::string::String>
 pub runx_core::policy::BuildAuthorityProofOptions::credential: core::option::Option<runx_core::policy::CredentialEnvelope>
 pub runx_core::policy::BuildAuthorityProofOptions::grants: alloc::vec::Vec<runx_core::policy::LocalAdmissionGrant>
 pub runx_core::policy::BuildAuthorityProofOptions::mutating: core::option::Option<bool>
@@ -207,7 +209,9 @@ pub runx_core::policy::GraphScopeGrant::grant_id: core::option::Option<alloc::st
 pub runx_core::policy::GraphScopeGrant::scopes: alloc::vec::Vec<alloc::string::String>
 pub struct runx_core::policy::LocalAdmissionGrant
 pub runx_core::policy::LocalAdmissionGrant::authority_kind: core::option::Option<runx_core::policy::AuthorityKind>
+pub runx_core::policy::LocalAdmissionGrant::expires_at: core::option::Option<alloc::string::String>
 pub runx_core::policy::LocalAdmissionGrant::grant_id: alloc::string::String
+pub runx_core::policy::LocalAdmissionGrant::not_before: core::option::Option<alloc::string::String>
 pub runx_core::policy::LocalAdmissionGrant::provider: alloc::string::String
 pub runx_core::policy::LocalAdmissionGrant::scope_family: core::option::Option<alloc::string::String>
 pub runx_core::policy::LocalAdmissionGrant::scopes: alloc::vec::Vec<alloc::string::String>
@@ -217,6 +221,7 @@ pub runx_core::policy::LocalAdmissionGrant::target_repo: core::option::Option<al
 pub struct runx_core::policy::LocalAdmissionOptions
 pub runx_core::policy::LocalAdmissionOptions::allowed_source_types: core::option::Option<alloc::vec::Vec<alloc::string::String>>
 pub runx_core::policy::LocalAdmissionOptions::approved_sandbox_escalation: core::option::Option<bool>
+pub runx_core::policy::LocalAdmissionOptions::connected_auth_checked_at: core::option::Option<alloc::string::String>
 pub runx_core::policy::LocalAdmissionOptions::connected_grants: core::option::Option<alloc::vec::Vec<runx_core::policy::LocalAdmissionGrant>>
 pub runx_core::policy::LocalAdmissionOptions::execution_policy: core::option::Option<runx_core::policy::LocalExecutionPolicy>
 pub runx_core::policy::LocalAdmissionOptions::max_timeout_seconds: core::option::Option<i64>
@@ -236,7 +241,9 @@ pub runx_core::policy::LocalAdmissionSource::timeout_seconds: core::option::Opti
 pub struct runx_core::policy::LocalExecutionPolicy
 pub runx_core::policy::LocalExecutionPolicy::strict_cli_tool_inline_code: core::option::Option<bool>
 pub struct runx_core::policy::LocalScopeAdmissionOptions
+pub runx_core::policy::LocalScopeAdmissionOptions::connected_auth_checked_at: core::option::Option<alloc::string::String>
 pub runx_core::policy::LocalScopeAdmissionOptions::denied_before_grant_resolution: core::option::Option<bool>
+pub runx_core::policy::LocalScopeAdmissionOptions::wildcard_scopes_trusted: bool
 pub struct runx_core::policy::PaymentSpendCapabilityBinding
 pub runx_core::policy::PaymentSpendCapabilityBinding::act_id: alloc::string::String
 pub runx_core::policy::PaymentSpendCapabilityBinding::amount_minor: u64
@@ -323,7 +330,7 @@ pub runx_core::policy::StepAuthorityAdmission::parent_authority: &'a runx_contra
 pub runx_core::policy::StepAuthorityAdmission::reservation_decision: core::option::Option<&'a runx_contracts::decision::Decision>
 pub runx_core::policy::StepAuthorityAdmission::spend_capability_binding: core::option::Option<runx_core::policy::PaymentSpendCapabilityBinding>
 pub runx_core::policy::StepAuthorityAdmission::spend_capability_ref: core::option::Option<&'a runx_contracts::reference::Reference>
-pub runx_core::policy::StepAuthorityAdmission::subset_proof_present: bool
+pub runx_core::policy::StepAuthorityAdmission::subset_proof: core::option::Option<&'a runx_contracts::authority::AuthoritySubsetProof>
 pub struct runx_core::policy::StepAuthorityAdmissionDecision<'a>
 pub runx_core::policy::StepAuthorityAdmissionDecision::child_term_id: &'a str
 pub runx_core::policy::StepAuthorityAdmissionDecision::idempotency_key: core::option::Option<&'a str>
@@ -408,6 +415,7 @@ pub runx_core::state_machine::SequentialGraphEvent::StepFailed::at: alloc::strin
 pub runx_core::state_machine::SequentialGraphEvent::StepFailed::error: alloc::string::String
 pub runx_core::state_machine::SequentialGraphEvent::StepFailed::step_id: alloc::string::String
 pub runx_core::state_machine::SequentialGraphEvent::StepSucceeded
+pub runx_core::state_machine::SequentialGraphEvent::StepSucceeded::admission_witness: alloc::boxed::Box<runx_core::state_machine::StepAdmissionWitness>
 pub runx_core::state_machine::SequentialGraphEvent::StepSucceeded::at: alloc::string::String
 pub runx_core::state_machine::SequentialGraphEvent::StepSucceeded::outputs: core::option::Option<runx_contracts::json::JsonObject>
 pub runx_core::state_machine::SequentialGraphEvent::StepSucceeded::receipt_id: alloc::string::String
@@ -447,6 +455,7 @@ pub runx_core::state_machine::SingleStepEvent::Fail::error: alloc::string::Strin
 pub runx_core::state_machine::SingleStepEvent::Start
 pub runx_core::state_machine::SingleStepEvent::Start::at: alloc::string::String
 pub runx_core::state_machine::SingleStepEvent::Succeed
+pub runx_core::state_machine::SingleStepEvent::Succeed::admission_witness: alloc::boxed::Box<runx_core::state_machine::StepAdmissionWitness>
 pub runx_core::state_machine::SingleStepEvent::Succeed::at: alloc::string::String
 pub enum runx_core::state_machine::StepStatus
 pub runx_core::state_machine::StepStatus::Admitted
@@ -454,6 +463,12 @@ pub runx_core::state_machine::StepStatus::Failed
 pub runx_core::state_machine::StepStatus::Pending
 pub runx_core::state_machine::StepStatus::Running
 pub runx_core::state_machine::StepStatus::Succeeded
+pub struct runx_core::state_machine::AuthorityAdmissionWitness
+pub runx_core::state_machine::AuthorityAdmissionWitness::child_term_id: alloc::string::String
+pub runx_core::state_machine::AuthorityAdmissionWitness::idempotency_key: core::option::Option<alloc::string::String>
+pub runx_core::state_machine::AuthorityAdmissionWitness::parent_term_id: alloc::string::String
+pub runx_core::state_machine::AuthorityAdmissionWitness::spend_capability_ref: core::option::Option<runx_contracts::reference::Reference>
+pub runx_core::state_machine::AuthorityAdmissionWitness::verb: runx_contracts::authority::AuthorityVerb
 pub struct runx_core::state_machine::FanoutBranchResult
 pub runx_core::state_machine::FanoutBranchResult::outputs: core::option::Option<runx_contracts::json::JsonObject>
 pub runx_core::state_machine::FanoutBranchResult::status: runx_core::state_machine::GraphStepStatus
@@ -511,6 +526,14 @@ pub runx_core::state_machine::SingleStepState::error: core::option::Option<alloc
 pub runx_core::state_machine::SingleStepState::started_at: core::option::Option<alloc::string::String>
 pub runx_core::state_machine::SingleStepState::status: runx_core::state_machine::StepStatus
 pub runx_core::state_machine::SingleStepState::step_id: alloc::string::String
+pub struct runx_core::state_machine::StepAdmissionWitness
+pub runx_core::state_machine::StepAdmissionWitness::authority: core::option::Option<runx_core::state_machine::AuthorityAdmissionWitness>
+pub runx_core::state_machine::StepAdmissionWitness::receipt_id: alloc::string::String
+pub runx_core::state_machine::StepAdmissionWitness::step_id: alloc::string::String
+impl runx_core::state_machine::StepAdmissionWitness
+pub fn runx_core::state_machine::StepAdmissionWitness::local_runtime(step_id: impl core::convert::Into<alloc::string::String>, receipt_id: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn runx_core::state_machine::StepAdmissionWitness::matches_step_receipt(&self, step_id: &str, receipt_id: &str) -> bool
+pub fn runx_core::state_machine::StepAdmissionWitness::with_authority(step_id: impl core::convert::Into<alloc::string::String>, receipt_id: impl core::convert::Into<alloc::string::String>, authority: runx_core::state_machine::AuthorityAdmissionWitness) -> Self
 pub fn runx_core::state_machine::create_sequential_graph_state(graph_id: impl core::convert::Into<alloc::string::String>, steps: &[runx_core::state_machine::SequentialGraphStepDefinition]) -> runx_core::state_machine::SequentialGraphState
 pub fn runx_core::state_machine::create_single_step_state(step_id: impl core::convert::Into<alloc::string::String>) -> runx_core::state_machine::SingleStepState
 pub fn runx_core::state_machine::evaluate_fanout_sync(policy: &runx_core::state_machine::FanoutGroupPolicy, results: &[runx_core::state_machine::FanoutBranchResult], resolved_gate_keys: core::option::Option<&alloc::collections::btree::set::BTreeSet<alloc::string::String>>) -> runx_core::state_machine::FanoutSyncDecision

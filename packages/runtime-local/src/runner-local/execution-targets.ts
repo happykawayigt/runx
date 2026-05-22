@@ -4,19 +4,6 @@ import { fileURLToPath } from "node:url";
 
 import { resolveLocalSkillProfile } from "@runxhq/core/config";
 import { isNodeError, pathExists } from "@runxhq/core/util";
-import {
-  extractSkillQualityProfile,
-  parseGraphYaml,
-  parseRunnerManifestYaml,
-  parseSkillMarkdown,
-  parseToolManifestJson,
-  validateGraph,
-  validateRunnerManifest,
-  validateSkill,
-  validateSkillArtifactContract,
-  validateSkillSource,
-  validateToolManifest,
-} from "@runxhq/core/parser";
 import { resolveCatalogTool, type ToolCatalogAdapter } from "@runxhq/runtime-local/tool-catalogs";
 import type {
   ExecutionGraph,
@@ -35,6 +22,16 @@ import {
   type ParsedRegistryRef,
   type RegistryStore,
 } from "./registry-resolver.js";
+import {
+  extractSkillQualityProfileViaParser,
+  validateGraphYamlViaParser,
+  validateRunnerManifestYamlViaParser,
+  validateSkillArtifactContractViaParser,
+  validateSkillMarkdownViaParser,
+  validateSkillSourceViaParser,
+  validateToolManifestJsonViaParser,
+  type ParserBridgeOptions,
+} from "./parser-bridge.js";
 
 export interface OfficialSkillResolver {
   resolve(ref: ParsedRegistryRef): Promise<string | undefined>;
@@ -80,6 +77,7 @@ export async function resolveSkillRunner(
   skill: ValidatedSkill,
   skillPath: string,
   runnerName: string | undefined,
+  parserOptions: ParserBridgeOptions = {},
 ): Promise<ResolvedRunnerSelection> {
   const profile = await resolveLocalSkillProfile(skillPath, skill.name);
   const profileDocument = profile.profileDocument;
@@ -90,7 +88,7 @@ export async function resolveSkillRunner(
     throw new Error(`Runner '${runnerName}' requested but no execution profile was found for skill '${skill.name}'.`);
   }
 
-  const manifest = validateRunnerManifest(parseRunnerManifestYaml(profileDocument));
+  const manifest = await validateRunnerManifestYamlViaParser(profileDocument, parserOptions);
   if (manifest.skill && manifest.skill !== skill.name) {
     throw new Error(`Runner manifest skill '${manifest.skill}' does not match skill '${skill.name}'.`);
   }
@@ -158,6 +156,7 @@ export async function resolveGraphExecution(options: {
   readonly graphPath?: string;
   readonly graph?: ExecutionGraph;
   readonly graphDirectory?: string;
+  readonly env?: NodeJS.ProcessEnv;
 }): Promise<{
   readonly graph: ExecutionGraph;
   readonly graphDirectory: string;
@@ -174,7 +173,7 @@ export async function resolveGraphExecution(options: {
   }
   const resolvedGraphPath = path.resolve(options.graphPath);
   return {
-    graph: validateGraph(parseGraphYaml(await readFile(resolvedGraphPath, "utf8"))),
+    graph: await validateGraphYamlViaParser(await readFile(resolvedGraphPath, "utf8"), { env: options.env }),
     graphDirectory: path.dirname(resolvedGraphPath),
     resolvedGraphPath,
   };
@@ -187,16 +186,17 @@ export async function loadGraphStepExecutables(
   skillCacheDir?: string,
   toolCatalogAdapters?: readonly ToolCatalogAdapter[],
   officialSkillResolver?: OfficialSkillResolver,
+  env?: NodeJS.ProcessEnv,
 ): Promise<ReadonlyMap<string, ValidatedSkill>> {
   const skills = new Map<string, ValidatedSkill>();
   for (const step of graph.steps) {
     if (step.skill) {
       const resolvedPath = await resolveGraphStepSkillPath(step.skill, graphDirectory, registryStore, skillCacheDir, officialSkillResolver);
-      skills.set(step.id, await loadValidatedSkill(resolvedPath, step.runner));
+      skills.set(step.id, await loadValidatedSkill(resolvedPath, step.runner, { env }));
       continue;
     }
     if (step.tool) {
-      skills.set(step.id, await loadValidatedTool(step.tool, graphDirectory, { toolCatalogAdapters }));
+      skills.set(step.id, await loadValidatedTool(step.tool, graphDirectory, { env, toolCatalogAdapters }));
     }
   }
   return skills;
@@ -211,6 +211,7 @@ export async function resolveGraphStepExecution(options: {
   readonly skillCacheDir?: string;
   readonly toolCatalogAdapters?: readonly ToolCatalogAdapter[];
   readonly officialSkillResolver?: OfficialSkillResolver;
+  readonly env?: NodeJS.ProcessEnv;
 }): Promise<{
   readonly skill: ValidatedSkill;
   readonly skillPath: string;
@@ -227,7 +228,7 @@ export async function resolveGraphStepExecution(options: {
     return {
       skill:
         options.graphStepCache.get(options.step.id)
-        ?? (await loadValidatedSkill(resolvedPath, options.step.runner)),
+        ?? (await loadValidatedSkill(resolvedPath, options.step.runner, { env: options.env })),
       skillPath: resolvedPath,
       reference: options.step.skill,
     };
@@ -235,10 +236,12 @@ export async function resolveGraphStepExecution(options: {
 
   if (options.step.tool) {
     const resolvedTool = await resolveToolReference(options.step.tool, options.graphDirectory, {
+      env: options.env,
       toolCatalogAdapters: options.toolCatalogAdapters,
     });
     return {
       skill: options.graphStepCache.get(options.step.id) ?? (await loadValidatedTool(options.step.tool, options.graphDirectory, {
+        env: options.env,
         toolCatalogAdapters: options.toolCatalogAdapters,
       })),
       skillPath: resolvedTool.referencePath,
@@ -251,16 +254,17 @@ export async function resolveGraphStepExecution(options: {
   }
 
   return {
-    skill: buildInlineGraphStepSkill(options.step, options.skillEnvironment),
+    skill: await buildInlineGraphStepSkill(options.step, options.skillEnvironment, { env: options.env }),
     skillPath: `inline:${options.step.id}`,
     reference: `run:${String(options.step.run.type)}`,
   };
 }
 
-export function buildInlineGraphStepSkill(
+export async function buildInlineGraphStepSkill(
   step: GraphStep,
   skillEnvironment?: SkillEnvironment,
-): ValidatedSkill {
+  parserOptions: ParserBridgeOptions = {},
+): Promise<ValidatedSkill> {
   if (!step.run) {
     throw new Error(`Graph step '${step.id}' is missing an inline run definition.`);
   }
@@ -269,13 +273,13 @@ export function buildInlineGraphStepSkill(
     name: `${skillEnvironment?.name ?? "graph"}.${step.id}`,
     description: step.instructions,
     body,
-    source: validateSkillSource(step.run),
+    source: await validateSkillSourceViaParser(step.run, undefined, parserOptions),
     inputs: {},
     retry: step.retry,
     idempotency: step.idempotencyKey ? { key: step.idempotencyKey } : undefined,
     mutating: step.mutating,
-    artifacts: validateSkillArtifactContract(step.artifacts, `steps.${step.id}.artifacts`),
-    qualityProfile: extractSkillQualityProfile(body),
+    artifacts: await validateSkillArtifactContractViaParser(step.artifacts, `steps.${step.id}.artifacts`, parserOptions),
+    qualityProfile: await extractSkillQualityProfileViaParser(body, parserOptions),
     allowedTools: step.allowedTools,
     runx: step.allowedTools ? { allowed_tools: step.allowedTools } : undefined,
     raw: {
@@ -286,13 +290,17 @@ export function buildInlineGraphStepSkill(
   };
 }
 
-async function loadValidatedSkill(skillPath: string, runner?: string): Promise<ValidatedSkill> {
+async function loadValidatedSkill(
+  skillPath: string,
+  runner?: string,
+  parserOptions: ParserBridgeOptions = {},
+): Promise<ValidatedSkill> {
   const resolvedSkill = await resolveSkillReference(skillPath);
-  const rawSkill = parseSkillMarkdown(await readFile(resolvedSkill.skillPath, "utf8"));
   const selection = await resolveSkillRunner(
-    validateSkill(rawSkill, { mode: "strict" }),
+    await validateSkillMarkdownViaParser(await readFile(resolvedSkill.skillPath, "utf8"), { mode: "strict" }, parserOptions),
     resolvedSkill.skillPath,
     runner,
+    parserOptions,
   );
   return selection.skill;
 }
@@ -312,7 +320,7 @@ export async function resolveToolExecutionTarget(
 ): Promise<ResolvedToolExecutionTarget> {
   const resolvedTool = await resolveToolReference(toolName, searchFromDirectory, options);
   const tool = resolvedTool.tool
-    ?? validateToolManifest(parseToolManifestJson(await readFile(resolvedTool.referencePath, "utf8")));
+    ?? await validateToolManifestJsonViaParser(await readFile(resolvedTool.referencePath, "utf8"), { env: options.env });
   return {
     referencePath: resolvedTool.referencePath,
     skillDirectory: resolvedTool.skillDirectory,

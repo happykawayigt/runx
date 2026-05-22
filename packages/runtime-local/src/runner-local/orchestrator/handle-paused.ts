@@ -1,9 +1,3 @@
-import {
-  fanoutSyncDecisionKey,
-  transitionSequentialGraph,
-  type SequentialGraphPlan,
-} from "@runxhq/core/state-machine";
-
 import { findGraphStep } from "../graph-context.js";
 import { resolveGraphStepExecution } from "../execution-targets.js";
 import {
@@ -19,6 +13,11 @@ import {
   latestFanoutReceiptIds,
   toGraphReceiptSyncPoint,
 } from "../graph-governance.js";
+import {
+  fanoutSyncDecisionKeyViaKernel,
+  transitionSequentialGraphViaKernel,
+  type SequentialGraphPlan,
+} from "../kernel-bridge.js";
 import type { RunLocalGraphOptions } from "../index.js";
 
 import type { HandlerContinuation, RunContext } from "./run-context.js";
@@ -43,6 +42,7 @@ export async function handlePausedPlan(
   const resolution = await options.caller.resolve(gateRequest);
 
   if (resolution === undefined) {
+    const gateKey = await fanoutSyncDecisionKeyViaKernel(plan.syncDecision, { env: options.env });
     const stepIds = ctx.graphSteps
       .filter((step) => step.fanoutGroup === plan.syncDecision.groupId)
       .map((step) => step.id);
@@ -59,6 +59,7 @@ export async function handlePausedPlan(
       skillCacheDir: options.skillCacheDir,
       toolCatalogAdapters: options.toolCatalogAdapters,
       officialSkillResolver: options.officialSkillResolver,
+      env: options.env,
     });
     await appendPendingGraphLedgerEntry({
       receiptDir: ctx.receiptDir,
@@ -77,7 +78,7 @@ export async function handlePausedPlan(
         inputs: options.inputs ?? {},
         skill_path: ctx.graphResolution.resolvedGraphPath ?? ctx.graphDirectory,
         resolved_path: ctx.graphResolution.resolvedGraphPath ?? ctx.graphDirectory,
-        fanout_gate_key: fanoutSyncDecisionKey(plan.syncDecision),
+        fanout_gate_key: gateKey,
         sync_decision: toGraphReceiptSyncPoint(
           plan.syncDecision,
           latestFanoutReceiptIds(ctx.stepRuns, plan.syncDecision.groupId),
@@ -85,7 +86,11 @@ export async function handlePausedPlan(
       },
       createdAt: new Date().toISOString(),
     });
-    ctx.state = transitionSequentialGraph(ctx.state, { type: "pause_graph", reason: plan.reason });
+    ctx.state = await transitionSequentialGraphViaKernel(
+      ctx.state,
+      { type: "pause_graph", reason: plan.reason },
+      { env: options.env },
+    );
     return {
       kind: "return",
       result: {
@@ -117,10 +122,14 @@ export async function handlePausedPlan(
   ctx.syncPoints.push(toGraphReceiptSyncPoint(plan.syncDecision, latestFanoutReceiptIds(ctx.stepRuns, plan.syncDecision.groupId)));
   if (!approved) {
     ctx.finalError = `fanout gate denied: ${plan.reason}`;
-    ctx.state = transitionSequentialGraph(ctx.state, { type: "fail_graph", error: ctx.finalError });
+    ctx.state = await transitionSequentialGraphViaKernel(
+      ctx.state,
+      { type: "fail_graph", error: ctx.finalError },
+      { env: options.env },
+    );
     return { kind: "break" };
   }
 
-  ctx.resolvedFanoutGateKeys.add(fanoutSyncDecisionKey(plan.syncDecision));
+  ctx.resolvedFanoutGateKeys.add(await fanoutSyncDecisionKeyViaKernel(plan.syncDecision, { env: options.env }));
   return { kind: "continue" };
 }

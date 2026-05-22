@@ -2,7 +2,7 @@
 spec_version: '2.0'
 task_id: runx-post-merge-closure-observer
 created: '2026-05-19T02:08:02Z'
-updated: '2026-05-22T00:00:00+10:00'
+updated: '2026-05-22T10:46:07+10:00'
 status: draft
 harden_status: in_progress
 size: large
@@ -14,22 +14,40 @@ risk_level: high
 ## Current State
 
 Status: draft
-Current phase: fixture-backed live provider observer / publication adapter slice
+Current phase: bounded live GitHub PR readback adapter slice
 Next: provider adapter and target-runner integration slice after dependencies
 Reason: issue-to-PR currently has a pure contract/runtime observer slice for
 closure planning, dedupe, sealed harness receipt projection, and local
 publication command projection. Runtime now has an abstract observer adapter
 seam plus a fixture-backed GitHub PR observation/readback adapter that returns
 deterministic PR and verification observations without network side effects.
-The remaining execution-ready gap is real live provider observation plus live
-target-runner merge/verification readback.
-Blockers: real GitHub PR observer transport and webhook/scheduler adapter;
-remaining live target/source readback from `runx-target-repo-runners` including
-merge SHA and runner verification hook/deploy context; policy source
-configuration from `runx-operational-policy-config` for source-thread
-publication and close mode; real GitHub/Slack publication transports.
+Runtime also has a bounded HTTP-backed GitHub PR readback adapter over the
+existing runtime HTTP seam; fixture/mock tests validate request/response
+identity, map GitHub PR API state into the typed PR observation, and fail closed
+without publication dedupe when readback mismatches or verification readback is
+not configured. The remaining execution-ready gap is live webhook/scheduler
+dispatch plus live target-runner verification/source readback and publication
+transports.
+Blockers: webhook/scheduler dispatch adapter; remaining live target/source
+readback from `runx-target-repo-runners` including runner verification
+hook/deploy context beyond GitHub PR API state; policy source configuration from
+`runx-operational-policy-config` for source-thread publication and close mode;
+real GitHub/Slack publication transports.
 Allowed follow-up command: `scafld harden runx-post-merge-closure-observer --mark-passed`
-Latest runner update: 2026-05-22T00:00:00+10:00 added a fixture-backed GitHub PR
+Latest runner update: 2026-05-22T10:46:07+10:00 added a bounded HTTP-backed
+GitHub PR readback adapter in `runx-runtime` behind the existing
+`PostMergeObserverAdapter` seam. The adapter uses the existing runtime HTTP
+transport, validates GitHub source issue/source thread/target PR command
+identity before readback, issues only a typed GitHub PR GET through the
+configured transport, maps provider PR state/merge SHA/actor timestamps into
+the typed PR observation, and fails closed on HTTP/status/JSON/identity
+mismatch before publication dedupe. The adapter intentionally fails closed at
+verification readback until target-runner verification/deploy context is wired.
+No webhook scheduler, source publication transport, target-runner mutation, or
+real GitHub/Slack publication transport was added. The spec must stay draft
+because live webhook/scheduler adapters, live source/target verification
+readback, and real GitHub/Slack publication transports remain unimplemented.
+Earlier on 2026-05-22T00:00:00+10:00 added a fixture-backed GitHub PR
 observation/readback adapter behind the existing `PostMergeObserverAdapter`
 seam in `runx-runtime`. The adapter loads deterministic fixture data, validates
 GitHub source issue/source thread/target PR identity before readback, returns
@@ -212,6 +230,12 @@ Required behavior:
   runtime observer seam, validates fixture/request identity, returns deterministic
   PR and verification readback, and fails closed on mismatch without publication
   dedupe. Real GitHub transport remains pending.
+- [x] HTTP-backed GitHub PR observation adapter uses the existing runtime HTTP
+  seam, validates command and provider readback identity, maps GitHub PR API
+  state into the typed PR observation, and fails closed without publication
+  dedupe on response mismatch or missing verification readback. Webhook dispatch,
+  target-runner verification readback, and live publication transports remain
+  pending.
 - [x] Missing source Slack thread fails Slack publish cleanly without posting to
   channel root. Rust contract planning now fails closed before provider-state
   classification when source-thread metadata is missing, and the local runtime
@@ -337,6 +361,9 @@ Checks:
 - `cargo test --manifest-path crates/Cargo.toml -p runx-contracts --test target_runner` (passed 2026-05-21 after source issue ref normalization)
 - `cargo test --manifest-path crates/Cargo.toml -p runx-runtime --test post_merge_observer` (passed 2026-05-21 after target-runner helper integration)
 - `cargo test --manifest-path crates/Cargo.toml -p runx-runtime --test target_runner` (passed 2026-05-21 after source issue ref normalization)
+- `cargo check --manifest-path crates/Cargo.toml -p runx-runtime` (passed 2026-05-22 after HTTP-backed GitHub PR readback slice)
+- `cargo test --manifest-path crates/Cargo.toml -p runx-runtime --test post_merge_observer` (passed 2026-05-22 after HTTP-backed GitHub PR readback slice)
+- `git diff --check` (passed 2026-05-22)
 
 Issues:
 - none in this local projection slice
@@ -418,3 +445,12 @@ Issues:
   mismatch fail-closed behavior before publication dedupe. Real GitHub
   transport, webhook/scheduler dispatch, source publication transports, and
   target-runner readback remain blockers.
+- 2026-05-22: Added the bounded live GitHub PR readback slice without real
+  network side effects in tests. `runx-runtime` now has an HTTP-backed GitHub PR
+  observer adapter over the existing runtime HTTP seam; it validates source
+  issue/source thread/target PR identity, maps GitHub PR API state into the
+  typed pull-request observation, redacts auth headers through the shared HTTP
+  request debug path, and fails closed before publication dedupe on mismatched
+  readback or unconfigured verification readback. Webhook/scheduler dispatch,
+  target-runner verification/deploy readback, source readback, and GitHub/Slack
+  publication transports remain blockers.

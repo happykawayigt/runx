@@ -14,7 +14,8 @@ risk_level: high
 ## Current State
 
 Status: draft
-Current phase: evidence script landed; soak evidence pending
+Current phase: planning/spec-only reconciliation; evidence script landed; soak
+evidence pending
 Next: continue soak verification by running the clean-kernel counter against
 live GitHub metadata or an audited operator fixture
 Reason: CI still marks Rust kernel parity advisory. The obsolete umbrella
@@ -27,6 +28,11 @@ Blockers: 5 clean kernel-touching PRs landed while Rust kernel parity checks
 are advisory. Current full local `node scripts/check-rust-kernel-parity.mjs`
 passes, but that only clears the local parity prerequisite; it does not satisfy
 the five-PR soak gate or authorize the CI flip.
+Execution lock: CI blocking promotion is not executable until the clean-kernel
+counter returns at least 5 qualifying post-advisory PRs from live GitHub
+metadata or audited operator evidence. While the counter remains below 5,
+Phase 3 and Phase 4 stay planning-only and no workflow or docs flip may be
+made under this draft.
 Allowed follow-up command: run the evidence script against audited evidence; do
 not run `scafld harden rust-kernel-blocking-promotion`.
 Counter update: 2026-05-20 clean-kernel counter live-GitHub mode now
@@ -67,9 +73,12 @@ not a phase that can be reopened inside the completed governance spec.
 
 The trigger is not calendar time. The trigger is 5 clean kernel-touching PRs
 merged after advisory CI lands. A clean kernel-touching PR touches
-`packages/core/src/state-machine/` or `packages/core/src/policy/`, runs the
-Rust parity checks, and either passes them directly or includes an intentional
-fixture refresh that makes both TypeScript and Rust pass.
+the still-dual TypeScript state-machine/policy oracle surface or a deliberate
+kernel fixture refresh tied to that surface, runs the Rust parity checks, and
+either passes them directly or includes an intentional fixture refresh that
+makes both the relevant TypeScript oracle and Rust pass. This counting rule is
+soak evidence only; it does not make TypeScript broadly authoritative for graph
+execution or any already-cut-over local runtime bridge.
 
 Refresh note, 2026-05-20: current CI still contains
 `continue-on-error: true` on the `Advisory Rust kernel parity` step, so Phase A
@@ -77,6 +86,14 @@ is still advisory. `scripts/count-clean-kernel-prs.ts`, fixture data, tests,
 and counter semantics are present and pass against local fixtures, but the
 Evidence section below is still intentionally unfilled for live post-advisory
 PRs. This draft must not be treated as ready for CI promotion.
+
+Bridge-reality reconciliation, 2026-05-22: current architecture docs state that
+trusted local CLI/runtime behavior, including graph execution, has moved to
+Rust-owned paths and surviving TypeScript packages may only wrap or bridge
+those paths without a hidden runtime-local fallback. This draft therefore talks
+about TypeScript only as a remaining state-machine/policy oracle and soak
+counter input for the original kernel parity gate. It must not be read as a
+claim that TypeScript is broadly authoritative for graph execution.
 
 ## Context
 
@@ -96,18 +113,25 @@ Files impacted:
 - `CONTRIBUTING.md`
 
 Invariants:
-- TypeScript remains authoritative until a later cutover spec changes a
-  consumer.
+- For still-dual kernel parity surfaces, the relevant TypeScript
+  state-machine/policy oracle remains the comparison input until a later
+  sunset/cutover spec changes that specific consumer.
+- TypeScript is not broadly authoritative for graph execution, runtime-local
+  orchestration, harness execution, CLI execution, or already-cut-over local
+  bridge paths. This promotion does not reopen those cutover decisions.
 - Rust kernel parity checks do not become blocking until 5 clean
   kernel-touching PRs are evidenced.
+- CI blocking promotion is not executable while the clean-kernel counter is
+  below 5, even if local Rust parity passes.
 - The promotion only affects Rust kernel parity checks added by
   `rust-parity-ci-governance`. It must not remove existing Rust launcher CI
   checks or change npm CLI release behavior.
 - The CLI feature-parity matrix remains required for any runtime or CLI
   cutover. Blocking kernel parity is not a runtime cutover.
 - If the 5-PR evidence is missing or ambiguous, this spec blocks.
-- Promotion does not make Rust authoritative. TypeScript remains the source of
-  truth until a separate cutover spec changes consumers.
+- Promotion does not make Rust authoritative for still-dual state-machine or
+  policy oracle surfaces, and it does not make TypeScript authoritative for
+  graph execution or bridge-owned runtime behavior.
 - Parser-only PRs are not counted toward the original 5-PR trigger unless this
   spec is explicitly broadened and hardened again. The current trigger is
   state-machine/policy soak evidence.
@@ -134,13 +158,17 @@ Related docs:
 
 In scope:
 - Evidence collection for the 5 clean kernel-touching PR trigger.
-- CI promotion from advisory to blocking for Rust kernel parity checks.
-- Documentation updates that mark Phase B active.
+- CI promotion from advisory to blocking for Rust kernel parity checks, but
+  only after the counter reaches 5.
+- Documentation updates that mark Phase B active, but only after the counter
+  reaches 5 and the CI flip is actually made.
 
 Out of scope:
 - Any Rust implementation changes.
 - Any TypeScript kernel behavior changes.
 - Any parser, receipt, runtime-local, MCP, adapter, or CLI cutover.
+- Any claim that TypeScript owns graph execution or local runtime bridge
+  behavior.
 - Publishing Cargo crates.
 
 ## Dependencies
@@ -216,6 +244,9 @@ Blocking before this spec may promote CI:
   post-advisory PRs from live metadata or audited evidence.
 - `node scripts/check-rust-kernel-parity.mjs` must pass locally before the CI
   `continue-on-error` line is removed.
+- Until the clean-kernel counter reaches 5, Phase 3 CI promotion is not an
+  executable slice. Operators may only update planning/evidence text or rerun
+  read-only counter verification.
 
 Advisory until those blockers clear:
 - Existing CI `Advisory Rust kernel parity`.
@@ -226,14 +257,16 @@ Advisory until those blockers clear:
 Non-goals for this promotion:
 - Runtime, parser, receipt, adapter, MCP, SDK, or CLI cutover.
 - Making Rust policy authoritative for runtime-local execution.
+- Reasserting TypeScript authority over graph execution or local runtime bridge
+  behavior that current bridge docs assign to Rust-owned paths.
 - Changing runtime payment code or payment rails.
 
 ## Clean PR Evidence Rules
 
 The counting script must fail closed:
 - Qualifying PRs must merge after the recorded advisory start.
-- A qualifying PR must touch the authoritative TypeScript state-machine or
-  policy surface, or a deliberate kernel fixture/oracle refresh tied to that
+- A qualifying PR must touch the still-dual TypeScript state-machine or policy
+  oracle surface, or a deliberate kernel fixture/oracle refresh tied to that
   surface.
 - A Rust-only `crates/runx-core` maintenance PR can be recorded as advisory
   evidence, but it does not count toward the five-PR promotion trigger unless
@@ -253,8 +286,9 @@ Execute these in order:
 - Soak verification slice: run the script against live GitHub metadata or an
   operator-provided audited fixture and fill the Evidence section only after
   the minimum is met.
-- CI flip slice: remove only the `continue-on-error: true` on the Rust kernel
-  parity step after all blockers pass.
+- CI flip slice: after the clean-kernel counter reaches 5 and all blockers
+  pass, remove only the `continue-on-error: true` on the Rust kernel parity
+  step.
 - Docs coherence slice: update docs to say Phase B is active only after the CI
   flip is made. Until then, docs must keep Phase A/advisory language.
 
@@ -270,8 +304,9 @@ Definition of done:
 - [x] `dod1` `scripts/count-clean-kernel-prs.ts` exists and has fixture tests.
 - [ ] `dod2` The script verifies at least 5 clean kernel-touching PRs.
 - [ ] `dod3` Rust kernel parity checks are blocking in CI.
-- [ ] `dod4` Docs state Phase B is active and TS remains authoritative until
-  cutover.
+- [ ] `dod4` Docs state Phase B is active only after the CI flip, preserve
+  still-dual state-machine/policy oracle rules, and avoid claiming TypeScript
+  is broadly authoritative for graph execution.
 - [ ] `dod5` Runtime/CLI cutover language still points to the CLI
   feature-parity matrix.
 
@@ -351,6 +386,9 @@ Goal: Remove advisory markers from the Rust kernel parity checks only.
 
 Status: pending
 Dependencies: Phase 2
+Execution lock: not executable until Phase 2 verifies at least 5 qualifying
+post-advisory PRs. A passing local parity wrapper is necessary but not
+sufficient.
 
 Changes:
 - `.github/workflows/ci.yml` (partial, shared) - Remove `continue-on-error:
@@ -369,8 +407,9 @@ Acceptance:
 
 ## Phase 4: Docs
 
-Goal: Mark Phase B active while preserving the TypeScript source-of-truth and
-CLI feature-parity cutover rules.
+Goal: Mark Phase B active while preserving the still-dual
+state-machine/policy oracle rules, current Rust-owned graph/runtime bridge
+boundaries, and CLI feature-parity cutover rules.
 
 Status: pending
 Dependencies: Phase 3
@@ -378,8 +417,8 @@ Dependencies: Phase 3
 Changes:
 - `docs/rust-kernel-architecture.md` (partial, shared) - Mark Phase B active.
 - `docs/trusted-kernel-package-truth.md` (partial, shared) - State that Rust
-  kernel parity blocks kernel changes but does not authorize runtime/CLI
-  cutover.
+  kernel parity blocks state-machine/policy parity drift but does not authorize
+  runtime/CLI cutover or reassign graph execution authority to TypeScript.
 - `CONTRIBUTING.md` (partial, shared) - Document the blocking local check.
 
 Acceptance:

@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+
 use runx_contracts::{
     ActForm, ClosureDisposition, CriterionStatus, HarnessReceipt, PostMergeObserverPlanError,
     PostMergeObserverRuntimeDecision, PostMergeObserverRuntimeDedupePlan,
@@ -6,8 +8,10 @@ use runx_contracts::{
     Reference, ReferenceType,
 };
 use runx_runtime::post_merge_observer::{
-    FixtureBackedGitHubPostMergeObserverAdapter, PostMergeObserverAdapter,
-    PostMergeObserverAdapterError, PostMergeObserverLivePublicationRequest,
+    FixtureBackedGitHubPostMergeObserverAdapter, GithubPostMergePullRequestObserverAdapter,
+    PostMergeObserverAdapter, PostMergeObserverAdapterError, PostMergeObserverHttpError,
+    PostMergeObserverHttpMethod, PostMergeObserverHttpRequest, PostMergeObserverHttpResponse,
+    PostMergeObserverHttpTransport, PostMergeObserverLivePublicationRequest,
     PostMergeObserverPublicationAdapter, PostMergeObserverPublicationCommand,
     PostMergeObserverPublicationLedger, PostMergeObserverPublicationRuntimeDecision,
     PostMergeObserverPullRequestObservationRequest, PostMergeObserverRuntimeError,
@@ -23,6 +27,22 @@ const POST_MERGE_OBSERVER_FIXTURE: &str = include_str!(
 const GITHUB_PR_OBSERVATION_FIXTURE: &str = include_str!(
     "../../../fixtures/contracts/post-merge-observer/github-pr-merged-verified-observation.json"
 );
+const GITHUB_PR_API_RESPONSE: &str = r#"{
+  "number": 188,
+  "state": "closed",
+  "merged": true,
+  "merge_commit_sha": "9f14c0ffee1234567890abcdef1234567890abcd",
+  "updated_at": "2026-05-20T04:55:10Z",
+  "closed_at": "2026-05-20T04:55:00Z",
+  "merged_at": "2026-05-20T04:55:00Z",
+  "user": { "login": "human-reviewer" },
+  "merged_by": { "login": "human-reviewer" },
+  "base": {
+    "repo": {
+      "full_name": "runxhq/nitrosend"
+    }
+  }
+}"#;
 const NITROSEND_LIKE: &str =
     include_str!("../../../fixtures/operational-policy/nitrosend-like.json");
 const OBSERVED_AT: &str = "2026-05-20T04:55:00Z";
@@ -451,6 +471,135 @@ fn live_adapter_command_validation_fails_before_provider_observation()
 }
 
 #[test]
+fn github_pr_http_observer_maps_pull_request_readback_without_network()
+-> Result<(), Box<dyn std::error::Error>> {
+    let transport = RecordingGithubPrTransport::with_status(200, GITHUB_PR_API_RESPONSE);
+    let mut adapter = GithubPostMergePullRequestObserverAdapter::with_transport(
+        "https://api.github.example/",
+        &transport,
+        Some("SECRET_GITHUB_TOKEN".to_owned()),
+    )?;
+
+    let observation =
+        adapter.observe_pull_request(&PostMergeObserverPullRequestObservationRequest {
+            source_id: Some("bugs-fixes".to_owned()),
+            source_issue_ref: fixture_source_issue_ref(),
+            source_thread_ref: Some(fixture_source_thread_ref()),
+            pull_request_ref: fixture_pull_request_ref(),
+        })?;
+
+    assert_eq!(observation.provider, PostMergeProvider::Github);
+    assert_eq!(observation.repo, "runxhq/nitrosend");
+    assert_eq!(observation.number, 188);
+    assert_eq!(observation.uri, "github://runxhq/nitrosend/pulls/188");
+    assert_eq!(observation.state, PostMergePullRequestState::Closed);
+    assert!(observation.merged);
+    assert_eq!(
+        observation.merge_sha.as_deref(),
+        Some("9f14c0ffee1234567890abcdef1234567890abcd")
+    );
+    assert_eq!(observation.observed_at, OBSERVED_AT);
+    assert_eq!(
+        observation.actor.as_deref(),
+        Some("github:user:human-reviewer")
+    );
+
+    let sent = transport.requests.borrow();
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].method, PostMergeObserverHttpMethod::Get);
+    assert_eq!(
+        sent[0].url,
+        "https://api.github.example/repos/runxhq/nitrosend/pulls/188"
+    );
+    assert!(sent[0].body.is_none());
+    assert!(
+        sent[0]
+            .headers
+            .iter()
+            .any(|header| header.name == "authorization")
+    );
+    assert!(!format!("{:?}", sent[0]).contains("SECRET_GITHUB_TOKEN"));
+    Ok(())
+}
+
+#[test]
+fn github_pr_http_observer_mismatch_fails_without_publication_dedupe()
+-> Result<(), Box<dyn std::error::Error>> {
+    let policy: runx_contracts::OperationalPolicy = serde_json::from_str(NITROSEND_LIKE)?;
+    let receipt = post_merge_observer_receipt()?;
+    let expected_publication_key = dedupe_plan(&receipt, PostMergeObserverSignalSource::Webhook)
+        .publication_key
+        .clone();
+    let mismatched_response = GITHUB_PR_API_RESPONSE.replace("\"number\": 188", "\"number\": 189");
+    let transport = RecordingGithubPrTransport::with_status(200, mismatched_response);
+    let mut adapter = GithubPostMergePullRequestObserverAdapter::with_transport(
+        "https://api.github.example",
+        &transport,
+        None,
+    )?;
+    let mut ledger = PostMergeObserverPublicationLedger::new();
+
+    let error = execute_post_merge_observer_with_adapter(
+        &policy,
+        &live_publication_request(),
+        &receipt,
+        &mut adapter,
+        &mut ledger,
+    )
+    .err()
+    .ok_or("expected github readback mismatch")?;
+
+    assert!(matches!(
+        error,
+        PostMergeObserverRuntimeError::Adapter(PostMergeObserverAdapterError {
+            operation: "observe_pull_request_github",
+            message
+        }) if message == "github pull request readback does not match requested pull request"
+    ));
+    assert_eq!(transport.requests.borrow().len(), 1);
+    assert!(!ledger.contains(&expected_publication_key));
+    Ok(())
+}
+
+#[test]
+fn github_pr_http_observer_requires_verification_readback_before_publication_dedupe()
+-> Result<(), Box<dyn std::error::Error>> {
+    let policy: runx_contracts::OperationalPolicy = serde_json::from_str(NITROSEND_LIKE)?;
+    let receipt = post_merge_observer_receipt()?;
+    let expected_publication_key = dedupe_plan(&receipt, PostMergeObserverSignalSource::Webhook)
+        .publication_key
+        .clone();
+    let transport = RecordingGithubPrTransport::with_status(200, GITHUB_PR_API_RESPONSE);
+    let mut adapter = GithubPostMergePullRequestObserverAdapter::with_transport(
+        "https://api.github.example",
+        &transport,
+        None,
+    )?;
+    let mut ledger = PostMergeObserverPublicationLedger::new();
+
+    let error = execute_post_merge_observer_with_adapter(
+        &policy,
+        &live_publication_request(),
+        &receipt,
+        &mut adapter,
+        &mut ledger,
+    )
+    .err()
+    .ok_or("expected missing verification readback adapter error")?;
+
+    assert!(matches!(
+        error,
+        PostMergeObserverRuntimeError::Adapter(PostMergeObserverAdapterError {
+            operation: "observe_verification_github",
+            message
+        }) if message == "verification readback adapter is not configured"
+    ));
+    assert_eq!(transport.requests.borrow().len(), 1);
+    assert!(!ledger.contains(&expected_publication_key));
+    Ok(())
+}
+
+#[test]
 fn fixture_backed_github_pr_adapter_observes_readback_without_network()
 -> Result<(), Box<dyn std::error::Error>> {
     let policy: runx_contracts::OperationalPolicy = serde_json::from_str(NITROSEND_LIKE)?;
@@ -641,6 +790,35 @@ fn strip_slack_thread_metadata(receipt: &mut HarnessReceipt) {
         }
     }
     receipt.harness.seal = Some(receipt.seal.clone());
+}
+
+struct RecordingGithubPrTransport {
+    requests: RefCell<Vec<PostMergeObserverHttpRequest>>,
+    status: u16,
+    body: String,
+}
+
+impl RecordingGithubPrTransport {
+    fn with_status(status: u16, body: impl Into<String>) -> Self {
+        Self {
+            requests: RefCell::new(Vec::new()),
+            status,
+            body: body.into(),
+        }
+    }
+}
+
+impl PostMergeObserverHttpTransport for &RecordingGithubPrTransport {
+    fn send(
+        &self,
+        request: PostMergeObserverHttpRequest,
+    ) -> Result<PostMergeObserverHttpResponse, PostMergeObserverHttpError> {
+        self.requests.borrow_mut().push(request);
+        Ok(PostMergeObserverHttpResponse {
+            status: self.status,
+            body: self.body.clone(),
+        })
+    }
 }
 
 struct FakePostMergeObserverAdapter {

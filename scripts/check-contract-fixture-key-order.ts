@@ -2,6 +2,8 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { canonicalJsonStringify } from "@runxhq/contracts";
+
 const workspaceRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const [targetArg, ...flags] = process.argv.slice(2);
 const allowMissing = flags.includes("--allow-missing");
@@ -19,7 +21,7 @@ const failures: string[] = [];
 
 for (const filePath of await listJsonFiles(target)) {
   const actual = await readFile(filePath, "utf8");
-  const expected = `${stableJson(JSON.parse(actual))}\n`;
+  const expected = `${canonicalJsonStringify(JSON.parse(actual))}\n`;
   if (actual !== expected) {
     failures.push(path.relative(workspaceRoot, filePath));
   }
@@ -56,19 +58,6 @@ async function listJsonFiles(directory: string): Promise<readonly string[]> {
     }
   }
   return files.sort();
-}
-
-function stableJson(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `[${value.map((item) => stableJson(item)).join(",")}]`;
-  }
-  if (value && typeof value === "object") {
-    return `{${Object.entries(value)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, nested]) => `${JSON.stringify(key)}:${stableJson(nested)}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {

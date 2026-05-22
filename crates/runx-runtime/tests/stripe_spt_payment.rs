@@ -538,7 +538,7 @@ fn stripe_spt_reserved_payment_authority() -> Value {
         "parent_authority": stripe_spt_payment_term("stripe-spt-parent", ["quote", "reserve", "spend", "verify"], 10_000),
         "child_authority": stripe_spt_payment_term("stripe-spt-child", ["reserve", "spend"], 2_500),
         "reservation_decision": stripe_spt_reservation_decision(),
-        "subset_proof_present": true,
+        "subset_proof": stripe_spt_subset_proof("stripe-spt-child", "stripe-spt-parent"),
         "child_harness_ref": stripe_spt_child_harness_ref(),
         "spend_capability_binding": {
             "child_harness_ref": stripe_spt_child_harness_ref(),
@@ -551,6 +551,22 @@ fn stripe_spt_reserved_payment_authority() -> Value {
             "rail": "stripe-spt"
         },
         "consumed_spend_capability_refs": []
+    })
+}
+
+fn stripe_spt_subset_proof(child_term_id: &str, parent_term_id: &str) -> Value {
+    json!({
+        "parent_authority_ref": reference("grant", "runx:payment-grant:stripe-spt"),
+        "comparison_algorithm": "runx.payment-authority-subset.v1",
+        "result": "subset",
+        "compared_terms": [
+            {
+                "child_term_id": child_term_id,
+                "parent_term_id": parent_term_id,
+                "relation": "subset"
+            }
+        ],
+        "checked_at": "2026-05-22T00:00:00Z"
     })
 }
 

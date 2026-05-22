@@ -2,7 +2,7 @@
 spec_version: '2.0'
 task_id: canonical-json-fingerprint-contract-v1
 created: '2026-05-21T12:19:24Z'
-updated: '2026-05-21T14:42:00Z'
+updated: '2026-05-22T01:25:00Z'
 status: active
 harden_status: not_run
 size: medium
@@ -14,10 +14,11 @@ risk_level: high
 ## Current State
 
 Status: active
-Current phase: Phase 4 cloud API/db, core ledger, and bundled `push_outbox`
-replacement complete; remaining runtime-local/adapter helper decisions still
+Current phase: Phase 4 cloud API/db, core ledger, bundled `push_outbox`, and
+focused CLI/script canonical helper replacement are complete in the current
+tree; remaining runtime-local/adapter/core legacy helper decisions still
 pending
-Next: decide broader runtime-local, adapter, and CLI schema-hash survivorship
+Next: decide broader runtime-local, adapter, and core legacy helper survivorship
 cleanup in the owning slice
 Reason: the shared `@runxhq/contracts` helper is now executable and verified,
 and TypeScript receipt canonical JSON is pinned to Rust receipt canonicalization
@@ -28,7 +29,7 @@ helper for its `runx.stable-json.v1` label, and `push_outbox`/file-thread short
 IDs are explicitly internal truncated fragments rather than `sha256:`
 commitments.
 Blockers: remaining phases still need non-cloud survivorship cleanup owned by
-runtime-local, adapter, and CLI schema-hash follow-up specs.
+runtime-local, adapter, and core legacy helper follow-up specs.
 Allowed follow-up command: `scafld handoff canonical-json-fingerprint-contract-v1`
 Latest runner update: 2026-05-21T23:10:00+10:00 added
 `packages/contracts/src/canonical-json.ts`, exported it from the package root,
@@ -66,6 +67,15 @@ and both `push_outbox` tool copies use an `opaqueCanonicalJsonHashFragment`
 helper for short `entry_` IDs and `push:` cursors, with comments documenting
 that those fragments are internal and not `sha256:` commitments. The two
 `push_outbox` manifests have refreshed `source_hash` values.
+Follow-up: 2026-05-22T11:25:00+10:00 reviewed the focused CLI/script hash
+slice that was already present in the worktree before this runner started.
+`packages/cli/src/authoring-utils.ts` routes `sha256Stable` and deep structural
+comparison through `@runxhq/contracts` canonical JSON; `packages/cli/src/commands/tool.ts`,
+`packages/cli/src/commands/doctor.ts`, and `packages/cli/src/scaffold.ts` use
+that helper for schema hashes while raw source-content hashing uses
+`sha256Prefixed` over byte chunks; `scripts/check-contract-fixture-key-order.ts`
+and `scripts/generate-rust-harness-fixtures.ts` now use the contracts canonical
+helper. No additional safe code edits remained in this ownership slice.
 Review gate: not_started
 
 ## Summary
@@ -216,11 +226,11 @@ Validation:
     `/Users/kam/dev/runx/runx/cloud`, including full `sha256:` assertions for
     hosted signal-admission harness receipts and DB idempotency/equality
     coverage.
-- [ ] `v4` No duplicate same-contract helper remains.
+- [x] `v4` No duplicate same-contract helper remains in completed owner slices.
   - Command: `rg "function stableStringify|function hashStable|stableJsonStringify|runx\\.stable-json\\.v1|runx\\.harness-receipt\\.c14n\\.v1" packages cloud/packages tools`
   - Expected kind: `reviewed_output`
-  - Status: pending for whole spec; cloud and focused non-cloud/push_outbox
-    slices reviewed
+  - Status: passed for completed owner slices; pending broader runtime-local,
+    adapter, and core legacy survivorship decisions outside this slice
   - Evidence: 2026-05-22 local scan confirmed cloud `stable-json.ts` is only a
     contracts compatibility export and `harness-routes.ts` has no
     `sha256:${shortHash(...)}` or inline stable-JSON SHA-256 call sites. The
@@ -230,8 +240,10 @@ Validation:
     Remaining reviewed hits are contracts tests/schema labels,
     `packages/core/src/util/hash.ts` legacy exports, non-contract artifact meta
     and projection IDs, runtime-local sunset surfaces, adapter A2A internal
-    hashes, scripts for act-assignment fixture generation, and CLI
-    schema-hash helpers owned by follow-up decisions.
+    hashes, and scripts for act-assignment fixture generation. The
+    2026-05-22T11:25+10 scan confirmed the focused CLI schema-hash helpers now
+    flow through `packages/cli/src/authoring-utils.ts` `sha256Stable`, which
+    uses `@runxhq/contracts` canonical JSON.
 - [x] `v5` Stable-hash and canonicalization tag inventory is reviewed.
   - Command: `rg "stableStringify|hashStable|sha256Stable|stableJsonStringify|runx\\.stable-json\\.v1|runx\\.harness-receipt\\.c14n\\.v1|runx\\.signal-source-event\\.c14n\\.v1|shortHash" packages tools scripts ../cloud/packages`
   - Expected kind: `reviewed_output`
@@ -265,6 +277,28 @@ Validation:
   - Status: passed
   - Evidence: 2026-05-22 local command returned
     `{"ok":true,"command":"validate",...,"valid":true,"errors":null}`.
+- [x] `v10` Focused CLI/script canonical JSON hash tests pass.
+  - Command: `pnpm vitest run packages/contracts/src/canonical-json.test.ts tests/init-command.test.ts`
+  - Expected kind: `exit_code_zero`
+  - Status: passed
+  - Evidence: 2026-05-22T11:23+10 local command passed 2 files / 27 tests.
+- [x] `v11` CLI manifest/scaffold/import-adjacent tests pass.
+  - Command: `pnpm vitest run packages/cli/src/index.test.ts packages/cli/src/import-boundary.test.ts packages/cli/src/trainable-receipts.test.ts packages/cli/src/cli-presentation.test.ts tests/init-command.test.ts`
+  - Expected kind: `exit_code_zero`
+  - Status: passed
+  - Evidence: 2026-05-22T11:24+10 local command passed 5 files / 54 tests.
+- [x] `v12` Script canonical JSON consumers pass focused checks.
+  - Command: `pnpm fixtures:contracts:keys`
+  - Expected kind: `exit_code_zero`
+  - Status: passed
+  - Evidence: 2026-05-22T11:23+10 local command printed
+    `Contract fixture keys are sorted.`
+- [x] `v13` Rust harness fixture generator remains current.
+  - Command: `pnpm tsx scripts/generate-rust-harness-fixtures.ts --check`
+  - Expected kind: `exit_code_zero`
+  - Status: passed
+  - Evidence: 2026-05-22T11:23+10 local command exited zero with no stale
+    oracle output.
 
 ## Phase 1: Tag Inventory
 
@@ -354,9 +388,9 @@ Acceptance:
 
 Goal: remove duplicate same-contract implementations.
 
-Status: in_progress; cloud API/db, core ledger, file-thread, and bundled
-`push_outbox` replacement complete; runtime-local/adapter/CLI follow-up
-decisions pending
+Status: in_progress; cloud API/db, core ledger, file-thread, bundled
+`push_outbox`, and focused CLI/script replacement complete;
+runtime-local/adapter/core legacy follow-up decisions pending
 Dependencies: Phase 3
 
 Changes:
@@ -373,6 +407,11 @@ Changes:
 - Reclassified `packages/core/src/knowledge/file-thread.ts` `entry_` IDs and
   `push:` cursors as internal opaque truncated fragments, not `sha256:`
   commitments.
+- Reviewed already-present focused CLI/script replacements:
+  `packages/cli/src/authoring-utils.ts` owns CLI `sha256Stable` on top of
+  contracts canonical JSON, CLI tool/doctor/scaffold schema hashes route
+  through that helper, and script-level canonical JSON consumers import the
+  contracts helper directly.
 
 Acceptance:
 - Review can identify one owner for the canonicalization label.

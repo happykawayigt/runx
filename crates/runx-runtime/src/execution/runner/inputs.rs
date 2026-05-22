@@ -90,24 +90,6 @@ pub(super) fn require_reference_input(
     }
 }
 
-pub(super) fn optional_bool_field(
-    step: &GraphStep,
-    object: &JsonObject,
-    field: &str,
-) -> Result<Option<bool>, RuntimeError> {
-    match object.get(field) {
-        Some(JsonValue::Bool(value)) => Ok(Some(*value)),
-        Some(_) => Err(authority_denied(
-            step,
-            AuthorityVerb::Spend,
-            format!(
-                "reserved_payment_authority.{field} must be a bool before payment rail execution"
-            ),
-        )),
-        None => Ok(None),
-    }
-}
-
 pub(super) fn optional_typed_input<T: serde::de::DeserializeOwned>(
     step: &GraphStep,
     object: &JsonObject,

@@ -244,10 +244,17 @@ fn child_env(
     } else {
         env.insert("RUNX_INPUTS_JSON".to_owned(), serialized);
     }
+    let mut input_env_names = BTreeMap::new();
     for (key, value) in inputs {
         let serialized = json_value_env(value)?;
         if serialized.len() <= MAX_INLINE_INPUT_VALUE_BYTES {
-            env.insert(input_env_name(key), serialized);
+            let env_name = input_env_name(key);
+            if let Some(prior_key) = input_env_names.insert(env_name.clone(), key) {
+                return Err(sandbox_violation(format!(
+                    "input keys {prior_key:?} and {key:?} collide on environment variable {env_name}"
+                )));
+            }
+            env.insert(env_name, serialized);
         }
     }
     Ok(env)

@@ -25,7 +25,13 @@ pub fn transition_single_step(state: &SingleStepState, event: &SingleStepEvent) 
             next.started_at = Some(at.clone());
             next
         }
-        SingleStepEvent::Succeed { at } if state.status == StepStatus::Running => {
+        SingleStepEvent::Succeed {
+            at,
+            admission_witness,
+        } if state.status == StepStatus::Running
+            && admission_witness.step_id == state.step_id
+            && !admission_witness.receipt_id.is_empty() =>
+        {
             let mut next = state.clone();
             next.status = StepStatus::Succeeded;
             next.completed_at = Some(at.clone());

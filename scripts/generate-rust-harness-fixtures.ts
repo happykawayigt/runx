@@ -1,7 +1,8 @@
-import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
+
+import { canonicalJsonStringify, sha256Prefixed } from "@runxhq/contracts";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
 const oracleDir = path.join(repoRoot, "fixtures/harness/oracle");
@@ -107,12 +108,12 @@ function paymentApprovalGraphOracle(): OracleReceipt[] {
 
 function oracleReceipt(fixture: string, name: string, receipt: Record<string, Json>): OracleReceipt {
   refreshProof(receipt);
-  const canonicalJson = canonicalJsonValue(receipt);
+  const canonicalJson = canonicalJsonStringify(receipt);
   return {
     fixture,
     name,
     bodyDigest: bodyDigest(receipt),
-    receiptDigest: sha256(canonicalJson),
+    receiptDigest: sha256Prefixed(canonicalJson),
     canonicalJson,
   };
 }
@@ -401,11 +402,7 @@ function refreshProof(receipt: Record<string, Json>): void {
 }
 
 function bodyDigest(receipt: Record<string, Json>): string {
-  return sha256(canonicalJsonValue(stripBodyProofFields(receipt, true)));
-}
-
-function sha256(value: string): string {
-  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
+  return sha256Prefixed(canonicalJsonStringify(stripBodyProofFields(receipt, true)));
 }
 
 function stripBodyProofFields(value: Json, isRoot: boolean): Json {
@@ -433,19 +430,6 @@ function stripBodyProofFields(value: Json, isRoot: boolean): Json {
     return output;
   }
   return value;
-}
-
-function canonicalJsonValue(value: Json): string {
-  if (value === null || typeof value === "boolean" || typeof value === "number" || typeof value === "string") {
-    return JSON.stringify(value);
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map(canonicalJsonValue).join(",")}]`;
-  }
-  return `{${Object.keys(value)
-    .sort()
-    .map((key) => `${JSON.stringify(key)}:${canonicalJsonValue(value[key])}`)
-    .join(",")}}`;
 }
 
 function oraclePath(receipt: OracleReceipt): string {

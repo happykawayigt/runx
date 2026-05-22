@@ -8,8 +8,8 @@ use runx_core::state_machine::{
     FanoutSyncDecision, FanoutSyncOutcome, FanoutSyncStrategy, FanoutThresholdGate, GraphStatus,
     GraphStepStatus, SequentialGraphEvent, SequentialGraphPlan, SequentialGraphState,
     SequentialGraphStepDefinition, SequentialGraphStepState, SingleStepEvent, SingleStepState,
-    StepStatus, evaluate_fanout_sync, fanout_sync_decision_key, plan_sequential_graph_transition,
-    transition_sequential_graph, transition_single_step,
+    StepAdmissionWitness, StepStatus, evaluate_fanout_sync, fanout_sync_decision_key,
+    plan_sequential_graph_transition, transition_sequential_graph, transition_single_step,
 };
 
 proptest! {
@@ -243,7 +243,14 @@ fn single_step_event() -> impl Strategy<Value = SingleStepEvent> {
     prop_oneof![
         Just(SingleStepEvent::Admit),
         safe_string().prop_map(|at| SingleStepEvent::Start { at }),
-        safe_string().prop_map(|at| SingleStepEvent::Succeed { at }),
+        (safe_string(), safe_string(), safe_string()).prop_map(|(at, step_id, receipt_id)| {
+            SingleStepEvent::Succeed {
+                at,
+                admission_witness: Box::new(StepAdmissionWitness::local_runtime(
+                    step_id, receipt_id,
+                )),
+            }
+        }),
         (safe_string(), safe_string()).prop_map(|(at, error)| SingleStepEvent::Fail { at, error }),
     ]
 }
@@ -293,6 +300,10 @@ fn sequential_graph_event() -> impl Strategy<Value = SequentialGraphEvent> {
             .prop_map(|(step_id, at)| { SequentialGraphEvent::StartStep { step_id, at } }),
         (safe_string(), safe_string(), safe_string()).prop_map(|(step_id, at, receipt_id)| {
             SequentialGraphEvent::StepSucceeded {
+                admission_witness: Box::new(StepAdmissionWitness::local_runtime(
+                    &step_id,
+                    &receipt_id,
+                )),
                 step_id,
                 at,
                 receipt_id,

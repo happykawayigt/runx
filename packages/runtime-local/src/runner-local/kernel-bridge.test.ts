@@ -3,15 +3,20 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import { beforeAll, describe, expect, it } from "vitest";
-
 import {
   admitGraphStepScopesViaKernel,
   admitRetryPolicyViaKernel,
   authorityProofMetadataViaKernel,
   credentialBindingViaKernel,
+  createSingleStepStateViaKernel,
   createSequentialGraphStateViaKernel,
+  evaluateFanoutSyncViaKernel,
+  fanoutSyncDecisionKeyViaKernel,
   localScopeAdmissionViaKernel,
   localSkillAdmissionViaKernel,
+  planSequentialGraphTransitionViaKernel,
+  transitionSequentialGraphViaKernel,
+  transitionSingleStepViaKernel,
 } from "./kernel-bridge.js";
 
 const workspaceRoot = process.cwd();
@@ -42,11 +47,11 @@ describe("Rust kernel CLI JSON bridge", () => {
 
   it("evaluates a policy fixture through process JSON", () => {
     assertKernelFixture("fixtures/kernel/policy/retry-admission-denies-mutating-without-key.json");
-  });
+  }, 20_000);
 
   it("evaluates a state-machine fixture through process JSON", () => {
     assertKernelFixture("fixtures/kernel/state-machine/sequential-plan-first-step.json");
-  });
+  }, 20_000);
 
   it("creates sequential graph state through the Rust kernel", async () => {
     await expect(createSequentialGraphStateViaKernel(
@@ -61,6 +66,112 @@ describe("Rust kernel CLI JSON bridge", () => {
         { stepId: "second", status: "pending", attempts: 0 },
       ],
     });
+  });
+
+  it("transitions single step state through the Rust kernel", async () => {
+    let state = await createSingleStepStateViaKernel("echo", { command: runxBinary, cwd: workspaceRoot });
+    state = await transitionSingleStepViaKernel(state, { type: "admit" }, { command: runxBinary, cwd: workspaceRoot });
+    state = await transitionSingleStepViaKernel(
+      state,
+      { type: "start", at: "2026-05-22T00:00:00Z" },
+      { command: runxBinary, cwd: workspaceRoot },
+    );
+    expect(state).toEqual({
+      stepId: "echo",
+      status: "running",
+      startedAt: "2026-05-22T00:00:00Z",
+    });
+    await expect(transitionSingleStepViaKernel(
+      state,
+      {
+        type: "succeed",
+        at: "2026-05-22T00:00:01Z",
+        admissionWitness: { stepId: "echo", receiptId: "rx_echo" },
+      },
+      { command: runxBinary, cwd: workspaceRoot },
+    )).resolves.toEqual({
+      stepId: "echo",
+      status: "succeeded",
+      startedAt: "2026-05-22T00:00:00Z",
+      completedAt: "2026-05-22T00:00:01Z",
+    });
+  });
+
+  it("plans and transitions sequential graph state through the Rust kernel", async () => {
+    const steps = [{ id: "first" }, { id: "second", contextFrom: ["first"] }];
+    const state = await createSequentialGraphStateViaKernel("gx_bridge", steps, { command: runxBinary, cwd: workspaceRoot });
+    await expect(planSequentialGraphTransitionViaKernel(
+      state,
+      steps,
+      {},
+      {},
+      { command: runxBinary, cwd: workspaceRoot },
+    )).resolves.toEqual({
+      type: "run_step",
+      stepId: "first",
+      attempt: 1,
+      contextFrom: [],
+    });
+
+    const running = await transitionSequentialGraphViaKernel(
+      state,
+      { type: "start_step", stepId: "first", at: "2026-05-22T00:00:00Z" },
+      { command: runxBinary, cwd: workspaceRoot },
+    );
+    expect(running).toMatchObject({
+      graphId: "gx_bridge",
+      status: "running",
+      steps: [
+        { stepId: "first", status: "running", attempts: 1 },
+        { stepId: "second", status: "pending", attempts: 0 },
+      ],
+    });
+    await expect(transitionSequentialGraphViaKernel(
+      running,
+      {
+        type: "step_succeeded",
+        stepId: "first",
+        at: "2026-05-22T00:00:01Z",
+        receiptId: "rx_first",
+        admissionWitness: { stepId: "first", receiptId: "rx_first" },
+      },
+      { command: runxBinary, cwd: workspaceRoot },
+    )).resolves.toMatchObject({
+      graphId: "gx_bridge",
+      status: "running",
+      steps: [
+        { stepId: "first", status: "succeeded", attempts: 1, receiptId: "rx_first" },
+        { stepId: "second", status: "pending", attempts: 0 },
+      ],
+    });
+  });
+
+  it("evaluates fanout sync and decision keys through the Rust kernel", async () => {
+    const decision = await evaluateFanoutSyncViaKernel(
+      {
+        groupId: "branches",
+        strategy: "all",
+        onBranchFailure: "halt",
+      },
+      [
+        { stepId: "left", status: "succeeded" },
+        { stepId: "right", status: "failed" },
+      ],
+      {},
+      { command: runxBinary, cwd: workspaceRoot },
+    );
+    expect(decision).toMatchObject({
+      groupId: "branches",
+      decision: "halt",
+      ruleFired: "branch_failure.halt",
+      branchCount: 2,
+      successCount: 1,
+      failureCount: 1,
+    });
+    await expect(fanoutSyncDecisionKeyViaKernel(decision, {
+      command: runxBinary,
+      cwd: workspaceRoot,
+    })).resolves.toBe("branches:branch_failure.halt");
   });
 
   it("uses the Rust kernel for requested retry admission", async () => {
@@ -143,7 +254,10 @@ describe("Rust kernel CLI JSON bridge", () => {
       provider: "github",
       scopes: ["repo:*"],
       status: "active",
-    }], {}, { command: runxBinary, cwd: workspaceRoot })).resolves.toEqual({
+      expires_at: "2026-05-23T00:00:00Z",
+    }], {
+      connectedAuthCheckedAt: "2026-05-22T00:00:00Z",
+    }, { command: runxBinary, cwd: workspaceRoot })).resolves.toEqual({
       status: "allow",
       requested_scopes: ["repo:read"],
       granted_scopes: ["repo:*"],

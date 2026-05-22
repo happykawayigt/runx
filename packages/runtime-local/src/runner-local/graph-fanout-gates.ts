@@ -3,9 +3,9 @@ import {
   validateResolutionRequestContract as validateResolutionRequest,
   type ResolutionRequestContract as ResolutionRequest,
 } from "@runxhq/contracts";
-import type { FanoutSyncDecision } from "@runxhq/core/state-machine";
 import { isRecord } from "@runxhq/core/util";
 import type { GraphReceiptSyncPoint } from "./graph-governance.js";
+import type { FanoutSyncDecision } from "./kernel-bridge.js";
 import type { ExecutionGraph, GraphStep } from "../parser-types.js";
 
 export interface PendingFanoutGate {

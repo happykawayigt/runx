@@ -7,12 +7,6 @@ import { parseDocument } from "yaml";
 import { resolveLocalSkillProfile } from "@runxhq/core/config";
 import { isRecord } from "@runxhq/core/util";
 import {
-  parseGraphYaml,
-  parseRunnerManifestYaml,
-  validateGraph,
-  validateRunnerManifest,
-} from "@runxhq/core/parser";
-import {
   type ResolutionRequestContract as ResolutionRequest,
   type ResolutionResponseContract as ResolutionResponse,
 } from "@runxhq/contracts";
@@ -35,6 +29,10 @@ import type {
   RunnerHarnessCase,
 } from "../parser-types.js";
 import { parseSkillFrontmatter } from "./skill-frontmatter.js";
+import {
+  validateGraphYamlViaParser,
+  validateRunnerManifestYamlViaParser,
+} from "../runner-local/parser-bridge.js";
 
 const harnessReceiptSchema = "runx.harness_receipt.v1";
 
@@ -212,7 +210,7 @@ export async function runHarness(fixturePath: string, options: HarnessRunOptions
 
 async function runInlineHarnessSuite(targetPath: string, options: HarnessRunOptions): Promise<HarnessSuiteResult> {
   const resolved = await resolveInlineHarnessTarget(targetPath);
-  const manifest = validateRunnerManifest(parseRunnerManifestYaml(resolved.profileDocument));
+  const manifest = await validateRunnerManifestYamlViaParser(resolved.profileDocument, { env: options.env });
   if (!manifest.harness || manifest.harness.cases.length === 0) {
     throw new Error(`Inline harness target does not declare harness.cases: ${resolved.profileSourcePath}`);
   }
@@ -255,7 +253,7 @@ async function executeHarnessFixture(args: {
   const runxHome = path.join(tempDir, "home");
   const trace = createTrace();
   const caller = createReplayCaller(args.fixture.caller, trace);
-  const receiptIds = await deterministicHarnessReceiptIds(args.fixture, args.targetPath);
+  const receiptIds = await deterministicHarnessReceiptIds(args.fixture, args.targetPath, args.options.env);
   const env = {
     ...(args.options.env ?? process.env),
     ...args.fixture.env,
@@ -326,13 +324,14 @@ async function executeHarnessFixture(args: {
 async function deterministicHarnessReceiptIds(
   fixture: HarnessFixture,
   targetPath: string,
+  env?: NodeJS.ProcessEnv,
 ): Promise<HarnessReceiptIds> {
   if (fixture.kind === "skill") {
     const skillName = await targetSkillName(targetPath);
     return { runId: harnessReceiptId(fixture.name, skillName) };
   }
 
-  const graph = validateGraph(parseGraphYaml(await readFile(targetPath, "utf8")));
+  const graph = await validateGraphYamlViaParser(await readFile(targetPath, "utf8"), { env });
   return {
     runId: harnessReceiptId(graph.name, "graph"),
     stepRunIds: Object.fromEntries(

@@ -732,6 +732,10 @@ function fixtureCases(): readonly KernelFixtureCase[] {
         event: {
           type: "succeed",
           at: "2026-04-10T00:00:01.000Z",
+          admissionWitness: {
+            stepId: "lint",
+            receiptId: "rx_lint",
+          },
         },
       },
     },
@@ -747,6 +751,10 @@ function fixtureCases(): readonly KernelFixtureCase[] {
         event: {
           type: "succeed",
           at: "2026-04-10T00:00:01.000Z",
+          admissionWitness: {
+            stepId: "lint",
+            receiptId: "rx_lint",
+          },
         },
       },
     },
@@ -776,6 +784,10 @@ function fixtureCases(): readonly KernelFixtureCase[] {
           stepId: "first",
           at: "2026-04-10T00:00:01.000Z",
           receiptId: "rx_first",
+          admissionWitness: {
+            stepId: "first",
+            receiptId: "rx_first",
+          },
           outputs: {
             z: "last",
             a: "first",

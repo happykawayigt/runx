@@ -2,11 +2,6 @@ import {
   materializeArtifacts,
 } from "@runxhq/core/artifacts";
 import { errorMessage } from "@runxhq/core/util";
-import {
-  transitionSequentialGraph,
-  type SequentialGraphPlan,
-} from "@runxhq/core/state-machine";
-
 import { findGraphStep, materializeContext, materializeStepInputs } from "../graph-context.js";
 import {
   appendGraphLedgerEntries,
@@ -37,7 +32,11 @@ import {
   writePolicyDeniedGraphReceipt,
 } from "../graph-governance.js";
 import { admitGraphTransition } from "../graph-hydration.js";
-import { admitRetryPolicyViaKernel } from "../kernel-bridge.js";
+import {
+  admitRetryPolicyViaKernel,
+  transitionSequentialGraphViaKernel,
+  type SequentialGraphPlan,
+} from "../kernel-bridge.js";
 import { resolveGraphStepExecution } from "../execution-targets.js";
 import { materializeDeclaredInputs } from "../inputs.js";
 import {
@@ -70,6 +69,7 @@ export async function handleRunStepPlan(
     skillCacheDir: options.skillCacheDir,
     toolCatalogAdapters: options.toolCatalogAdapters,
     officialSkillResolver: options.officialSkillResolver,
+    env: options.env,
   });
   const stepSkillPath = resolvedStep.skillPath;
   const stepSkill = resolvedStep.skill;
@@ -215,11 +215,15 @@ export async function handleRunStepPlan(
   }
 
   const stepStartedAt = new Date().toISOString();
-  ctx.state = transitionSequentialGraph(ctx.state, {
-    type: "start_step",
-    stepId: step.id,
-    at: stepStartedAt,
-  });
+  ctx.state = await transitionSequentialGraphViaKernel(
+    ctx.state,
+    {
+      type: "start_step",
+      stepId: step.id,
+      at: stepStartedAt,
+    },
+    { env: options.env },
+  );
   await reportGraphStepStarted(options.caller, step, resolvedStep.reference);
   await appendGraphStepStartedLedgerEntry({
     receiptDir: ctx.receiptDir,
@@ -322,12 +326,12 @@ export async function handleRunStepPlan(
         stepId: step.id,
         skill: stepResult.skill,
         reasons: stepResult.reasons,
-        state: transitionSequentialGraph(ctx.state, {
+        state: await transitionSequentialGraphViaKernel(ctx.state, {
           type: "step_failed",
           stepId: step.id,
           at: new Date().toISOString(),
           error: `policy denied: ${stepResult.reasons.join("; ")}`,
-        }),
+        }, { env: options.env }),
       },
     };
   }
@@ -400,19 +404,20 @@ export async function handleRunStepPlan(
 
   ctx.state =
     stepResult.status === "sealed"
-      ? transitionSequentialGraph(ctx.state, {
+      ? await transitionSequentialGraphViaKernel(ctx.state, {
           type: "step_succeeded",
           stepId: step.id,
           at: stepCompletedAt,
           receiptId: stepResult.receipt.id,
+          admissionWitness: { stepId: step.id, receiptId: stepResult.receipt.id },
           outputs: artifactResult.fields,
-        })
-      : transitionSequentialGraph(ctx.state, {
+        }, { env: options.env })
+      : await transitionSequentialGraphViaKernel(ctx.state, {
           type: "step_failed",
           stepId: step.id,
           at: stepCompletedAt,
           error: stepResult.execution.errorMessage ?? stepResult.execution.stderr,
-        });
+        }, { env: options.env });
   await reportGraphStepCompleted(options.caller, step, resolvedStep.reference, stepResult.status, {
     receiptId: stepResult.receipt.id,
   });

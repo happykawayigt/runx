@@ -90,16 +90,6 @@ import {
   skillQualityProfileReceiptMetadata,
   voiceProfileReceiptMetadata,
 } from "./context.js";
-import {
-  parseSkillMarkdown,
-  resolvePostRunReflectPolicy,
-  validateSkill,
-} from "@runxhq/core/parser";
-import {
-  createSingleStepState,
-  transitionSingleStep,
-  type SingleStepState,
-} from "@runxhq/core/state-machine";
 import type { ScopeAdmissionContract } from "@runxhq/contracts";
 import type { ToolCatalogAdapter } from "@runxhq/runtime-local/tool-catalogs";
 import {
@@ -126,7 +116,6 @@ import { readResumedSelectedRunner, resolveInputs } from "./inputs.js";
 import { defaultReceiptDir } from "./receipt-paths.js";
 export { defaultReceiptDir } from "./receipt-paths.js";
 import type { RegistryStore } from "./registry-resolver.js";
-import type { SequentialGraphState } from "./kernel-bridge.js";
 import type { ExecutionGraph, PostRunReflectPolicy, ValidatedSkill } from "../parser-types.js";
 import {
   approvalReceiptMetadata,
@@ -150,12 +139,20 @@ import {
 } from "./runner-helpers.js";
 import {
   authorityProofMetadataViaKernel,
+  createSingleStepStateViaKernel,
   credentialBindingViaKernel,
   localScopeAdmissionViaKernel,
   localSkillAdmissionViaKernel,
+  transitionSingleStepViaKernel,
   type GraphScopeGrant,
   type LocalAdmissionGrant,
+  type SequentialGraphState,
+  type SingleStepState,
 } from "./kernel-bridge.js";
+import {
+  resolvePostRunReflectPolicyViaParser,
+  validateSkillMarkdownViaParser,
+} from "./parser-bridge.js";
 
 export interface ApprovalDecision {
   readonly gate: ApprovalGate;
@@ -435,15 +432,15 @@ export async function runLocalSkill(options: RunLocalSkillOptions): Promise<RunL
   const workspacePolicy = options.workspacePolicy ?? await loadRunxWorkspacePolicy(options.env ?? process.env);
   const resolvedSkill = await resolveSkillReference(options.skillPath);
   const rawMarkdown = await readFile(resolvedSkill.skillPath, "utf8");
-  const rawSkill = parseSkillMarkdown(rawMarkdown);
   const resumedRunnerName =
     options.runner || !options.resumeFromRunId
       ? undefined
       : await readResumedSelectedRunner(options.receiptDir ?? defaultReceiptDir(options.env), options.resumeFromRunId);
   const runnerSelection = await resolveSkillRunner(
-    validateSkill(rawSkill, { mode: "strict" }),
+    await validateSkillMarkdownViaParser(rawMarkdown, { mode: "strict" }, { env: options.env }),
     resolvedSkill.skillPath,
     options.runner ?? resumedRunnerName,
+    { env: options.env },
   );
   const skill = runnerSelection.skill;
 
@@ -750,7 +747,7 @@ export async function runValidatedSkill(options: RunValidatedSkillOptions): Prom
       voiceProfilePath: options.voiceProfilePath,
       workspacePolicy,
       selectedRunnerName: options.selectedRunnerName,
-      postRunReflectPolicy: resolvePostRunReflectPolicy(skill.runx),
+      postRunReflectPolicy: await resolvePostRunReflectPolicyViaParser(skill.runx, { env: options.env }),
     });
 
     if (graphResult.status === "needs_agent") {
@@ -775,20 +772,33 @@ export async function runValidatedSkill(options: RunValidatedSkillOptions): Prom
       };
     }
 
-    let state = createSingleStepState(skill.name);
-    state = transitionSingleStep(state, { type: "admit" });
-    state = transitionSingleStep(state, { type: "start", at: runnerReceiptStartedAt(graphResult.receipt) ?? new Date().toISOString() });
+    let state = await createSingleStepStateViaKernel(skill.name, { env: options.env });
+    state = await transitionSingleStepViaKernel(state, { type: "admit" }, { env: options.env });
+    state = await transitionSingleStepViaKernel(
+      state,
+      { type: "start", at: runnerReceiptStartedAt(graphResult.receipt) ?? new Date().toISOString() },
+      { env: options.env },
+    );
     if (graphResult.status === "sealed") {
-      state = transitionSingleStep(state, {
-        type: "succeed",
-        at: runnerReceiptCompletedAt(graphResult.receipt) ?? new Date().toISOString(),
-      });
+      state = await transitionSingleStepViaKernel(
+        state,
+        {
+          type: "succeed",
+          at: runnerReceiptCompletedAt(graphResult.receipt) ?? new Date().toISOString(),
+          admissionWitness: { stepId: skill.name, receiptId: graphResult.receipt.id },
+        },
+        { env: options.env },
+      );
     } else {
-      state = transitionSingleStep(state, {
-        type: "fail",
-        at: runnerReceiptCompletedAt(graphResult.receipt) ?? new Date().toISOString(),
-        error: graphResult.errorMessage ?? "graph execution failed",
-      });
+      state = await transitionSingleStepViaKernel(
+        state,
+        {
+          type: "fail",
+          at: runnerReceiptCompletedAt(graphResult.receipt) ?? new Date().toISOString(),
+          error: graphResult.errorMessage ?? "graph execution failed",
+        },
+        { env: options.env },
+      );
     }
 
     await options.caller.report({
@@ -825,8 +835,8 @@ export async function runValidatedSkill(options: RunValidatedSkillOptions): Prom
     };
   }
 
-  let state = createSingleStepState(skill.name);
-  state = transitionSingleStep(state, { type: "admit" });
+  let state = await createSingleStepStateViaKernel(skill.name, { env: options.env });
+  state = await transitionSingleStepViaKernel(state, { type: "admit" }, { env: options.env });
   const startedAt = new Date().toISOString();
   const preparedAgentContext = await prepareAgentContext({
     skill,
@@ -1022,19 +1032,28 @@ export async function runValidatedSkill(options: RunValidatedSkillOptions): Prom
     };
   }
 
-  state = transitionSingleStep(state, { type: "start", at: startedAt });
+  state = await transitionSingleStepViaKernel(state, { type: "start", at: startedAt }, { env: options.env });
   const completedAt = new Date().toISOString();
   if (execution.status === "sealed") {
-    state = transitionSingleStep(state, {
-      type: "succeed",
-      at: completedAt,
-    });
+    state = await transitionSingleStepViaKernel(
+      state,
+      {
+        type: "succeed",
+        at: completedAt,
+        admissionWitness: { stepId: skill.name, receiptId: runId },
+      },
+      { env: options.env },
+    );
   } else {
-    state = transitionSingleStep(state, {
-      type: "fail",
-      at: completedAt,
-      error: execution.errorMessage ?? execution.stderr,
-    });
+    state = await transitionSingleStepViaKernel(
+      state,
+      {
+        type: "fail",
+        at: completedAt,
+        error: execution.errorMessage ?? execution.stderr,
+      },
+      { env: options.env },
+    );
   }
 
   const artifactResult = materializeArtifacts({
@@ -1151,7 +1170,7 @@ export async function runValidatedSkill(options: RunValidatedSkillOptions): Prom
     knowledgeDir: options.knowledgeDir,
     env: options.env,
     selectedRunnerName: options.selectedRunnerName,
-    postRunReflectPolicy: resolvePostRunReflectPolicy(skill.runx),
+    postRunReflectPolicy: await resolvePostRunReflectPolicyViaParser(skill.runx, { env: options.env }),
     involvedAgentMediatedWork: isAgentMediatedSource(skill.source.type),
   });
 

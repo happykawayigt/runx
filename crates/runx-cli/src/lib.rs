@@ -7,6 +7,7 @@ pub mod kernel;
 pub mod launcher;
 pub mod list;
 pub mod mcp;
+pub mod parser;
 pub mod policy;
 pub mod registry;
 pub mod scaffold;

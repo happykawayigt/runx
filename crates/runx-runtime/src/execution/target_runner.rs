@@ -68,6 +68,7 @@ pub struct TargetRepoRunnerLiveExecution {
     pub git_mutation_command: Option<TargetRepoRunnerGitMutationCommand>,
     pub git_mutation_observation: Option<TargetRepoRunnerGitMutationObservation>,
     pub pull_request_request: TargetRepoRunnerPullRequestObservationRequest,
+    pub pull_request_observation: TargetRepoRunnerPullRequestObservation,
     pub execution: TargetRepoRunnerFixtureExecution,
     pub revision_receipt: HarnessReceipt,
     pub revision_projection: TargetRepoRunnerRevisionReceiptProjection,
@@ -373,17 +374,32 @@ pub enum TargetRepoRunnerPullRequestMutation {
 pub struct TargetRepoRunnerPullRequestCreateCommand {
     pub title: String,
     pub body: String,
+    pub head_branch: String,
+    pub head_sha: String,
     pub runner_id: String,
     pub runner_summary: String,
     pub runner_revision_refs: Vec<Reference>,
+    pub git_revision_refs: Vec<Reference>,
     pub artifact_refs: Vec<Reference>,
     pub verification_refs: Vec<Reference>,
+    pub git_verification_refs: Vec<Reference>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct TargetRepoRunnerPullRequestReuseCommand {
     pub existing_pull_request: TargetRepoRunnerExistingPullRequest,
     pub reason: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct TargetRepoRunnerPullRequestObservation {
+    pub provider: TargetRepoRunnerProvider,
+    pub target_repo: String,
+    pub pull_request: TargetRepoRunnerExistingPullRequest,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub head_branch: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub head_sha: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -633,7 +649,7 @@ pub trait TargetRepoRunnerAdapter {
     fn observe_pull_request(
         &mut self,
         request: &TargetRepoRunnerPullRequestObservationRequest,
-    ) -> Result<TargetRepoRunnerExistingPullRequest, TargetRepoRunnerAdapterError>;
+    ) -> Result<TargetRepoRunnerPullRequestObservation, TargetRepoRunnerAdapterError>;
 
     fn publish_source_update(
         &mut self,
@@ -788,9 +804,11 @@ pub fn execute_target_repo_runner_with_adapter<A: TargetRepoRunnerAdapter>(
         &dedupe_execution,
         disposition,
         runner_observation.clone(),
+        git_mutation_observation.as_ref(),
     )?;
-    let pull_request = adapter.observe_pull_request(&pull_request_request)?;
-    validate_pull_request_readback(&pull_request_request.command, &pull_request)?;
+    let pull_request_observation = adapter.observe_pull_request(&pull_request_request)?;
+    validate_pull_request_readback(&pull_request_request.command, &pull_request_observation)?;
+    let pull_request = pull_request_observation.pull_request.clone();
 
     let execution = execute_target_repo_runner_execution_fixture(
         plan,
@@ -826,6 +844,7 @@ pub fn execute_target_repo_runner_with_adapter<A: TargetRepoRunnerAdapter>(
         git_mutation_command,
         git_mutation_observation,
         pull_request_request,
+        pull_request_observation,
         execution,
         revision_receipt,
         revision_projection,
@@ -980,17 +999,7 @@ fn validate_git_mutation_readback(
         });
     }
     validate_branch_for_operation(&observation.branch, "git_mutation")?;
-    if observation.head_sha.len() != 40
-        || !observation
-            .head_sha
-            .chars()
-            .all(|character| character.is_ascii_hexdigit())
-    {
-        return Err(TargetRepoRunnerRuntimeError::CommandValidation {
-            operation: "git_mutation",
-            message: "git mutation readback head sha must be a 40 character hex commit".to_owned(),
-        });
-    }
+    validate_head_sha(&observation.head_sha, "git_mutation")?;
     Ok(())
 }
 
@@ -1054,12 +1063,14 @@ fn target_repo_runner_pull_request_observation_request(
     dedupe_execution: &TargetRepoRunnerDedupeLookupExecution,
     disposition: TargetRepoRunnerPullRequestDisposition,
     runner_observation: Option<TargetRepoRunnerGovernedRunnerObservation>,
+    git_mutation_observation: Option<&TargetRepoRunnerGitMutationObservation>,
 ) -> Result<TargetRepoRunnerPullRequestObservationRequest, TargetRepoRunnerRuntimeError> {
     let command = target_repo_runner_pull_request_mutation_command(
         execution_plan,
         dedupe_execution,
         disposition,
         runner_observation.as_ref(),
+        git_mutation_observation,
     )?;
     Ok(TargetRepoRunnerPullRequestObservationRequest {
         command,
@@ -1076,6 +1087,7 @@ fn target_repo_runner_pull_request_mutation_command(
     dedupe_execution: &TargetRepoRunnerDedupeLookupExecution,
     disposition: TargetRepoRunnerPullRequestDisposition,
     runner_observation: Option<&TargetRepoRunnerGovernedRunnerObservation>,
+    git_mutation_observation: Option<&TargetRepoRunnerGitMutationObservation>,
 ) -> Result<TargetRepoRunnerPullRequestMutationCommand, TargetRepoRunnerRuntimeError> {
     let repository = github_repository(&execution_plan.checkout.target_repo, "pull_request")?;
     let mutation = match disposition {
@@ -1087,17 +1099,42 @@ fn target_repo_runner_pull_request_mutation_command(
                         .to_owned(),
                 }
             })?;
+            let git_observation = git_mutation_observation.ok_or_else(|| {
+                TargetRepoRunnerRuntimeError::CommandValidation {
+                    operation: "pull_request",
+                    message: "git mutation readback is required before creating a pull request"
+                        .to_owned(),
+                }
+            })?;
+            validate_pull_request_git_readback(execution_plan, dedupe_execution, git_observation)?;
             TargetRepoRunnerPullRequestMutation::Create(TargetRepoRunnerPullRequestCreateCommand {
                 title: pull_request_create_title(execution_plan),
-                body: pull_request_create_body(execution_plan, dedupe_execution, observation),
+                body: pull_request_create_body(
+                    execution_plan,
+                    dedupe_execution,
+                    observation,
+                    git_observation,
+                ),
+                head_branch: git_observation.branch.clone(),
+                head_sha: git_observation.head_sha.clone(),
                 runner_id: observation.runner_id.clone(),
                 runner_summary: observation.summary.clone(),
                 runner_revision_refs: observation.revision_refs.clone(),
+                git_revision_refs: git_observation.revision_refs.clone(),
                 artifact_refs: observation.artifact_refs.clone(),
                 verification_refs: observation.verification_refs.clone(),
+                git_verification_refs: git_observation.verification_refs.clone(),
             })
         }
         TargetRepoRunnerPullRequestDisposition::Reuse => {
+            if git_mutation_observation.is_some() {
+                return Err(TargetRepoRunnerRuntimeError::CommandValidation {
+                    operation: "pull_request",
+                    message:
+                        "git mutation readback must not be supplied when reusing a pull request"
+                            .to_owned(),
+                });
+            }
             let existing_pull_request =
                 dedupe_execution
                     .existing_pull_request
@@ -1140,6 +1177,7 @@ fn pull_request_create_body(
     execution_plan: &TargetRepoRunnerExecutionPlan,
     dedupe_execution: &TargetRepoRunnerDedupeLookupExecution,
     runner_observation: &TargetRepoRunnerGovernedRunnerObservation,
+    git_observation: &TargetRepoRunnerGitMutationObservation,
 ) -> String {
     let source_issue = execution_plan
         .source_issue_ref
@@ -1155,8 +1193,10 @@ fn pull_request_create_body(
         .collect::<Vec<_>>()
         .join("\n");
     format!(
-        "Runx target runner prepared this pull request for human review.\n\nTarget repo: {}\nSource thread: {}\nSource issue: {source_issue}\nDedupe key: {}\n\nDedupe markers:\n{markers}\n\nRunner: {}\n{}\n\nHuman review remains the merge gate.",
+        "Runx target runner prepared this pull request for human review.\n\nTarget repo: {}\nHead branch: {}\nHead commit: {}\nSource thread: {}\nSource issue: {source_issue}\nDedupe key: {}\n\nDedupe markers:\n{markers}\n\nRunner: {}\n{}\n\nHuman review remains the merge gate.",
         execution_plan.checkout.target_repo,
+        git_observation.branch,
+        git_observation.head_sha,
         execution_plan.source_thread_ref.uri,
         dedupe_execution.key,
         runner_observation.runner_id,
@@ -1164,10 +1204,45 @@ fn pull_request_create_body(
     )
 }
 
+fn validate_pull_request_git_readback(
+    execution_plan: &TargetRepoRunnerExecutionPlan,
+    dedupe_execution: &TargetRepoRunnerDedupeLookupExecution,
+    git_observation: &TargetRepoRunnerGitMutationObservation,
+) -> Result<(), TargetRepoRunnerRuntimeError> {
+    if git_observation.target_repo != execution_plan.checkout.target_repo {
+        return Err(TargetRepoRunnerRuntimeError::CommandValidation {
+            operation: "pull_request",
+            message: "git mutation readback target repo does not match execution target".to_owned(),
+        });
+    }
+    let expected_branch = target_repo_runner_branch_name(execution_plan, dedupe_execution);
+    if git_observation.branch != expected_branch {
+        return Err(TargetRepoRunnerRuntimeError::CommandValidation {
+            operation: "pull_request",
+            message: "git mutation readback branch does not match the dedupe branch".to_owned(),
+        });
+    }
+    validate_branch_for_operation(&git_observation.branch, "pull_request")?;
+    validate_head_sha(&git_observation.head_sha, "pull_request")
+}
+
 fn validate_pull_request_readback(
     command: &TargetRepoRunnerPullRequestMutationCommand,
-    pull_request: &TargetRepoRunnerExistingPullRequest,
+    observation: &TargetRepoRunnerPullRequestObservation,
 ) -> Result<(), TargetRepoRunnerRuntimeError> {
+    if observation.provider != command.provider {
+        return Err(TargetRepoRunnerRuntimeError::CommandValidation {
+            operation: "pull_request",
+            message: "pull request readback provider does not match command".to_owned(),
+        });
+    }
+    if observation.target_repo != command.target_repo {
+        return Err(TargetRepoRunnerRuntimeError::CommandValidation {
+            operation: "pull_request",
+            message: "pull request readback target repo does not match command".to_owned(),
+        });
+    }
+    let pull_request = &observation.pull_request;
     let url_number = github_pull_request_number(&command.repository.full_name, &pull_request.url)?;
     if let Some(readback_number) = pull_request.number {
         if readback_number != url_number {
@@ -1182,7 +1257,46 @@ fn validate_pull_request_readback(
     }
 
     match &command.mutation {
-        TargetRepoRunnerPullRequestMutation::Create(_) => Ok(()),
+        TargetRepoRunnerPullRequestMutation::Create(create) => {
+            let Some(head_branch) = observation.head_branch.as_deref() else {
+                return Err(TargetRepoRunnerRuntimeError::CommandValidation {
+                    operation: "pull_request",
+                    message: "created pull request readback head branch is required".to_owned(),
+                });
+            };
+            if head_branch != create.head_branch {
+                return Err(TargetRepoRunnerRuntimeError::CommandValidation {
+                    operation: "pull_request",
+                    message: "created pull request readback head branch does not match command"
+                        .to_owned(),
+                });
+            }
+            let Some(head_sha) = observation.head_sha.as_deref() else {
+                return Err(TargetRepoRunnerRuntimeError::CommandValidation {
+                    operation: "pull_request",
+                    message: "created pull request readback head sha is required".to_owned(),
+                });
+            };
+            if head_sha != create.head_sha {
+                return Err(TargetRepoRunnerRuntimeError::CommandValidation {
+                    operation: "pull_request",
+                    message: "created pull request readback head sha does not match command"
+                        .to_owned(),
+                });
+            }
+            match pull_request.branch.as_deref() {
+                Some(branch) if branch == create.head_branch => Ok(()),
+                Some(_) => Err(TargetRepoRunnerRuntimeError::CommandValidation {
+                    operation: "pull_request",
+                    message: "created pull request branch does not match git mutation readback"
+                        .to_owned(),
+                }),
+                None => Err(TargetRepoRunnerRuntimeError::CommandValidation {
+                    operation: "pull_request",
+                    message: "created pull request branch readback is required".to_owned(),
+                }),
+            }
+        }
         TargetRepoRunnerPullRequestMutation::Reuse(reuse) => {
             if pull_request.url != reuse.existing_pull_request.url {
                 return Err(TargetRepoRunnerRuntimeError::CommandValidation {
@@ -1258,6 +1372,23 @@ fn validate_branch_for_operation(
         return Err(TargetRepoRunnerRuntimeError::CommandValidation {
             operation,
             message: "git branch is not a safe branch name".to_owned(),
+        });
+    }
+    Ok(())
+}
+
+fn validate_head_sha(
+    head_sha: &str,
+    operation: &'static str,
+) -> Result<(), TargetRepoRunnerRuntimeError> {
+    if head_sha.len() != 40
+        || !head_sha
+            .chars()
+            .all(|character| character.is_ascii_hexdigit())
+    {
+        return Err(TargetRepoRunnerRuntimeError::CommandValidation {
+            operation,
+            message: "head sha must be a 40 character hex commit".to_owned(),
         });
     }
     Ok(())

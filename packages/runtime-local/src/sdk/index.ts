@@ -57,14 +57,6 @@ import {
   type SkillAdapter,
 } from "../runner-local/index.js";
 import { validatePublishHarness, type PublishHarnessSummary } from "../harness/index.js";
-import {
-  parseRunnerManifestYaml,
-  parseSkillMarkdown,
-  parseToolManifestJson,
-  validateRunnerManifest,
-  validateSkill,
-  validateToolManifest,
-} from "@runxhq/core/parser";
 import { createStructuredCaller, type StructuredCallerOptions } from "./caller.js";
 import {
   createHostBridge,
@@ -77,6 +69,11 @@ import {
   type HostRunState,
 } from "./host-protocol.js";
 import type { CatalogMetadata, SkillRunnerManifest, ValidatedSkill } from "../parser-types.js";
+import {
+  validateRunnerManifestYamlViaParser,
+  validateSkillMarkdownViaParser,
+  validateToolManifestJsonViaParser,
+} from "../runner-local/parser-bridge.js";
 
 export interface ConnectService {
   readonly list: () => Promise<unknown>;
@@ -193,6 +190,7 @@ export interface IngestSkillOptions {
   readonly attestations?: readonly RegistryAttestation[];
   readonly sourceMetadata?: RegistrySourceMetadata;
   readonly upsert?: boolean;
+  readonly parserEnv?: NodeJS.ProcessEnv;
 }
 
 export interface RunxLinkResolution {
@@ -469,9 +467,10 @@ export class RunxSdk {
         return inspectCatalogResolvedTool(options.ref, resolvedCatalogTool);
       }
 
-      const tool = validateToolManifest(parseToolManifestJson(
+      const tool = await validateToolManifestJsonViaParser(
         await readFile(resolvedExecutionTarget.referencePath, "utf8"),
-      ));
+        { env: this.env() },
+      );
       return createToolInspectResult({
         ref: options.ref,
         tool,
@@ -513,6 +512,7 @@ export class RunxSdk {
       expectedDigest: options.expectedDigest,
       registryUrl: registryTarget.mode === "remote" ? registryTarget.registryUrl : options.registryUrl ?? this.options.registryUrl,
       installationId: installState?.state.installation_id,
+      env: this.env(),
     });
   }
 
@@ -532,6 +532,7 @@ export class RunxSdk {
       createdAt: options.createdAt,
       registryUrl: options.registryUrl ?? this.options.registryUrl,
       profileDocument: skillPackage.profileDocument,
+      parserEnv: this.env(),
     });
     return {
       ...publish,
@@ -1020,7 +1021,7 @@ async function createRegistrySkillVersion(
   markdown: string,
   options: IngestSkillOptions = {},
 ): Promise<CreateRegistrySkillVersionResult> {
-  const record = buildRegistrySkillVersion(markdown, options);
+  const record = await buildRegistrySkillVersion(markdown, options);
   const existing = await store.getVersion(record.skill_id, record.version);
   if (existing) {
     if (existing.digest !== record.digest || existing.profile_digest !== record.profile_digest) {
@@ -1046,11 +1047,10 @@ async function createRegistrySkillVersion(
   };
 }
 
-function buildRegistrySkillVersion(markdown: string, options: IngestSkillOptions = {}): RegistrySkillVersion {
-  const raw = parseSkillMarkdown(markdown);
-  const skill = validateSkill(raw, { mode: "strict" });
+async function buildRegistrySkillVersion(markdown: string, options: IngestSkillOptions = {}): Promise<RegistrySkillVersion> {
+  const skill = await validateSkillMarkdownViaParser(markdown, { mode: "strict" }, { env: options.parserEnv });
   const digest = hashString(markdown);
-  const bindingArtifact = buildBindingArtifact(skill, options.profileDocument);
+  const bindingArtifact = await buildBindingArtifact(skill, options.profileDocument, options.parserEnv);
   const catalog = resolveCatalogMetadata(bindingArtifact.manifest);
   const owner = options.owner ?? "local";
   const createdAt = options.createdAt ?? new Date().toISOString();
@@ -1097,13 +1097,17 @@ interface BindingArtifact {
   readonly manifest?: SkillRunnerManifest;
 }
 
-function buildBindingArtifact(skill: ValidatedSkill, profileDocument: string | undefined): BindingArtifact {
+async function buildBindingArtifact(
+  skill: ValidatedSkill,
+  profileDocument: string | undefined,
+  parserEnv?: NodeJS.ProcessEnv,
+): Promise<BindingArtifact> {
   if (!profileDocument) {
     return {
       runnerNames: [],
     };
   }
-  const manifest = validateRunnerManifest(parseRunnerManifestYaml(profileDocument));
+  const manifest = await validateRunnerManifestYamlViaParser(profileDocument, { env: parserEnv });
   if (manifest.skill && manifest.skill !== skill.name) {
     throw new Error(`Runner manifest skill '${manifest.skill}' does not match skill '${skill.name}'.`);
   }

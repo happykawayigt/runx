@@ -1,6 +1,5 @@
-import { planSequentialGraphTransition } from "@runxhq/core/state-machine";
-
 import type { RunLocalGraphOptions, RunLocalGraphResult } from "./index.js";
+import { planSequentialGraphTransitionViaKernel } from "./kernel-bridge.js";
 import { prepareRun } from "./orchestrator/prepare-run.js";
 import { finalizeRun } from "./orchestrator/finalize.js";
 import { hydrateResumedRun } from "./orchestrator/hydrate-resume.js";
@@ -30,20 +29,24 @@ export async function runLocalGraph(options: RunLocalGraphOptions): Promise<RunL
   });
 
   while (!ctx.graphAlreadyTerminal) {
-    const plan = planSequentialGraphTransition(ctx.state, ctx.graphSteps, ctx.graph.fanoutGroups, {
-      resolvedFanoutGateKeys: ctx.resolvedFanoutGateKeys,
-    });
+    const plan = await planSequentialGraphTransitionViaKernel(
+      ctx.state,
+      ctx.graphSteps,
+      ctx.graph.fanoutGroups,
+      { resolvedFanoutGateKeys: ctx.resolvedFanoutGateKeys },
+      { env: options.env },
+    );
 
     let continuation: HandlerContinuation;
     switch (plan.type) {
       case "complete":
-        continuation = handleCompletePlan(ctx, plan);
+        continuation = await handleCompletePlan(ctx, plan, options);
         break;
       case "failed":
-        continuation = handleFailedPlan(ctx, plan);
+        continuation = await handleFailedPlan(ctx, plan, options);
         break;
       case "blocked":
-        continuation = handleBlockedPlan(ctx, plan);
+        continuation = await handleBlockedPlan(ctx, plan, options);
         break;
       case "escalated":
         continuation = await handleEscalatedPlan(ctx, plan, options);

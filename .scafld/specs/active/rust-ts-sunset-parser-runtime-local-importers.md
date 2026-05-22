@@ -2,7 +2,7 @@
 spec_version: '2.0'
 task_id: rust-ts-sunset-parser-runtime-local-importers
 created: '2026-05-22T00:26:00+10:00'
-updated: '2026-05-22T03:22:00+10:00'
+updated: '2026-05-22T11:27:25+10:00'
 status: active
 harden_status: not_run
 size: small
@@ -14,23 +14,23 @@ risk_level: medium
 ## Current State
 
 Status: active
-Current phase: partial safe migration complete
-Next: resolve remaining full parser-validation importers through a
-Rust/contract-owned parser ingress before removing more runtime-local imports
-Reason: `rust-ts-sunset-parser` is blocked by live parser consumers. The prior
-`rust-ts-sunset-parser-runtime-type-imports` slice removed type-only imports
-from `@runxhq/core/parser`, but runtime-local still has parser value imports
-and a local structural `parser-types.js` surface that keeps parser-shaped types
-live in the runtime-local package.
-Blockers: replacement Rust/contract parser ingress must be identified for each
-full skill, graph, runner manifest, tool manifest, install, and reflect-policy
-value importer before production imports move.
+Current phase: runtime-local direct parser imports removed; parser ingress is
+routed through the Rust parser bridge
+Next: reduce the remaining runtime-local `parser-types.js` structural consumers
+under the runtime-local sunset parent, or delete them with runtime-local
+Reason: `rust-ts-sunset-parser` is blocked by live parser consumers. The
+previous safe slice removed only the importers with local, testable replacement
+semantics; the remaining full parser-validation importers now call
+`packages/runtime-local/src/runner-local/parser-bridge.ts`, which shells to
+`runx parser eval` instead of importing `@runxhq/core/parser`.
+Blockers: no direct `@runxhq/core/parser` imports remain in runtime-local
+source. Runtime-local still has temporary `parser-types.js` structural
+consumers that are outside this parser ingress ownership slice.
 Allowed follow-up command: `scafld validate rust-ts-sunset-parser-runtime-local-importers --json`
-Latest runner update: 2026-05-22T03:22:00+10:00 revalidated the active child
-spec, refreshed the parser importer census, and reran the focused migrated
-runtime-local importer tests. The remaining parser value importers are explicit
-blockers, not hidden work.
-Review gate: partial_migration_recorded; remaining_importers_blocked
+Latest runner update: 2026-05-22T11:27:25+10:00 removed the parser bridge's
+`parser-types.js` import, revalidated the direct parser import census, and ran
+focused parser bridge tests plus `pnpm typecheck`.
+Review gate: runtime_local_direct_parser_imports_removed
 
 ## Summary
 
@@ -92,19 +92,38 @@ Out of scope:
 Checked on 2026-05-22:
 
 ```bash
-rg -l "@runxhq/core/parser|parser-types\.js" packages/runtime-local/src --glob '!packages/core/src/parser/**' | sort
-rg -n "@runxhq/core/parser|parser-types\.js" packages/runtime-local/src --glob '!packages/core/src/parser/**'
-rg -l "@runxhq/core/parser" packages/runtime-local/src --glob '!packages/core/src/parser/**' | wc -l
-rg -l "parser-types\.js" packages/runtime-local/src --glob '!packages/core/src/parser/**' | wc -l
+rg -l "@runxhq/core/parser|parser-types\.js" packages/runtime-local/src -g '!node_modules' -g '!crates/target' | sort
+rg -n "@runxhq/core/parser|parser-types\.js" packages/runtime-local/src -g '!node_modules' -g '!crates/target'
+rg -l "@runxhq/core/parser" packages/runtime-local/src -g '!node_modules' -g '!crates/target' | wc -l
+rg -l "parser-types\.js" packages/runtime-local/src -g '!node_modules' -g '!crates/target' | wc -l
 ```
 
 Observed results:
-- 23 runtime-local source files reference parser value imports or
+- 22 runtime-local source files reference parser value imports or
   `parser-types.js`.
-- 6 runtime-local source files import `@runxhq/core/parser`.
-- 21 runtime-local source files import `parser-types.js`.
+- 0 runtime-local source files import `@runxhq/core/parser`.
+- 22 runtime-local source files import `parser-types.js`.
 
 Migrated value importers:
+- `packages/runtime-local/src/runner-local/parser-bridge.ts`
+  - Replacement: direct, self-contained structural bridge types for values
+    returned by Rust `runx parser eval`; the bridge no longer imports the
+    temporary runtime-local `parser-types.js` surface.
+  - Evidence:
+    `pnpm exec vitest run --config vitest.config.ts packages/runtime-local/src/runner-local/parser-bridge.test.ts`
+    and `pnpm typecheck` passed on 2026-05-22T11:27:25+10:00.
+- `packages/runtime-local/src/harness/publish.ts`,
+  `packages/runtime-local/src/harness/runner.ts`,
+  `packages/runtime-local/src/runner-local/execution-targets.ts`,
+  `packages/runtime-local/src/runner-local/index.ts`,
+  `packages/runtime-local/src/runner-local/skill-install.ts`, and
+  `packages/runtime-local/src/sdk/index.ts`
+  - Replacement: full parser-validation calls route through
+    `../runner-local/parser-bridge.js` / `./parser-bridge.js`, which invokes
+    Rust `runx parser eval`; no compatibility aliases were added.
+  - Evidence:
+    `rg -n "@runxhq/core/parser" packages/runtime-local/src -g '!node_modules' -g '!crates/target'`
+    returned no matches on 2026-05-22T11:27:25+10:00.
 - `packages/runtime-local/src/harness/publish.ts` and
   `packages/runtime-local/src/harness/runner.ts`
   - Replacement: local `parseSkillFrontmatter` helper for harness-only
@@ -129,46 +148,9 @@ Migrated value importers:
     blocked by missing `RUNX_KERNEL_EVAL_BIN` before imported tool invocation.
 
 Remaining blocked value importers:
-- `packages/runtime-local/src/harness/publish.ts`
-  - Imports: `parseRunnerManifestYaml`, `validateRunnerManifest`.
-  - Blocker: publish harness validation still needs parser-owned runner
-    manifest validation semantics. A local harness-only YAML parser would skip
-    unrelated runner manifest validation and could accept profiles the parser
-    rejects.
-- `packages/runtime-local/src/harness/runner.ts`
-  - Imports: `parseGraphYaml`, `parseRunnerManifestYaml`, `validateGraph`,
-    `validateRunnerManifest`.
-  - Blocker: deterministic harness receipt ids and inline harness execution
-    currently depend on parser-owned graph and runner manifest semantics.
-    Replacing only the name/step/case extraction locally would change validation
-    coverage.
-- `packages/runtime-local/src/runner-local/execution-targets.ts`
-  - Imports: `extractSkillQualityProfile`, `parseGraphYaml`,
-    `parseRunnerManifestYaml`, `parseSkillMarkdown`, `parseToolManifestJson`,
-    `validateGraph`, `validateRunnerManifest`, `validateSkill`,
-    `validateSkillArtifactContract`, `validateSkillSource`,
-    `validateToolManifest`.
-  - Blocker: this is the main runtime ingress for graph, skill, runner, inline
-    run, artifact, quality profile, and local tool execution. It needs a
-    contract/Rust parser ingress before migration.
-- `packages/runtime-local/src/runner-local/index.ts`
-  - Imports: `parseSkillMarkdown`, `resolvePostRunReflectPolicy`,
-    `validateSkill`.
-  - Blocker: `runLocalSkill` strict skill loading and reflect policy projection
-    are production runtime behavior.
-- `packages/runtime-local/src/runner-local/skill-install.ts`
-  - Imports: `parseRunnerManifestYaml`, `validateRunnerManifest`,
-    `validateSkillInstall`.
-  - Blocker: install validation binds remote/marketplace skill markdown,
-    provenance, and optional profile runner names. Requires an install contract
-    parser boundary before replacing parser-owned validation.
-- `packages/runtime-local/src/sdk/index.ts`
-  - Imports: `parseRunnerManifestYaml`, `parseSkillMarkdown`,
-    `parseToolManifestJson`, `validateRunnerManifest`, `validateSkill`,
-    `validateToolManifest`.
-  - Blocker: SDK publish/inspect flows validate skill markdown, runner
-    manifests, and local tool manifests. No generated/contract equivalent was
-    found in this slice.
+- None for direct `@runxhq/core/parser` imports in runtime-local source.
+- The remaining `parser-types.js` structural consumers are temporary
+  runtime-local type surfaces and are not parser implementation imports.
 
 ## Acceptance
 
@@ -187,30 +169,25 @@ Validation:
   - Command: `scafld validate rust-ts-sunset-parser-runtime-local-importers --json`
   - Expected kind: `exit_code_zero`
   - Status: passed
-  - Evidence: 2026-05-22T03:21:00+10:00 returned
+  - Evidence: 2026-05-22T11:27:25+10:00 returned
     `{"ok":true,...,"valid":true}`.
-- [ ] `v2` Runtime-local parser direct-import census.
-  - Command: `rg -n "@runxhq/core/parser" packages/runtime-local/src --glob '!packages/core/src/parser/**'`
+- [x] `v2` Runtime-local parser direct-import census.
+  - Command: `rg -n "@runxhq/core/parser" packages/runtime-local/src -g '!node_modules' -g '!crates/target'`
   - Expected kind: `no_matches`
-  - Status: blocked
-  - Evidence: remaining imports in `harness/publish.ts`, `harness/runner.ts`,
-    `runner-local/execution-targets.ts`, `runner-local/index.ts`,
-    `runner-local/skill-install.ts`, and `sdk/index.ts`. `parseSkillMarkdown`
-    is no longer imported by `packages/runtime-local/src/harness/**`.
+  - Status: passed
+  - Evidence: 2026-05-22T11:27:25+10:00 returned no matches.
 - [x] `v3` Parser implementation remains present.
   - Command: `test -d packages/core/src/parser`
   - Expected kind: `exit_code_zero`
   - Status: passed
   - Evidence: parser implementation remains present; no parser source was
     deleted or renamed in this lane.
-- [ ] `v4` Targeted runtime-local tests cover migrated importers.
-  - Command: `pnpm exec vitest run --config vitest.config.ts tests/local-skill-runner.test.ts tests/runtime-local-harness.test.ts packages/runtime-local/src/harness/agent-hook.test.ts`
+- [x] `v4` Targeted runtime-local tests cover migrated importers.
+  - Command: `pnpm exec vitest run --config vitest.config.ts packages/runtime-local/src/runner-local/parser-bridge.test.ts`
   - Expected kind: `exit_code_zero`
-  - Status: partial
-  - Evidence: 2026-05-22T03:21:00+10:00
-    `pnpm exec vitest run --config vitest.config.ts packages/runtime-local/src/harness/skill-frontmatter.test.ts packages/runtime-local/src/harness/agent-hook.test.ts packages/runtime-local/src/tool-catalogs/index.test.ts`
-    passed with 3 files and 5 tests. `pnpm typecheck` also passed. Broader
-    inline harness coverage remains blocked without `RUNX_KERNEL_EVAL_BIN`.
+  - Status: passed
+  - Evidence: 2026-05-22T11:27:25+10:00 passed with 1 file and 4 tests.
+    `pnpm typecheck` also passed.
 
 ## Phase 1: Importer Classification
 
@@ -222,12 +199,13 @@ explicit blocker.
 
 Acceptance:
 - [x] `ac1` command - Runtime-local parser importer census is current.
-  - Command: `rg -n "@runxhq/core/parser|parser-types\.js" packages/runtime-local/src --glob '!packages/core/src/parser/**'`
+  - Command: `rg -n "@runxhq/core/parser|parser-types\.js" packages/runtime-local/src -g '!node_modules' -g '!crates/target'`
   - Expected kind: `exit_code_zero`
   - Status: passed
-  - Evidence: remaining direct imports are the six blocked files listed above.
+  - Evidence: no direct `@runxhq/core/parser` imports remain; 22
+    `parser-types.js` structural consumers remain.
 - [x] `ac2` command - Value importer assignments are recorded in this spec.
-  - Command: `rg -n "Value importers:" .scafld/specs/active/rust-ts-sunset-parser-runtime-local-importers.md`
+  - Command: `rg -n "Migrated value importers:|Remaining blocked value importers:" .scafld/specs/active/rust-ts-sunset-parser-runtime-local-importers.md`
   - Expected kind: `exit_code_zero`
   - Status: passed
   - Evidence: migrated and blocked assignments recorded under Importer Census.
@@ -241,12 +219,11 @@ Goal: make only the small importer changes that have a clear replacement and
 targeted tests.
 
 Acceptance:
-- [ ] `ac3` command - Runtime-local direct parser imports are removed.
-  - Command: `rg -n "@runxhq/core/parser" packages/runtime-local/src --glob '!packages/core/src/parser/**'`
+- [x] `ac3` command - Runtime-local direct parser imports are removed.
+  - Command: `rg -n "@runxhq/core/parser" packages/runtime-local/src -g '!node_modules' -g '!crates/target'`
   - Expected kind: `no_matches`
-  - Status: blocked
-  - Evidence: six production importers remain blocked by full parser-validation
-    behavior.
+  - Status: passed
+  - Evidence: 2026-05-22T11:27:25+10:00 returned no matches.
 - [x] `ac4` command - Parser implementation is untouched.
   - Command: `test -d packages/core/src/parser`
   - Expected kind: `exit_code_zero`

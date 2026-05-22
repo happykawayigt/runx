@@ -9,9 +9,9 @@ pub use sequential_graph::{
 };
 pub use single_step::{create_single_step_state, transition_single_step};
 pub use types::{
-    FanoutBranchFailurePolicy, FanoutBranchResult, FanoutConflictGate, FanoutGate,
-    FanoutGateAction, FanoutGroupPolicy, FanoutSyncDecision, FanoutSyncOutcome, FanoutSyncStrategy,
-    FanoutThresholdGate, GraphStatus, GraphStepStatus, RetryPolicy, SequentialGraphEvent,
-    SequentialGraphPlan, SequentialGraphState, SequentialGraphStepDefinition,
-    SequentialGraphStepState, SingleStepEvent, SingleStepState, StepStatus,
+    AuthorityAdmissionWitness, FanoutBranchFailurePolicy, FanoutBranchResult, FanoutConflictGate,
+    FanoutGate, FanoutGateAction, FanoutGroupPolicy, FanoutSyncDecision, FanoutSyncOutcome,
+    FanoutSyncStrategy, FanoutThresholdGate, GraphStatus, GraphStepStatus, RetryPolicy,
+    SequentialGraphEvent, SequentialGraphPlan, SequentialGraphState, SequentialGraphStepDefinition,
+    SequentialGraphStepState, SingleStepEvent, SingleStepState, StepAdmissionWitness, StepStatus,
 };

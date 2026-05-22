@@ -97,11 +97,12 @@ pub fn transition_sequential_graph(
             step_id,
             at,
             receipt_id,
+            admission_witness,
             outputs,
         } => update_step(
             state,
             step_id,
-            |step| succeed_step(step, at, receipt_id, outputs.clone()),
+            |step| succeed_step(step, at, receipt_id, admission_witness, outputs.clone()),
             state.status.clone(),
         ),
         SequentialGraphEvent::StepFailed { step_id, at, error } => update_step(
@@ -366,9 +367,13 @@ fn succeed_step(
     step: &SequentialGraphStepState,
     at: &str,
     receipt_id: &str,
+    admission_witness: &super::types::StepAdmissionWitness,
     outputs: Option<runx_contracts::JsonObject>,
 ) -> SequentialGraphStepState {
     if step.status != GraphStepStatus::Running {
+        return step.clone();
+    }
+    if !admission_witness.matches_step_receipt(&step.step_id, receipt_id) {
         return step.clone();
     }
     SequentialGraphStepState {

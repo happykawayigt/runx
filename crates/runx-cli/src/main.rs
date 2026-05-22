@@ -29,6 +29,7 @@ fn main() -> ExitCode {
         LauncherAction::RunMcp(plan) => runx_cli::mcp::run_native_mcp(plan),
         LauncherAction::RunHarness(plan) => run_native_harness(plan.fixture_paths),
         LauncherAction::RunKernel(plan) => runx_cli::kernel::run_native_kernel(plan),
+        LauncherAction::RunParser(plan) => runx_cli::parser::run_native_parser(plan),
         LauncherAction::RunConnect(plan) => run_native_connect(plan),
         LauncherAction::RunConfig(plan) => run_native_config(plan),
         LauncherAction::RunPolicy(plan) => runx_cli::policy::run_native_policy(plan),

@@ -1,7 +1,8 @@
 // rust-style-allow: large-file - payment authority comparison is one algebraic boundary; splitting it before the core term model settles would hide subset invariants.
 use runx_contracts::{
-    AuthorityCapability, AuthorityCondition, AuthorityResourceFamily, AuthorityTerm, AuthorityVerb,
-    Decision, DecisionChoice, PaymentAuthorityBounds, PaymentCredentialForm, Reference,
+    AuthorityCapability, AuthorityCondition, AuthorityResourceFamily, AuthoritySubsetProof,
+    AuthoritySubsetRelation, AuthoritySubsetResult, AuthorityTerm, AuthorityVerb, Decision,
+    DecisionChoice, PaymentAuthorityBounds, PaymentCredentialForm, Reference,
 };
 use thiserror::Error;
 
@@ -10,7 +11,7 @@ pub struct StepAuthorityAdmission<'a> {
     pub parent_authority: &'a AuthorityTerm,
     pub child_authority: &'a AuthorityTerm,
     pub reservation_decision: Option<&'a Decision>,
-    pub subset_proof_present: bool,
+    pub subset_proof: Option<&'a AuthoritySubsetProof>,
     pub child_harness_ref: &'a Reference,
     pub act_id: &'a str,
     pub idempotency_key: Option<&'a str>,
@@ -34,7 +35,7 @@ struct PaymentRailAuthorization<'a> {
     pub parent_authority: &'a AuthorityTerm,
     pub child_authority: &'a AuthorityTerm,
     pub reservation_decision: Option<&'a Decision>,
-    pub subset_proof_present: bool,
+    pub subset_proof: Option<&'a AuthoritySubsetProof>,
     pub child_harness_ref: &'a Reference,
     pub act_id: &'a str,
     pub idempotency_key: Option<&'a str>,
@@ -49,7 +50,7 @@ struct PaymentRailAdmission<'a> {
     pub parent_authority: &'a AuthorityTerm,
     pub child_authority: &'a AuthorityTerm,
     pub reservation_decision: Option<&'a Decision>,
-    pub subset_proof_present: bool,
+    pub subset_proof: Option<&'a AuthoritySubsetProof>,
     pub child_harness_ref: &'a Reference,
     pub act_id: &'a str,
     pub idempotency_key: Option<&'a str>,
@@ -73,12 +74,12 @@ pub struct PaymentSpendCapabilityBinding {
 
 #[cfg(test)]
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct PaymentRailAuthorizationDecision<'a> {
-    pub parent_term_id: &'a str,
-    pub child_term_id: &'a str,
-    pub idempotency_key: Option<&'a str>,
-    pub spend_capability_ref: Option<&'a Reference>,
-    pub rail_proof_refs: &'a [Reference],
+struct PaymentRailAuthorizationDecision {
+    pub parent_term_id: String,
+    pub child_term_id: String,
+    pub idempotency_key: Option<String>,
+    pub spend_capability_ref: Option<Reference>,
+    pub rail_proof_count: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -97,6 +98,8 @@ pub enum PaymentAuthorityError {
     ReservationDecisionNotSelected,
     #[error("payment authority attenuation requires a subset proof")]
     MissingSubsetProof,
+    #[error("payment authority attenuation subset proof is invalid")]
+    InvalidSubsetProof,
     #[error("child payment authority is not a subset of parent authority")]
     AuthorityNotSubset,
     #[error("payment spend requires a single-use spend capability")]
@@ -146,7 +149,7 @@ pub fn admit_step_authority(
             parent_authority: input.parent_authority,
             child_authority: input.child_authority,
             reservation_decision: input.reservation_decision,
-            subset_proof_present: input.subset_proof_present,
+            subset_proof: input.subset_proof,
             child_harness_ref: input.child_harness_ref,
             act_id: input.act_id,
             idempotency_key: input.idempotency_key,
@@ -175,13 +178,13 @@ pub fn admit_step_authority(
 #[cfg(test)]
 fn authorize_payment_rail(
     input: PaymentRailAuthorization<'_>,
-) -> Result<PaymentRailAuthorizationDecision<'_>, PaymentAuthorityError> {
+) -> Result<PaymentRailAuthorizationDecision, PaymentAuthorityError> {
     let spends = payment_authority_spends(input.child_authority);
     let admission = admit_payment_rail(PaymentRailAdmission {
         parent_authority: input.parent_authority,
         child_authority: input.child_authority,
         reservation_decision: input.reservation_decision,
-        subset_proof_present: input.subset_proof_present,
+        subset_proof: input.subset_proof,
         child_harness_ref: input.child_harness_ref,
         act_id: input.act_id,
         idempotency_key: input.idempotency_key,
@@ -201,11 +204,11 @@ fn authorize_payment_rail(
     }
 
     Ok(PaymentRailAuthorizationDecision {
-        parent_term_id: admission.parent_term_id,
-        child_term_id: admission.child_term_id,
-        idempotency_key: admission.idempotency_key,
-        spend_capability_ref: admission.spend_capability_ref,
-        rail_proof_refs: input.rail_proof_refs,
+        parent_term_id: admission.parent_term_id.to_owned(),
+        child_term_id: admission.child_term_id.to_owned(),
+        idempotency_key: admission.idempotency_key.map(str::to_owned),
+        spend_capability_ref: admission.spend_capability_ref.cloned(),
+        rail_proof_count: input.rail_proof_refs.len(),
     })
 }
 
@@ -226,9 +229,11 @@ fn admit_payment_rail(
         ensure_single_use_spend_capability(&input)?;
     }
 
-    if !input.subset_proof_present {
-        return Err(PaymentAuthorityError::MissingSubsetProof);
-    }
+    ensure_subset_proof(
+        input.subset_proof,
+        input.child_authority,
+        input.parent_authority,
+    )?;
 
     if !is_payment_authority_subset(input.child_authority, input.parent_authority) {
         return Err(PaymentAuthorityError::AuthorityNotSubset);
@@ -240,6 +245,37 @@ fn admit_payment_rail(
         idempotency_key: input.idempotency_key,
         spend_capability_ref: input.spend_capability_ref,
     })
+}
+
+fn ensure_subset_proof(
+    proof: Option<&AuthoritySubsetProof>,
+    child: &AuthorityTerm,
+    parent: &AuthorityTerm,
+) -> Result<(), PaymentAuthorityError> {
+    let Some(proof) = proof else {
+        return Err(PaymentAuthorityError::MissingSubsetProof);
+    };
+    if proof.comparison_algorithm.trim().is_empty() || proof.checked_at.trim().is_empty() {
+        return Err(PaymentAuthorityError::InvalidSubsetProof);
+    }
+    if proof.parent_authority_ref != parent.resource_ref {
+        return Err(PaymentAuthorityError::InvalidSubsetProof);
+    }
+    if !matches!(proof.result, AuthoritySubsetResult::Subset) {
+        return Err(PaymentAuthorityError::InvalidSubsetProof);
+    }
+    let compared_terms_match = proof.compared_terms.iter().any(|comparison| {
+        comparison.child_term_id == child.term_id
+            && comparison.parent_term_id == parent.term_id
+            && matches!(
+                comparison.relation,
+                AuthoritySubsetRelation::Subset | AuthoritySubsetRelation::Equal
+            )
+    });
+    if !compared_terms_match {
+        return Err(PaymentAuthorityError::InvalidSubsetProof);
+    }
+    Ok(())
 }
 
 fn decision_selects_payment_execution(decision: &Decision) -> bool {
@@ -592,8 +628,9 @@ mod tests {
     };
     use runx_contracts::{
         AuthorityApproval, AuthorityBounds, AuthorityCapability, AuthorityCondition,
-        AuthorityConditionPredicate, AuthorityResourceFamily, AuthorityTerm, AuthorityVerb,
-        Decision, DecisionChoice, DecisionInputs, DecisionJustification, Intent,
+        AuthorityConditionPredicate, AuthorityResourceFamily, AuthoritySubsetComparison,
+        AuthoritySubsetProof, AuthoritySubsetRelation, AuthoritySubsetResult, AuthorityTerm,
+        AuthorityVerb, Decision, DecisionChoice, DecisionInputs, DecisionJustification, Intent,
         PaymentAuthorityBounds, PaymentCredentialForm, Reference, ReferenceType,
     };
 
@@ -612,9 +649,14 @@ mod tests {
                 decision.parent_term_id,
                 decision.child_term_id,
                 decision.idempotency_key,
-                decision.rail_proof_refs.len(),
+                decision.rail_proof_count,
             )),
-            Ok(("parent", "child", Some(IDEMPOTENCY_KEY), 1))
+            Ok((
+                "parent".to_owned(),
+                "child".to_owned(),
+                Some(IDEMPOTENCY_KEY.to_owned()),
+                1,
+            ))
         );
     }
 
@@ -704,10 +746,25 @@ mod tests {
 
         assert_eq!(
             scenario.authorize_with(AuthorizationOverride {
-                subset_proof_present: Some(false),
+                subset_proof: Some(None),
                 ..AuthorizationOverride::default()
             }),
             Err(PaymentAuthorityError::MissingSubsetProof)
+        );
+    }
+
+    #[test]
+    fn denies_subset_proof_that_does_not_match_terms() {
+        let scenario = PaymentScenario::standard();
+        let mut proof = scenario.subset_proof.clone();
+        proof.compared_terms[0].child_term_id = "other-child".to_owned();
+
+        assert_eq!(
+            scenario.authorize_with(AuthorizationOverride {
+                subset_proof: Some(Some(&proof)),
+                ..AuthorizationOverride::default()
+            }),
+            Err(PaymentAuthorityError::InvalidSubsetProof)
         );
     }
 
@@ -782,6 +839,7 @@ mod tests {
         consumed_spend_capability_refs: Vec<Reference>,
         child_harness_ref: Reference,
         spend_capability_ref: Reference,
+        subset_proof: AuthoritySubsetProof,
     }
 
     impl PaymentScenario {
@@ -790,8 +848,10 @@ mod tests {
         }
 
         fn with_child(child: AuthorityTerm) -> Self {
+            let parent = parent_spend_term();
+            let subset_proof = subset_proof(&child, &parent);
             Self {
-                parent: parent_spend_term(),
+                parent,
                 child,
                 decision: selected_decision(),
                 rail_proof_refs: vec![reference(ReferenceType::Receipt, "runx:receipt:rail-1")],
@@ -804,6 +864,7 @@ mod tests {
                     ReferenceType::Credential,
                     "runx:payment-capability:spend-1",
                 ),
+                subset_proof,
             }
         }
 
@@ -820,14 +881,14 @@ mod tests {
 
         fn authorize_decision(
             &self,
-        ) -> Result<PaymentRailAuthorizationDecision<'_>, PaymentAuthorityError> {
+        ) -> Result<PaymentRailAuthorizationDecision, PaymentAuthorityError> {
             let binding = self.capability_binding();
 
             authorize_payment_rail(PaymentRailAuthorization {
                 parent_authority: &self.parent,
                 child_authority: &self.child,
                 reservation_decision: Some(&self.decision),
-                subset_proof_present: true,
+                subset_proof: Some(&self.subset_proof),
                 child_harness_ref: &self.child_harness_ref,
                 act_id: ACT_ID,
                 idempotency_key: Some(IDEMPOTENCY_KEY),
@@ -851,13 +912,13 @@ mod tests {
                 .spend_capability_binding
                 .unwrap_or(Some(default_binding));
             let rail_proof_refs = overrides.rail_proof_refs.unwrap_or(&self.rail_proof_refs);
-            let subset_proof_present = overrides.subset_proof_present.unwrap_or(true);
+            let subset_proof = overrides.subset_proof.unwrap_or(Some(&self.subset_proof));
 
             authorize_payment_rail(PaymentRailAuthorization {
                 parent_authority: &self.parent,
                 child_authority: &self.child,
                 reservation_decision,
-                subset_proof_present,
+                subset_proof,
                 child_harness_ref: &self.child_harness_ref,
                 act_id: ACT_ID,
                 idempotency_key,
@@ -886,10 +947,25 @@ mod tests {
     #[derive(Default)]
     struct AuthorizationOverride<'a> {
         reservation_decision: Option<Option<&'a Decision>>,
-        subset_proof_present: Option<bool>,
+        subset_proof: Option<Option<&'a AuthoritySubsetProof>>,
         idempotency_key: Option<Option<&'a str>>,
         spend_capability_binding: Option<Option<PaymentSpendCapabilityBinding>>,
         rail_proof_refs: Option<&'a [Reference]>,
+    }
+
+    fn subset_proof(child: &AuthorityTerm, parent: &AuthorityTerm) -> AuthoritySubsetProof {
+        AuthoritySubsetProof {
+            parent_authority_ref: parent.resource_ref.clone(),
+            comparison_algorithm: "runx.payment-authority-subset.v1".to_owned(),
+            result: AuthoritySubsetResult::Subset,
+            compared_terms: vec![AuthoritySubsetComparison {
+                child_term_id: child.term_id.clone(),
+                parent_term_id: parent.term_id.clone(),
+                relation: AuthoritySubsetRelation::Subset,
+            }],
+            proof_ref: None,
+            checked_at: "2026-05-22T00:00:00Z".to_owned(),
+        }
     }
 
     fn parent_spend_term() -> AuthorityTerm {

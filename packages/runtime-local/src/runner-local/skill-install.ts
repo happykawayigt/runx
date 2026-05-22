@@ -3,13 +3,12 @@ import { access, mkdir, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { isMarketplaceRef, resolveMarketplaceSkill, type MarketplaceAdapter } from "@runxhq/core/marketplaces";
-import {
-  parseRunnerManifestYaml,
-  validateRunnerManifest,
-  validateSkillInstall,
-} from "@runxhq/core/parser";
 import { asRecord, fetchWithTimeout, hashString, isNotFound, readOptionalFile } from "@runxhq/core/util";
 import type { SkillInstallOrigin } from "../parser-types.js";
+import {
+  validateRunnerManifestYamlViaParser,
+  validateSkillInstallViaParser,
+} from "./parser-bridge.js";
 
 type RegistryTrustTier = "first_party" | "verified" | "community";
 
@@ -45,6 +44,7 @@ export interface InstallLocalSkillOptions {
   readonly expectedDigest?: string;
   readonly registryUrl?: string;
   readonly installationId?: string;
+  readonly env?: NodeJS.ProcessEnv;
 }
 
 export interface InstallLocalSkillResult {
@@ -97,17 +97,22 @@ export async function installLocalSkill(options: InstallLocalSkillOptions): Prom
     );
   }
 
-  const install = validateSkillInstall(candidate.markdown, {
+  const install = await validateSkillInstallViaParser(candidate.markdown, {
     ...candidate.origin,
     digest: actualDigest,
-  });
+  }, { env: options.env });
   const profileDigest = candidate.profileDocument ? hashString(candidate.profileDocument) : undefined;
   if (candidate.origin.profile_digest && candidate.origin.profile_digest !== profileDigest) {
     throw new Error(
       `Binding digest mismatch for ${options.ref}: expected sha256:${candidate.origin.profile_digest}, received sha256:${profileDigest ?? "none"}.`,
     );
   }
-  const runnerNames = validateInstallBindingManifest(install.skill.name, candidate.profileDocument, candidate.origin.runner_names);
+  const runnerNames = await validateInstallBindingManifest(
+    install.skill.name,
+    candidate.profileDocument,
+    candidate.origin.runner_names,
+    options.env,
+  );
   const packageRoot = path.join(options.destinationRoot, ...safeSkillPackageParts(options.ref, install.skill.name));
   const destination = path.join(packageRoot, "SKILL.md");
   const profileStatePath = candidate.profileDocument ? path.join(packageRoot, ".runx", "profile.json") : undefined;
@@ -634,16 +639,17 @@ function buildProfileState(
   };
 }
 
-function validateInstallBindingManifest(
+async function validateInstallBindingManifest(
   skillName: string,
   profileDocument: string | undefined,
   advertisedRunnerNames: readonly string[] | undefined,
-): readonly string[] {
+  env?: NodeJS.ProcessEnv,
+): Promise<readonly string[]> {
   if (!profileDocument) {
     return advertisedRunnerNames ?? [];
   }
 
-  const manifest = validateRunnerManifest(parseRunnerManifestYaml(profileDocument));
+  const manifest = await validateRunnerManifestYamlViaParser(profileDocument, { env });
   if (manifest.skill && manifest.skill !== skillName) {
     throw new Error(`Runner manifest skill '${manifest.skill}' does not match skill '${skillName}'.`);
   }

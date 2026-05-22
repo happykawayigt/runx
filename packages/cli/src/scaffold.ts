@@ -1,9 +1,10 @@
-import { createHash } from "node:crypto";
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { hashStable, isNodeError } from "@runxhq/core/util";
+import { sha256Prefixed } from "@runxhq/contracts";
+import { isNodeError } from "@runxhq/core/util";
 
+import { sha256Stable } from "./authoring-utils.js";
 import { readCliDependencyVersion, readCliPackageMetadata } from "./metadata.js";
 
 const toolkitVersion = readCliDependencyVersion("@runxhq/authoring");
@@ -354,20 +355,18 @@ async function write(root: string, relativePath: string, contents: string): Prom
   await writeFile(filePath, contents.endsWith("\n") ? contents : `${contents}\n`);
 }
 
-function sha256Stable(value: unknown): string {
-  return `sha256:${hashStable(value)}`;
-}
-
 function sha256ToolSourceContents(files: Readonly<Record<string, string>>): string {
-  const hash = createHash("sha256");
+  const chunks: Uint8Array[] = [];
   for (const relativePath of ["src/index.ts", "run.mjs"]) {
     if (files[relativePath] === undefined) {
       continue;
     }
-    hash.update(relativePath);
-    hash.update("\0");
-    hash.update(files[relativePath] ?? "");
-    hash.update("\0");
+    chunks.push(
+      Buffer.from(relativePath),
+      Buffer.from("\0"),
+      Buffer.from(files[relativePath] ?? ""),
+      Buffer.from("\0"),
+    );
   }
-  return `sha256:${hash.digest("hex")}`;
+  return sha256Prefixed(Buffer.concat(chunks));
 }

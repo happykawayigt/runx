@@ -1,15 +1,16 @@
 import type { ArtifactContract, ArtifactEnvelope } from "@runxhq/core/artifacts";
-import {
-  transitionSequentialGraph,
-  type SequentialGraphPlan,
-  type SequentialGraphState,
-} from "@runxhq/core/state-machine";
 import { errorMessage } from "@runxhq/core/util";
 
 import { resolveOutputPath, type GraphStepOutput } from "./graph-context.js";
 import { buildInlineGraphStepSkill } from "./execution-targets.js";
 import { graphStepReference } from "./graph-reporting.js";
 import type { GraphReceiptSyncPoint } from "./graph-governance.js";
+import {
+  transitionSequentialGraphViaKernel,
+  type KernelBridgeOptions,
+  type SequentialGraphPlan,
+  type SequentialGraphState,
+} from "./kernel-bridge.js";
 import { isDomainArtifactEnvelope } from "./runner-helpers.js";
 import type { GraphStepRun } from "./index.js";
 import type { ExecutionGraph, GraphPolicy, GraphStep, ValidatedSkill } from "../parser-types.js";
@@ -46,7 +47,7 @@ export function admitGraphTransition(
   return { status: "allow" };
 }
 
-export function hydrateGraphFromLedger(options: {
+export async function hydrateGraphFromLedger(options: {
   readonly entries: readonly ArtifactEnvelope[];
   readonly graph: ExecutionGraph;
   readonly graphStepCache: ReadonlyMap<string, ValidatedSkill>;
@@ -71,7 +72,8 @@ export function hydrateGraphFromLedger(options: {
     get value(): string | undefined;
     set value(next: string | undefined);
   };
-}): void {
+  readonly kernel?: KernelBridgeOptions;
+}): Promise<void> {
   if (options.entries.length === 0) {
     return;
   }
@@ -104,16 +106,17 @@ export function hydrateGraphFromLedger(options: {
   let state = options.stateRef.value;
   for (const graphStep of options.graphSteps) {
     const step = stepsById.get(graphStep.id);
-    const stepSkill =
-      options.graphStepCache.get(graphStep.id)
-      ?? (step?.run ? buildInlineGraphStepSkill(step, options.skillEnvironment) : undefined);
+    let stepSkill = options.graphStepCache.get(graphStep.id);
+    if (!stepSkill && step?.run) {
+      stepSkill = await buildInlineGraphStepSkill(step, options.skillEnvironment, { env: options.kernel?.env });
+    }
     const event = latestEvents.get(graphStep.id);
     if (!step || !stepSkill || !event) {
       break;
     }
     const stepArtifacts = artifactsByStep.get(graphStep.id) ?? [];
     const stepFields = reconstructStepFields(stepArtifacts, stepSkill.artifacts);
-    const receiptId = receiptLinksForStep(stepArtifacts, receiptLinks)[0];
+    const linkedReceiptId = receiptLinksForStep(stepArtifacts, receiptLinks)[0];
     if (event.data.kind === "step_started") {
       // Orphan step_started: the latest event for this step is
       // step_started with no terminal event (succeeded/failed/waiting)
@@ -127,23 +130,36 @@ export function hydrateGraphFromLedger(options: {
       break;
     }
     if (event.data.kind === "step_succeeded") {
-      state = transitionSequentialGraph(state, {
-        type: "start_step",
-        stepId: graphStep.id,
-        at: entryTimestamp(event),
-      });
-      state = transitionSequentialGraph(state, {
-        type: "step_succeeded",
-        stepId: graphStep.id,
-        at: entryTimestamp(event),
-        receiptId,
-        outputs: stepFields,
-      });
+      const receiptId = runEventReceiptId(event) ?? linkedReceiptId;
+      if (!receiptId) {
+        break;
+      }
+      state = await transitionSequentialGraphViaKernel(
+        state,
+        {
+          type: "start_step",
+          stepId: graphStep.id,
+          at: entryTimestamp(event),
+        },
+        options.kernel,
+      );
+      state = await transitionSequentialGraphViaKernel(
+        state,
+        {
+          type: "step_succeeded",
+          stepId: graphStep.id,
+          at: entryTimestamp(event),
+          receiptId,
+          admissionWitness: { stepId: graphStep.id, receiptId },
+          outputs: stepFields,
+        },
+        options.kernel,
+      );
       options.outputs.set(graphStep.id, {
         status: "sealed",
         stdout: reconstructStdout(stepArtifacts, stepFields),
         stderr: "",
-        receiptId: receiptId ?? "",
+        receiptId,
         fields: stepFields,
         artifactIds: stepArtifacts.map((artifact) => artifact.meta.artifact_id),
         artifacts: stepArtifacts.filter(isDomainArtifactEnvelope),
@@ -162,23 +178,31 @@ export function hydrateGraphFromLedger(options: {
         artifactIds: stepArtifacts.map((artifact) => artifact.meta.artifact_id),
         contextFrom: [],
       });
-      options.lastReceiptRef.value = receiptId ?? options.lastReceiptRef.value;
+      options.lastReceiptRef.value = receiptId;
       continue;
     }
     if (event.data.kind === "step_failed") {
-      state = transitionSequentialGraph(state, {
-        type: "start_step",
-        stepId: graphStep.id,
-        at: entryTimestamp(event),
-      });
-      state = transitionSequentialGraph(state, {
-        type: "step_failed",
-        stepId: graphStep.id,
-        at: entryTimestamp(event),
-        error: typeof event.data.detail === "object" && event.data.detail && "reason" in event.data.detail
-          ? String((event.data.detail as Record<string, unknown>).reason)
-          : "previous attempt failed",
-      });
+      state = await transitionSequentialGraphViaKernel(
+        state,
+        {
+          type: "start_step",
+          stepId: graphStep.id,
+          at: entryTimestamp(event),
+        },
+        options.kernel,
+      );
+      state = await transitionSequentialGraphViaKernel(
+        state,
+        {
+          type: "step_failed",
+          stepId: graphStep.id,
+          at: entryTimestamp(event),
+          error: typeof event.data.detail === "object" && event.data.detail && "reason" in event.data.detail
+            ? String((event.data.detail as Record<string, unknown>).reason)
+            : "previous attempt failed",
+        },
+        options.kernel,
+      );
       break;
     }
     if (event.data.kind === "step_waiting_resolution") {
@@ -273,6 +297,15 @@ function receiptLinksForStep(
   return artifacts
     .map((artifact) => receiptLinks.get(artifact.meta.artifact_id))
     .filter((receiptId): receiptId is string => typeof receiptId === "string");
+}
+
+function runEventReceiptId(event: ArtifactEnvelope): string | undefined {
+  const detail = event.data.detail;
+  if (typeof detail !== "object" || detail === null || Array.isArray(detail)) {
+    return undefined;
+  }
+  const receiptId = (detail as Readonly<Record<string, unknown>>).receipt_id;
+  return typeof receiptId === "string" && receiptId.length > 0 ? receiptId : undefined;
 }
 
 function reconstructStdout(

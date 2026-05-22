@@ -2,6 +2,7 @@ use runx_contracts::{
     FanoutReceiptDecision, FanoutReceiptStrategy, FanoutReceiptSyncPoint, HarnessReceipt,
     JsonObject, ReceiptIssuer, ReceiptSignature,
 };
+use runx_core::state_machine::StepAdmissionWitness;
 use runx_receipts::{
     ReceiptFindingCode, ReceiptTreeConfig, SignatureVerificationFailure, SignatureVerifier,
     canonical_receipt_body_digest,
@@ -311,6 +312,7 @@ fn step_run(
 ) -> Result<StepRun, Box<dyn std::error::Error>> {
     let output = skill_output(status);
     let receipt = step_receipt(graph_name, step_id, 1, &output, CREATED_AT)?;
+    let admission_witness = StepAdmissionWitness::local_runtime(step_id, &receipt.id);
     Ok(StepRun {
         step_id: step_id.to_owned(),
         attempt: 1,
@@ -320,6 +322,7 @@ fn step_run(
         output,
         outputs: JsonObject::new(),
         receipt,
+        admission_witness,
     })
 }
 

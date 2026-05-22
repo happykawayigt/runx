@@ -1310,20 +1310,19 @@ fn fulfill_inputs(admission: FulfillAdmission) -> Option<Value> {
     }
 }
 
-fn valid_payment_inputs(child_max_per_call_minor: u64, subset_proof_present: bool) -> Value {
+fn valid_payment_inputs(child_max_per_call_minor: u64, include_subset_proof: bool) -> Value {
     json!({
-        "reserved_payment_authority": reserved_payment_authority(child_max_per_call_minor, subset_proof_present),
+        "reserved_payment_authority": reserved_payment_authority(child_max_per_call_minor, include_subset_proof),
         "spend_capability_ref": spend_capability_ref(),
         "idempotency": { "key": X402_APPROVAL_IDEMPOTENCY_KEY }
     })
 }
 
-fn reserved_payment_authority(child_max_per_call_minor: u64, subset_proof_present: bool) -> Value {
-    json!({
+fn reserved_payment_authority(child_max_per_call_minor: u64, include_subset_proof: bool) -> Value {
+    let mut authority = json!({
         "parent_authority": payment_term("parent", ["quote", "reserve", "spend", "verify"], 10_000),
         "child_authority": payment_term("child", ["reserve", "spend"], child_max_per_call_minor),
         "reservation_decision": reservation_decision(),
-        "subset_proof_present": subset_proof_present,
         "child_harness_ref": child_harness_ref(),
         "spend_capability_binding": {
             "child_harness_ref": child_harness_ref(),
@@ -1336,6 +1335,31 @@ fn reserved_payment_authority(child_max_per_call_minor: u64, subset_proof_presen
             "rail": "mock"
         },
         "consumed_spend_capability_refs": []
+    });
+    if include_subset_proof {
+        if let Some(object) = authority.as_object_mut() {
+            object.insert(
+                "subset_proof".to_owned(),
+                payment_subset_proof("child", "parent"),
+            );
+        }
+    }
+    authority
+}
+
+fn payment_subset_proof(child_term_id: &str, parent_term_id: &str) -> Value {
+    json!({
+        "parent_authority_ref": reference("grant", "runx:payment-grant:checkout"),
+        "comparison_algorithm": "runx.payment-authority-subset.v1",
+        "result": "subset",
+        "compared_terms": [
+            {
+                "child_term_id": child_term_id,
+                "parent_term_id": parent_term_id,
+                "relation": "subset"
+            }
+        ],
+        "checked_at": "2026-05-22T00:00:00Z"
     })
 }
 
@@ -1404,7 +1428,7 @@ fn paid_echo_reserved_payment_authority(idempotency_key: &str) -> Value {
         "parent_authority": paid_echo_payment_term("paid-echo-parent", ["quote", "reserve", "spend", "verify"], 10_000),
         "child_authority": paid_echo_payment_term("paid-echo-child", ["reserve", "spend"], 2_500),
         "reservation_decision": paid_echo_reservation_decision(),
-        "subset_proof_present": true,
+        "subset_proof": paid_echo_subset_proof("paid-echo-child", "paid-echo-parent"),
         "child_harness_ref": paid_echo_child_harness_ref(),
         "spend_capability_binding": {
             "child_harness_ref": paid_echo_child_harness_ref(),
@@ -1417,6 +1441,22 @@ fn paid_echo_reserved_payment_authority(idempotency_key: &str) -> Value {
             "rail": "mock"
         },
         "consumed_spend_capability_refs": []
+    })
+}
+
+fn paid_echo_subset_proof(child_term_id: &str, parent_term_id: &str) -> Value {
+    json!({
+        "parent_authority_ref": reference("grant", "runx:payment-grant:paid-echo"),
+        "comparison_algorithm": "runx.payment-authority-subset.v1",
+        "result": "subset",
+        "compared_terms": [
+            {
+                "child_term_id": child_term_id,
+                "parent_term_id": parent_term_id,
+                "relation": "subset"
+            }
+        ],
+        "checked_at": "2026-05-22T00:00:00Z"
     })
 }
 

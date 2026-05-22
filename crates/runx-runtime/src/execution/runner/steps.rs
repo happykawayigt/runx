@@ -7,6 +7,7 @@ use runx_contracts::{
     ApprovalGate, AuthorityVerb, ExecutionEvent, JsonObject, JsonValue, ProofKind,
     ResolutionRequest, ResolutionResponseActor,
 };
+use runx_core::state_machine::StepAdmissionWitness;
 use runx_parser::GraphStep;
 
 use super::super::graph::{load_skill, output_object, resolve_inputs, skill_dir};
@@ -83,6 +84,7 @@ where
     )?;
     enforce_step_authority_receipt_before_success(step, authority.as_ref(), &output, &receipt)?;
     persist_payment_state_for_step(runtime, graph_dir, authority.as_ref(), &outputs, &receipt)?;
+    let admission_witness = step_admission_witness(&step.id, &receipt.id, authority.as_ref());
     Ok(StepRun {
         step_id: step.id.clone(),
         attempt,
@@ -92,6 +94,7 @@ where
         output,
         outputs,
         receipt,
+        admission_witness,
     })
 }
 
@@ -242,6 +245,7 @@ fn run_replayed_payment_step(
             ),
         ));
     }
+    let admission_witness = StepAdmissionWitness::local_runtime(&step.id, &replay.receipt_ref);
     Ok(StepRun {
         step_id: step.id.clone(),
         attempt,
@@ -251,6 +255,7 @@ fn run_replayed_payment_step(
         output,
         outputs: replay.outputs,
         receipt,
+        admission_witness,
     })
 }
 
@@ -388,6 +393,7 @@ where
         &output,
         &runtime.options.created_at,
     )?;
+    let admission_witness = StepAdmissionWitness::local_runtime(&step.id, &receipt.id);
     Ok(StepRun {
         step_id: step.id.clone(),
         attempt,
@@ -397,6 +403,7 @@ where
         output,
         outputs,
         receipt,
+        admission_witness,
     })
 }
 
@@ -544,6 +551,7 @@ where
         &output,
         &runtime.options.created_at,
     )?;
+    let admission_witness = StepAdmissionWitness::local_runtime(&step.id, &receipt.id);
     Ok(StepRun {
         step_id: step.id.clone(),
         attempt,
@@ -553,5 +561,23 @@ where
         output,
         outputs,
         receipt,
+        admission_witness,
     })
+}
+
+fn step_admission_witness(
+    step_id: &str,
+    receipt_id: &str,
+    authority: Option<&super::authority::StepAuthorityContext>,
+) -> StepAdmissionWitness {
+    authority.map_or_else(
+        || StepAdmissionWitness::local_runtime(step_id, receipt_id),
+        |authority| {
+            StepAdmissionWitness::with_authority(
+                step_id,
+                receipt_id,
+                authority.admission_witness.clone(),
+            )
+        },
+    )
 }

@@ -35,12 +35,12 @@ import {
   type ReferenceContract,
   type ScopeAdmissionContract,
 } from "@runxhq/contracts";
-import type { FanoutSyncDecision } from "@runxhq/core/state-machine";
 
 import {
   admitGraphStepScopesViaKernel,
   authorityProofMetadataViaKernel,
   type GraphScopeGrant,
+  type FanoutSyncDecision,
   type KernelBridgeOptions,
 } from "./kernel-bridge.js";
 import { graphStepReference, graphStepRunner } from "./graph-reporting.js";

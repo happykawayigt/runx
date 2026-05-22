@@ -2,10 +2,11 @@
 // idempotency, spend-capability consumption, rail mutation recovery, and the
 // step-persistence transaction until the payment execution boundary splits.
 use std::collections::BTreeMap;
-use std::fs::{self, File};
+use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::thread;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use runx_contracts::{JsonObject, JsonValue};
 use serde::{Deserialize, Serialize};
@@ -15,6 +16,8 @@ use crate::payment_packets::{PaymentPacketError, PaymentRailPacket, read_payment
 
 pub const PAYMENT_STATE_SCHEMA_VERSION: &str = "runx.payment_state.v3";
 pub const RUNX_PAYMENT_STATE_PATH_ENV: &str = "RUNX_PAYMENT_STATE_PATH";
+const PAYMENT_STATE_LOCK_TIMEOUT: Duration = Duration::from_secs(5);
+const PAYMENT_STATE_LOCK_RETRY: Duration = Duration::from_millis(10);
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -105,10 +108,16 @@ pub struct PaymentStepStateInput {
     pub currency: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct FileBackedPaymentStateStore {
     path: PathBuf,
     state: PaymentStateDocument,
+}
+
+#[derive(Debug)]
+struct PaymentStateLock {
+    path: PathBuf,
+    _file: File,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -159,6 +168,8 @@ pub enum PaymentStateError {
         #[source]
         source: std::io::Error,
     },
+    #[error("failed to lock payment state {path}: {message}")]
+    Lock { path: PathBuf, message: String },
     #[error("failed to serialize payment state {path}: {source}")]
     Serialize {
         path: PathBuf,
@@ -185,47 +196,7 @@ pub enum PaymentStateError {
 impl FileBackedPaymentStateStore {
     pub fn open(path: impl Into<PathBuf>) -> Result<Self, PaymentStateError> {
         let path = path.into();
-        let state = match fs::read_to_string(&path) {
-            Ok(contents) => {
-                let version: PaymentStateVersion =
-                    serde_json::from_str(&contents).map_err(|source| PaymentStateError::Parse {
-                        path: path.clone(),
-                        source,
-                    })?;
-                match version.schema_version.as_str() {
-                    PAYMENT_STATE_SCHEMA_VERSION => {
-                        serde_json::from_str(&contents).map_err(|source| {
-                            PaymentStateError::Parse {
-                                path: path.clone(),
-                                source,
-                            }
-                        })?
-                    }
-                    "runx.payment_state.v2" => {
-                        let legacy: PaymentStateDocumentV2 = serde_json::from_str(&contents)
-                            .map_err(|source| PaymentStateError::Parse {
-                                path: path.clone(),
-                                source,
-                            })?;
-                        legacy.into_current()
-                    }
-                    schema_version => {
-                        return Err(PaymentStateError::UnsupportedSchemaVersion {
-                            schema_version: schema_version.to_owned(),
-                        });
-                    }
-                }
-            }
-            Err(source) if source.kind() == std::io::ErrorKind::NotFound => {
-                PaymentStateDocument::default()
-            }
-            Err(source) => {
-                return Err(PaymentStateError::Read {
-                    path: path.clone(),
-                    source,
-                });
-            }
-        };
+        let state = load_payment_state(&path)?;
         Ok(Self { path, state })
     }
 
@@ -246,8 +217,15 @@ impl FileBackedPaymentStateStore {
                 idempotency_key: index_key,
             });
         }
-        self.state.idempotency_entries.insert(index_key, entry);
-        self.persist()
+        self.with_locked_state(|state| {
+            if state.idempotency_entries.contains_key(&index_key) {
+                return Err(PaymentStateError::IdempotencyAlreadyRecorded {
+                    idempotency_key: index_key.clone(),
+                });
+            }
+            state.idempotency_entries.insert(index_key, entry);
+            Ok(())
+        })
     }
 
     pub fn lookup_consumed_spend_capability(
@@ -261,19 +239,28 @@ impl FileBackedPaymentStateStore {
         &mut self,
         consumption: SpendCapabilityConsumption,
     ) -> Result<(), PaymentStateError> {
+        let capability_ref = consumption.capability_ref.clone();
         if self
             .state
             .consumed_spend_capabilities
-            .contains_key(&consumption.capability_ref)
+            .contains_key(&capability_ref)
         {
-            return Err(PaymentStateError::SpendCapabilityAlreadyConsumed {
-                capability_ref: consumption.capability_ref,
-            });
+            return Err(PaymentStateError::SpendCapabilityAlreadyConsumed { capability_ref });
         }
-        self.state
-            .consumed_spend_capabilities
-            .insert(consumption.capability_ref.clone(), consumption);
-        self.persist()
+        self.with_locked_state(|state| {
+            if state
+                .consumed_spend_capabilities
+                .contains_key(&capability_ref)
+            {
+                return Err(PaymentStateError::SpendCapabilityAlreadyConsumed {
+                    capability_ref: capability_ref.clone(),
+                });
+            }
+            state
+                .consumed_spend_capabilities
+                .insert(capability_ref, consumption);
+            Ok(())
+        })
     }
 
     pub fn lookup_rail_mutation(&self, key: &PaymentIdempotencyKey) -> Option<&RailMutation> {
@@ -284,14 +271,17 @@ impl FileBackedPaymentStateStore {
         &mut self,
         key: &PaymentIdempotencyKey,
     ) -> Result<Option<RailMutation>, PaymentStateError> {
-        let Some(mutation) = self.state.rail_mutations.get_mut(&key.index_key()) else {
+        if !self.state.rail_mutations.contains_key(&key.index_key()) {
             return Ok(None);
-        };
-        mutation.status = RailMutationStatus::Escalated;
-        mutation.recovery_state = PaymentRecoveryState::Escalated;
-        let mutation = mutation.clone();
-        self.persist()?;
-        Ok(Some(mutation))
+        }
+        self.with_locked_state(|state| {
+            let Some(mutation) = state.rail_mutations.get_mut(&key.index_key()) else {
+                return Ok(None);
+            };
+            mutation.status = RailMutationStatus::Escalated;
+            mutation.recovery_state = PaymentRecoveryState::Escalated;
+            Ok(Some(mutation.clone()))
+        })
     }
 
     pub fn record_rail_mutation(
@@ -304,23 +294,143 @@ impl FileBackedPaymentStateStore {
                 idempotency_key: index_key,
             });
         }
-        self.state.rail_mutations.insert(index_key, mutation);
-        self.persist()
+        self.with_locked_state(|state| {
+            if state.rail_mutations.contains_key(&index_key) {
+                return Err(PaymentStateError::RailMutationAlreadyRecorded {
+                    idempotency_key: index_key.clone(),
+                });
+            }
+            state.rail_mutations.insert(index_key, mutation);
+            Ok(())
+        })
     }
 
-    fn persist(&self) -> Result<(), PaymentStateError> {
-        let parent = self
-            .path
+    fn with_locked_state<T>(
+        &mut self,
+        update: impl FnOnce(&mut PaymentStateDocument) -> Result<T, PaymentStateError>,
+    ) -> Result<T, PaymentStateError> {
+        let _lock = PaymentStateLock::acquire(&self.path)?;
+        let mut state = load_payment_state(&self.path)?;
+        let result = update(&mut state)?;
+        persist_payment_state(&self.path, &state)?;
+        self.state = state;
+        Ok(result)
+    }
+}
+
+impl PaymentStateLock {
+    fn acquire(path: &Path) -> Result<Self, PaymentStateError> {
+        let parent = path
             .parent()
             .ok_or_else(|| PaymentStateError::MissingParent {
-                path: self.path.clone(),
+                path: path.to_path_buf(),
             })?;
         fs::create_dir_all(parent).map_err(|source| PaymentStateError::CreateDirectory {
             path: parent.to_path_buf(),
             source,
         })?;
-        write_json_atomically(&self.path, &self.state)
+        let lock_path = payment_state_lock_path(path);
+        let started = Instant::now();
+        loop {
+            match OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&lock_path)
+            {
+                Ok(file) => {
+                    return Ok(Self {
+                        path: lock_path,
+                        _file: file,
+                    });
+                }
+                Err(source) if source.kind() == std::io::ErrorKind::AlreadyExists => {
+                    if started.elapsed() >= PAYMENT_STATE_LOCK_TIMEOUT {
+                        return Err(PaymentStateError::Lock {
+                            path: path.to_path_buf(),
+                            message: format!("timed out waiting for lock {}", lock_path.display()),
+                        });
+                    }
+                    thread::sleep(PAYMENT_STATE_LOCK_RETRY);
+                }
+                Err(source) => {
+                    return Err(PaymentStateError::Lock {
+                        path: path.to_path_buf(),
+                        message: source.to_string(),
+                    });
+                }
+            }
+        }
     }
+}
+
+impl Drop for PaymentStateLock {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
+
+fn load_payment_state(path: &Path) -> Result<PaymentStateDocument, PaymentStateError> {
+    match fs::read_to_string(path) {
+        Ok(contents) => {
+            let version: PaymentStateVersion =
+                serde_json::from_str(&contents).map_err(|source| PaymentStateError::Parse {
+                    path: path.to_path_buf(),
+                    source,
+                })?;
+            match version.schema_version.as_str() {
+                PAYMENT_STATE_SCHEMA_VERSION => {
+                    serde_json::from_str(&contents).map_err(|source| PaymentStateError::Parse {
+                        path: path.to_path_buf(),
+                        source,
+                    })
+                }
+                "runx.payment_state.v2" => {
+                    let legacy: PaymentStateDocumentV2 =
+                        serde_json::from_str(&contents).map_err(|source| {
+                            PaymentStateError::Parse {
+                                path: path.to_path_buf(),
+                                source,
+                            }
+                        })?;
+                    Ok(legacy.into_current())
+                }
+                schema_version => Err(PaymentStateError::UnsupportedSchemaVersion {
+                    schema_version: schema_version.to_owned(),
+                }),
+            }
+        }
+        Err(source) if source.kind() == std::io::ErrorKind::NotFound => {
+            Ok(PaymentStateDocument::default())
+        }
+        Err(source) => Err(PaymentStateError::Read {
+            path: path.to_path_buf(),
+            source,
+        }),
+    }
+}
+
+fn persist_payment_state(
+    path: &Path,
+    state: &PaymentStateDocument,
+) -> Result<(), PaymentStateError> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| PaymentStateError::MissingParent {
+            path: path.to_path_buf(),
+        })?;
+    fs::create_dir_all(parent).map_err(|source| PaymentStateError::CreateDirectory {
+        path: parent.to_path_buf(),
+        source,
+    })?;
+    write_json_atomically(path, state)
+}
+
+fn payment_state_lock_path(path: &Path) -> PathBuf {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("payment-state.json");
+    path.with_file_name(format!(".{file_name}.lock"))
 }
 
 #[derive(Clone, Debug, Deserialize)]

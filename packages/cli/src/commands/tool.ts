@@ -1,5 +1,4 @@
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -7,6 +6,7 @@ import { readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { sha256Prefixed } from "@runxhq/contracts";
 import { resolvePathFromUserInput, resolveRunxWorkspaceBase } from "@runxhq/core/config";
 import { parseToolManifestJson, validateToolManifest } from "@runxhq/core/parser";
 import { errorMessage } from "@runxhq/core/util";
@@ -104,9 +104,9 @@ async function buildToolManifest(root: string, toolDir: string): Promise<ToolBui
     ? raw.output
     : normalizeToolOutput(raw);
   const schemaHash = sha256Stable({
-    inputs: raw.inputs,
+    ...("inputs" in raw ? { inputs: raw.inputs } : {}),
     output,
-    artifacts: isPlainRecord(raw.runx) ? raw.runx.artifacts : undefined,
+    ...(isPlainRecord(raw.runx) && raw.runx.artifacts !== undefined ? { artifacts: raw.runx.artifacts } : {}),
   });
   const normalized = {
     schema: "runx.tool.manifest.v1",
@@ -297,22 +297,24 @@ async function hashToolSource(toolDir: string): Promise<string> {
     path.join(toolDir, "src", "index.ts"),
     path.join(toolDir, "run.mjs"),
   ];
-  const hash = createHash("sha256");
+  const chunks: Uint8Array[] = [];
   let found = false;
   for (const candidate of candidates) {
     if (!existsSync(candidate)) {
       continue;
     }
     found = true;
-    hash.update(toProjectPath(toolDir, candidate));
-    hash.update("\0");
-    hash.update(await readFile(candidate));
-    hash.update("\0");
+    chunks.push(
+      Buffer.from(toProjectPath(toolDir, candidate)),
+      Buffer.from("\0"),
+      await readFile(candidate),
+      Buffer.from("\0"),
+    );
   }
   if (!found) {
-    hash.update("no-source");
+    chunks.push(Buffer.from("no-source"));
   }
-  return `sha256:${hash.digest("hex")}`;
+  return sha256Prefixed(Buffer.concat(chunks));
 }
 
 export async function discoverToolDirectories(root: string): Promise<readonly string[]> {

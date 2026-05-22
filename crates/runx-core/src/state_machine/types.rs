@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use runx_contracts::{JsonNumber, JsonObject, JsonValue};
+use runx_contracts::{AuthorityVerb, JsonNumber, JsonObject, JsonValue, Reference};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -87,6 +87,59 @@ pub struct SingleStepState {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthorityAdmissionWitness {
+    pub verb: AuthorityVerb,
+    pub parent_term_id: String,
+    pub child_term_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub idempotency_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spend_capability_ref: Option<Reference>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StepAdmissionWitness {
+    pub step_id: String,
+    pub receipt_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub authority: Option<AuthorityAdmissionWitness>,
+}
+
+impl StepAdmissionWitness {
+    #[must_use]
+    pub fn local_runtime(step_id: impl Into<String>, receipt_id: impl Into<String>) -> Self {
+        Self {
+            step_id: step_id.into(),
+            receipt_id: receipt_id.into(),
+            authority: None,
+        }
+    }
+
+    #[must_use]
+    pub fn with_authority(
+        step_id: impl Into<String>,
+        receipt_id: impl Into<String>,
+        authority: AuthorityAdmissionWitness,
+    ) -> Self {
+        Self {
+            step_id: step_id.into(),
+            receipt_id: receipt_id.into(),
+            authority: Some(authority),
+        }
+    }
+
+    #[must_use]
+    pub fn matches_step_receipt(&self, step_id: &str, receipt_id: &str) -> bool {
+        !self.step_id.is_empty()
+            && !self.receipt_id.is_empty()
+            && self.step_id == step_id
+            && self.receipt_id == receipt_id
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(
     tag = "type",
     rename_all = "snake_case",
@@ -94,9 +147,17 @@ pub struct SingleStepState {
 )]
 pub enum SingleStepEvent {
     Admit,
-    Start { at: String },
-    Succeed { at: String },
-    Fail { at: String, error: String },
+    Start {
+        at: String,
+    },
+    Succeed {
+        at: String,
+        admission_witness: Box<StepAdmissionWitness>,
+    },
+    Fail {
+        at: String,
+        error: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -239,6 +300,7 @@ pub enum SequentialGraphEvent {
         step_id: String,
         at: String,
         receipt_id: String,
+        admission_witness: Box<StepAdmissionWitness>,
         #[serde(skip_serializing_if = "Option::is_none")]
         outputs: Option<JsonObject>,
     },

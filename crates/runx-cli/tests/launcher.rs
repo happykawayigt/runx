@@ -6,6 +6,7 @@ use runx_cli::launcher::{
     ListPlan, NewPlan, ToolAction, ToolPlan, help_text, plan_launcher,
 };
 use runx_cli::mcp::McpPlan;
+use runx_cli::parser::{ParserInputSource, ParserPlan};
 use runx_cli::policy::{PolicyAction, PolicyPlan};
 use runx_cli::registry::{RegistryAction, RegistryPlan};
 use runx_cli::skill::SkillPlan;
@@ -27,6 +28,7 @@ fn top_level_help_and_version_are_native() {
         &help,
         "runx skill <skill-ref|skill-dir|SKILL.md> [--input k=v] [--receipt-dir dir] [--run-id id] [--answers file] [--json]",
     );
+    assert_help_line(&help, "runx parser eval --input <file|-> --json");
     assert_help_line(&help, "runx harness <fixture.yaml...> [--json]");
     assert!(
         !help.contains("runx harness <fixture.yaml|skill-dir|SKILL.md>"),
@@ -238,6 +240,21 @@ fn routes_kernel_to_native_plan_and_rejects_unknown_subcommands() {
     assert_eq!(
         plan(&["kernel", "trace"]),
         LauncherAction::Error("unknown kernel subcommand trace".to_owned())
+    );
+}
+
+#[test]
+fn routes_parser_to_native_plan_and_rejects_unknown_subcommands() {
+    assert_eq!(
+        plan(&["parser", "eval", "--input=-", "--json"]),
+        LauncherAction::RunParser(ParserPlan {
+            input: ParserInputSource::Stdin,
+            json: true,
+        })
+    );
+    assert_eq!(
+        plan(&["parser", "trace"]),
+        LauncherAction::Error("unknown parser subcommand trace".to_owned())
     );
 }
 

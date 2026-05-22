@@ -1,8 +1,8 @@
-import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import { sha256Prefixed } from "@runxhq/contracts";
 import { resolvePathFromUserInput, resolveRunxWorkspaceBase } from "@runxhq/core/config";
 import {
   parseRunnerManifestYaml,
@@ -175,9 +175,9 @@ async function discoverToolDoctorDiagnostics(root: string): Promise<readonly Doc
           }
           const actualSourceHash = await hashToolSource(toolDir);
           const actualSchemaHash = sha256Stable({
-            inputs: manifest.inputs,
-            output: manifest.output,
-            artifacts: isPlainRecord(manifest.runx) ? manifest.runx.artifacts : undefined,
+            ...("inputs" in manifest ? { inputs: manifest.inputs } : {}),
+            ...(manifest.output !== undefined ? { output: manifest.output } : {}),
+            ...(isPlainRecord(manifest.runx) && manifest.runx.artifacts !== undefined ? { artifacts: manifest.runx.artifacts } : {}),
           });
           if (typeof manifest.source_hash === "string" && manifest.source_hash !== actualSourceHash) {
             diagnostics.push(createDoctorDiagnostic({
@@ -697,22 +697,24 @@ async function hashToolSource(toolDir: string): Promise<string> {
     path.join(toolDir, "src", "index.ts"),
     path.join(toolDir, "run.mjs"),
   ];
-  const hash = createHash("sha256");
+  const chunks: Uint8Array[] = [];
   let found = false;
   for (const candidate of candidates) {
     if (!existsSync(candidate)) {
       continue;
     }
     found = true;
-    hash.update(toProjectPath(toolDir, candidate));
-    hash.update("\0");
-    hash.update(await readFile(candidate));
-    hash.update("\0");
+    chunks.push(
+      Buffer.from(toProjectPath(toolDir, candidate)),
+      Buffer.from("\0"),
+      await readFile(candidate),
+      Buffer.from("\0"),
+    );
   }
   if (!found) {
-    hash.update("no-source");
+    chunks.push(Buffer.from("no-source"));
   }
-  return `sha256:${hash.digest("hex")}`;
+  return sha256Prefixed(Buffer.concat(chunks));
 }
 
 export function renderDoctorResult(result: DoctorReport, env: NodeJS.ProcessEnv = process.env): string {

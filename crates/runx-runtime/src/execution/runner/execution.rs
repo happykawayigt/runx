@@ -406,6 +406,7 @@ impl GraphExecution {
                 step_id: step_id.to_owned(),
                 at: runtime.options.created_at.clone(),
                 receipt_id: run.receipt.id.clone(),
+                admission_witness: Box::new(run.admission_witness.clone()),
                 outputs: Some(run.outputs.clone()),
             },
         );

@@ -339,6 +339,54 @@ fn payment_step_state_persistence_keeps_first_sealed_record()
 }
 
 #[test]
+fn stale_store_mutation_reloads_locked_state_before_writing()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("payment-state.json");
+    let idempotency_key =
+        PaymentIdempotencyKey::new("mock", "merchant:paid-echo", "payment:paid-echo-001");
+    let mut first = FileBackedPaymentStateStore::open(&path)?;
+    let mut stale_second = FileBackedPaymentStateStore::open(&path)?;
+
+    first.record_idempotency(PaymentIdempotencyEntry {
+        idempotency_key: idempotency_key.clone(),
+        receipt_ref: "receipt:first".to_owned(),
+        receipt_created_at: "2026-05-18T00:00:00Z".to_owned(),
+        receipt_digest: "sha256:receipt-first".to_owned(),
+        rail_proof_ref: "proof:first".to_owned(),
+        amount_minor: 125,
+        currency: "USD".to_owned(),
+        outputs: JsonObject::new(),
+    })?;
+
+    let error = stale_second
+        .record_idempotency(PaymentIdempotencyEntry {
+            idempotency_key: idempotency_key.clone(),
+            receipt_ref: "receipt:second".to_owned(),
+            receipt_created_at: "2026-05-18T00:00:00Z".to_owned(),
+            receipt_digest: "sha256:receipt-second".to_owned(),
+            rail_proof_ref: "proof:second".to_owned(),
+            amount_minor: 250,
+            currency: "USD".to_owned(),
+            outputs: JsonObject::new(),
+        })
+        .err()
+        .ok_or("stale store must not overwrite locked payment state")?;
+    assert_eq!(
+        error.to_string(),
+        "idempotency key mock\u{1f}merchant:paid-echo\u{1f}payment:paid-echo-001 was already recorded"
+    );
+
+    let fresh = FileBackedPaymentStateStore::open(&path)?;
+    let entry = fresh
+        .lookup_idempotency(&idempotency_key)
+        .ok_or("first idempotency entry should remain persisted")?;
+    assert_eq!(entry.receipt_ref, "receipt:first");
+
+    Ok(())
+}
+
+#[test]
 fn persists_partial_rail_mutation_for_recovery_lookup_without_sealed_idempotency()
 -> Result<(), Box<dyn std::error::Error>> {
     let temp = tempfile::tempdir()?;

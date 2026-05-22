@@ -3,13 +3,6 @@ import {
 } from "@runxhq/core/artifacts";
 import type { ResolutionRequestContract as ResolutionRequest } from "@runxhq/contracts";
 import { errorMessage } from "@runxhq/core/util";
-import {
-  evaluateFanoutSync,
-  planSequentialGraphTransition,
-  transitionSequentialGraph,
-  type SequentialGraphPlan,
-} from "@runxhq/core/state-machine";
-
 import { runFanout } from "../fanout.js";
 import { findGraphStep, materializeContext, materializeStepInputs } from "../graph-context.js";
 import {
@@ -45,7 +38,13 @@ import {
 import { admitGraphTransition, resolveSequentialGraphFailureReason } from "../graph-hydration.js";
 import { resolveGraphStepExecution } from "../execution-targets.js";
 import { materializeDeclaredInputs } from "../inputs.js";
-import { admitRetryPolicyViaKernel } from "../kernel-bridge.js";
+import {
+  admitRetryPolicyViaKernel,
+  evaluateFanoutSyncViaKernel,
+  planSequentialGraphTransitionViaKernel,
+  transitionSequentialGraphViaKernel,
+  type SequentialGraphPlan,
+} from "../kernel-bridge.js";
 import {
   buildRetryReceiptContext,
   isAgentMediatedSource,
@@ -94,6 +93,7 @@ export async function handleRunFanoutPlan(
       skillCacheDir: options.skillCacheDir,
       toolCatalogAdapters: options.toolCatalogAdapters,
       officialSkillResolver: options.officialSkillResolver,
+      env: options.env,
     });
     const stepSkillPath = resolvedStep.skillPath;
     const stepSkill = resolvedStep.skill;
@@ -255,11 +255,15 @@ export async function handleRunFanoutPlan(
 
   for (const prep of branchPreps) {
     const stepStartedAt = new Date().toISOString();
-    ctx.state = transitionSequentialGraph(ctx.state, {
-      type: "start_step",
-      stepId: prep.step.id,
-      at: stepStartedAt,
-    });
+    ctx.state = await transitionSequentialGraphViaKernel(
+      ctx.state,
+      {
+        type: "start_step",
+        stepId: prep.step.id,
+        at: stepStartedAt,
+      },
+      { env: options.env },
+    );
     await reportGraphStepStarted(options.caller, prep.step, prep.stepReference);
     await appendGraphStepStartedLedgerEntry({
       receiptDir: ctx.receiptDir,
@@ -321,11 +325,16 @@ export async function handleRunFanoutPlan(
     const result = fanoutResults[i];
 
     if (result.status === "aborted" || !result.value) {
-      ctx.state = transitionSequentialGraph(ctx.state, {
-        type: "step_failed", stepId: prep.step.id,
-        at: new Date().toISOString(),
-        error: result.error ?? "fanout branch aborted",
-      });
+      ctx.state = await transitionSequentialGraphViaKernel(
+        ctx.state,
+        {
+          type: "step_failed",
+          stepId: prep.step.id,
+          at: new Date().toISOString(),
+          error: result.error ?? "fanout branch aborted",
+        },
+        { env: options.env },
+      );
       continue;
     }
 
@@ -376,11 +385,16 @@ export async function handleRunFanoutPlan(
         stepId: prep.step.id,
         reason: `policy denied: ${stepResult.reasons.join("; ")}`,
       });
-      ctx.state = transitionSequentialGraph(ctx.state, {
-        type: "step_failed", stepId: prep.step.id,
-        at: new Date().toISOString(),
-        error: `policy denied: ${stepResult.reasons.join("; ")}`,
-      });
+      ctx.state = await transitionSequentialGraphViaKernel(
+        ctx.state,
+        {
+          type: "step_failed",
+          stepId: prep.step.id,
+          at: new Date().toISOString(),
+          error: `policy denied: ${stepResult.reasons.join("; ")}`,
+        },
+        { env: options.env },
+      );
       continue;
     }
 
@@ -449,16 +463,17 @@ export async function handleRunFanoutPlan(
     });
 
     ctx.state = stepResult.status === "sealed"
-      ? transitionSequentialGraph(ctx.state, {
+      ? await transitionSequentialGraphViaKernel(ctx.state, {
           type: "step_succeeded", stepId: prep.step.id,
           at: stepCompletedAt, receiptId: stepResult.receipt.id,
+          admissionWitness: { stepId: prep.step.id, receiptId: stepResult.receipt.id },
           outputs: artifactResult.fields,
-        })
-      : transitionSequentialGraph(ctx.state, {
+        }, { env: options.env })
+      : await transitionSequentialGraphViaKernel(ctx.state, {
           type: "step_failed", stepId: prep.step.id,
           at: stepCompletedAt,
           error: stepResult.execution.errorMessage ?? stepResult.execution.stderr,
-        });
+        }, { env: options.env });
     await reportGraphStepCompleted(
       options.caller,
       prep.step,
@@ -487,9 +502,13 @@ export async function handleRunFanoutPlan(
     };
   }
 
-  const followUpPlan = planSequentialGraphTransition(ctx.state, ctx.graphSteps, ctx.graph.fanoutGroups, {
-    resolvedFanoutGateKeys: ctx.resolvedFanoutGateKeys,
-  });
+  const followUpPlan = await planSequentialGraphTransitionViaKernel(
+    ctx.state,
+    ctx.graphSteps,
+    ctx.graph.fanoutGroups,
+    { resolvedFanoutGateKeys: ctx.resolvedFanoutGateKeys },
+    { env: options.env },
+  );
   if (followUpPlan.type === "run_fanout" && followUpPlan.groupId === plan.groupId) {
     return { kind: "continue" };
   }
@@ -499,7 +518,11 @@ export async function handleRunFanoutPlan(
         ? resolveSequentialGraphFailureReason(followUpPlan, ctx.state, ctx.stepRuns)
         : followUpPlan.reason;
     ctx.syncPoints.push(toGraphReceiptSyncPoint(followUpPlan.syncDecision, latestFanoutReceiptIds(ctx.stepRuns, plan.groupId)));
-    ctx.state = transitionSequentialGraph(ctx.state, { type: "fail_graph", error: ctx.finalError });
+    ctx.state = await transitionSequentialGraphViaKernel(
+      ctx.state,
+      { type: "fail_graph", error: ctx.finalError },
+      { env: options.env },
+    );
     return { kind: "break" };
   }
   if ((followUpPlan.type === "paused" || followUpPlan.type === "escalated") && followUpPlan.syncDecision.groupId === plan.groupId) {
@@ -510,7 +533,7 @@ export async function handleRunFanoutPlan(
 
   const policy = ctx.graph.fanoutGroups[plan.groupId];
   if (policy) {
-    const decision = evaluateFanoutSync(
+    const decision = await evaluateFanoutSyncViaKernel(
       policy,
       ctx.graphSteps
         .filter((step) => step.fanoutGroup === plan.groupId)
@@ -523,6 +546,7 @@ export async function handleRunFanoutPlan(
           };
         }),
       { resolvedGateKeys: ctx.resolvedFanoutGateKeys },
+      { env: options.env },
     );
     if (decision.decision === "proceed" || decision.decision === "halt") {
       ctx.syncPoints.push(toGraphReceiptSyncPoint(decision, latestFanoutReceiptIds(ctx.stepRuns, plan.groupId)));

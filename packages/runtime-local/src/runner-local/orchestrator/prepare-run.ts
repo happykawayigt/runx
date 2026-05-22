@@ -59,6 +59,7 @@ export async function prepareRun(options: RunLocalGraphOptions): Promise<RunCont
     options.skillCacheDir,
     options.toolCatalogAdapters,
     options.officialSkillResolver,
+    options.env,
   );
   const graphGrant = options.graphGrant ?? defaultLocalGraphGrant();
   const graphSteps = graph.steps.map((step) => ({

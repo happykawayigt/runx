@@ -10,6 +10,10 @@
   },
   "input": {
     "event": {
+      "admissionWitness": {
+        "receiptId": "rx_lint",
+        "stepId": "lint"
+      },
       "at": "2026-04-10T00:00:01.000Z",
       "type": "succeed"
     },
