@@ -94,9 +94,9 @@ where
     }
 
     fn invoke(&self, request: SkillInvocation) -> Result<SkillOutput, RuntimeError> {
-        if request.source.source_type != "external-adapter" {
+        if request.source.source_type != runx_parser::SourceKind::ExternalAdapter {
             return Err(RuntimeError::UnsupportedAdapter {
-                adapter_type: request.source.source_type,
+                adapter_type: request.source.source_type.as_str().to_owned(),
             });
         }
         let skill_name = request.skill_name.clone();
@@ -484,10 +484,10 @@ fn skill_invocation_contract(
         adapter_id: manifest.adapter_id.clone(),
         run_id: run_id.clone(),
         step_id,
-        source_type: request.source.source_type.clone(),
+        source_type: request.source.source_type.as_str().to_owned(),
         skill_ref,
-        harness_ref: reference(ReferenceType::Harness, &format!("runx:harness:{run_id}")),
-        host_ref: reference(ReferenceType::Host, "runx:host:runtime"),
+        harness_ref: Reference::with_uri(ReferenceType::Harness, format!("runx:harness:{run_id}")),
+        host_ref: Reference::with_uri(ReferenceType::Host, "runx:host:runtime"),
         inputs: request.inputs.clone(),
         resolved_inputs: (!request.resolved_inputs.is_empty())
             .then(|| request.resolved_inputs.clone()),
@@ -658,18 +658,6 @@ fn external_adapter_status_label(status: &ExternalAdapterStatus) -> &'static str
         ExternalAdapterStatus::Failed => "failed",
         ExternalAdapterStatus::HostResolutionRequested => "host_resolution_requested",
         ExternalAdapterStatus::Cancelled => "cancelled",
-    }
-}
-
-fn reference(reference_type: ReferenceType, uri: &str) -> Reference {
-    Reference {
-        reference_type,
-        uri: uri.to_owned(),
-        provider: None,
-        locator: None,
-        label: None,
-        observed_at: None,
-        proof_kind: None,
     }
 }
 

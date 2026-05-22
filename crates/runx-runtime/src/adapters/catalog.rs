@@ -33,9 +33,9 @@ impl SkillAdapter for CatalogAdapter {
 
     fn invoke(&self, request: SkillInvocation) -> Result<SkillOutput, RuntimeError> {
         let started = Instant::now();
-        if request.source.source_type != "catalog" {
+        if request.source.source_type != runx_parser::SourceKind::Catalog {
             return Err(RuntimeError::UnsupportedAdapter {
-                adapter_type: request.source.source_type,
+                adapter_type: request.source.source_type.as_str().to_owned(),
             });
         }
         let Some(catalog_ref) = request.source.catalog_ref.as_deref() else {
@@ -78,7 +78,7 @@ fn invoke_local_tool(
         Err(error) => return Err(catalog_error(&request.skill_name, error)),
     };
 
-    if resolution.tool.source.source_type != "cli-tool" {
+    if resolution.tool.source.source_type != runx_parser::SourceKind::CliTool {
         return Ok(Some(failure(
             format!(
                 "Resolved catalog tool '{}' uses unsupported Rust adapter '{}'.",

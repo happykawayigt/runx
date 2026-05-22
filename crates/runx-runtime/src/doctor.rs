@@ -7,6 +7,7 @@ use runx_contracts::{
     DoctorRepairConfidence, DoctorRepairKind, DoctorRepairRisk, DoctorReport, DoctorReportSchema,
     DoctorStatus, DoctorSummary, JsonNumber, JsonObject, JsonValue, sha256_prefixed,
 };
+use runx_parser::{parse_runner_manifest_yaml, validate_runner_manifest};
 use serde::Deserialize;
 
 use crate::RuntimeError;
@@ -368,6 +369,15 @@ fn discover_skill_diagnostics(root: &Path) -> Result<Vec<DoctorDiagnostic>, Runt
                 |name| name.to_string_lossy().into_owned(),
             )
         };
+        if let Err(message) = validate_skill_profile(&contents) {
+            diagnostics.push(skill_profile_invalid_diagnostic(
+                root,
+                &profile_path,
+                &skill_name,
+                &message,
+            ));
+            continue;
+        }
         let fixture_count = count_yaml_files(&skill_dir.join("fixtures"))?;
         let harness_case_count = inline_harness_case_count(&contents);
         if fixture_count == 0 && harness_case_count == 0 {
@@ -381,6 +391,15 @@ fn discover_skill_diagnostics(root: &Path) -> Result<Vec<DoctorDiagnostic>, Runt
         }
     }
     Ok(diagnostics)
+}
+
+/// Parse and validate a skill execution profile (X.yaml) the same way the
+/// publish path does, so doctor catches an invalid harness status, an unknown
+/// runner shape, or malformed YAML before publish rather than at publish time.
+fn validate_skill_profile(contents: &str) -> Result<(), String> {
+    let raw = parse_runner_manifest_yaml(contents).map_err(|error| error.to_string())?;
+    validate_runner_manifest(raw).map_err(|error| error.to_string())?;
+    Ok(())
 }
 
 fn skill_fixture_missing_diagnostic(
@@ -427,6 +446,45 @@ fn skill_fixture_missing_diagnostic(
             DoctorRepairConfidence::Medium,
             DoctorRepairRisk::Low,
             false,
+        )],
+    })
+}
+
+fn skill_profile_invalid_diagnostic(
+    root: &Path,
+    profile_path: &Path,
+    skill_name: &str,
+    message: &str,
+) -> DoctorDiagnostic {
+    let location_path = project_path(root, profile_path);
+    let target = object([
+        ("kind", string_value("skill")),
+        ("ref", string_value(skill_name)),
+    ]);
+    let location = DoctorLocation {
+        path: location_path.clone(),
+        json_pointer: Some("/runners".to_owned()),
+    };
+    let evidence = object([("error", string_value(message))]);
+    create_diagnostic(DiagnosticParts {
+        id: "runx.skill.profile.invalid",
+        severity: DoctorDiagnosticSeverity::Error,
+        title: "Skill execution profile is invalid",
+        message: format!("Skill {skill_name} has an invalid execution profile: {message}"),
+        target,
+        target_json: format!(r#"{{"kind":"skill","ref":{}}}"#, json_string(skill_name)),
+        location,
+        location_json: format!(
+            r#"{{"path":{},"json_pointer":"/runners"}}"#,
+            json_string(&location_path)
+        ),
+        evidence: Some(evidence),
+        evidence_json: Some(format!(r#"{{"error":{}}}"#, json_string(message))),
+        repairs: vec![manual_repair(
+            "fix_execution_profile",
+            DoctorRepairConfidence::High,
+            DoctorRepairRisk::Low,
+            true,
         )],
     })
 }
@@ -761,4 +819,91 @@ fn json_string(value: &str) -> String {
     }
     encoded.push('"');
     encoded
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_skill_profile;
+
+    const VALID_PROFILE: &str = r#"
+runners:
+  main:
+    default: true
+    type: agent-step
+    agent: builder
+    task: probe
+    outputs:
+      result: string
+    inputs:
+      objective:
+        type: string
+        required: true
+        description: "x"
+harness:
+  cases:
+    - name: ok
+      inputs:
+        objective: x
+      caller:
+        answers:
+          agent_step.probe.output:
+            result: ok
+      expect:
+        status: sealed
+        receipt:
+          schema: runx.harness_receipt.v1
+          state: sealed
+          disposition: closed
+"#;
+
+    const INVALID_HARNESS_STATUS_PROFILE: &str = r#"
+runners:
+  main:
+    default: true
+    type: agent-step
+    agent: builder
+    task: probe
+    outputs:
+      result: string
+    inputs:
+      objective:
+        type: string
+        required: true
+        description: "x"
+harness:
+  cases:
+    - name: bad
+      inputs:
+        objective: x
+      caller:
+        answers:
+          agent_step.probe.output:
+            result: ok
+      expect:
+        status: success
+        receipt:
+          schema: runx.harness_receipt.v1
+          state: sealed
+          disposition: closed
+"#;
+
+    #[test]
+    fn valid_execution_profile_passes() {
+        assert!(validate_skill_profile(VALID_PROFILE).is_ok());
+    }
+
+    #[test]
+    fn invalid_harness_status_is_rejected() {
+        let result = validate_skill_profile(INVALID_HARNESS_STATUS_PROFILE);
+        assert!(
+            result.is_err(),
+            "an invalid harness expect.status must be rejected by doctor"
+        );
+        if let Err(message) = result {
+            assert!(
+                message.contains("must be sealed"),
+                "unexpected error message: {message}"
+            );
+        }
+    }
 }

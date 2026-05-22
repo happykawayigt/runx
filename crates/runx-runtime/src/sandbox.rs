@@ -7,6 +7,7 @@ use std::path::{Component, Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use runx_contracts::{JsonObject, JsonValue};
+use runx_core::policy::{CwdPolicy, SandboxProfile};
 use runx_parser::{SkillMcpServer, SkillSandbox, SkillSource};
 
 use crate::RuntimeError;
@@ -107,7 +108,7 @@ fn resolve_cwd_value(
     workspace_cwd: Option<&Path>,
 ) -> Result<PathBuf, RuntimeError> {
     let policy = sandbox
-        .and_then(|sandbox| sandbox.cwd_policy.as_deref())
+        .and_then(|sandbox| sandbox.cwd_policy.as_ref().map(CwdPolicy::as_str))
         .unwrap_or("skill-directory");
     let profile = sandbox
         .map(|sandbox| sandbox.profile.as_str())
@@ -421,12 +422,12 @@ pub fn sandbox_metadata(sandbox: Option<&SkillSandbox>) -> JsonObject {
     if let Some(sandbox) = sandbox {
         metadata.insert(
             "profile".to_owned(),
-            JsonValue::String(sandbox.profile.clone()),
+            JsonValue::String(sandbox.profile.as_str().to_owned()),
         );
         if let Some(cwd_policy) = &sandbox.cwd_policy {
             metadata.insert(
                 "cwd_policy".to_owned(),
-                JsonValue::String(cwd_policy.clone()),
+                JsonValue::String(cwd_policy.as_str().to_owned()),
             );
         }
         metadata.insert(
@@ -514,7 +515,7 @@ fn insert_filesystem_metadata(metadata: &mut JsonObject, sandbox: &SkillSandbox)
                 ),
                 (
                     "readonly_paths".to_owned(),
-                    JsonValue::Bool(sandbox.profile != "unrestricted-local-dev"),
+                    JsonValue::Bool(sandbox.profile != SandboxProfile::UnrestrictedLocalDev),
                 ),
                 ("writable_paths_enforced".to_owned(), JsonValue::Bool(false)),
                 ("private_tmp".to_owned(), JsonValue::Bool(false)),
@@ -531,7 +532,7 @@ fn insert_approval_metadata(metadata: &mut JsonObject, sandbox: &SkillSandbox) {
             [
                 (
                     "required".to_owned(),
-                    JsonValue::Bool(sandbox.profile == "unrestricted-local-dev"),
+                    JsonValue::Bool(sandbox.profile == SandboxProfile::UnrestrictedLocalDev),
                 ),
                 (
                     "approved".to_owned(),

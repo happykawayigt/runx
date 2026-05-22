@@ -69,60 +69,6 @@ fn persists_payment_state_across_fresh_store() -> Result<(), Box<dyn std::error:
 }
 
 #[test]
-fn opens_v2_payment_state_fail_closed_without_replay_entries()
--> Result<(), Box<dyn std::error::Error>> {
-    let temp = tempfile::tempdir()?;
-    let path = temp.path().join("payment-state.json");
-    std::fs::write(
-        &path,
-        serde_json::to_string_pretty(&json!({
-            "schema_version": "runx.payment_state.v2",
-            "idempotency_entries": {
-                "mock\u{1f}merchant:paid-echo\u{1f}payment:paid-echo-001": {
-                    "idempotency_key": {
-                        "rail": "mock",
-                        "counterparty": "merchant:paid-echo",
-                        "key": "payment:paid-echo-001"
-                    },
-                    "receipt_ref": "receipt:legacy",
-                    "rail_proof_ref": "proof:legacy",
-                    "amount_minor": 125,
-                    "currency": "USD"
-                }
-            },
-            "consumed_spend_capabilities": {
-                "runx:payment-capability:paid-echo-spend-1": {
-                    "capability_ref": "runx:payment-capability:paid-echo-spend-1",
-                    "idempotency_key": {
-                        "rail": "mock",
-                        "counterparty": "merchant:paid-echo",
-                        "key": "payment:paid-echo-001"
-                    },
-                    "receipt_ref": "receipt:legacy",
-                    "recovery_state": "sealed"
-                }
-            },
-            "rail_mutations": {}
-        }))?,
-    )?;
-
-    let idempotency_key =
-        PaymentIdempotencyKey::new("mock", "merchant:paid-echo", "payment:paid-echo-001");
-    let store = FileBackedPaymentStateStore::open(&path)?;
-    assert!(
-        store.lookup_idempotency(&idempotency_key).is_none(),
-        "v2 sealed idempotency entries lack replay-safe outputs and must not replay"
-    );
-    assert!(
-        store
-            .lookup_consumed_spend_capability("runx:payment-capability:paid-echo-spend-1")
-            .is_some(),
-        "v2 consumed capability state must remain fail-closed"
-    );
-    Ok(())
-}
-
-#[test]
 fn records_consumed_spend_capability_for_reuse_lookup() -> Result<(), Box<dyn std::error::Error>> {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("nested").join("payment-state.json");

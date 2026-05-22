@@ -15,15 +15,77 @@ use super::inputs::{
 };
 use crate::RuntimeError;
 use crate::adapter::SkillOutput;
+use crate::payment_packets::read_payment_rail_packet;
 use crate::payment_state::{
     PaymentIdempotencyKey, PaymentRecoveryState, RailMutationStatus,
     consumed_spend_capability_recorded, escalate_payment_rail_mutation,
     lookup_payment_idempotency_entry, lookup_payment_rail_mutation,
 };
 use crate::payment_supervisor::{
+    PAYMENT_RAIL_SUPERVISOR_EVIDENCE_METADATA, PaymentSupervisorEvidenceInput,
     PaymentSupervisorProof, PaymentSupervisorProofMatch, PaymentSupervisorVerificationInput,
+    payment_supervisor_evidence_metadata_value, synthesize_payment_supervisor_evidence,
     validate_payment_supervisor_proof, verify_payment_rail_supervisor_proof,
 };
+
+/// Trusted supervisor producer: synthesize the rail settlement evidence from the
+/// admitted spend authority and the skill's claimed proof ref, then write it to
+/// the runtime-controlled output metadata before the receipt-before-success
+/// gate verifies it. Settlement facts come from admission; the skill only
+/// supplies the claim, which `verify_payment_rail_supervisor_proof` re-checks.
+pub(super) fn synthesize_payment_supervisor_evidence_before_gate(
+    step: &GraphStep,
+    authority: Option<&StepAuthorityContext>,
+    outputs: &JsonObject,
+    output: &mut SkillOutput,
+) -> Result<(), RuntimeError> {
+    let Some(authority) = authority else {
+        return Ok(());
+    };
+    if !output.succeeded() || authority.verb != AuthorityVerb::Spend {
+        return Ok(());
+    }
+    let Some(payment) = authority.payment.as_ref() else {
+        return Ok(());
+    };
+    let Some(packet) = read_payment_rail_packet(outputs).map_err(|source| {
+        authority_denied(
+            step,
+            AuthorityVerb::Spend,
+            format!("reading payment rail packet for supervisor evidence failed: {source}"),
+        )
+    })?
+    else {
+        return Ok(());
+    };
+    let Some(claim) = packet.proof.as_ref() else {
+        return Ok(());
+    };
+    let settlement_status = packet
+        .result
+        .as_ref()
+        .and_then(|result| result.status.as_deref());
+    let evidence = synthesize_payment_supervisor_evidence(PaymentSupervisorEvidenceInput {
+        rail: &payment.rail,
+        counterparty: &payment.counterparty,
+        amount_minor: payment.amount_minor,
+        currency: &payment.currency,
+        idempotency_key: &payment.idempotency_key.key,
+        proof_ref: &claim.proof_ref,
+        settlement_status,
+    });
+    let value = payment_supervisor_evidence_metadata_value(&evidence).map_err(|source| {
+        authority_denied(
+            step,
+            AuthorityVerb::Spend,
+            format!("encoding supervisor evidence failed: {source}"),
+        )
+    })?;
+    output
+        .metadata
+        .insert(PAYMENT_RAIL_SUPERVISOR_EVIDENCE_METADATA.to_owned(), value);
+    Ok(())
+}
 
 pub(super) fn enforce_step_authority_receipt_before_success(
     step: &GraphStep,

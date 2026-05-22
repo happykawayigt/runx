@@ -132,7 +132,7 @@ fn invocation_in_directory(
     SkillInvocation {
         skill_name: "fixture.catalog".to_owned(),
         source: SkillSource {
-            source_type: "catalog".to_owned(),
+            source_type: runx_parser::SourceKind::Catalog,
             command: None,
             args: Vec::new(),
             cwd: None,

@@ -539,12 +539,33 @@ pub enum SandboxProfile {
     UnrestrictedLocalDev,
 }
 
+impl SandboxProfile {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SandboxProfile::Readonly => "readonly",
+            SandboxProfile::WorkspaceWrite => "workspace-write",
+            SandboxProfile::Network => "network",
+            SandboxProfile::UnrestrictedLocalDev => "unrestricted-local-dev",
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum CwdPolicy {
     SkillDirectory,
     Workspace,
     Custom,
+}
+
+impl CwdPolicy {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            CwdPolicy::SkillDirectory => "skill-directory",
+            CwdPolicy::Workspace => "workspace",
+            CwdPolicy::Custom => "custom",
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

@@ -1,9 +1,5 @@
 // rust-style-allow: large-file - target-repo runner planning, dedupe lookup,
 // execution plans, and receipt metadata share one fixture-driven oracle.
-use std::fmt::Write as _;
-
-use sha2::{Digest, Sha256};
-
 use crate::{
     JsonNumber, JsonObject, JsonValue, OperationalPolicy, OperationalPolicyAdmission,
     OperationalPolicyAdmissionRequest, OperationalPolicyAdmissionStatus,
@@ -692,12 +688,7 @@ fn dedupe_strategy_name(strategy: OperationalPolicyDedupeStrategy) -> &'static s
 }
 
 fn sha256_hex(value: &str) -> String {
-    let digest = Sha256::digest(value.as_bytes());
-    let mut hex = String::with_capacity(digest.len() * 2);
-    for byte in digest {
-        let _ = write!(&mut hex, "{byte:02x}");
-    }
-    hex
+    crate::fingerprint::sha256_hex(value.as_bytes())
 }
 
 fn required_admission_value(

@@ -145,9 +145,9 @@ where
 
     fn invoke(&self, request: SkillInvocation) -> Result<SkillOutput, RuntimeError> {
         let started = Instant::now();
-        if request.source.source_type != self.source_type.as_str() {
+        if request.source.source_type.as_str() != self.source_type.as_str() {
             return Err(RuntimeError::UnsupportedAdapter {
-                adapter_type: request.source.source_type,
+                adapter_type: request.source.source_type.as_str().to_owned(),
             });
         }
 

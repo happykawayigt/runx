@@ -341,7 +341,7 @@ fn contract_profile(
 
 fn cli_source() -> SkillSource {
     SkillSource {
-        source_type: "cli-tool".to_owned(),
+        source_type: runx_parser::SourceKind::CliTool,
         command: Some("sh".to_owned()),
         args: vec![
             "-c".to_owned(),
@@ -379,7 +379,7 @@ fn large_output_cli_source() -> SkillSource {
 
 fn mcp_source() -> SkillSource {
     let mut source = cli_source();
-    source.source_type = "mcp".to_owned();
+    source.source_type = runx_parser::SourceKind::Mcp;
     source.command = None;
     source.args = Vec::new();
     source.server = Some(runx_parser::SkillMcpServer {
@@ -394,7 +394,7 @@ fn mcp_source() -> SkillSource {
 fn mcp_process_source() -> Result<SkillSource, RuntimeError> {
     let root = repo_root()?;
     let mut source = cli_source();
-    source.source_type = "mcp".to_owned();
+    source.source_type = runx_parser::SourceKind::Mcp;
     source.command = None;
     source.args = Vec::new();
     source.server = Some(runx_parser::SkillMcpServer {
@@ -412,7 +412,7 @@ fn mcp_process_source() -> Result<SkillSource, RuntimeError> {
 
 fn readonly_sandbox() -> SkillSandbox {
     SkillSandbox {
-        profile: "readonly".to_owned(),
+        profile: runx_core::policy::SandboxProfile::Readonly,
         cwd_policy: None,
         env_allowlist: Some(vec!["PATH".to_owned()]),
         network: None,

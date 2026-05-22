@@ -90,9 +90,9 @@ fn prepare_mcp_tool_call(
         credential_delivery,
         ..
     } = invocation;
-    if source.source_type != "mcp" {
+    if source.source_type != runx_parser::SourceKind::Mcp {
         return Err(RuntimeError::UnsupportedAdapter {
-            adapter_type: source.source_type,
+            adapter_type: source.source_type.as_str().to_owned(),
         });
     }
     let Some(server) = source.server.clone() else {

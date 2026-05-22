@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use runx_contracts::{JsonObject, JsonValue};
+use runx_core::policy::CwdPolicy;
 use runx_parser::SkillSandbox;
 
 use crate::RuntimeError;
@@ -82,7 +83,7 @@ fn mcp_sandbox_metadata_config(sandbox: Option<&SkillSandbox>) -> McpSandboxMeta
     McpSandboxMetadataConfig {
         profile,
         cwd_policy: sandbox
-            .and_then(|sandbox| sandbox.cwd_policy.as_deref())
+            .and_then(|sandbox| sandbox.cwd_policy.as_ref().map(CwdPolicy::as_str))
             .unwrap_or("skill-directory"),
         env_allowlist,
         approved_escalation,

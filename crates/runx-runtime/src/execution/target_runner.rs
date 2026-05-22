@@ -1600,7 +1600,7 @@ fn target_repo_runner_source_publication_request(
     revision_projection: &TargetRepoRunnerRevisionReceiptProjection,
 ) -> TargetRepoRunnerSourcePublicationRequest {
     let publication = execution.source_publication_receipt.clone();
-    let revision_receipt_ref = reference(ReferenceType::HarnessReceipt, &revision_receipt.id);
+    let revision_receipt_ref = Reference::runx(ReferenceType::HarnessReceipt, &revision_receipt.id);
     let commands = source_publication_commands(&publication, &revision_receipt_ref);
     TargetRepoRunnerSourcePublicationRequest {
         publication,
@@ -1961,11 +1961,11 @@ fn receipt_harness(
         ),
         parent_harness_ref: None,
         state: HarnessState::Sealed,
-        host_ref: reference(ReferenceType::Host, "target_runner_adapter"),
-        harness_ref: reference(ReferenceType::Harness, "target-runner"),
+        host_ref: Reference::runx(ReferenceType::Host, "target_runner_adapter"),
+        harness_ref: Reference::runx(ReferenceType::Harness, "target-runner"),
         authority: Authority {
             schema: None,
-            actor_ref: reference(ReferenceType::Principal, "target_runner"),
+            actor_ref: Reference::runx(ReferenceType::Principal, "target_runner"),
             authority_proof_refs: Vec::new(),
             grant_refs: Vec::new(),
             scope_refs: Vec::new(),
@@ -2063,14 +2063,17 @@ fn source_publication_receipt_harness(
         ),
         parent_harness_ref: Some(request.revision_receipt_ref.clone()),
         state: HarnessState::Sealed,
-        host_ref: reference(
+        host_ref: Reference::runx(
             ReferenceType::Host,
             "target_runner_source_publication_adapter",
         ),
-        harness_ref: reference(ReferenceType::Harness, "target-runner-source-publication"),
+        harness_ref: Reference::runx(ReferenceType::Harness, "target-runner-source-publication"),
         authority: Authority {
             schema: None,
-            actor_ref: reference(ReferenceType::Principal, "target_runner_source_publication"),
+            actor_ref: Reference::runx(
+                ReferenceType::Principal,
+                "target_runner_source_publication",
+            ),
             authority_proof_refs: Vec::new(),
             grant_refs: Vec::new(),
             scope_refs: Vec::new(),
@@ -2360,7 +2363,7 @@ pub fn project_target_repo_runner_revision_receipt(
         .find(|reference| reference.reference_type == ReferenceType::GithubIssue)
         .cloned();
     Ok(TargetRepoRunnerRevisionReceiptProjection {
-        receipt_ref: reference(ReferenceType::HarnessReceipt, &receipt.id),
+        receipt_ref: Reference::runx(ReferenceType::HarnessReceipt, &receipt.id),
         act_id: act.act_id.clone(),
         disposition: projection_disposition(&metadata)?,
         target_repo_ref,
@@ -2417,7 +2420,7 @@ pub fn project_target_repo_runner_source_publication_receipt(
         .find(|reference| reference.reference_type == ReferenceType::GithubIssue)
         .cloned();
     Ok(TargetRepoRunnerSourcePublicationProjection {
-        receipt_ref: reference(ReferenceType::HarnessReceipt, &receipt.id),
+        receipt_ref: Reference::runx(ReferenceType::HarnessReceipt, &receipt.id),
         source_issue_ref,
         source_thread_ref,
         pull_request_ref,
@@ -2479,58 +2482,6 @@ fn local_issuer() -> ReceiptIssuer {
         issuer_type: ReceiptIssuerType::Local,
         kid: "target-runner-runtime".to_owned(),
         public_key_sha256: "sha256:target-runner-runtime-public".to_owned(),
-    }
-}
-
-fn reference(reference_type: ReferenceType, id: &str) -> Reference {
-    Reference {
-        uri: format!("runx:{}:{id}", reference_type_name(&reference_type)),
-        reference_type,
-        provider: None,
-        locator: None,
-        label: None,
-        observed_at: None,
-        proof_kind: None,
-    }
-}
-
-fn reference_type_name(reference_type: &ReferenceType) -> &'static str {
-    match reference_type {
-        ReferenceType::GithubIssue => "github_issue",
-        ReferenceType::GithubPullRequest => "github_pull_request",
-        ReferenceType::GithubRepo => "github_repo",
-        ReferenceType::SlackThread => "slack_thread",
-        ReferenceType::SentryEvent => "sentry_event",
-        ReferenceType::Signal => "signal",
-        ReferenceType::Act => "act",
-        ReferenceType::Receipt => "receipt",
-        ReferenceType::GraphReceipt => "graph_receipt",
-        ReferenceType::HarnessReceipt => "harness_receipt",
-        ReferenceType::Artifact => "artifact",
-        ReferenceType::Verification => "verification",
-        ReferenceType::Harness => "harness",
-        ReferenceType::Host => "host",
-        ReferenceType::Deployment => "deployment",
-        ReferenceType::Surface => "surface",
-        ReferenceType::Target => "target",
-        ReferenceType::Opportunity => "opportunity",
-        ReferenceType::ThesisAssessment => "thesis_assessment",
-        ReferenceType::Selection => "selection",
-        ReferenceType::SkillBinding => "skill_binding",
-        ReferenceType::TargetTransitionEntry => "target_transition_entry",
-        ReferenceType::SelectionCycle => "selection_cycle",
-        ReferenceType::Decision => "decision",
-        ReferenceType::ReflectionEntry => "reflection_entry",
-        ReferenceType::FeedEntry => "feed_entry",
-        ReferenceType::Principal => "principal",
-        ReferenceType::AuthorityProof => "authority_proof",
-        ReferenceType::ScopeAdmission => "scope_admission",
-        ReferenceType::Grant => "grant",
-        ReferenceType::Mandate => "mandate",
-        ReferenceType::Credential => "credential",
-        ReferenceType::WebhookDelivery => "webhook_delivery",
-        ReferenceType::RedactionPolicy => "redaction_policy",
-        ReferenceType::ExternalUrl => "external_url",
     }
 }
 

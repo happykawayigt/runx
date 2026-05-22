@@ -179,7 +179,7 @@ pub(super) fn execute_mcp_server_skill(
     }
 
     let run_id = state.next_run_id(&execution.skill.name);
-    if execution.skill.source.source_type == "graph" {
+    if execution.skill.source.source_type == runx_parser::SourceKind::Graph {
         return execute_mcp_server_graph(state, &run_id, execution, inputs);
     }
     complete_mcp_server_skill(&run_id, execution, inputs)

@@ -17,6 +17,7 @@ use runx_receipts::{
 };
 
 use crate::adapter::SkillOutput;
+use crate::payment_supervisor::rebind_supervisor_proof_to_receipt;
 use crate::{RuntimeError, StepRun};
 
 use super::signing::{
@@ -320,7 +321,7 @@ fn harness(parts: HarnessParts<'_>) -> Harness {
         harness_id: format!("hrn_{graph_name}_{step_id}"),
         parent_harness_ref,
         state,
-        host_ref: reference(ReferenceType::Host, "cli"),
+        host_ref: Reference::runx(ReferenceType::Host, "cli"),
         harness_ref: harness_ref(graph_name, step_id),
         authority: authority(),
         enforcement: enforcement(),
@@ -454,7 +455,7 @@ fn seal(
 fn authority() -> Authority {
     Authority {
         schema: None,
-        actor_ref: reference(ReferenceType::Principal, "local_runtime"),
+        actor_ref: Reference::runx(ReferenceType::Principal, "local_runtime"),
         authority_proof_refs: Vec::new(),
         grant_refs: Vec::new(),
         scope_refs: Vec::new(),
@@ -567,7 +568,7 @@ fn collect_packet_refs(payload: &JsonObject, refs: &mut OutputRefs) {
 fn collect_signal_refs(signal: &JsonObject, refs: &mut OutputRefs) {
     if let Some(signal_id) = string_field(signal, "signal_id") {
         refs.signal_refs
-            .push(reference(ReferenceType::Signal, signal_id));
+            .push(Reference::runx(ReferenceType::Signal, signal_id));
     }
     if let Some(events) = array_field(signal, "source_events") {
         refs.source_refs
@@ -588,14 +589,16 @@ fn collect_change_set_refs(change_set: &JsonObject, refs: &mut OutputRefs) {
 fn collect_artifact_ref(artifact: &JsonObject, refs: &mut OutputRefs) {
     if let Some(artifact_id) = string_field(artifact, "artifact_id") {
         refs.artifact_refs
-            .push(reference(ReferenceType::Artifact, artifact_id));
+            .push(Reference::runx(ReferenceType::Artifact, artifact_id));
     }
 }
 
 fn collect_verification_ref(verification: &JsonObject, refs: &mut OutputRefs) {
     if let Some(verification_id) = string_field(verification, "verification_id") {
-        refs.verification_refs
-            .push(reference(ReferenceType::Verification, verification_id));
+        refs.verification_refs.push(Reference::runx(
+            ReferenceType::Verification,
+            verification_id,
+        ));
     }
 }
 
@@ -657,7 +660,8 @@ fn target_surface_ref(value: &JsonValue) -> Option<Reference> {
     let JsonValue::Object(surface) = value else {
         return None;
     };
-    string_field(surface, "surface").map(|surface_id| reference(ReferenceType::Surface, surface_id))
+    string_field(surface, "surface")
+        .map(|surface_id| Reference::runx(ReferenceType::Surface, surface_id))
 }
 
 fn object_field<'a>(object: &'a JsonObject, field: &str) -> Option<&'a JsonObject> {
@@ -699,27 +703,15 @@ fn output_summary(output: &SkillOutput) -> String {
     }
 }
 
-fn reference(reference_type: ReferenceType, id: &str) -> Reference {
-    Reference {
-        uri: format!("runx:{}:{id}", reference_type_name(&reference_type)),
-        reference_type,
-        provider: None,
-        locator: None,
-        label: None,
-        observed_at: None,
-        proof_kind: None,
-    }
-}
-
 fn child_receipt_reference(receipt: &HarnessReceipt) -> Reference {
     Reference {
         locator: Some(receipt.seal.digest.clone()),
-        ..reference(ReferenceType::HarnessReceipt, &receipt.id)
+        ..Reference::runx(ReferenceType::HarnessReceipt, &receipt.id)
     }
 }
 
 fn harness_ref(graph_name: &str, step_id: &str) -> Reference {
-    reference(ReferenceType::Harness, &format!("{graph_name}_{step_id}"))
+    Reference::runx(ReferenceType::Harness, &format!("{graph_name}_{step_id}"))
 }
 
 fn attach_parent_to_child_receipts(
@@ -730,48 +722,15 @@ fn attach_parent_to_child_receipts(
     for step in steps {
         step.receipt.harness.parent_harness_ref = Some(parent_harness_ref.clone());
         seal_receipt(&mut step.receipt, signature_policy)?;
+        // Re-bind any supervisor proof to the re-sealed child digest so payment
+        // ledger projection validates against the final receipt body.
+        rebind_supervisor_proof_to_receipt(&mut step.output.metadata, &step.receipt).map_err(
+            |error| RuntimeError::ReceiptInvalid {
+                message: error.to_string(),
+            },
+        )?;
     }
     Ok(())
-}
-
-fn reference_type_name(reference_type: &ReferenceType) -> &'static str {
-    match reference_type {
-        ReferenceType::GithubIssue => "github_issue",
-        ReferenceType::GithubPullRequest => "github_pull_request",
-        ReferenceType::GithubRepo => "github_repo",
-        ReferenceType::SlackThread => "slack_thread",
-        ReferenceType::SentryEvent => "sentry_event",
-        ReferenceType::Signal => "signal",
-        ReferenceType::Act => "act",
-        ReferenceType::Receipt => "receipt",
-        ReferenceType::GraphReceipt => "graph_receipt",
-        ReferenceType::HarnessReceipt => "harness_receipt",
-        ReferenceType::Artifact => "artifact",
-        ReferenceType::Verification => "verification",
-        ReferenceType::Harness => "harness",
-        ReferenceType::Host => "host",
-        ReferenceType::Deployment => "deployment",
-        ReferenceType::Surface => "surface",
-        ReferenceType::Target => "target",
-        ReferenceType::Opportunity => "opportunity",
-        ReferenceType::ThesisAssessment => "thesis_assessment",
-        ReferenceType::Selection => "selection",
-        ReferenceType::SkillBinding => "skill_binding",
-        ReferenceType::TargetTransitionEntry => "target_transition_entry",
-        ReferenceType::SelectionCycle => "selection_cycle",
-        ReferenceType::Decision => "decision",
-        ReferenceType::ReflectionEntry => "reflection_entry",
-        ReferenceType::FeedEntry => "feed_entry",
-        ReferenceType::Principal => "principal",
-        ReferenceType::AuthorityProof => "authority_proof",
-        ReferenceType::ScopeAdmission => "scope_admission",
-        ReferenceType::Grant => "grant",
-        ReferenceType::Mandate => "mandate",
-        ReferenceType::Credential => "credential",
-        ReferenceType::WebhookDelivery => "webhook_delivery",
-        ReferenceType::RedactionPolicy => "redaction_policy",
-        ReferenceType::ExternalUrl => "external_url",
-    }
 }
 
 fn local_issuer() -> ReceiptIssuer {

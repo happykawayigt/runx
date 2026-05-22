@@ -48,11 +48,66 @@ pub struct SkillIdempotencyPolicy {
     pub key: Option<String>,
 }
 
+/// Closed set of built-in skill source kinds. The extension lane is the
+/// `ExternalAdapter` variant; custom adapters are identified by the
+/// external-adapter manifest, not by an open `source.type` string.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SourceKind {
+    CliTool,
+    Mcp,
+    Catalog,
+    A2a,
+    AgentStep,
+    HarnessHook,
+    Graph,
+    ExternalAdapter,
+}
+
+impl SourceKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SourceKind::CliTool => "cli-tool",
+            SourceKind::Mcp => "mcp",
+            SourceKind::Catalog => "catalog",
+            SourceKind::A2a => "a2a",
+            SourceKind::AgentStep => "agent-step",
+            SourceKind::HarnessHook => "harness-hook",
+            SourceKind::Graph => "graph",
+            SourceKind::ExternalAdapter => "external-adapter",
+        }
+    }
+}
+
+impl std::fmt::Display for SourceKind {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InputMode {
+    Args,
+    Stdin,
+    None,
+}
+
+impl InputMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            InputMode::Args => "args",
+            InputMode::Stdin => "stdin",
+            InputMode::None => "none",
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SkillSource {
     #[serde(rename = "type")]
-    pub source_type: String,
+    pub source_type: SourceKind,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub command: Option<String>,
     pub args: Vec<String>,
@@ -61,7 +116,7 @@ pub struct SkillSource {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timeout_seconds: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub input_mode: Option<String>,
+    pub input_mode: Option<InputMode>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sandbox: Option<SkillSandbox>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -101,9 +156,9 @@ pub struct SkillMcpServer {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SkillSandbox {
-    pub profile: String,
+    pub profile: SandboxProfile,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub cwd_policy: Option<String>,
+    pub cwd_policy: Option<CwdPolicy>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub env_allowlist: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -242,11 +297,61 @@ struct SkillGovernance {
     execution: Option<ExecutionSemantics>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CatalogKind {
+    Skill,
+    Graph,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CatalogAudience {
+    Public,
+    Builder,
+    Operator,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CatalogVisibility {
+    Public,
+    Private,
+}
+
+impl CatalogKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            CatalogKind::Skill => "skill",
+            CatalogKind::Graph => "graph",
+        }
+    }
+}
+
+impl CatalogAudience {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            CatalogAudience::Public => "public",
+            CatalogAudience::Builder => "builder",
+            CatalogAudience::Operator => "operator",
+        }
+    }
+}
+
+impl CatalogVisibility {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            CatalogVisibility::Public => "public",
+            CatalogVisibility::Private => "private",
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CatalogMetadata {
-    pub kind: String,
-    pub audience: String,
-    pub visibility: String,
+    pub kind: CatalogKind,
+    pub audience: CatalogAudience,
+    pub visibility: CatalogVisibility,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -528,25 +633,38 @@ pub(crate) fn validate_catalog_metadata(
     let Some(value) = value else {
         return Ok(None);
     };
-    let kind = required_string(value.get("kind"), &format!("{label}.kind"))?;
-    let audience = required_string(value.get("audience"), &format!("{label}.audience"))?;
-    let visibility = optional_string(value.get("visibility"), &format!("{label}.visibility"))?
-        .unwrap_or_else(|| "public".to_owned());
-    if !matches!(kind.as_str(), "skill" | "graph") {
-        return Err(validation_error(format!(
-            "{label}.kind must be skill or graph."
-        )));
-    }
-    if !matches!(audience.as_str(), "public" | "builder" | "operator") {
-        return Err(validation_error(format!(
-            "{label}.audience must be public, builder, or operator."
-        )));
-    }
-    if !matches!(visibility.as_str(), "public" | "private") {
-        return Err(validation_error(format!(
-            "{label}.visibility must be public or private."
-        )));
-    }
+    let kind = match required_string(value.get("kind"), &format!("{label}.kind"))?.as_str() {
+        "skill" => CatalogKind::Skill,
+        "graph" => CatalogKind::Graph,
+        _ => {
+            return Err(validation_error(format!(
+                "{label}.kind must be skill or graph."
+            )));
+        }
+    };
+    let audience = match required_string(value.get("audience"), &format!("{label}.audience"))?
+        .as_str()
+    {
+        "public" => CatalogAudience::Public,
+        "builder" => CatalogAudience::Builder,
+        "operator" => CatalogAudience::Operator,
+        _ => {
+            return Err(validation_error(format!(
+                "{label}.audience must be public, builder, or operator."
+            )));
+        }
+    };
+    let visibility = match optional_string(value.get("visibility"), &format!("{label}.visibility"))?
+        .as_deref()
+    {
+        Some("public") | None => CatalogVisibility::Public,
+        Some("private") => CatalogVisibility::Private,
+        Some(_) => {
+            return Err(validation_error(format!(
+                "{label}.visibility must be public or private."
+            )));
+        }
+    };
     Ok(Some(CatalogMetadata {
         kind,
         audience,
@@ -611,6 +729,7 @@ fn validate_source(
         required_string(source.get("command"), "source.command")?;
     }
     validate_agent_command_boundary(source, &source_type)?;
+    let source_kind = parse_source_kind(&source_type, "source.type")?;
 
     Ok(SkillSource {
         command: optional_string(source.get("command"), "source.command")?,
@@ -634,8 +753,24 @@ fn validate_source(
         outputs: optional_object(source.get("outputs"), "source.outputs")?,
         graph: validate_graph_source(source, &source_type)?,
         raw: source.clone(),
-        source_type,
+        source_type: source_kind,
     })
+}
+
+fn parse_source_kind(value: &str, field: &str) -> Result<SourceKind, ValidationError> {
+    match value {
+        "cli-tool" => Ok(SourceKind::CliTool),
+        "mcp" => Ok(SourceKind::Mcp),
+        "catalog" => Ok(SourceKind::Catalog),
+        "a2a" => Ok(SourceKind::A2a),
+        "agent-step" => Ok(SourceKind::AgentStep),
+        "harness-hook" => Ok(SourceKind::HarnessHook),
+        "graph" => Ok(SourceKind::Graph),
+        "external-adapter" => Ok(SourceKind::ExternalAdapter),
+        other => Err(validation_error(format!(
+            "{field} {other} is not a supported source type."
+        ))),
+    }
 }
 
 fn validate_sandbox(value: Option<&JsonValue>) -> Result<Option<SkillSandbox>, ValidationError> {
@@ -665,8 +800,8 @@ fn validate_sandbox(value: Option<&JsonValue>) -> Result<Option<SkillSandbox>, V
     )?;
     let normalized = normalize_sandbox_declaration(Some(&declaration));
     Ok(Some(SkillSandbox {
-        profile: sandbox_profile_name(&normalized.profile).to_owned(),
-        cwd_policy: Some(cwd_policy_name(&normalized.cwd_policy).to_owned()),
+        profile: normalized.profile,
+        cwd_policy: Some(normalized.cwd_policy),
         env_allowlist: normalized.env_allowlist,
         network: Some(normalized.network),
         writable_paths: normalized.writable_paths,
@@ -948,16 +1083,18 @@ fn optional_u64(value: Option<&JsonValue>, field: &str) -> Result<Option<u64>, V
     }
 }
 
-fn optional_input_mode(value: Option<&JsonValue>) -> Result<Option<String>, ValidationError> {
+fn optional_input_mode(value: Option<&JsonValue>) -> Result<Option<InputMode>, ValidationError> {
     let Some(value) = optional_string(value, "source.input_mode")? else {
         return Ok(None);
     };
-    if matches!(value.as_str(), "args" | "stdin" | "none") {
-        return Ok(Some(value));
+    match value.as_str() {
+        "args" => Ok(Some(InputMode::Args)),
+        "stdin" => Ok(Some(InputMode::Stdin)),
+        "none" => Ok(Some(InputMode::None)),
+        _ => Err(validation_error(
+            "source.input_mode must be args, stdin, or none.",
+        )),
     }
-    Err(validation_error(
-        "source.input_mode must be args, stdin, or none.",
-    ))
 }
 
 fn first_value<'a>(
@@ -1159,23 +1296,6 @@ fn sandbox_declaration(
         writable_paths,
         require_enforcement,
     })
-}
-
-fn sandbox_profile_name(profile: &SandboxProfile) -> &'static str {
-    match profile {
-        SandboxProfile::Readonly => "readonly",
-        SandboxProfile::WorkspaceWrite => "workspace-write",
-        SandboxProfile::Network => "network",
-        SandboxProfile::UnrestrictedLocalDev => "unrestricted-local-dev",
-    }
-}
-
-fn cwd_policy_name(cwd_policy: &CwdPolicy) -> &'static str {
-    match cwd_policy {
-        CwdPolicy::SkillDirectory => "skill-directory",
-        CwdPolicy::Workspace => "workspace",
-        CwdPolicy::Custom => "custom",
-    }
 }
 
 fn validate_outcome(

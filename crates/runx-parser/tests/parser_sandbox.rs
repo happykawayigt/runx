@@ -24,8 +24,11 @@ source:
         .sandbox
         .ok_or_else(|| "expected sandbox".to_owned())?;
 
-    assert_eq!(sandbox.profile, "network");
-    assert_eq!(sandbox.cwd_policy.as_deref(), Some("skill-directory"));
+    assert_eq!(sandbox.profile.as_str(), "network");
+    assert_eq!(
+        sandbox.cwd_policy.as_ref().map(|policy| policy.as_str()),
+        Some("skill-directory")
+    );
     assert_eq!(sandbox.network, Some(true));
     assert!(sandbox.writable_paths.is_empty());
     assert_eq!(sandbox.require_enforcement, Some(false));

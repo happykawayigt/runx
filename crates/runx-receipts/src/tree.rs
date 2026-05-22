@@ -1102,23 +1102,7 @@ mod tests {
     }
 
     fn reference(reference_type: ReferenceType, id: &str) -> Reference {
-        Reference {
-            uri: format!("runx:{}:{id}", reference_type_name(&reference_type)),
-            reference_type,
-            provider: None,
-            locator: None,
-            label: None,
-            observed_at: None,
-            proof_kind: None,
-        }
-    }
-
-    fn reference_type_name(reference_type: &ReferenceType) -> &'static str {
-        match reference_type {
-            ReferenceType::HarnessReceipt => "harness_receipt",
-            ReferenceType::Harness => "harness",
-            _ => "reference",
-        }
+        Reference::runx(reference_type, id)
     }
 
     fn assert_finding(verification: &ReceiptVerification, code: ReceiptFindingCode, path: &str) {

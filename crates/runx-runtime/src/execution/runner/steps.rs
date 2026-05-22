@@ -14,7 +14,8 @@ use super::super::graph::{load_skill, output_object, resolve_inputs, skill_dir};
 use super::authority::{
     StepPaymentReplay, authority_denied, enforce_step_authority_admission,
     enforce_step_authority_receipt_before_success, escalate_in_flight_payment_recovery,
-    sealed_payment_replay, validate_replayed_payment_supervisor_proof,
+    sealed_payment_replay, synthesize_payment_supervisor_evidence_before_gate,
+    validate_replayed_payment_supervisor_proof,
 };
 use super::inputs::{optional_input_string, required_input_string, string_value, string_value_ref};
 use super::{Runtime, StepRun};
@@ -82,6 +83,12 @@ where
         attempt,
         &output,
         &runtime.options.created_at,
+    )?;
+    synthesize_payment_supervisor_evidence_before_gate(
+        step,
+        authority.as_ref(),
+        &outputs,
+        &mut output,
     )?;
     let supervisor_proof = enforce_step_authority_receipt_before_success(
         step,

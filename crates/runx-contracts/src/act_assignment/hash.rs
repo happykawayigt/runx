@@ -1,7 +1,5 @@
 use std::fmt::Write as _;
 
-use sha2::{Digest, Sha256};
-
 use crate::{JsonNumber, JsonValue};
 
 pub(super) fn stable_hash_json(value: &JsonValue) -> String {
@@ -85,16 +83,7 @@ fn append_json_string(value: &str, json: &mut String) {
 }
 
 pub(super) fn sha256_prefixed(value: &str) -> String {
-    format!("sha256:{}", sha256_hex(value))
-}
-
-fn sha256_hex(value: &str) -> String {
-    let digest = Sha256::digest(value.as_bytes());
-    let mut hex = String::with_capacity(digest.len() * 2);
-    for byte in digest {
-        let _ = write!(&mut hex, "{byte:02x}");
-    }
-    hex
+    crate::fingerprint::sha256_prefixed(value.as_bytes())
 }
 
 #[cfg(test)]

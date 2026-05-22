@@ -44,14 +44,14 @@ pub fn build_registry_skill_version(
         profile_document: options.profile_document.clone(),
         profile_digest: binding.digest,
         runner_names: binding.runner_names,
-        source_type: skill.source.source_type.clone(),
+        source_type: skill.source.source_type.as_str().to_owned(),
         trust_tier: defaults.trust_tier,
         // Alpha is the floor at creation; maturity is recomputed from harness
         // signals at the publish and harness-seal events, never on read.
         maturity: MaturityTier::Alpha,
-        catalog_kind: Some(catalog.kind),
-        catalog_audience: Some(catalog.audience),
-        catalog_visibility: Some(catalog.visibility),
+        catalog_kind: Some(catalog.kind.as_str().to_owned()),
+        catalog_audience: Some(catalog.audience.as_str().to_owned()),
+        catalog_visibility: Some(catalog.visibility.as_str().to_owned()),
         source_metadata: defaults.source_metadata,
         attestations: defaults.attestations,
         required_scopes: registry_required_scopes(&skill, manifest),
@@ -118,9 +118,9 @@ pub(super) fn registry_catalog(
     manifest
         .and_then(|manifest| manifest.catalog.clone())
         .unwrap_or(runx_parser::CatalogMetadata {
-            kind: "skill".to_owned(),
-            audience: "public".to_owned(),
-            visibility: "public".to_owned(),
+            kind: runx_parser::CatalogKind::Skill,
+            audience: runx_parser::CatalogAudience::Public,
+            visibility: runx_parser::CatalogVisibility::Public,
         })
 }
 
@@ -210,9 +210,9 @@ pub fn normalize_registry_skill_version(
         trust_tier,
         // Preserved through re-ingest; defaults to the Alpha floor when absent.
         maturity: payload.maturity.unwrap_or_default(),
-        catalog_kind: Some(catalog.kind),
-        catalog_audience: Some(catalog.audience),
-        catalog_visibility: Some(catalog.visibility),
+        catalog_kind: Some(catalog.kind.as_str().to_owned()),
+        catalog_audience: Some(catalog.audience.as_str().to_owned()),
+        catalog_visibility: Some(catalog.visibility.as_str().to_owned()),
         source_metadata,
         attestations,
         required_scopes: payload.required_scopes.unwrap_or_default(),
@@ -240,17 +240,17 @@ pub(super) fn normalize_registry_catalog(
 ) -> runx_parser::CatalogMetadata {
     runx_parser::CatalogMetadata {
         kind: match kind {
-            Some("graph") => "graph".to_owned(),
-            _ => "skill".to_owned(),
+            Some("graph") => runx_parser::CatalogKind::Graph,
+            _ => runx_parser::CatalogKind::Skill,
         },
         audience: match audience {
-            Some("builder") => "builder".to_owned(),
-            Some("operator") => "operator".to_owned(),
-            _ => "public".to_owned(),
+            Some("builder") => runx_parser::CatalogAudience::Builder,
+            Some("operator") => runx_parser::CatalogAudience::Operator,
+            _ => runx_parser::CatalogAudience::Public,
         },
         visibility: match visibility {
-            Some("private") => "private".to_owned(),
-            _ => "public".to_owned(),
+            Some("private") => runx_parser::CatalogVisibility::Private,
+            _ => runx_parser::CatalogVisibility::Public,
         },
     }
 }

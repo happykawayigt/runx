@@ -140,7 +140,7 @@ fn write_stdin(
     let Some(mut stdin) = child.stdin.take() else {
         return Ok(());
     };
-    if request.source.input_mode.as_deref() == Some("stdin") {
+    if request.source.input_mode == Some(runx_parser::InputMode::Stdin) {
         let bytes = serde_json::to_vec(&request.inputs)
             .map_err(|source| RuntimeError::json("serializing stdin inputs", source))?;
         stdin

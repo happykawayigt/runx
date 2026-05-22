@@ -14,20 +14,41 @@ risk_level: high
 ## Current State
 
 Status: implementing
-Current phase: Phase 2 (runtime sealing)
-Next: wire the production signature policy from runtime options into the seal
-path; make history strict-proof verification production-aware.
-Reason: R2 from `runx-security-hardening-v1` remains open: runtime receipts are
-not production-signed by default, and the runtime receipt builder is still wired
-through local-development signature policy. Architecture settled 2026-05-22.
-Blockers: none. Signer/verifier boundary is settled (see Settled Architecture):
-Ed25519 over `canonical_receipt_body_digest`, key material resolved from env,
-verifier/key-resolver shared by seal, store, journal, and CLI history.
+Current phase: Phase 3 (verification surfaces) done; Phase 2 partial
+Next: dod1 only — thread `RuntimeOptions::signature_policy()` (production when an
+Ed25519 signer + verifier are configured, local-development otherwise) into every
+runtime receipt-build site so the live runtime emits production-signed receipts.
+Reason: R2 from `runx-security-hardening-v1`. The signing/verification spine is
+landed and green; the live runtime still seals with local-development unless a
+signer is configured.
+Done (green, 2026-05-22):
+- Ed25519 signer/verifier primitive + `RuntimeReceiptSignaturePolicy`
+  (local/production/production_signing) and `seal_receipt` application.
+- Strict-proof verification + production key resolver shared by store, journal,
+  and CLI history (`history.rs` reads `RUNX_RECEIPT_VERIFY_*`).
+- History/journal trust labeling: `verified` reserved for production-verified
+  (dod3), `unverified` for local/missing-verifier, `invalid` for tamper, with
+  `journal_history` tests migrated to these semantics (dod4, dod5).
+- Tamper + production-signature fixture tests (`receipt_signing`,
+  `journal_history`) green (dod6, dod7).
+Remaining (dod1, dod8):
+- dod1 live signing wiring across ~12 sites:
+  `execution/runner/steps.rs` (4 `step_receipt`),
+  `execution/runner.rs` (3 `graph_receipt`/`graph_receipt_with_disposition`),
+  `execution/harness/runner.rs` (3 `step_receipt_with_disposition` + 2
+  `graph_receipt_with_disposition`), `execution/skill_run.rs` (1),
+  `adapters/mcp/server_skill.rs` (1). Add owned signer/verifier +
+  `signature_policy(&self)` to `RuntimeOptions`; carry a policy on
+  `StepReceiptWithDisposition` and `graph_receipt_with_disposition`
+  (fold into the closure struct to stay under the clippy arg limit); resolve a
+  signer from new `RUNX_RECEIPT_SIGN_*` env keys in the CLI; add a production-path
+  runtime test. Keep `local_development` as the default so existing goldens are
+  byte-identical.
+- dod8 docs: production signing configuration + local-development downgrade.
+Blockers: none. Signer/verifier boundary settled (see Settled Architecture).
 Allowed follow-up command: `scafld harden runx-runtime-production-receipt-signing-v1`
-Latest runner update: 2026-05-22 architecture settled and implementation
-authorized; the Ed25519 signer/verifier primitive in
-`crates/runx-runtime/src/receipts/signing.rs` already exists and is unit-tested,
-this work wires it into the live seal/verify path.
+Latest runner update: 2026-05-22 spine landed and green; dod1/dod8 remain as a
+scoped follow-up with sites enumerated above.
 Review gate: not_started
 
 ## Settled Architecture

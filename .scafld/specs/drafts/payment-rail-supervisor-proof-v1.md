@@ -14,17 +14,33 @@ risk_level: high
 ## Current State
 
 Status: implementing
-Current phase: producer wiring
-Next: synthesize supervisor evidence from the admitted spend authority before
-the receipt-before-success gate; share the synthesis path with the test adapter.
-Reason: R3 from `runx-security-hardening-v1` remains open. Architecture settled
-2026-05-22: the verifier/enforcement half exists but no producer synthesizes the
-supervisor evidence in the live path, so every real spend fails closed.
-Blockers: none. R2 (production receipt signing) is the integrity floor and is
-sequenced first.
+Current phase: producer landed, green
+Next: ratify and run `scafld harden`; consider Stripe SPT rail beyond the local
+mock supervisor.
+Reason: R3 from `runx-security-hardening-v1`. The trusted producer is implemented
+and the full payment suite is green.
+Done (green, 2026-05-22):
+- `synthesize_payment_supervisor_evidence_before_gate` (authority.rs) derives
+  evidence from the admitted spend authority and the claim `proof_ref`, written
+  to the runtime-controlled output metadata before the receipt-before-success
+  gate (dod1, dod2, dod3).
+- Test adapter emits only the rail-packet claim; production and test share the
+  one synthesis path (`harness_fixtures`).
+- `persist_payment_step_state` validates the supervisor proof only when sealing
+  a new record, so a duplicate persist for an already-sealed key keeps the first
+  record (dod4 replay revalidation owned by the sealed-replay path).
+- `rebind_supervisor_proof_to_receipt` re-binds the proof to the re-sealed child
+  receipt digest during graph assembly (parent-ref attachment changes the body
+  digest), so payment ledger projection validates against the final receipt
+  (dod5).
+- Green: `native_no_ts`, `x402_native_dogfood` (6), `payment_state` (8),
+  `payment_ledger_projection` (5), `harness_fixtures` (12); negative
+  proofless-rail fixture still fails closed (dod1).
+- Greenfield cleanup: removed the `PaymentStateDocumentV2`/`V3` migration shapes
+  and version negotiation from `payment_state.rs` (single `v1` document).
+Blockers: none.
 Allowed follow-up command: `scafld harden payment-rail-supervisor-proof-v1`
-Latest runner update: 2026-05-22 architecture settled and implementation
-authorized.
+Latest runner update: 2026-05-22 producer landed; payment suite green.
 Review gate: not_started
 
 ## Settled Architecture

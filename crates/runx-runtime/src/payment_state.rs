@@ -17,7 +17,7 @@ use crate::payment_supervisor::{
     PaymentSupervisorProof, PaymentSupervisorProofMatch, validate_payment_supervisor_proof,
 };
 
-pub const PAYMENT_STATE_SCHEMA_VERSION: &str = "runx.payment_state.v4";
+pub const PAYMENT_STATE_SCHEMA_VERSION: &str = "runx.payment_state.v1";
 pub const RUNX_PAYMENT_STATE_PATH_ENV: &str = "RUNX_PAYMENT_STATE_PATH";
 const PAYMENT_STATE_LOCK_TIMEOUT: Duration = Duration::from_secs(5);
 const PAYMENT_STATE_LOCK_RETRY: Duration = Duration::from_millis(10);
@@ -181,8 +181,6 @@ pub enum PaymentStateError {
         #[source]
         source: serde_json::Error,
     },
-    #[error("unsupported payment state schema version {schema_version}")]
-    UnsupportedSchemaVersion { schema_version: String },
     #[error("idempotency key {idempotency_key} was already recorded")]
     IdempotencyAlreadyRecorded { idempotency_key: String },
     #[error("rail mutation for idempotency key {idempotency_key} was already recorded")]
@@ -381,42 +379,10 @@ impl Drop for PaymentStateLock {
 fn load_payment_state(path: &Path) -> Result<PaymentStateDocument, PaymentStateError> {
     match fs::read_to_string(path) {
         Ok(contents) => {
-            let version: PaymentStateVersion =
-                serde_json::from_str(&contents).map_err(|source| PaymentStateError::Parse {
-                    path: path.to_path_buf(),
-                    source,
-                })?;
-            match version.schema_version.as_str() {
-                PAYMENT_STATE_SCHEMA_VERSION => {
-                    serde_json::from_str(&contents).map_err(|source| PaymentStateError::Parse {
-                        path: path.to_path_buf(),
-                        source,
-                    })
-                }
-                "runx.payment_state.v3" => {
-                    let legacy: PaymentStateDocumentV3 =
-                        serde_json::from_str(&contents).map_err(|source| {
-                            PaymentStateError::Parse {
-                                path: path.to_path_buf(),
-                                source,
-                            }
-                        })?;
-                    Ok(legacy.into_current())
-                }
-                "runx.payment_state.v2" => {
-                    let legacy: PaymentStateDocumentV2 =
-                        serde_json::from_str(&contents).map_err(|source| {
-                            PaymentStateError::Parse {
-                                path: path.to_path_buf(),
-                                source,
-                            }
-                        })?;
-                    Ok(legacy.into_current())
-                }
-                schema_version => Err(PaymentStateError::UnsupportedSchemaVersion {
-                    schema_version: schema_version.to_owned(),
-                }),
-            }
+            serde_json::from_str(&contents).map_err(|source| PaymentStateError::Parse {
+                path: path.to_path_buf(),
+                source,
+            })
         }
         Err(source) if source.kind() == std::io::ErrorKind::NotFound => {
             Ok(PaymentStateDocument::default())
@@ -450,55 +416,6 @@ fn payment_state_lock_path(path: &Path) -> PathBuf {
         .and_then(|name| name.to_str())
         .unwrap_or("payment-state.json");
     path.with_file_name(format!(".{file_name}.lock"))
-}
-
-#[derive(Clone, Debug, Deserialize)]
-struct PaymentStateVersion {
-    schema_version: String,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct PaymentStateDocumentV2 {
-    schema_version: String,
-    idempotency_entries: BTreeMap<String, serde_json::Value>,
-    consumed_spend_capabilities: BTreeMap<String, SpendCapabilityConsumption>,
-    rail_mutations: BTreeMap<String, RailMutation>,
-}
-
-impl PaymentStateDocumentV2 {
-    fn into_current(self) -> PaymentStateDocument {
-        let _ = self.schema_version;
-        let _ = self.idempotency_entries;
-        PaymentStateDocument {
-            schema_version: PAYMENT_STATE_SCHEMA_VERSION.to_owned(),
-            idempotency_entries: BTreeMap::new(),
-            consumed_spend_capabilities: self.consumed_spend_capabilities,
-            rail_mutations: self.rail_mutations,
-        }
-    }
-}
-
-#[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct PaymentStateDocumentV3 {
-    schema_version: String,
-    idempotency_entries: BTreeMap<String, serde_json::Value>,
-    consumed_spend_capabilities: BTreeMap<String, SpendCapabilityConsumption>,
-    rail_mutations: BTreeMap<String, RailMutation>,
-}
-
-impl PaymentStateDocumentV3 {
-    fn into_current(self) -> PaymentStateDocument {
-        let _ = self.schema_version;
-        let _ = self.idempotency_entries;
-        PaymentStateDocument {
-            schema_version: PAYMENT_STATE_SCHEMA_VERSION.to_owned(),
-            idempotency_entries: BTreeMap::new(),
-            consumed_spend_capabilities: self.consumed_spend_capabilities,
-            rail_mutations: self.rail_mutations,
-        }
-    }
 }
 
 pub fn consumed_spend_capability_recorded(
@@ -591,15 +508,16 @@ pub fn persist_payment_step_state(
         .as_ref()
         .and_then(|packet| packet.proof.as_ref())
         .map(|proof| proof.proof_ref.as_str());
-    let supervisor_proof = proof_ref
-        .map(|proof_ref| {
-            validate_sealed_supervisor_proof(input, receipt, proof_ref, supervisor_proof)
-        })
-        .transpose()?;
 
     if let Some(proof_ref) = proof_ref
         && store.lookup_idempotency(&input.idempotency_key).is_none()
     {
+        // Validate the supervisor proof only when sealing a new record. A
+        // duplicate persist for an already-sealed idempotency key keeps the
+        // first record; the sealed-replay path is the guard against forged
+        // replays of an existing key.
+        let supervisor_proof =
+            validate_sealed_supervisor_proof(input, receipt, proof_ref, supervisor_proof)?;
         let result = rail_packet
             .as_ref()
             .and_then(|packet| packet.result.as_ref());
@@ -609,11 +527,7 @@ pub fn persist_payment_step_state(
             receipt_created_at: receipt.created_at.clone(),
             receipt_digest: receipt.seal.digest.clone(),
             rail_proof_ref: proof_ref.to_owned(),
-            supervisor_proof: supervisor_proof.cloned().ok_or_else(|| {
-                PaymentStateError::MissingSupervisorProof {
-                    proof_ref: proof_ref.to_owned(),
-                }
-            })?,
+            supervisor_proof: supervisor_proof.clone(),
             amount_minor: result
                 .and_then(|result| result.amount_minor)
                 .unwrap_or(input.amount_minor),

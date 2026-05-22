@@ -22,10 +22,12 @@ pub use runner::{
     RawRunnerManifestIr, SkillRunnerManifest, parse_runner_manifest_yaml, validate_runner_manifest,
 };
 pub use skill::{
-    CatalogMetadata, HarnessCallerFixture, HarnessExpectation, HarnessReceiptExpectation,
+    CatalogAudience, CatalogKind, CatalogMetadata, CatalogVisibility, HarnessCallerFixture,
+    HarnessExpectation, HarnessReceiptExpectation,
     RawSkillIr, RunnerHarnessCase, RunnerHarnessManifest, SkillArtifactContract,
-    SkillIdempotencyPolicy, SkillInput, SkillMcpServer, SkillQualityProfile, SkillRetryPolicy,
-    SkillRunnerDefinition, SkillSandbox, SkillSource, ValidateSkillMode, ValidateSkillOptions,
+    InputMode, SkillIdempotencyPolicy, SkillInput, SkillMcpServer, SkillQualityProfile,
+    SkillRetryPolicy, SkillRunnerDefinition, SkillSandbox, SkillSource, SourceKind,
+    ValidateSkillMode, ValidateSkillOptions,
     ValidatedSkill, extract_skill_quality_profile, parse_skill_markdown, validate_skill,
     validate_skill_artifact_contract, validate_skill_source, validate_skill_with_options,
 };

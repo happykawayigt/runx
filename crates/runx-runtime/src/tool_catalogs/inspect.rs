@@ -107,7 +107,7 @@ fn inspect_local_tool(
         tool_ref: options.tool_ref.clone(),
         name: tool.name,
         description: tool.description,
-        execution_source_type: tool.source.source_type,
+        execution_source_type: tool.source.source_type.as_str().to_owned(),
         inputs: convert_inputs(tool.inputs)?,
         scopes: tool.scopes,
         mutating: tool.mutating,

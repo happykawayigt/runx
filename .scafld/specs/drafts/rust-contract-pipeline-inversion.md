@@ -58,9 +58,17 @@ shapes; it changes which representation is hand-authored and which is generated.
 
 ## Objectives
 
-- Choose the Rust-to-schema mechanism (`schemars` derive vs a typify-style build
-  step) and prove it reproduces the current `oss/schemas/*.json` byte-for-byte
-  for the covered contract set before any source-of-truth flip.
+- Choose the Rust-to-schema mechanism. A feasibility spike (2026-05-22) found
+  vanilla `schemars` cannot reproduce the committed schemas (they are fully
+  inlined — 1 `$ref` in 60 files — render enums as `anyOf` of `const`, and carry
+  `x-runx-schema`/custom `$id`, none of which `schemars` emits), and `typify` is
+  schema-to-Rust, the wrong direction. The realistic mechanism is a bespoke Rust
+  schema emitter that controls shape directly. The invariant it must hold is
+  **wire-compatibility, not byte-identity of the schema document** (see below).
+- Express contract constraints at the Rust type level where the schemas do today
+  only in JSON: model the ubiquitous `minLength:1` (2,382 occurrences) as a
+  `NonEmptyString` newtype and the `const` discriminants as fixed/typed fields,
+  so a contract type cannot be constructed in a shape its schema would reject.
 - Flip the `--check` CI gate direction: Rust types generate JSON Schema; JSON
   Schema generates published TypeScript types for surviving consumers
   (`@runxhq/contracts`, `host-adapters`).
@@ -103,19 +111,28 @@ Out of scope:
 
 ## Risks
 
-- Codegen drift: the Rust-to-schema output must reproduce the current schemas
-  exactly, or downstream validators and cloud consumers break silently. Mitigate
-  with a byte-equality gate over the existing committed schemas before flipping.
+- Codegen drift: the Rust-emitted schema must accept/reject the same value domain
+  as the current schemas, or downstream validators and cloud consumers break
+  silently. Mitigate with a conformance-corpus wire-compatibility gate (not
+  byte-equality) over the committed schemas before flipping.
+- Schema-document consumers: a consumer that introspects schema *structure* or
+  pins schema-document hashes (rather than validating data) could break on the
+  idiomatic-shape change. Inventory these before the flip (dod6).
 - Premature flip: running before the sunset specs lands the parity tax on the
   wrong side. Hard-gate on the dependencies above.
-- Lost expressiveness: TypeBox constraints (formats, refinements) that have no
-  clean `schemars` equivalent must be inventoried before commitment.
+- Lost expressiveness: TypeBox constraints (formats, refinements) without a clean
+  Rust equivalent must be inventoried; the bespoke emitter and the
+  `NonEmptyString`/typed-discriminant model must cover the common cases
+  (`minLength:1`, `const`) before commitment.
 
 ## Acceptance
 
-- [ ] `dod1` Rust-to-JSON-Schema generation reproduces every committed
-  `oss/schemas/*.json` for the covered contract set, proven by a byte-equality
-  check in CI.
+- [ ] `dod1` The Rust-emitted JSON Schema is wire-compatible with every committed
+  `oss/schemas/*.json` for the covered contract set: a conformance corpus
+  validates identically (same accept/reject) against the prior and the
+  Rust-emitted schema, and schema identity (`x-runx-schema`, `$id`, version) is
+  preserved. The schema *document* shape may change to idiomatic JSON Schema;
+  byte-identity is explicitly NOT required.
 - [ ] `dod2` The `--check` gate is inverted: editing a Rust contract type and not
   regenerating fails CI; editing a hand-written TypeBox schema is no longer
   possible (files removed).
@@ -123,15 +140,26 @@ Out of scope:
   against generated types, not hand-authored TypeBox.
 - [ ] `dod4` `canonical-json-fingerprint-contract-v1` fixtures still pass
   unchanged across the flip.
-- [ ] `dod5` No wire shape, casing, or optionality changed (diff of generated
-  schemas vs prior committed schemas is empty).
+- [ ] `dod5` No wire shape, casing, or optionality changed: serialized contract
+  data is byte-identical across the flip and the canonical-json fixtures pass.
+  (The schema document may change shape; only the validated value domain and the
+  serialized wire bytes must be preserved.)
+- [ ] `dod6` Before flipping, any consumer that structurally introspects schema
+  documents or pins schema-document hashes (vs validating data) is inventoried;
+  none break on the idiomatic-shape change.
 
-## Phase 1: Mechanism + Byte-Equality Proof
+## Phase 1: Emitter + Wire-Compatibility Drift Detector
 
-Select `schemars` vs typify-style generation. Stand up Rust-to-schema generation
-behind a non-authoritative check that asserts byte-equality against the existing
-committed `oss/schemas/*.json`. Inventory any TypeBox constraints without a clean
-Rust equivalent. No source-of-truth change yet.
+Stand up the bespoke Rust schema emitter (the spike ruled out vanilla `schemars`
+and `typify`) behind a non-authoritative check that asserts **canonical /
+wire-compatibility equality** against the committed `oss/schemas/*.json`: a
+conformance corpus must validate identically against the prior and the
+Rust-emitted schema, and schema identity must be preserved. This is explicitly
+NOT byte-equality of the schema document. Land the `NonEmptyString` /
+typed-discriminant constraint model so the constraints become type-level.
+Inventory any TypeBox constraint (format, pattern, refinement) without a clean
+Rust equivalent. No source-of-truth change yet. This phase is safe to land
+independently as a drift detector even if the full inversion stays deferred.
 
 ## Phase 2: Flip The Gate
 

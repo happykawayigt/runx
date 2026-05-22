@@ -1,9 +1,5 @@
 // rust-style-allow: large-file - closure planning, runtime dedupe, receipt
 // projection, and idempotency helpers share one fixture-driven oracle.
-use std::fmt::Write as _;
-
-use sha2::{Digest, Sha256};
-
 use crate::operational_policy::OperationalPolicySourceRule;
 use crate::{
     ActForm, ClosureDisposition, CriterionStatus, HarnessReceipt, HarnessState, JsonValue,
@@ -1072,16 +1068,11 @@ fn push_kv(material: &mut String, key: &str, value: &str) {
 }
 
 fn sha256_prefixed(value: &str) -> String {
-    format!("sha256:{}", sha256_hex(value))
+    crate::fingerprint::sha256_prefixed(value.as_bytes())
 }
 
 fn sha256_hex(value: &str) -> String {
-    let digest = Sha256::digest(value.as_bytes());
-    let mut hex = String::with_capacity(digest.len() * 2);
-    for byte in digest {
-        let _ = write!(&mut hex, "{byte:02x}");
-    }
-    hex
+    crate::fingerprint::sha256_hex(value.as_bytes())
 }
 
 fn non_empty_string(value: &str) -> Option<&str> {

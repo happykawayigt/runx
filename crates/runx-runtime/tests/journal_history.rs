@@ -5,12 +5,16 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use runx_contracts::{HarnessReceipt, ReferenceType};
+use runx_contracts::{HarnessReceipt, ReceiptIssuerType, ReferenceType};
 use runx_runtime::journal::{
     HARNESS_RECEIPT_REF_PREFIX, HISTORY_PROJECTOR_ID, HistoryFilter, JOURNAL_PROJECTOR_ID,
     JournalProjectionError, PausedRunCheckpoint, exact_receipt_id, harness_receipt_ref,
-    list_local_history, list_local_history_with_checkpoints, project_journal_for_receipt,
-    project_receipt_journal,
+    list_local_history, list_local_history_with_checkpoints, list_local_history_with_policy,
+    project_journal_for_receipt, project_receipt_journal, project_receipt_journal_with_policy,
+};
+use runx_runtime::receipts::{
+    Ed25519ReceiptSigner, Ed25519ReceiptVerifier, RuntimeReceiptSignaturePolicy,
+    step_receipt_with_signature_policy,
 };
 use runx_runtime::{InvocationStatus, LocalReceiptStore, SkillOutput};
 use serde_json::json;
@@ -413,19 +417,17 @@ fn history_projection_fails_structurally_valid_stale_receipt_digest()
     assert!(runx_receipts::verify_harness_receipt(&receipt).valid);
     write_receipt_json(store.root(), &receipt)?;
 
-    let result = list_local_history(
+    let history = list_local_history(
         &store,
         &workspace,
         &project_runx_dir,
         &HistoryFilter::default(),
-    );
+    )?;
 
-    assert!(matches!(
-        result,
-        Err(JournalProjectionError::ReceiptStore(
-            runx_runtime::ReceiptStoreError::ReceiptProofInvalid { .. }
-        ))
-    ));
+    // History lists every receipt and labels trust (verified/unverified/invalid)
+    // rather than failing closed: a structurally-valid but tamper-detected
+    // receipt projects as "invalid".
+    assert_eq!(history.receipts[0].verification.status, "invalid");
     Ok(())
 }
 
@@ -441,19 +443,17 @@ fn history_projection_fails_structurally_valid_tampered_receipt_signature()
     assert!(runx_receipts::verify_harness_receipt(&receipt).valid);
     write_receipt_json(store.root(), &receipt)?;
 
-    let result = list_local_history(
+    let history = list_local_history(
         &store,
         &workspace,
         &project_runx_dir,
         &HistoryFilter::default(),
-    );
+    )?;
 
-    assert!(matches!(
-        result,
-        Err(JournalProjectionError::ReceiptStore(
-            runx_runtime::ReceiptStoreError::ReceiptProofInvalid { .. }
-        ))
-    ));
+    // History lists every receipt and labels trust (verified/unverified/invalid)
+    // rather than failing closed: a structurally-valid but tamper-detected
+    // receipt projects as "invalid".
+    assert_eq!(history.receipts[0].verification.status, "invalid");
     Ok(())
 }
 
@@ -463,16 +463,24 @@ fn runtime_generated_receipts_project_verified() -> Result<(), Box<dyn std::erro
     let workspace = temp.path().join("workspace");
     let project_runx_dir = workspace.join(".runx");
     let store = LocalReceiptStore::new(project_runx_dir.join("receipts"));
-    let receipt = generated_runtime_receipt()?;
-    store.write_receipt(&receipt)?;
+    // "verified" is reserved for production-signed receipts confirmed by a real
+    // verifier; a local pseudo-signature can never earn it (see dod3).
+    let signer = fixture_signer()?;
+    let verifier = fixture_verifier(&signer);
+    let receipt = production_generated_receipt(&signer, &verifier)?;
+    write_receipt_json(store.root(), &receipt)?;
 
-    let history = list_local_history(
+    let history = list_local_history_with_policy(
         &store,
         &workspace,
         &project_runx_dir,
         &HistoryFilter::default(),
+        RuntimeReceiptSignaturePolicy::production(&verifier),
     )?;
-    let journal = project_receipt_journal(&receipt);
+    let journal = project_receipt_journal_with_policy(
+        &receipt,
+        RuntimeReceiptSignaturePolicy::production(&verifier),
+    );
 
     assert_eq!(history.receipts[0].verification.status, "verified");
     assert_eq!(
@@ -627,6 +635,44 @@ fn reseal_receipt(receipt: &mut HarnessReceipt) -> Result<(), Box<dyn std::error
     }
     receipt.signature.value = format!("sig:{digest}");
     Ok(())
+}
+
+const FIXTURE_KID: &str = "runx-runtime-prod-fixture-key";
+const FIXTURE_SEED: [u8; 32] = [0x42; 32];
+
+fn fixture_signer() -> Result<Ed25519ReceiptSigner, Box<dyn std::error::Error>> {
+    Ok(Ed25519ReceiptSigner::from_seed(
+        FIXTURE_KID,
+        ReceiptIssuerType::Local,
+        &FIXTURE_SEED,
+    )?)
+}
+
+fn fixture_verifier(signer: &Ed25519ReceiptSigner) -> Ed25519ReceiptVerifier {
+    Ed25519ReceiptVerifier::new([signer.production_key()])
+}
+
+fn production_generated_receipt(
+    signer: &Ed25519ReceiptSigner,
+    verifier: &Ed25519ReceiptVerifier,
+) -> Result<HarnessReceipt, Box<dyn std::error::Error>> {
+    let output = SkillOutput {
+        status: InvocationStatus::Success,
+        stdout: r#"{"artifact":{"artifact_id":"artifact_prod","artifact_type":"artifact"}}"#
+            .to_owned(),
+        stderr: String::new(),
+        exit_code: Some(0),
+        duration_ms: 10,
+        metadata: BTreeMap::new(),
+    };
+    Ok(step_receipt_with_signature_policy(
+        "journal-history",
+        "strict-proof",
+        1,
+        &output,
+        "2026-05-18T00:00:00Z",
+        RuntimeReceiptSignaturePolicy::production_signing(signer, verifier),
+    )?)
 }
 
 fn set_artifact_label(

@@ -144,9 +144,9 @@ where
     fn invoke(&self, request: SkillInvocation) -> Result<SkillOutput, RuntimeError> {
         let started = Instant::now();
         let source = request.source;
-        if source.source_type != "a2a" {
+        if source.source_type != runx_parser::SourceKind::A2a {
             return Err(RuntimeError::UnsupportedAdapter {
-                adapter_type: source.source_type,
+                adapter_type: source.source_type.as_str().to_owned(),
             });
         }
         let Some(agent_card_url) = source

@@ -422,7 +422,7 @@ fn source(
     arguments: Option<JsonObject>,
 ) -> SkillSource {
     SkillSource {
-        source_type: "a2a".to_owned(),
+        source_type: runx_parser::SourceKind::A2a,
         command: None,
         args: Vec::new(),
         cwd: None,

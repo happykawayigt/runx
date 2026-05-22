@@ -2,8 +2,8 @@
 spec_version: '2.0'
 task_id: canonical-json-fingerprint-contract-v1
 created: '2026-05-21T12:19:24Z'
-updated: '2026-05-22T01:38:05Z'
-status: active
+updated: '2026-05-22T06:24:11Z'
+status: completed
 harden_status: not_run
 size: medium
 risk_level: high
@@ -13,22 +13,14 @@ risk_level: high
 
 ## Current State
 
-Status: active
-Current phase: Phase 4 cloud API/db, core ledger, bundled `push_outbox`, and
-focused CLI/script canonical helper replacement are complete in the current
-tree; remaining runtime-local/adapter/core legacy helper decisions still
-pending
-Next: decide broader runtime-local, adapter, and core legacy helper survivorship
-cleanup in the owning slice
-Reason: the shared `@runxhq/contracts` helper is executable and verified. Cloud,
-core ledger, bundled `push_outbox`, file-thread, and focused CLI/script callers
-now route contractual JSON hashes through the shared helper or document their
-remaining opaque short-fragment use.
-Blockers: remaining phases still need non-cloud survivorship cleanup owned by
-runtime-local, adapter, and core legacy helper follow-up specs.
-Allowed follow-up command: `scafld handoff canonical-json-fingerprint-contract-v1`
-Latest runner update: 2026-05-22T01:38:05Z
-Review gate: not_started
+Status: completed
+Current phase: final
+Next: done
+Reason: task completed
+Blockers: none
+Allowed follow-up command: `none`
+Latest runner update: 2026-05-22T06:24:11Z
+Review gate: pass
 
 ## Summary
 
@@ -292,7 +284,7 @@ Acceptance:
 Status: completed
 Dependencies: Phase 1
 
-Goal: add the TypeScript helper in the surviving contracts package.
+Objective: Complete this phase.
 
 Changes:
 - Implemented canonical JSON and SHA-256 helpers under `oss/packages/contracts`.
@@ -300,60 +292,42 @@ Changes:
 - Added explicit unsupported-value tests for `undefined`, array holes, functions, symbols, `BigInt`, non-finite numbers, and unpaired surrogates.
 
 Acceptance:
-- The helper has no dependency on `@runxhq/core`, runtime-local, or cloud code.
+- none
 
 ## Phase 3: Cross-Runtime Conformance
 
-Goal: prove byte identity with Rust for covered fixtures.
-
-Status: done for covered harness-spine receipt fixtures
+Status: completed
 Dependencies: Phase 2
 
+Objective: Complete this phase.
+
 Changes:
-- Added `fixtures/contracts/canonical-json/runx-harness-receipt-c14n-v1.oracles.json`
-  for the covered harness-spine receipt fixtures.
-- Added Rust tests that assert full receipt canonical JSON, full digest, body
-  canonical JSON, and body digest against the oracle.
-- Added TypeScript tests that read the same oracle and compare
-  `canonicalJsonStringify(fixture.expected)`, `sha256Prefixed`, and body-stripped
-  canonical JSON/digests against it.
+- Added `fixtures/contracts/canonical-json/runx-harness-receipt-c14n-v1.oracles.json` for the covered harness-spine receipt fixtures.
+- Added Rust tests that assert full receipt canonical JSON, full digest, body canonical JSON, and body digest against the oracle.
+- Added TypeScript tests that read the same oracle and compare `canonicalJsonStringify(fixture.expected)`, `sha256Prefixed`, and body-stripped canonical JSON/digests against it.
 
 Acceptance:
-- A hash drift in either implementation fails tests. Done for
-  `harness-receipt-abnormal`, `harness-receipt-success`, and
-  `post-merge-observer-merged-verified`.
+- none
 
 ## Phase 4: Cloud and Tool Replacement
 
-Goal: remove duplicate same-contract implementations.
-
-Status: in_progress; cloud API/db, core ledger, file-thread, bundled
-`push_outbox`, and focused CLI/script replacement complete;
-runtime-local/adapter/core legacy follow-up decisions pending
+Status: completed
 Dependencies: Phase 3
+
+Objective: Complete this phase.
 
 Changes:
 - Replaced cloud `stable-json.ts` with a contracts compatibility export.
-- Replaced inline `createHash` plus stable JSON call sites where they produce
-  runx canonical fingerprints in `cloud/packages/api/src/harness-routes.ts`.
-- Corrected cloud harness route truncated `sha256:` commitments to full
-  `sha256:` values from the shared canonical JSON helper.
-- Replaced core ledger chain hashing with `canonicalJsonStringify` and
-  `sha256Hex` for the `runx.stable-json.v1` canonicalization label.
-- Replaced bundled `push_outbox` vendored `stableStringify`/`hashStable`
-  helpers with documented internal opaque fragments derived from contracts
-  canonical JSON.
-- Reclassified `packages/core/src/knowledge/file-thread.ts` `entry_` IDs and
-  `push:` cursors as internal opaque truncated fragments, not `sha256:`
-  commitments.
-- Reviewed already-present focused CLI/script replacements:
-  `packages/cli/src/authoring-utils.ts` owns CLI `sha256Stable` on top of
-  contracts canonical JSON, CLI tool/doctor/scaffold schema hashes route
-  through that helper, and script-level canonical JSON consumers import the
-  contracts helper directly.
+- Replaced inline `createHash` plus stable JSON call sites where they produce runx canonical fingerprints in `cloud/packages/api/src/harness-routes.ts`.
+- Corrected cloud harness route truncated `sha256:` commitments to full `sha256:` values from the shared canonical JSON helper.
+- Replaced core ledger chain hashing with `canonicalJsonStringify` and `sha256Hex` for the `runx.stable-json.v1` canonicalization label.
+- Replaced bundled `push_outbox` vendored `stableStringify`/`hashStable` helpers with documented internal opaque fragments derived from contracts canonical JSON.
+- Reclassified `packages/core/src/knowledge/file-thread.ts` `entry_` IDs and `push:` cursors as internal opaque truncated fragments, not `sha256:` commitments.
+- Reviewed already-present focused CLI/script replacements: `packages/cli/src/authoring-utils.ts` owns CLI `sha256Stable` on top of contracts canonical JSON, CLI tool/doctor/scaffold schema hashes route through that helper, and script-level canonical JSON consumers import the contracts helper directly.
+- Closure scan (current tree): the same-contract scan finds only the contracts owner package (`canonical-json.ts`, `schemas/ledger.ts`) and the out-of-scope sunset surfaces (`runtime-local` graph-governance label use, legacy `core/util/hash.ts` exports). No in-scope duplicate stamps the contract with divergent bytes; v1 (24 TS) and v2 (5 Rust) canonical tests pass on this tree.
 
 Acceptance:
-- Review can identify one owner for the canonicalization label.
+- none
 
 ## Rollback
 
@@ -363,7 +337,41 @@ the same canonicalization tag with divergent bytes.
 
 ## Review
 
-Review must inspect byte-level conformance, not just semantic JSON equality.
+Status: completed
+Verdict: pass
+Mode: discover
+Provider: claude:claude-opus-4-7
+Output: claude.mcp_submit_review
+Summary: Spec satisfies its declared scope. `@runxhq/contracts/canonical-json.ts` is the single TS owner of `runx.stable-json.v1`, depends only on `node:crypto`, exports `canonicalJsonStringify`/`sha256Hex`/`sha256Prefixed`, and rejects undefined/array-holes/functions/symbols/BigInt/NaN/Infinity/unpaired surrogates. The Rust receipt canonicalizer in `crates/runx-receipts/src/canonical.rs` and the TS contracts helper both consume the shared `runx-harness-receipt-c14n-v1.oracles.json` oracle for the three covered harness-spine fixtures (success/abnormal/post-merge-observer). Cloud `stable-json.ts` is reduced to a compatibility re-export, `harness-routes.ts` uses `sha256Prefixed(canonicalJsonStringify(...))` for `runx.signal-source-event.c14n.v1`/`runx.harness-receipt.c14n.v1`/idempotency content hashes (no remaining inline `createHash`+stableStringify same-contract callers), the only surviving `createHash` is the opaque `shortHash` for `sig_`/`hr_`/`h_`/`dec_` ID derivation. Bundled `tools/thread/push_outbox` and `packages/cli/tools/thread/push_outbox` import contracts and document their truncated digests as opaque, core `file-thread.ts` does the same, and ledger chain hashing in `packages/core/src/artifacts/index.ts` routes through `canonicalJsonStringify`+`sha256Hex` against `runx.stable-json.v1`. Out-of-scope sunset surfaces (`runtime-local/runner-local/graph-governance.ts`, `runtime-local/sdk/act-assignment.ts`, `adapters/a2a`, `core/util/hash.ts`) still stamp `sha256:`-prefixed digests via the legacy `hashStable` (`localeCompare` sort + undefined-filter), but the spec explicitly defers them. Ambient drift (53 paths) is dominated by unrelated runx-runtime kernel work (skill, payment supervisor, credentials, target_runner, seal.rs) and does not retouch the canonical JSON owner files; `Task-scoped changes since baseline: 0` is consistent with the spec evidence that v1 (24 TS) and v2 (5 Rust) canonical tests already pass on this tree. Findings below are low-severity observations only; none block completion.
+
+Attack log:
+- `packages/contracts/src/canonical-json.ts`: Validate dod1: contracts owns canonical JSON + sha256 helpers and does not import @runxhq/core. Inspected imports (only node:crypto) and package.json (deps only @sinclair/typebox). -> clean
+- `packages/contracts/src/canonical-json.ts unsupported-value gate`: Validate dod8: confirm undefined, array holes, functions, symbols, BigInt, NaN, Infinity, -Infinity, unpaired surrogates all throw. Traced each branch in canonicalJsonValue + assertNoUnpairedSurrogate + canonicalJsonNumber against the it.each table in canonical-json.test.ts. -> clean
+- `crates/runx-receipts/src/canonical.rs vs packages/contracts canonical-json`: Validate dod4/v1/v2: confirm the shared oracle fixture runx-harness-receipt-c14n-v1.oracles.json is consumed by both Rust harness_receipt_oracle_matches_rust_canonical_json test and TS canonical-json.test.ts oracle tests with full/body canonical JSON + sha256 assertions on the three covered harness-spine fixtures. -> clean
+- `cloud/packages/api/src/harness-routes.ts`: dod6 regression hunt: scan for surviving createHash+stableStringify same-contract callers and truncated sha256: commitments. Confirmed sha256CanonicalJson goes through sha256Prefixed(canonicalJsonStringify(...)) for digest/enforcement_profile_hash/content_hash, and the only remaining createHash is the opaque shortHash used for sig_/hr_/h_/dec_ IDs. -> finding (Identified F3 - non-hash literal still under sha256: shape at line 345.)
+- `cloud/packages/db/src/{stable-json,index,postgres}.ts`: dod5: confirm cloud stable-json.ts is a compatibility re-export and all stableJsonStringify callers route to contracts canonicalJsonStringify. -> clean
+- `oss/tools/thread/push_outbox + packages/cli/tools/thread/push_outbox + packages/core/src/knowledge/file-thread.ts`: dod7 regression: confirm bundled push_outbox copies use contracts opaque hash and document non-commitment status; cross-compare with core file-thread.ts. -> finding (F1 - bundled tools use {thread_locator, outbox_entry_id, pushed_at} but core uses {thread, outbox_entry, pushed_at} for entry_id; cursors agree.)
+- `packages/core/src/artifacts/index.ts ledger chain hashing`: Confirm ledger entry_hash uses canonicalJsonStringify+sha256Hex with the runx.stable-json.v1 canonicalization label, while artifact-meta hashStable use remains classified as non-contract. -> clean
+- `Closure scan for stableStringify/hashStable/stableJsonStringify/sha256Stable across oss + cloud`: Verify v4 evidence: enumerate every remaining caller and confirm each is either an out-of-scope sunset surface (runtime-local graph-governance, runtime-local sdk/act-assignment, packages/adapters/src/a2a, packages/core/src/util/hash.ts) or in-scope contracts-routed (cli/authoring-utils sha256Stable, push_outbox bundles, core artifacts/file-thread). -> clean (Sunset surfaces still stamp sha256:-prefixed digests under runx.harness-receipt.c14n.v1 (graph-governance.ts:992) and idempotency tags (act-assignment SDK lines 67/83/90), but spec explicitly defers these and the act-assignment fixtures pin parity to ASCII-only keys.)
+- `crates/runx-contracts/src/act_assignment/hash.rs vs packages/runtime-local/src/sdk/act-assignment.ts`: Bytewise parity check for act-assignment idempotency hashes: Rust uses BTreeMap (byte-sorted) keys, TS uses Object.entries.sort(localeCompare). For ASCII-lowercase keys (the only covered domain per fixture description) the two orders agree and U+2028/U+2029 raw emission matches modern V8. Non-ASCII or mixed-case keys would diverge. -> clean (Acknowledged limitation: fixture descriptions explicitly say 'non-ASCII object keys are rejected until hash-stable-codepoint-cutover replaces localeCompare ordering'.)
+- `Ambient drift attribution`: Workspace classifier shows Task-scoped changes since baseline: 0 and 53 ambient drift items. Walk the drift to confirm none retouch in-scope owner files (packages/contracts/src/canonical-json.ts, fixtures/contracts/canonical-json/*, cloud/packages/db/src/stable-json.ts, cloud/packages/api/src/harness-routes.ts, oss/tools/thread/push_outbox/*, oss/packages/cli/tools/thread/push_outbox/*, oss/packages/core/src/{artifacts,knowledge/file-thread}, oss/crates/runx-receipts/src/canonical.rs). -> clean (Drift is dominated by runx-runtime kernel rewiring (skill, payment supervisor, credentials, target_runner, seal.rs, skill_run) and new fixture/skills directories; spec owner files are untouched.)
+- `covered_number_domain vs canonicalJsonStringify finite-number admission`: Probe whether canonicalJsonStringify allows finite numbers outside the documented covered_number_domain that would diverge from Rust serde_json's default Display (e.g., 1e21, 1e-7, integers >2^53). -> finding (F2 - helper accepts a strictly broader domain than the oracle commits to.)
+- `Object key ordering in canonical JSON`: Compare TS compareJsonObjectKeys (code-point iteration via Symbol.iterator + codePointAt(0)) against Rust BTreeMap<String> ordering (UTF-8 byte order) and serde_json::Map sort. For all valid UTF-8 strings code-point order equals UTF-8 byte order, so they agree; arrays guard against string-keyed extras via isArrayElementKey/Object.keys filtering. -> clean
+- `Cycle and prototype safety in canonicalJsonStringify`: Inspect assertAcyclic/assertNoEnumerableSymbolKeys/isPlainJsonObject for traversal bugs (Date instances, Object.create(null), class instances, getter throws, sparse arrays). -> clean (Plain object guard rejects non-Object.prototype/non-null prototypes (so Date/Map throw 'non-plain object'); Object.create(null) is accepted; sparse arrays throw 'array hole'; cycle stack is properly add/delete via finally.)
+
+Findings:
+- [low/non-blocking] `F1` Bundled push_outbox tools and core file-thread.ts derive the opaque entry_id from different key sets, so the same logical push produces different IDs across code paths.
+  - Location: `packages/core/src/knowledge/file-thread.ts:99`
+  - Evidence: tools/thread/push_outbox/src/index.ts:319-324 hashes {thread_locator, outbox_entry_id, pushed_at}; packages/cli/tools/thread/push_outbox/src/index.ts uses the identical formula; packages/core/src/knowledge/file-thread.ts:99-103 hashes {thread, outbox_entry, pushed_at}. Both pipe through opaqueCanonicalJsonHashFragment(canonicalJsonStringify(...)) so the canonicalization helper is consistent, but the input shapes diverge. The push cursor formula at file-thread.ts:126 and push_outbox.../index.ts:346 does match ({outbox_entry, pushed_at}), so only entry_id drifts.
+  - Impact: Replaying the same thread push through the bundled CLI tool vs core in-process API yields divergent entry_ values. Spec reclassifies these as opaque-only, so this is not a contract violation, but downstream consumers comparing entry_ids across pipelines may be surprised.
+- [low/non-blocking] `F2` covered_number_domain in the v1 oracle commits to only six specific finite numbers, but canonicalJsonStringify accepts any finite JS number where Rust serde_json output is known to diverge (1e21, 1e-7, integers beyond Number.MAX_SAFE_INTEGER).
+  - Location: `packages/contracts/src/canonical-json.ts:45`
+  - Evidence: fixtures/contracts/canonical-json/runx-stable-json-v1.cases.json line covered_number_domain: {"examples":[0,-7,42,12.5,-0.25,0.125]}. canonical-json.ts:45 rejects only NaN/Infinity. JsonNumber Display in crates/runx-contracts/src/json.rs:121 writes whole floats as "{value:.0}" (matching JSON.stringify integer form) but non-whole f64s use the default Rust Display formatter, which emits "0.0000001" where JS emits "1e-7" and "1e+21" where Rust emits "1000000000000000000000". The conformance harness exercises none of these.
+  - Impact: A future caller hashing structured data with edge-domain numbers under runx.stable-json.v1 may produce TS bytes that do not match Rust without any test surfacing the drift. Spec acknowledges this in the Risks section but does not narrow the helper.
+- [low/non-blocking] `F3` Cloud harness-routes still emits a non-hash literal under the sha256: prefix shape (public_key_sha256: "sha256:hosted-api"), which is the same anti-pattern dod6 set out to eliminate from truncated commitments.
+  - Location: `cloud/packages/api/src/harness-routes.ts:345`
+  - Evidence: cloud/packages/api/src/harness-routes.ts:345 issuer.public_key_sha256 = "sha256:hosted-api" inside the synthesized hosted source-signal harness receipt; the surrounding shortHash callers (lines 273,274,353,393) are explicitly opaque sig_/hr_/h_/dec_ IDs and are not claimed as sha256 commitments, so the placeholder issuer key is the only remaining non-conformant sha256:-shaped value in the route. The harness receipt schema in packages/contracts/src/schemas/spine.ts:855 only requires minLength:1, so validation does not catch this.
+  - Impact: Any verifier that inspects issuer.public_key_sha256 will see a structurally valid but cryptographically meaningless commitment. Likely predates this task, but the dod6 cleanup of harness-routes left it in place.
 
 ## Origin
 

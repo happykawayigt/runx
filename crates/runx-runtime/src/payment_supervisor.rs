@@ -1,3 +1,7 @@
+// rust-style-allow: large-file because the payment rail supervisor keeps the
+// settlement evidence/proof types, claim validation, runtime evidence
+// synthesis, and verification in one trusted boundary until the payment
+// execution modules are split.
 use runx_contracts::{
     HarnessReceipt, JsonObject, JsonValue, ProofKind, Reference, ReferenceType, sha256_prefixed,
 };
@@ -265,6 +269,73 @@ pub fn payment_supervisor_evidence_metadata_value(
     evidence: &PaymentSupervisorSettlementEvidence,
 ) -> Result<JsonValue, PaymentSupervisorError> {
     encode_json_value(evidence)
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct PaymentSupervisorEvidenceInput<'a> {
+    pub rail: &'a str,
+    pub counterparty: &'a str,
+    pub amount_minor: u64,
+    pub currency: &'a str,
+    pub idempotency_key: &'a str,
+    pub proof_ref: &'a str,
+    pub settlement_status: Option<&'a str>,
+}
+
+/// Synthesize supervisor settlement evidence from the trusted admitted spend
+/// authority plus the skill's claimed rail proof reference. Settlement facts
+/// (rail, counterparty, amount, currency, idempotency key) originate from
+/// admission, never from a skill-provided object; the skill only contributes
+/// the proof ref and a settlement-status claim, both re-validated by
+/// `verify_payment_rail_supervisor_proof`.
+pub fn synthesize_payment_supervisor_evidence(
+    input: PaymentSupervisorEvidenceInput<'_>,
+) -> PaymentSupervisorSettlementEvidence {
+    PaymentSupervisorSettlementEvidence {
+        verifier_id: PAYMENT_RAIL_SUPERVISOR_VERIFIER_ID.to_owned(),
+        proof_ref: input.proof_ref.to_owned(),
+        rail: input.rail.to_owned(),
+        counterparty: input.counterparty.to_owned(),
+        amount_minor: input.amount_minor,
+        currency: input.currency.to_owned(),
+        idempotency_key: input.idempotency_key.to_owned(),
+        settlement_status: input.settlement_status.map(str::to_owned),
+        provider_event_ref: None,
+    }
+}
+
+/// Re-bind a stored supervisor proof to a receipt whose digest changed after the
+/// proof was created. Sealing a step receipt into a graph re-seals it with the
+/// parent harness ref, which changes its body digest; rebuilding the proof from
+/// the stored evidence keeps `receipt_ref`, `receipt_digest`, and
+/// `evidence_digest` consistent with the final sealed receipt. No-op when the
+/// step output carries no supervisor proof.
+pub fn rebind_supervisor_proof_to_receipt(
+    metadata: &mut JsonObject,
+    receipt: &HarnessReceipt,
+) -> Result<(), PaymentSupervisorError> {
+    let Some(proof) = payment_supervisor_proof_from_metadata(metadata)? else {
+        return Ok(());
+    };
+    let Some(evidence) = payment_supervisor_evidence_from_metadata(metadata)? else {
+        return Ok(());
+    };
+    let rebound = build_payment_supervisor_proof(
+        &evidence,
+        PaymentSupervisorProofMatch {
+            proof_ref: &proof.proof_ref,
+            rail: &proof.rail,
+            counterparty: &proof.counterparty,
+            amount_minor: proof.amount_minor,
+            currency: &proof.currency,
+            idempotency_key: &proof.idempotency_key,
+            spend_capability_ref: &proof.spend_capability_ref,
+            act_id: &proof.act_id,
+            receipt_ref: &receipt.id,
+            receipt_digest: &receipt.seal.digest,
+        },
+    )?;
+    insert_payment_supervisor_proof_metadata(metadata, &rebound)
 }
 
 pub fn payment_supervisor_proof_metadata_value(
