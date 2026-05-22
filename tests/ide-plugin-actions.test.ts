@@ -86,7 +86,7 @@ target: ${JSON.stringify(path.resolve("fixtures/skills/echo"))}
 inputs:
   message: hello from harness
 expect:
-  status: success
+  status: sealed
   receipt:
     schema: runx.harness_receipt.v1
     state: sealed

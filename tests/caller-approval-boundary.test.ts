@@ -66,7 +66,7 @@ caller:
   approvals:
     sandbox.harness-approval.unrestricted-local-dev: true
 expect:
-  status: success
+  status: sealed
 `,
       );
 

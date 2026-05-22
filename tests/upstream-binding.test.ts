@@ -101,7 +101,7 @@ Fixture markdown used only to exercise the runx-owned binding harness.
       if (!("cases" in result)) {
         throw new Error("expected inline harness suite");
       }
-      expect(result.status).toBe("success");
+      expect(result.status).toBe("sealed");
       expect(result.assertionErrors).toEqual([]);
       expect(result.cases).toHaveLength(2);
     } finally {
@@ -170,7 +170,7 @@ harness:
           agent_step.temp-upstream.output:
             summary: ok
       expect:
-        status: success
+        status: sealed
 `;
       const bindingDir = path.join(tempDir, "binding");
       const outputDir = path.join(tempDir, "out");

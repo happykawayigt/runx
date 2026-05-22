@@ -3,43 +3,14 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
-  createSequentialGraphState,
-  createSingleStepState,
-  evaluateFanoutSync,
-  fanoutSyncDecisionKey,
-  planSequentialGraphTransition,
-  transitionSequentialGraph,
-  transitionSingleStep,
+  evaluateRustKernelInputSync,
   type FanoutBranchResult,
   type FanoutGroupPolicy,
+  type FanoutSyncDecision,
   type SequentialGraphEvent,
   type SequentialGraphState,
   type SequentialGraphStepDefinition,
-  type SingleStepEvent,
-  type SingleStepState,
-} from "../packages/core/src/state-machine/index.js";
-import {
-  admitGraphStepScopes,
-  admitLocalSkill,
-  admitRetryPolicy,
-  buildAuthorityProofMetadata,
-  buildLocalScopeAdmission,
-  evaluatePublicCommentOpportunity,
-  evaluatePublicPullRequestCandidate,
-  normalizePublicWorkPolicy,
-  validateCredentialBinding,
-  type AuthorityProofGrant,
-  type GraphScopeAdmissionRequest,
-  type LocalAdmissionOptions,
-  type LocalAdmissionSkill,
-  type RetryAdmissionRequest,
-} from "../packages/core/src/policy/index.js";
-import {
-  admitSandbox,
-  normalizeSandboxDeclaration,
-  sandboxRequiresApproval,
-  type SandboxDeclaration,
-} from "../packages/core/src/policy/sandbox.js";
+} from "./rust-kernel-eval.js";
 
 const workspaceRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const fixtureRoot = path.join(workspaceRoot, "fixtures", "kernel");
@@ -84,6 +55,19 @@ interface KernelFixtureCase {
   readonly description?: string;
   readonly input: KernelFixture["input"];
   readonly expected?: KernelFixture["expected"];
+}
+
+interface AuthorityProofGrant {
+  readonly grant_id: string;
+  readonly provider?: string;
+  readonly scopes: readonly string[];
+  readonly status?: string;
+  readonly not_before?: string;
+  readonly expires_at?: string;
+  readonly scope_family?: string;
+  readonly authority_kind?: string;
+  readonly target_repo?: string;
+  readonly target_locator?: string;
 }
 
 interface PaymentAuthorityBoundsFixture {
@@ -242,82 +226,55 @@ export function evaluateKernelFixtureInput(input: KernelFixture["input"]): unkno
 }
 
 function evaluateKernelFixtureInputUnchecked(input: KernelFixture["input"]): unknown {
-  switch (input.kind) {
-    case "state-machine.createSingleStepState":
-      return createSingleStepState(expectString(input.stepId, "input.stepId"));
-    case "state-machine.transitionSingleStep":
-      return transitionSingleStep(
-        expectRecord(input.state, "input.state") as unknown as SingleStepState,
-        expectRecord(input.event, "input.event") as unknown as SingleStepEvent,
-      );
-    case "state-machine.createSequentialGraphState":
-      return createSequentialGraphState(
-        expectString(input.graphId, "input.graphId"),
-        expectArray(input.steps, "input.steps") as readonly SequentialGraphStepDefinition[],
-      );
-    case "state-machine.planSequentialGraphTransition":
-      return planSequentialGraphTransition(
-        expectRecord(input.state, "input.state") as unknown as SequentialGraphState,
-        expectArray(input.steps, "input.steps") as readonly SequentialGraphStepDefinition[],
-        (input.fanoutPolicies ?? {}) as Readonly<Record<string, FanoutGroupPolicy>>,
-        {
-          resolvedFanoutGateKeys: input.resolvedFanoutGateKeys
-            ? new Set(expectArray(input.resolvedFanoutGateKeys, "input.resolvedFanoutGateKeys") as readonly string[])
-            : undefined,
-        },
-      );
-    case "state-machine.transitionSequentialGraph":
-      return transitionSequentialGraph(
-        expectRecord(input.state, "input.state") as unknown as SequentialGraphState,
-        expectRecord(input.event, "input.event") as unknown as SequentialGraphEvent,
-      );
-    case "state-machine.evaluateFanoutSync":
-      return evaluateFanoutSync(
-        expectRecord(input.policy, "input.policy") as unknown as FanoutGroupPolicy,
-        expectArray(input.results, "input.results") as readonly FanoutBranchResult[],
-        {
-          resolvedGateKeys: input.resolvedGateKeys
-            ? new Set(expectArray(input.resolvedGateKeys, "input.resolvedGateKeys") as readonly string[])
-            : undefined,
-        },
-      );
-    case "state-machine.fanoutSyncDecisionKey":
-      return fanoutSyncDecisionKey(expectRecord(input.decision, "input.decision") as { readonly groupId: string; readonly ruleFired: string });
-    case "policy.admitLocalSkill":
-      return admitLocalSkill(
-        expectRecord(input.skill, "input.skill") as unknown as LocalAdmissionSkill,
-        (input.options ?? {}) as LocalAdmissionOptions,
-      );
-    case "policy.admitRetryPolicy":
-      return admitRetryPolicy(expectRecord(input.request, "input.request") as unknown as RetryAdmissionRequest);
-    case "policy.admitGraphStepScopes":
-      return admitGraphStepScopes(expectRecord(input.request, "input.request") as unknown as GraphScopeAdmissionRequest);
-    case "policy.normalizeSandboxDeclaration":
-      return normalizeSandboxDeclaration(input.sandbox as SandboxDeclaration | undefined);
-    case "policy.sandboxRequiresApproval":
-      return sandboxRequiresApproval(input.sandbox as SandboxDeclaration | undefined);
-    case "policy.admitSandbox":
-      return admitSandbox(input.sandbox as SandboxDeclaration | undefined, (input.options ?? {}) as { readonly approvedEscalation?: boolean; readonly skipEscalation?: boolean });
-    case "policy.buildLocalScopeAdmission":
-      return buildLocalScopeAdmission(input.auth, expectArray(input.grants ?? [], "input.grants") as never[], (input.options ?? {}) as never);
-    case "policy.buildAuthorityProofMetadata":
-      return buildAuthorityProofMetadata(expectRecord(input.options, "input.options") as never);
-    case "policy.validateCredentialBinding":
-      return validateCredentialBinding(expectRecord(input.request, "input.request") as never);
-    case "policy.evaluatePublicPullRequestCandidate":
-      return evaluatePublicPullRequestCandidate(expectRecord(input.request, "input.request") as never, (input.policy ?? {}) as never);
-    case "policy.evaluatePublicCommentOpportunity":
-      return evaluatePublicCommentOpportunity(expectRecord(input.request, "input.request") as never, (input.policy ?? {}) as never);
-    case "policy.normalizePublicWorkPolicy":
-      return normalizePublicWorkPolicy((input.policy ?? {}) as never);
-    case "policy.isPaymentAuthoritySubset":
-      return isPaymentAuthoritySubset(
-        expectRecord(input.child, "input.child") as unknown as PaymentAuthorityTermFixture,
-        expectRecord(input.parent, "input.parent") as unknown as PaymentAuthorityTermFixture,
-      );
-    default:
-      throw new Error(`unknown kernel fixture input kind: ${input.kind}`);
-  }
+  return evaluateRustKernelInputSync(input);
+}
+
+function buildLocalScopeAdmission(
+  auth: unknown,
+  grants: readonly AuthorityProofGrant[],
+  options: Record<string, unknown> = {},
+): unknown {
+  return evaluateRustKernelInputSync({
+    kind: "policy.buildLocalScopeAdmission",
+    auth,
+    grants,
+    options,
+  });
+}
+
+function createSequentialGraphState(
+  graphId: string,
+  steps: readonly SequentialGraphStepDefinition[],
+): SequentialGraphState {
+  return evaluateRustKernelInputSync({
+    kind: "state-machine.createSequentialGraphState",
+    graphId,
+    steps,
+  }) as SequentialGraphState;
+}
+
+function transitionSequentialGraph(
+  state: SequentialGraphState,
+  event: SequentialGraphEvent,
+): SequentialGraphState {
+  return evaluateRustKernelInputSync({
+    kind: "state-machine.transitionSequentialGraph",
+    state,
+    event,
+  }) as SequentialGraphState;
+}
+
+function evaluateFanoutSync(
+  policy: FanoutGroupPolicy,
+  results: readonly FanoutBranchResult[],
+  options: { readonly resolvedGateKeys?: ReadonlySet<string> } = {},
+): FanoutSyncDecision {
+  return evaluateRustKernelInputSync({
+    kind: "state-machine.evaluateFanoutSync",
+    policy,
+    results,
+    resolvedGateKeys: options.resolvedGateKeys ? Array.from(options.resolvedGateKeys) : undefined,
+  }) as FanoutSyncDecision;
 }
 
 export function normalizeForFixture(value: unknown): unknown {
@@ -433,11 +390,16 @@ function fixtureCases(): readonly KernelFixtureCase[] {
     target_repo: "runxhq/aster",
     target_locator: "runxhq/aster#issue/4",
   };
+  const connectedAuthCheckedAt = "2026-05-22T00:00:00Z";
+  const connectedAuthNotBefore = "2026-05-21T00:00:00Z";
+  const connectedAuthExpiresAt = "2026-05-23T00:00:00Z";
   const githubReadGrant: AuthorityProofGrant = {
     grant_id: "grant_expected",
     provider: "github",
     scopes: ["repo:read", "user:read"],
     status: "active",
+    not_before: connectedAuthNotBefore,
+    expires_at: connectedAuthExpiresAt,
     scope_family: "github_repo",
     authority_kind: "read_only",
     target_repo: "runxhq/aster",
@@ -469,7 +431,7 @@ function fixtureCases(): readonly KernelFixtureCase[] {
         request: {
           auth: githubReadAuth,
           grants: [githubReadGrant],
-          scopeAdmission: buildLocalScopeAdmission(githubReadAuth, [githubReadGrant]),
+          scopeAdmission: buildLocalScopeAdmission(githubReadAuth, [githubReadGrant], { connectedAuthCheckedAt }),
           credential: githubCredential,
         },
       },
@@ -481,7 +443,7 @@ function fixtureCases(): readonly KernelFixtureCase[] {
         request: {
           auth: githubReadAuth,
           grants: [githubReadGrant],
-          scopeAdmission: buildLocalScopeAdmission(githubReadAuth, [githubReadGrant]),
+          scopeAdmission: buildLocalScopeAdmission(githubReadAuth, [githubReadGrant], { connectedAuthCheckedAt }),
           credential: {
             ...githubCredential,
             grant_id: "grant_other",
@@ -503,6 +465,7 @@ function fixtureCases(): readonly KernelFixtureCase[] {
           sourceType: "agent-step",
           auth: githubReadAuth,
           grants: [githubReadGrant],
+          connectedAuthCheckedAt,
           credential: githubCredential,
           sandboxDeclaration: {
             profile: "workspace-write",
@@ -551,6 +514,7 @@ function fixtureCases(): readonly KernelFixtureCase[] {
           sourceType: "agent-step",
           auth: githubReadAuth,
           grants: [githubReadGrant],
+          connectedAuthCheckedAt,
           credential: githubCredential,
           sandboxMetadata: {
             profile: "workspace-write",
@@ -572,6 +536,7 @@ function fixtureCases(): readonly KernelFixtureCase[] {
           sourceType: "agent-step",
           auth: githubReadAuth,
           grants: [githubReadGrant],
+          connectedAuthCheckedAt,
           credential: githubCredential,
           sandboxDeclaration: {
             profile: "  workspace-write  ",
@@ -589,6 +554,9 @@ function fixtureCases(): readonly KernelFixtureCase[] {
         kind: "policy.buildLocalScopeAdmission",
         auth: githubReadAuth,
         grants: [githubReadGrant],
+        options: {
+          connectedAuthCheckedAt,
+        },
       },
     },
     {
@@ -598,6 +566,7 @@ function fixtureCases(): readonly KernelFixtureCase[] {
         auth: githubReadAuth,
         grants: [githubReadGrant],
         options: {
+          connectedAuthCheckedAt,
           deniedBeforeGrantResolution: true,
         },
       },
@@ -610,6 +579,9 @@ function fixtureCases(): readonly KernelFixtureCase[] {
           type: "env",
         },
         grants: [githubReadGrant],
+        options: {
+          connectedAuthCheckedAt,
+        },
       },
     },
     {
@@ -622,6 +594,9 @@ function fixtureCases(): readonly KernelFixtureCase[] {
           scopes: ["repo:write"],
         },
         grants: [githubReadGrant],
+        options: {
+          connectedAuthCheckedAt,
+        },
       },
     },
     ...paymentAuthorityFixtureCases(),
@@ -1002,8 +977,11 @@ function fixtureCases(): readonly KernelFixtureCase[] {
               provider: "github",
               scopes: ["repo:*"],
               status: "active",
+              not_before: connectedAuthNotBefore,
+              expires_at: connectedAuthExpiresAt,
             },
           ],
+          connectedAuthCheckedAt,
         },
       },
     },
@@ -1023,8 +1001,11 @@ function fixtureCases(): readonly KernelFixtureCase[] {
               provider: "github",
               scopes: ["repo:*"],
               status: "active",
+              not_before: connectedAuthNotBefore,
+              expires_at: connectedAuthExpiresAt,
             },
           ],
+          connectedAuthCheckedAt,
         },
       },
     },
@@ -1394,6 +1375,25 @@ function paymentAuthorityFixtureCases(): readonly KernelFixtureCase[] {
       ),
     },
     {
+      name: "payment-authority-denies-unbounded-aggregate-spend",
+      input: paymentAuthorityInput(
+        paymentAuthorityTerm({
+          ...paymentAuthorityTermOptions(narrowerChild),
+          payment: omitPaymentKey(
+            omitPaymentKey(narrowerPayment, "max_per_run_minor"),
+            "max_per_period_minor",
+          ),
+        }),
+        paymentAuthorityTerm({
+          ...paymentAuthorityTermOptions(parent),
+          payment: omitPaymentKey(
+            omitPaymentKey(parentPayment, "max_per_run_minor"),
+            "max_per_period_minor",
+          ),
+        }),
+      ),
+    },
+    {
       name: "payment-authority-denies-single-use-spend-without-capability",
       input: paymentAuthorityInput(
         paymentAuthorityTerm({
@@ -1629,6 +1629,10 @@ function finishFanoutStep(
         stepId,
         at: "2026-04-10T00:00:01.000Z",
         receiptId: `rx_${stepId}`,
+        admissionWitness: {
+          stepId,
+          receiptId: `rx_${stepId}`,
+        },
         outputs,
       })
     : transitionSequentialGraph(started, {

@@ -2,10 +2,11 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import {
-  evaluateFanoutSync,
+  evaluateRustKernelInputSync,
   type FanoutBranchResult,
   type FanoutGroupPolicy,
-} from "../packages/core/src/state-machine/index.js";
+  type FanoutSyncDecision,
+} from "./rust-kernel-eval.js";
 
 type Scenario = "all" | "partial-failure" | "retry";
 
@@ -125,7 +126,7 @@ function staticThresholdPause() {
     graph: "fanout-threshold",
     status: "paused",
     stepId: "market",
-    syncPoint: syncPointFromTs(
+    syncPoint: syncPointFromRust(
       {
         groupId: "advisors",
         strategy: "all",
@@ -336,7 +337,7 @@ function syncPoint(input: {
     status: index < input.successCount ? "succeeded" : "failed",
     outputs: {},
   }));
-  const point = syncPointFromTs(
+  const point = syncPointFromRust(
     policy,
     results,
     input.receiptIds ?? input.branchIds.map((id) => receiptId(input.graph, id)),
@@ -347,7 +348,7 @@ function syncPoint(input: {
   return point;
 }
 
-function syncPointFromTs(
+function syncPointFromRust(
   policy: FanoutGroupPolicy,
   results: readonly FanoutBranchResult[],
   branchReceipts: readonly string[],
@@ -368,9 +369,20 @@ function syncPointFromTs(
   };
 }
 
+function evaluateFanoutSync(
+  policy: FanoutGroupPolicy,
+  results: readonly FanoutBranchResult[],
+): FanoutSyncDecision {
+  return evaluateRustKernelInputSync({
+    kind: "state-machine.evaluateFanoutSync",
+    policy,
+    results,
+  }) as FanoutSyncDecision;
+}
+
 function assertSyncPointField(actual: string, expected: string, field: string) {
   if (actual !== expected) {
-    throw new Error(`TS fanout oracle produced ${field}=${actual}; expected ${expected}`);
+    throw new Error(`Rust fanout oracle produced ${field}=${actual}; expected ${expected}`);
   }
 }
 

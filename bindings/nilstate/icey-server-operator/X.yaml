@@ -83,10 +83,10 @@ harness:
               surface: "web"
               summary: "Inspect and validate the bundled web UI smoke path without widening browser support claims."
       expect:
-        status: success
+        status: sealed
         receipt:
-          kind: skill_execution
-          status: success
+          kind: harness_receipt
+          status: sealed
           skill_name: icey-server-operator
 
     - name: release-plan-preserves-pins
@@ -116,8 +116,8 @@ harness:
               surface: "release"
               summary: "Preserve VERSION and ICEY_VERSION provenance while validating release packaging metadata."
       expect:
-        status: success
+        status: sealed
         receipt:
-          kind: skill_execution
-          status: success
+          kind: harness_receipt
+          status: sealed
           skill_name: icey-server-operator

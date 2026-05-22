@@ -13,7 +13,7 @@ import {
 } from "../scripts/generate-kernel-parity-fixtures.js";
 
 describe("kernel parity fixtures", () => {
-  it("match the current TypeScript trusted-kernel behavior", async () => {
+  it("match the current trusted-kernel behavior", async () => {
     const fixtureFiles = await collectKernelFixtureFiles();
     expect(fixtureFiles.length).toBeGreaterThan(0);
 
@@ -190,9 +190,8 @@ describe("kernel parity fixtures", () => {
     } catch (error) {
       expect(error).toMatchObject({
         code: "kernel.fixture.evaluation_failed",
-        cause: expect.any(Error),
         sourceErrorMessage: expect.any(String),
-        sourceErrorName: "TypeError",
+        sourceErrorName: "RustKernelEvalError",
       });
     }
   });

@@ -72,7 +72,6 @@
   "input": {
     "kind": "policy.buildAuthorityProofMetadata",
     "options": {
-      "connectedAuthCheckedAt": "2026-05-22T00:00:00Z",
       "auth": {
         "authority_kind": "read_only",
         "provider": "github",
@@ -85,6 +84,7 @@
         "target_repo": "runxhq/aster",
         "type": "nango"
       },
+      "connectedAuthCheckedAt": "2026-05-22T00:00:00Z",
       "credential": {
         "auth_mode": "oauth",
         "connection_id": "conn_1",

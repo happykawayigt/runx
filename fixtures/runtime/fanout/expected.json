@@ -118,12 +118,12 @@
         "hrn_rcpt_fanout-threshold_risk"
       ],
       "gate": {
-        "type": "threshold",
-        "stepId": "risk",
-        "field": "risk_score",
-        "value": 0.91,
+        "action": "pause",
         "comparedTo": 0.8,
-        "action": "pause"
+        "field": "risk_score",
+        "stepId": "risk",
+        "type": "threshold",
+        "value": 0.91
       }
     }
   },

@@ -2,8 +2,8 @@
 spec_version: '2.0'
 task_id: rust-ts-sunset-parser-runtime-local-importers
 created: '2026-05-22T00:26:00+10:00'
-updated: '2026-05-22T11:41:15+10:00'
-status: review
+updated: '2026-05-22T01:42:29Z'
+status: completed
 harden_status: not_run
 size: small
 risk_level: medium
@@ -13,14 +13,14 @@ risk_level: medium
 
 ## Current State
 
-Status: review
+Status: completed
 Current phase: final
-Next: review
-Reason: build completed; ready for review
+Next: done
+Reason: task completed
 Blockers: none
-Allowed follow-up command: `scafld review rust-ts-sunset-parser-runtime-local-importers`
-Latest runner update: 2026-05-22T11:41:15+10:00
-Review gate: not_started
+Allowed follow-up command: `none`
+Latest runner update: 2026-05-22T01:42:29Z
+Review gate: pass
 
 ## Summary
 
@@ -209,20 +209,24 @@ Acceptance:
 Status: completed
 Dependencies: Phase 1
 
-Goal: make only the small importer changes that have a clear replacement and
-targeted tests.
+Objective: Complete this phase.
+
+Changes:
+- none
 
 Acceptance:
 - [x] `ac3` command - Runtime-local direct parser imports are removed.
   - Command: `bash -lc '! rg -n "@runxhq/core/parser" packages/runtime-local/src -g "!node_modules" -g "!crates/target"'`
   - Expected kind: `no_matches`
-  - Status: passed
-  - Evidence: 2026-05-22T11:38:00+10:00 returned no matches and exited zero.
+  - Status: pass
+  - Evidence: no direct runtime-local `@runxhq/core/parser` imports remain.
+  - Source event: entry-3
 - [x] `ac4` command - Parser implementation is untouched.
   - Command: `test -d packages/core/src/parser`
   - Expected kind: `exit_code_zero`
-  - Status: passed
-  - Evidence: `test -d packages/core/src/parser` succeeded.
+  - Status: pass
+  - Evidence: exit code was 0
+  - Source event: entry-4
 
 ## Rollback
 
@@ -232,3 +236,21 @@ Acceptance:
 ## Metadata
 
 - created_by: codex
+
+## Review
+
+Status: completed
+Verdict: pass
+Mode: verify
+Provider: command
+Output: command.stdout
+Summary: Verified runtime-local has no direct @runxhq/core/parser imports, the parser implementation remains present, and the replacement bridge is a Rust parser eval boundary. No completion-blocking findings.
+
+Attack log:
+- `packages/runtime-local/src`: Search for direct @runxhq/core/parser imports. -> clean (rg returned no matches.)
+- `packages/core/src/parser`: Verify the TS parser implementation was not deleted by this importer slice. -> clean (directory exists)
+- `packages/runtime-local/src/runner-local/parser-bridge.ts`: Inspect bridge for hidden parser implementation dependency and Rust CLI boundary. -> clean (no direct parser import; bridge calls parser eval)
+- `packages/runtime-local/src`: Confirm remaining parser-types.js consumers are structural runtime-local surface, not direct parser implementation imports. -> clean (1 parser-types.js references remain, matching the spec temporary-surface allowance.)
+
+Findings:
+- none

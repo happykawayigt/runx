@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 const workspaceRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 
 const sourceExtensions = new Set([".ts", ".tsx", ".mts", ".cts"]);
-const ignoredDirectoryNames = new Set(["node_modules", "dist", ".build", "coverage"]);
+const ignoredDirectoryNames = new Set(["node_modules", "dist", ".build", "coverage", "target"]);
 const removedCoreRuntimeSubpaths = [
   "@runxhq/core/runner-local",
   "@runxhq/core/harness",
@@ -13,7 +13,11 @@ const removedCoreRuntimeSubpaths = [
   "@runxhq/core/mcp",
   "@runxhq/core/tool-catalogs",
 ];
+const removedCoreKernelSubpaths = [
+  "@runxhq/core/state-machine",
+];
 const forbiddenCoreRuntimeDirs = ["runner-local", "harness", "sdk", "mcp", "tool-catalogs"];
+const forbiddenDeletedCoreDirs = ["state-machine"];
 const forbiddenPureNodeImports = new Set([
   "fs",
   "fs/promises",
@@ -153,6 +157,12 @@ async function checkPackageExports() {
     }
   }
 
+  for (const removedSubpath of ["./state-machine"]) {
+    if (Object.hasOwn(coreManifest.exports ?? {}, removedSubpath)) {
+      findings.push(`packages/core/package.json still exports ${removedSubpath}; state-machine is Rust-owned.`);
+    }
+  }
+
   for (const requiredSubpath of [".", "./harness", "./runner-local", "./sdk", "./mcp", "./tool-catalogs"]) {
     if (!Object.hasOwn(runtimeLocalManifest.exports ?? {}, requiredSubpath)) {
       findings.push(`packages/runtime-local/package.json is missing export ${requiredSubpath}.`);
@@ -263,6 +273,13 @@ async function checkForbiddenCoreRuntimeDirectories() {
       findings.push(`packages/core/src/${directoryName} still exists; runtime-local owns this boundary.`);
     }
   }
+  for (const directoryName of forbiddenDeletedCoreDirs) {
+    const directoryPath = path.join(workspaceRoot, "packages", "core", "src", directoryName);
+    const entry = await statIfExists(directoryPath);
+    if (entry?.isDirectory()) {
+      findings.push(`packages/core/src/${directoryName} still exists; this TypeScript kernel domain has been deleted.`);
+    }
+  }
 }
 
 async function checkSourceFile(filePath) {
@@ -274,6 +291,9 @@ async function checkSourceFile(filePath) {
   for (const specifier of specifiers) {
     if (removedCoreRuntimeSubpaths.some((prefix) => specifier === prefix || specifier.startsWith(`${prefix}/`))) {
       findings.push(`${rel} imports removed ${specifier}; use @runxhq/runtime-local public paths.`);
+    }
+    if (removedCoreKernelSubpaths.some((prefix) => specifier === prefix || specifier.startsWith(`${prefix}/`))) {
+      findings.push(`${rel} imports removed ${specifier}; use the Rust kernel eval boundary.`);
     }
 
     if (packageSource) {
