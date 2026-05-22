@@ -475,7 +475,7 @@ pub fn persist_payment_step_state(
     cwd: &Path,
     input: &PaymentStepStateInput,
     outputs: &JsonObject,
-    receipt: &runx_contracts::HarnessReceipt,
+    receipt: &runx_contracts::Receipt,
     supervisor_proof: Option<&PaymentSupervisorProof>,
 ) -> Result<(), PaymentStateError> {
     let Some(path) = resolve_payment_state_path(env, cwd) else {
@@ -525,7 +525,7 @@ pub fn persist_payment_step_state(
             idempotency_key: input.idempotency_key.clone(),
             receipt_ref: receipt.id.clone(),
             receipt_created_at: receipt.created_at.clone(),
-            receipt_digest: receipt.seal.digest.clone(),
+            receipt_digest: receipt.digest.clone(),
             rail_proof_ref: proof_ref.to_owned(),
             supervisor_proof: supervisor_proof.clone(),
             amount_minor: result
@@ -571,7 +571,7 @@ pub fn persist_payment_step_state(
 
 fn validate_sealed_supervisor_proof<'a>(
     input: &PaymentStepStateInput,
-    receipt: &runx_contracts::HarnessReceipt,
+    receipt: &runx_contracts::Receipt,
     proof_ref: &str,
     supervisor_proof: Option<&'a PaymentSupervisorProof>,
 ) -> Result<&'a PaymentSupervisorProof, PaymentStateError> {
@@ -590,7 +590,7 @@ fn validate_sealed_supervisor_proof<'a>(
             spend_capability_ref: &input.spend_capability_ref,
             act_id: &input.act_id,
             receipt_ref: &receipt.id,
-            receipt_digest: &receipt.seal.digest,
+            receipt_digest: &receipt.digest,
         },
     )
     .map_err(|source| PaymentStateError::SupervisorProof {

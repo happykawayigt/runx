@@ -17,7 +17,7 @@
     "signal_refs",
     "decisions",
     "acts",
-    "child_harness_receipt_refs",
+    "child_receipt_refs",
     "artifact_refs",
     "seal"
   ],
@@ -83,10 +83,6 @@
                 },
                 {
                   "const": "graph_receipt",
-                  "type": "string"
-                },
-                {
-                  "const": "harness_receipt",
                   "type": "string"
                 },
                 {
@@ -325,10 +321,6 @@
               "type": "string"
             },
             {
-              "const": "harness_receipt",
-              "type": "string"
-            },
-            {
               "const": "artifact",
               "type": "string"
             },
@@ -508,10 +500,6 @@
             },
             {
               "const": "graph_receipt",
-              "type": "string"
-            },
-            {
-              "const": "harness_receipt",
               "type": "string"
             },
             {
@@ -717,10 +705,6 @@
                   "type": "string"
                 },
                 {
-                  "const": "harness_receipt",
-                  "type": "string"
-                },
-                {
                   "const": "artifact",
                   "type": "string"
                 },
@@ -902,10 +886,6 @@
                   },
                   {
                     "const": "graph_receipt",
-                    "type": "string"
-                  },
-                  {
-                    "const": "harness_receipt",
                     "type": "string"
                   },
                   {
@@ -1094,10 +1074,6 @@
                     "type": "string"
                   },
                   {
-                    "const": "harness_receipt",
-                    "type": "string"
-                  },
-                  {
                     "const": "artifact",
                     "type": "string"
                   },
@@ -1283,10 +1259,6 @@
                     "type": "string"
                   },
                   {
-                    "const": "harness_receipt",
-                    "type": "string"
-                  },
-                  {
                     "const": "artifact",
                     "type": "string"
                   },
@@ -1469,10 +1441,6 @@
                   },
                   {
                     "const": "graph_receipt",
-                    "type": "string"
-                  },
-                  {
-                    "const": "harness_receipt",
                     "type": "string"
                   },
                   {
@@ -1681,10 +1649,6 @@
                         "type": "string"
                       },
                       {
-                        "const": "harness_receipt",
-                        "type": "string"
-                      },
-                      {
                         "const": "artifact",
                         "type": "string"
                       },
@@ -1864,10 +1828,6 @@
                       },
                       {
                         "const": "graph_receipt",
-                        "type": "string"
-                      },
-                      {
-                        "const": "harness_receipt",
                         "type": "string"
                       },
                       {
@@ -2373,10 +2333,6 @@
                                 "type": "string"
                               },
                               {
-                                "const": "harness_receipt",
-                                "type": "string"
-                              },
-                              {
                                 "const": "artifact",
                                 "type": "string"
                               },
@@ -2578,10 +2534,6 @@
                               "type": "string"
                             },
                             {
-                              "const": "harness_receipt",
-                              "type": "string"
-                            },
-                            {
                               "const": "artifact",
                               "type": "string"
                             },
@@ -2761,10 +2713,6 @@
                             },
                             {
                               "const": "graph_receipt",
-                              "type": "string"
-                            },
-                            {
-                              "const": "harness_receipt",
                               "type": "string"
                             },
                             {
@@ -3013,10 +2961,6 @@
                         "type": "string"
                       },
                       {
-                        "const": "harness_receipt",
-                        "type": "string"
-                      },
-                      {
                         "const": "artifact",
                         "type": "string"
                       },
@@ -3196,10 +3140,6 @@
                       },
                       {
                         "const": "graph_receipt",
-                        "type": "string"
-                      },
-                      {
-                        "const": "harness_receipt",
                         "type": "string"
                       },
                       {
@@ -3395,10 +3335,6 @@
                         },
                         {
                           "const": "graph_receipt",
-                          "type": "string"
-                        },
-                        {
-                          "const": "harness_receipt",
                           "type": "string"
                         },
                         {
@@ -3602,10 +3538,6 @@
                             },
                             {
                               "const": "graph_receipt",
-                              "type": "string"
-                            },
-                            {
-                              "const": "harness_receipt",
                               "type": "string"
                             },
                             {
@@ -3834,10 +3766,6 @@
                               "type": "string"
                             },
                             {
-                              "const": "harness_receipt",
-                              "type": "string"
-                            },
-                            {
                               "const": "artifact",
                               "type": "string"
                             },
@@ -4031,10 +3959,6 @@
                 },
                 {
                   "const": "graph_receipt",
-                  "type": "string"
-                },
-                {
-                  "const": "harness_receipt",
                   "type": "string"
                 },
                 {
@@ -4232,10 +4156,6 @@
                   "type": "string"
                 },
                 {
-                  "const": "harness_receipt",
-                  "type": "string"
-                },
-                {
                   "const": "artifact",
                   "type": "string"
                 },
@@ -4423,10 +4343,6 @@
                 },
                 {
                   "const": "graph_receipt",
-                  "type": "string"
-                },
-                {
-                  "const": "harness_receipt",
                   "type": "string"
                 },
                 {
@@ -4694,10 +4610,6 @@
                     "type": "string"
                   },
                   {
-                    "const": "harness_receipt",
-                    "type": "string"
-                  },
-                  {
                     "const": "artifact",
                     "type": "string"
                   },
@@ -4929,10 +4841,6 @@
                     "type": "string"
                   },
                   {
-                    "const": "harness_receipt",
-                    "type": "string"
-                  },
-                  {
                     "const": "artifact",
                     "type": "string"
                   },
@@ -5115,10 +5023,6 @@
                   },
                   {
                     "const": "graph_receipt",
-                    "type": "string"
-                  },
-                  {
-                    "const": "harness_receipt",
                     "type": "string"
                   },
                   {
@@ -5344,10 +5248,6 @@
                       "type": "string"
                     },
                     {
-                      "const": "harness_receipt",
-                      "type": "string"
-                    },
-                    {
                       "const": "artifact",
                       "type": "string"
                     },
@@ -5536,10 +5436,6 @@
               },
               {
                 "const": "graph_receipt",
-                "type": "string"
-              },
-              {
-                "const": "harness_receipt",
                 "type": "string"
               },
               {
@@ -5802,10 +5698,6 @@
                           "type": "string"
                         },
                         {
-                          "const": "harness_receipt",
-                          "type": "string"
-                        },
-                        {
                           "const": "artifact",
                           "type": "string"
                         },
@@ -5988,10 +5880,6 @@
                           },
                           {
                             "const": "graph_receipt",
-                            "type": "string"
-                          },
-                          {
-                            "const": "harness_receipt",
                             "type": "string"
                           },
                           {
@@ -6184,10 +6072,6 @@
                           "type": "string"
                         },
                         {
-                          "const": "harness_receipt",
-                          "type": "string"
-                        },
-                        {
                           "const": "artifact",
                           "type": "string"
                         },
@@ -6370,10 +6254,6 @@
                           },
                           {
                             "const": "graph_receipt",
-                            "type": "string"
-                          },
-                          {
-                            "const": "harness_receipt",
                             "type": "string"
                           },
                           {
@@ -6717,10 +6597,6 @@
                           "type": "string"
                         },
                         {
-                          "const": "harness_receipt",
-                          "type": "string"
-                        },
-                        {
                           "const": "artifact",
                           "type": "string"
                         },
@@ -6916,10 +6792,6 @@
                       },
                       {
                         "const": "graph_receipt",
-                        "type": "string"
-                      },
-                      {
-                        "const": "harness_receipt",
                         "type": "string"
                       },
                       {
@@ -7121,10 +6993,6 @@
                         },
                         {
                           "const": "graph_receipt",
-                          "type": "string"
-                        },
-                        {
-                          "const": "harness_receipt",
                           "type": "string"
                         },
                         {
@@ -7380,10 +7248,6 @@
                     },
                     {
                       "const": "graph_receipt",
-                      "type": "string"
-                    },
-                    {
-                      "const": "harness_receipt",
                       "type": "string"
                     },
                     {
@@ -7780,10 +7644,6 @@
                           "type": "string"
                         },
                         {
-                          "const": "harness_receipt",
-                          "type": "string"
-                        },
-                        {
                           "const": "artifact",
                           "type": "string"
                         },
@@ -8076,10 +7936,6 @@
                             "type": "string"
                           },
                           {
-                            "const": "harness_receipt",
-                            "type": "string"
-                          },
-                          {
                             "const": "artifact",
                             "type": "string"
                           },
@@ -8262,10 +8118,6 @@
                           },
                           {
                             "const": "graph_receipt",
-                            "type": "string"
-                          },
-                          {
-                            "const": "harness_receipt",
                             "type": "string"
                           },
                           {
@@ -8461,10 +8313,6 @@
                       "type": "string"
                     },
                     {
-                      "const": "harness_receipt",
-                      "type": "string"
-                    },
-                    {
                       "const": "artifact",
                       "type": "string"
                     },
@@ -8647,10 +8495,6 @@
                     },
                     {
                       "const": "graph_receipt",
-                      "type": "string"
-                    },
-                    {
-                      "const": "harness_receipt",
                       "type": "string"
                     },
                     {
@@ -8839,10 +8683,6 @@
                       "type": "string"
                     },
                     {
-                      "const": "harness_receipt",
-                      "type": "string"
-                    },
-                    {
                       "const": "artifact",
                       "type": "string"
                     },
@@ -9025,10 +8865,6 @@
                     },
                     {
                       "const": "graph_receipt",
-                      "type": "string"
-                    },
-                    {
-                      "const": "harness_receipt",
                       "type": "string"
                     },
                     {
@@ -9217,10 +9053,6 @@
                       "type": "string"
                     },
                     {
-                      "const": "harness_receipt",
-                      "type": "string"
-                    },
-                    {
                       "const": "artifact",
                       "type": "string"
                     },
@@ -9403,10 +9235,6 @@
                     },
                     {
                       "const": "graph_receipt",
-                      "type": "string"
-                    },
-                    {
-                      "const": "harness_receipt",
                       "type": "string"
                     },
                     {
@@ -9629,10 +9457,6 @@
                                 },
                                 {
                                   "const": "graph_receipt",
-                                  "type": "string"
-                                },
-                                {
-                                  "const": "harness_receipt",
                                   "type": "string"
                                 },
                                 {
@@ -9895,10 +9719,6 @@
                             },
                             {
                               "const": "graph_receipt",
-                              "type": "string"
-                            },
-                            {
-                              "const": "harness_receipt",
                               "type": "string"
                             },
                             {
@@ -10199,10 +10019,6 @@
                                     "type": "string"
                                   },
                                   {
-                                    "const": "harness_receipt",
-                                    "type": "string"
-                                  },
-                                  {
                                     "const": "artifact",
                                     "type": "string"
                                   },
@@ -10385,10 +10201,6 @@
                                   },
                                   {
                                     "const": "graph_receipt",
-                                    "type": "string"
-                                  },
-                                  {
-                                    "const": "harness_receipt",
                                     "type": "string"
                                   },
                                   {
@@ -10590,10 +10402,6 @@
                               "type": "string"
                             },
                             {
-                              "const": "harness_receipt",
-                              "type": "string"
-                            },
-                            {
                               "const": "artifact",
                               "type": "string"
                             },
@@ -10781,10 +10589,6 @@
                           "type": "string"
                         },
                         {
-                          "const": "harness_receipt",
-                          "type": "string"
-                        },
-                        {
                           "const": "artifact",
                           "type": "string"
                         },
@@ -10967,10 +10771,6 @@
                         },
                         {
                           "const": "graph_receipt",
-                          "type": "string"
-                        },
-                        {
-                          "const": "harness_receipt",
                           "type": "string"
                         },
                         {
@@ -11273,10 +11073,6 @@
                                     "type": "string"
                                   },
                                   {
-                                    "const": "harness_receipt",
-                                    "type": "string"
-                                  },
-                                  {
                                     "const": "artifact",
                                     "type": "string"
                                   },
@@ -11459,10 +11255,6 @@
                                   },
                                   {
                                     "const": "graph_receipt",
-                                    "type": "string"
-                                  },
-                                  {
-                                    "const": "harness_receipt",
                                     "type": "string"
                                   },
                                   {
@@ -11664,10 +11456,6 @@
                               "type": "string"
                             },
                             {
-                              "const": "harness_receipt",
-                              "type": "string"
-                            },
-                            {
                               "const": "artifact",
                               "type": "string"
                             },
@@ -11853,10 +11641,6 @@
                         "type": "string"
                       },
                       {
-                        "const": "harness_receipt",
-                        "type": "string"
-                      },
-                      {
                         "const": "artifact",
                         "type": "string"
                       },
@@ -11995,7 +11779,7 @@
         }
       }
     },
-    "child_harness_receipt_refs": {
+    "child_receipt_refs": {
       "type": "array",
       "items": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -12048,10 +11832,6 @@
               },
               {
                 "const": "graph_receipt",
-                "type": "string"
-              },
-              {
-                "const": "harness_receipt",
                 "type": "string"
               },
               {
@@ -12237,10 +12017,6 @@
               },
               {
                 "const": "graph_receipt",
-                "type": "string"
-              },
-              {
-                "const": "harness_receipt",
                 "type": "string"
               },
               {
@@ -12554,10 +12330,6 @@
                               "type": "string"
                             },
                             {
-                              "const": "harness_receipt",
-                              "type": "string"
-                            },
-                            {
                               "const": "artifact",
                               "type": "string"
                             },
@@ -12740,10 +12512,6 @@
                             },
                             {
                               "const": "graph_receipt",
-                              "type": "string"
-                            },
-                            {
-                              "const": "harness_receipt",
                               "type": "string"
                             },
                             {
@@ -12971,10 +12739,6 @@
                         "type": "string"
                       },
                       {
-                        "const": "harness_receipt",
-                        "type": "string"
-                      },
-                      {
                         "const": "artifact",
                         "type": "string"
                       },
@@ -13157,10 +12921,6 @@
                       },
                       {
                         "const": "graph_receipt",
-                        "type": "string"
-                      },
-                      {
-                        "const": "harness_receipt",
                         "type": "string"
                       },
                       {

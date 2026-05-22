@@ -223,8 +223,15 @@ export {
 } from "./schemas/list.js";
 
 export {
+  runSummaryV1Schema,
+  type RunSummaryContract,
+} from "./schemas/run-summary.js";
+
+export {
   receiptV1Schema,
   type ReceiptContract,
+  validateReceiptContract,
+  RECEIPT_CANONICALIZATION,
 } from "./schemas/receipt.js";
 
 export {
@@ -427,10 +434,8 @@ export {
   harnessSealSchema,
   harnessSchema,
   artifactSchema,
-  harnessReceiptIssuerSchema,
-  harnessReceiptSignatureSchema,
-  harnessReceiptEnvelopeSchema,
-  harnessReceiptSchema,
+  receiptIssuerSchema,
+  receiptSignatureSchema,
   targetCooldownSchema,
   targetSchema,
   opportunitySchema,
@@ -449,7 +454,6 @@ export {
   validateActContract,
   validateVerificationContract,
   validateHarnessContract,
-  validateHarnessReceiptContract,
   validateSpineArtifactContract,
   validateRedactionContract,
   validateTargetContract,
@@ -518,10 +522,8 @@ export {
   type HarnessSealContract,
   type HarnessContract,
   type ArtifactContract,
-  type HarnessReceiptIssuerContract,
-  type HarnessReceiptSignatureContract,
-  type HarnessReceiptContract,
-  type HarnessReceiptEnvelopeContract,
+  type ReceiptIssuerContract,
+  type ReceiptSignatureContract,
   type TargetCooldownContract,
   type TargetContract,
   type OpportunityContract,
@@ -567,6 +569,7 @@ import { registryBindingSchema, reviewReceiptOutputSchema } from "./schemas/regi
 import { doctorV1Schema } from "./schemas/doctor.js";
 import { devV1Schema } from "./schemas/dev.js";
 import { listV1Schema } from "./schemas/list.js";
+import { runSummaryV1Schema } from "./schemas/run-summary.js";
 import { receiptV1Schema } from "./schemas/receipt.js";
 import { fixtureV1Schema } from "./schemas/fixture.js";
 import { toolManifestV1Schema } from "./schemas/tool-manifest.js";
@@ -586,7 +589,6 @@ import {
   authoritySubsetProofSchema,
   decisionSchema,
   harnessAuthoritySchema,
-  harnessReceiptSchema,
   harnessSchema,
   targetSchema,
   opportunitySchema,
@@ -629,6 +631,7 @@ export const runxContractSchemas = {
   doctor: doctorV1Schema,
   dev: devV1Schema,
   list: listV1Schema,
+  runSummary: runSummaryV1Schema,
   receipt: receiptV1Schema,
   fixture: fixtureV1Schema,
   toolManifest: toolManifestV1Schema,
@@ -648,7 +651,6 @@ export const runxContractSchemas = {
   act: actSchema,
   verification: verificationSchema,
   harness: harnessSchema,
-  harnessReceipt: harnessReceiptSchema,
   target: targetSchema,
   opportunity: opportunitySchema,
   thesisAssessment: thesisAssessmentSchema,
@@ -695,7 +697,7 @@ export const runxGeneratedSchemaArtifacts = {
   "doctor.schema.json": doctorV1Schema,
   "dev.schema.json": devV1Schema,
   "list.schema.json": listV1Schema,
-  "receipt.schema.json": receiptV1Schema,
+  "run-summary.schema.json": runSummaryV1Schema,
   "fixture.schema.json": fixtureV1Schema,
   "tool-manifest.schema.json": toolManifestV1Schema,
   "packet-index.schema.json": packetIndexV1Schema,
@@ -714,7 +716,7 @@ export const runxGeneratedSchemaArtifacts = {
   "act.schema.json": actSchema,
   "verification.schema.json": verificationSchema,
   "harness.schema.json": harnessSchema,
-  "harness-receipt.schema.json": harnessReceiptSchema,
+  "receipt.schema.json": receiptV1Schema,
   "target.schema.json": targetSchema,
   "opportunity.schema.json": opportunitySchema,
   "thesis-assessment.schema.json": thesisAssessmentSchema,

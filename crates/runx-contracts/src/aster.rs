@@ -228,7 +228,7 @@ pub struct TargetTransitionEntry {
     #[serde(default)]
     pub source_refs: Vec<Reference>,
     pub decision_ref: Option<Reference>,
-    pub harness_receipt_ref: Option<Reference>,
+    pub receipt_ref: Option<Reference>,
     pub recorded_at: String,
 }
 
@@ -250,7 +250,7 @@ pub struct SelectionCycle {
     pub ranked_selection_refs: Vec<Reference>,
     pub chosen_selection_ref: Option<Reference>,
     pub decision_ref: Option<Reference>,
-    pub harness_receipt_ref: Option<Reference>,
+    pub receipt_ref: Option<Reference>,
     pub no_action_closure: Option<Closure>,
     pub fingerprint: Fingerprint,
 }
@@ -265,7 +265,7 @@ pub struct ReflectionEntry {
     pub selection_ref: Option<Reference>,
     pub decision_ref: Option<Reference>,
     #[serde(default)]
-    pub harness_receipt_refs: Vec<Reference>,
+    pub receipt_refs: Vec<Reference>,
     #[serde(default)]
     pub act_refs: Vec<ActRef>,
     pub summary: String,
@@ -292,7 +292,7 @@ pub struct FeedEntry {
     #[serde(default)]
     pub decision_refs: Vec<Reference>,
     #[serde(default)]
-    pub harness_receipt_refs: Vec<Reference>,
+    pub receipt_refs: Vec<Reference>,
     #[serde(default)]
     pub act_refs: Vec<ActRef>,
     #[serde(default)]

@@ -1,4 +1,4 @@
-use runx_contracts::HarnessReceipt;
+use runx_contracts::Receipt;
 
 use super::ReceiptVerification;
 
@@ -24,7 +24,7 @@ pub struct ReceiptProofStatus {
 
 #[must_use]
 pub fn receipt_proof_status(
-    receipt: &HarnessReceipt,
+    receipt: &Receipt,
     verification: &ReceiptVerification,
 ) -> ReceiptProofStatus {
     ReceiptProofStatus {

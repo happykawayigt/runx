@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use runx_contracts::{HarnessReceipt, JsonObject, JsonValue};
+use runx_contracts::{Receipt, JsonObject, JsonValue};
 use runx_runtime::RUNX_RECEIPT_DIR_ENV;
 use runx_runtime::payment_state::{
     FileBackedPaymentStateStore, PaymentIdempotencyEntry, PaymentIdempotencyKey,
@@ -246,7 +246,7 @@ fn persists_sealed_payment_step_state_for_replay_and_reuse_lookups()
     );
     assert_eq!(entry.rail_proof_ref, "receipt-proof:mock:paid-echo-001");
     assert_eq!(entry.receipt_created_at, receipt.created_at);
-    assert_eq!(entry.receipt_digest, receipt.seal.digest);
+    assert_eq!(entry.receipt_digest, receipt.digest);
     let entry_text = serde_json::to_string(&entry)?;
     assert!(
         !entry_text.contains("rail_session_material_ref"),
@@ -452,7 +452,7 @@ fn payment_step_input() -> PaymentStepStateInput {
 fn supervisor_proof_for_receipt(
     input: &PaymentStepStateInput,
     proof_ref: &str,
-    receipt: &HarnessReceipt,
+    receipt: &Receipt,
 ) -> PaymentSupervisorProof {
     PaymentSupervisorProof {
         verifier_id: PAYMENT_RAIL_SUPERVISOR_VERIFIER_ID.to_owned(),
@@ -465,7 +465,7 @@ fn supervisor_proof_for_receipt(
         spend_capability_ref: input.spend_capability_ref.clone(),
         act_id: input.act_id.clone(),
         receipt_ref: receipt.id.clone(),
-        receipt_digest: receipt.seal.digest.clone(),
+        receipt_digest: receipt.digest.clone(),
         evidence_digest: "sha256:test-supervisor-evidence".to_owned(),
     }
 }
@@ -537,7 +537,7 @@ fn receipt_for_outputs(
     graph_name: &str,
     step_id: &str,
     outputs: &JsonObject,
-) -> Result<HarnessReceipt, Box<dyn std::error::Error>> {
+) -> Result<Receipt, Box<dyn std::error::Error>> {
     let output = SkillOutput {
         status: InvocationStatus::Success,
         stdout: serde_json::to_string(&JsonValue::Object(outputs.clone()))?,

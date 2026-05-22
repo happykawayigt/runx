@@ -7,7 +7,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use runx_contracts::{ClosureDisposition, HarnessReceipt, JsonValue};
+use runx_contracts::{ClosureDisposition, Receipt, JsonValue};
 use thiserror::Error;
 
 use super::harness::{HarnessReplayError, HarnessReplayOutput};
@@ -194,14 +194,14 @@ fn harness_result(output: HarnessReplayOutput) -> Result<RunResult, Orchestrator
     })
 }
 
-fn status_from_receipt(receipt: &HarnessReceipt) -> RunStatus {
+fn status_from_receipt(receipt: &Receipt) -> RunStatus {
     match receipt.seal.disposition {
         ClosureDisposition::Closed => RunStatus::Sealed,
         _ => RunStatus::Failed,
     }
 }
 
-fn receipt_json(receipt: &HarnessReceipt) -> Result<JsonValue, OrchestratorError> {
+fn receipt_json(receipt: &Receipt) -> Result<JsonValue, OrchestratorError> {
     let value = serde_json::to_value(receipt)
         .map_err(|source| crate::RuntimeError::json("serializing orchestrated receipt", source))?;
     serde_json::from_value(value)
@@ -209,13 +209,18 @@ fn receipt_json(receipt: &HarnessReceipt) -> Result<JsonValue, OrchestratorError
         .map_err(Into::into)
 }
 
-fn child_receipt_refs(receipt: &HarnessReceipt) -> Vec<String> {
+fn child_receipt_refs(receipt: &Receipt) -> Vec<String> {
     receipt
-        .harness
-        .child_harness_receipt_refs
-        .iter()
-        .map(|reference| reference.uri.clone())
-        .collect()
+        .lineage
+        .as_ref()
+        .map(|lineage| {
+            lineage
+                .children
+                .iter()
+                .map(|reference| reference.uri.clone())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn object_string<'a>(value: &'a JsonValue, key: &str) -> Option<&'a str> {

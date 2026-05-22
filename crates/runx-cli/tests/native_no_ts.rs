@@ -77,7 +77,7 @@ fn native_cli_smoke_runs_without_node_or_typescript_env() -> Result<(), Box<dyn 
         .output()?;
     assert_success(&harness)?;
     let receipt = serde_json::from_slice::<serde_json::Value>(&harness.stdout)?;
-    assert_eq!(receipt["schema"], "runx.harness_receipt.v1");
+    assert_eq!(receipt["schema"], "runx.receipt.v1");
     assert_eq!(receipt["harness"]["state"], "sealed");
 
     Ok(())

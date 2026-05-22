@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use runx_contracts::{
-    ClosureDisposition, ExecutionEvent, FanoutReceiptSyncPoint, HarnessReceipt, JsonObject,
+    ClosureDisposition, ExecutionEvent, FanoutReceiptSyncPoint, Receipt, JsonObject,
 };
 use runx_core::state_machine::{SequentialGraphState, StepAdmissionWitness};
 use runx_parser::ExecutionGraph;
@@ -69,7 +69,7 @@ pub struct StepRun {
     pub fanout_group: Option<String>,
     pub output: SkillOutput,
     pub outputs: JsonObject,
-    pub receipt: HarnessReceipt,
+    pub receipt: Receipt,
     pub admission_witness: StepAdmissionWitness,
 }
 
@@ -79,7 +79,7 @@ pub struct GraphRun {
     pub state: SequentialGraphState,
     pub steps: Vec<StepRun>,
     pub sync_points: Vec<FanoutReceiptSyncPoint>,
-    pub receipt: HarnessReceipt,
+    pub receipt: Receipt,
     pub journal: ExecutionJournal,
 }
 

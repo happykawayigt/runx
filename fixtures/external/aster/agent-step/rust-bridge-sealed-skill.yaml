@@ -27,7 +27,7 @@ inputs:
     local_facts:
       - "Aster accepts Rust-native runx skill <path> commands through scripts/runx-agent-bridge.mjs."
       - "Terminal skill reports must be runx.skill_run.v1 with status sealed."
-      - "Terminal skill reports cite a stored runx.harness_receipt.v1 receipt id."
+      - "Terminal skill reports cite a stored runx.receipt.v1 receipt id."
       - "Continuation reruns the same runx skill <path> command with --run-id and --answers."
 caller:
   answers:
@@ -42,7 +42,7 @@ caller:
         summary: "Aster issue-triage bridge run sealed with a canonical harness receipt."
       receipt:
         id: "hrn_rcpt_aster_issue_triage_14"
-        schema: "runx.harness_receipt.v1"
+        schema: "runx.receipt.v1"
         harness:
           harness_id: "hrn_aster_issue_triage_14"
           state: "sealed"
@@ -53,7 +53,7 @@ caller:
 expect:
   status: "sealed"
   receipt:
-    schema: "runx.harness_receipt.v1"
+    schema: "runx.receipt.v1"
     receipt_id: "hrn_rcpt_aster-rust-bridge-sealed-skill_aster-rust-bridge-sealed-skill"
     harness_id: "hrn_aster-rust-bridge-sealed-skill_aster-rust-bridge-sealed-skill"
     state: "sealed"
@@ -62,13 +62,13 @@ expect:
     act_ids:
       - "act_aster-rust-bridge-sealed-skill"
     decision_ids:
-      - "dec_aster-rust-bridge-sealed-skill"
+      - "runx:decision:hrn_rcpt_aster-rust-bridge-sealed-skill_aster-rust-bridge-sealed-skill_journal"
 metadata:
   external_project: "aster"
   source_case: "rust-bridge-sealed-skill"
   runner_kind: "agent_step"
   bridge_contract: "runx.skill_run.v1"
-  receipt_contract: "runx.harness_receipt.v1"
+  receipt_contract: "runx.receipt.v1"
   aster_bridge_sources:
     - "README.md"
     - "scripts/runx-agent-bridge.mjs"

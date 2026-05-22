@@ -5,10 +5,10 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use runx_contracts::{HarnessReceipt, ReceiptIssuerType, ReferenceType};
+use runx_contracts::{Receipt, ReceiptIssuerType, ReferenceType};
 use runx_runtime::journal::{
-    HARNESS_RECEIPT_REF_PREFIX, HISTORY_PROJECTOR_ID, HistoryFilter, JOURNAL_PROJECTOR_ID,
-    JournalProjectionError, PausedRunCheckpoint, exact_receipt_id, harness_receipt_ref,
+    RECEIPT_REF_PREFIX, HISTORY_PROJECTOR_ID, HistoryFilter, JOURNAL_PROJECTOR_ID,
+    JournalProjectionError, PausedRunCheckpoint, exact_receipt_id, receipt_uri,
     list_local_history, list_local_history_with_checkpoints, list_local_history_with_policy,
     project_journal_for_receipt, project_receipt_journal, project_receipt_journal_with_policy,
 };
@@ -113,7 +113,7 @@ fn history_lists_receipts_newest_first_with_safe_refs_and_filters()
     assert!(
         history.receipts[0]
             .receipt_ref
-            .starts_with(HARNESS_RECEIPT_REF_PREFIX)
+            .starts_with(RECEIPT_REF_PREFIX)
     );
     assert_no_local_paths(&serde_json::to_string(&history)?);
     Ok(())
@@ -301,7 +301,7 @@ fn history_merges_paused_ledgers_and_checkpoints() -> Result<(), Box<dyn std::er
         &[PausedRunCheckpoint {
             id: "rx_checkpoint00000000000000000001".to_owned(),
             name: "checkpoint-skill".to_owned(),
-            kind: "runx.harness_receipt.v1".to_owned(),
+            kind: "runx.receipt.v1".to_owned(),
             started_at: Some("2026-04-28T00:30:00Z".to_owned()),
             selected_runner: Some("agent-step".to_owned()),
             step_ids: vec!["plan".to_owned()],
@@ -410,11 +410,8 @@ fn history_projection_fails_structurally_valid_stale_receipt_digest()
     let project_runx_dir = workspace.join(".runx");
     let store = LocalReceiptStore::new(project_runx_dir.join("receipts"));
     let mut receipt = generated_runtime_receipt()?;
-    receipt.seal.digest = "sha256:stale".to_owned();
-    if let Some(seal) = receipt.harness.seal.as_mut() {
-        seal.digest = "sha256:stale".to_owned();
-    }
-    assert!(runx_receipts::verify_harness_receipt(&receipt).valid);
+    receipt.digest = "sha256:stale".to_owned();
+    assert!(runx_receipts::verify_receipt(&receipt).valid);
     write_receipt_json(store.root(), &receipt)?;
 
     let history = list_local_history(
@@ -440,7 +437,7 @@ fn history_projection_fails_structurally_valid_tampered_receipt_signature()
     let store = LocalReceiptStore::new(project_runx_dir.join("receipts"));
     let mut receipt = generated_runtime_receipt()?;
     receipt.signature.value = "sig:sha256:tampered".to_owned();
-    assert!(runx_receipts::verify_harness_receipt(&receipt).valid);
+    assert!(runx_receipts::verify_receipt(&receipt).valid);
     write_receipt_json(store.root(), &receipt)?;
 
     let history = list_local_history(
@@ -506,7 +503,7 @@ fn journal_projection_uses_exact_refs_and_reprojects_deterministically()
     store.write_receipt(&receipt)?;
 
     let direct = project_journal_for_receipt(&store, "hrn_rcpt_123")?;
-    let typed = project_journal_for_receipt(&store, "runx:harness_receipt:hrn_rcpt_123")?;
+    let typed = project_journal_for_receipt(&store, "runx:receipt:hrn_rcpt_123")?;
     let reprojected = project_receipt_journal(&receipt);
     let oracle: serde_json::Value = serde_json::from_str(JOURNAL_ORACLE)?;
     let expected_ref = oracle
@@ -561,12 +558,12 @@ fn journal_lookup_does_not_use_suffix_matching() -> Result<(), Box<dyn std::erro
         ))
     ));
     assert_eq!(
-        exact_receipt_id("runx:harness_receipt:hrn_rcpt_123"),
+        exact_receipt_id("runx:receipt:hrn_rcpt_123"),
         "hrn_rcpt_123"
     );
     assert_eq!(
-        harness_receipt_ref("hrn_rcpt_123"),
-        "runx:harness_receipt:hrn_rcpt_123"
+        receipt_uri("hrn_rcpt_123"),
+        "runx:receipt:hrn_rcpt_123"
     );
     Ok(())
 }
@@ -578,7 +575,7 @@ fn receipt_with_metadata(
     skill_name: &str,
     source_type: &str,
     actor: &str,
-) -> Result<HarnessReceipt, Box<dyn std::error::Error>> {
+) -> Result<Receipt, Box<dyn std::error::Error>> {
     let mut receipt = generated_runtime_receipt_with(id, status, created_at)?;
     receipt.metadata = Some(json_object(json!({
         "skill_name": skill_name,
@@ -591,7 +588,7 @@ fn receipt_with_metadata(
     Ok(receipt)
 }
 
-fn generated_runtime_receipt() -> Result<HarnessReceipt, Box<dyn std::error::Error>> {
+fn generated_runtime_receipt() -> Result<Receipt, Box<dyn std::error::Error>> {
     generated_runtime_receipt_with(
         "hrn_rcpt_journal-history_strict-proof",
         InvocationStatus::Success,
@@ -603,7 +600,7 @@ fn generated_runtime_receipt_with(
     id: &str,
     status: InvocationStatus,
     created_at: &str,
-) -> Result<HarnessReceipt, Box<dyn std::error::Error>> {
+) -> Result<Receipt, Box<dyn std::error::Error>> {
     let succeeded = status == InvocationStatus::Success;
     let output = SkillOutput {
         status: status.clone(),
@@ -627,12 +624,9 @@ fn generated_runtime_receipt_with(
     Ok(receipt)
 }
 
-fn reseal_receipt(receipt: &mut HarnessReceipt) -> Result<(), Box<dyn std::error::Error>> {
+fn reseal_receipt(receipt: &mut Receipt) -> Result<(), Box<dyn std::error::Error>> {
     let digest = runx_receipts::canonical_receipt_body_digest(receipt)?;
-    receipt.seal.digest = digest.clone();
-    if let Some(seal) = receipt.harness.seal.as_mut() {
-        seal.digest = digest.clone();
-    }
+    receipt.digest = digest.clone();
     receipt.signature.value = format!("sig:{digest}");
     Ok(())
 }
@@ -655,7 +649,7 @@ fn fixture_verifier(signer: &Ed25519ReceiptSigner) -> Ed25519ReceiptVerifier {
 fn production_generated_receipt(
     signer: &Ed25519ReceiptSigner,
     verifier: &Ed25519ReceiptVerifier,
-) -> Result<HarnessReceipt, Box<dyn std::error::Error>> {
+) -> Result<Receipt, Box<dyn std::error::Error>> {
     let output = SkillOutput {
         status: InvocationStatus::Success,
         stdout: r#"{"artifact":{"artifact_id":"artifact_prod","artifact_type":"artifact"}}"#
@@ -676,35 +670,17 @@ fn production_generated_receipt(
 }
 
 fn set_artifact_label(
-    receipt: &mut HarnessReceipt,
+    receipt: &mut Receipt,
     label: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     for reference in receipt
-        .harness
-        .artifact_refs
+        .acts
         .iter_mut()
-        .chain(receipt.seal.artifact_refs.iter_mut())
-        .chain(
-            receipt
-                .harness
-                .acts
-                .iter_mut()
-                .flat_map(|act| act.artifact_refs.iter_mut()),
-        )
-        .chain(
-            receipt
-                .harness
-                .decisions
-                .iter_mut()
-                .flat_map(|decision| decision.artifact_refs.iter_mut()),
-        )
+        .flat_map(|act| act.artifact_refs.iter_mut())
     {
         if reference.reference_type == ReferenceType::Artifact {
             reference.label = Some(label.to_owned());
         }
-    }
-    if let Some(seal) = receipt.harness.seal.as_mut() {
-        seal.artifact_refs = receipt.seal.artifact_refs.clone();
     }
     reseal_receipt(receipt)?;
     Ok(())
@@ -716,7 +692,7 @@ fn receipt_journal_verification_status(
     projection
         .rows
         .iter()
-        .find(|row| row.event_kind == "harness_receipt_sealed")
+        .find(|row| row.event_kind == "receipt_sealed")
         .and_then(|row| row.verification.as_ref())
         .map(|verification| verification.status.as_str())
 }
@@ -728,7 +704,7 @@ fn json_object(value: serde_json::Value) -> Result<runx_contracts::JsonObject, i
 
 fn write_receipt_json(
     dir: &Path,
-    receipt: &HarnessReceipt,
+    receipt: &Receipt,
 ) -> Result<(), Box<dyn std::error::Error>> {
     fs::create_dir_all(dir)?;
     fs::write(

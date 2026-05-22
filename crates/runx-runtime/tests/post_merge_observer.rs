@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 
 use runx_contracts::{
-    ActForm, ClosureDisposition, CriterionStatus, HarnessReceipt, PostMergeObserverPlanError,
+    ActForm, ClosureDisposition, CriterionStatus, Receipt, PostMergeObserverPlanError,
     PostMergeObserverRuntimeDecision, PostMergeObserverRuntimeDedupePlan,
     PostMergeObserverSignalSource, PostMergeProvider, PostMergePullRequestObservation,
     PostMergePullRequestState, PostMergeVerificationObservation, PostMergeVerificationStatus,
@@ -140,7 +140,6 @@ fn public_command_text_redacts_local_paths_and_env_secrets()
     let mut receipt = post_merge_observer_receipt()?;
     receipt.seal.summary =
         "Verified from /Users/kam/dev/runx/.env OPENAI_API_KEY=sk-live".to_owned();
-    receipt.harness.seal = Some(receipt.seal.clone());
     let dedupe = dedupe_plan(&receipt, PostMergeObserverSignalSource::Webhook);
     let mut ledger = PostMergeObserverPublicationLedger::new();
 
@@ -321,7 +320,7 @@ fn live_adapter_projects_observed_closure_into_publication_commands_without_netw
     assert_eq!(live.publication.commands.len(), 3);
     assert_eq!(
         live.publication.receipt_ref.uri,
-        format!("runx:harness_receipt:{}", receipt.id)
+        format!("runx:receipt:{}", receipt.id)
     );
     assert!(ledger.contains(&live.dedupe.publication_key));
     assert!(matches!(
@@ -369,7 +368,7 @@ fn live_publication_adapter_requires_provider_readback_before_publication_dedupe
         .ok_or("expected source publication readback")?;
     assert_eq!(
         readback.request.receipt_ref.uri,
-        format!("runx:harness_receipt:{}", receipt.id)
+        format!("runx:receipt:{}", receipt.id)
     );
     assert!(readback.request.close_source_issue);
     assert_eq!(readback.observation.published_refs.len(), 2);
@@ -387,8 +386,8 @@ fn live_publication_adapter_requires_provider_readback_before_publication_dedupe
             && reference.uri == "github://runxhq/nitrosend/issues/77"
     }));
     assert!(readback.proof_refs.iter().any(|reference| {
-        reference.reference_type == ReferenceType::HarnessReceipt
-            && reference.uri == format!("runx:harness_receipt:{}", receipt.id)
+        reference.reference_type == ReferenceType::Receipt
+            && reference.uri == format!("runx:receipt:{}", receipt.id)
     }));
     assert!(ledger.contains(&live.dedupe.publication_key));
     Ok(())
@@ -679,16 +678,16 @@ fn live_publication_request() -> PostMergeObserverLivePublicationRequest {
     }
 }
 
-fn post_merge_observer_receipt() -> Result<HarnessReceipt, serde_json::Error> {
+fn post_merge_observer_receipt() -> Result<Receipt, serde_json::Error> {
     #[derive(serde::Deserialize)]
     struct Fixture {
-        expected: HarnessReceipt,
+        expected: Receipt,
     }
 
     serde_json::from_str::<Fixture>(POST_MERGE_OBSERVER_FIXTURE).map(|fixture| fixture.expected)
 }
 
-fn closed_unmerged_receipt() -> Result<HarnessReceipt, serde_json::Error> {
+fn closed_unmerged_receipt() -> Result<Receipt, serde_json::Error> {
     let mut receipt = post_merge_observer_receipt()?;
     receipt.seal.reason_code = "closed_unmerged".to_owned();
     receipt.seal.summary =
@@ -703,16 +702,14 @@ fn closed_unmerged_receipt() -> Result<HarnessReceipt, serde_json::Error> {
         )
     });
     receipt
-        .harness
         .acts
         .retain(|act| act.form == ActForm::Observation || act.form == ActForm::Reply);
-    receipt.harness.idempotency.content_hash =
+    receipt.idempotency.content_hash =
         "sha256:post-merge-closure-closed-unmerged-nitrosend".to_owned();
-    receipt.harness.seal = Some(receipt.seal.clone());
     Ok(receipt)
 }
 
-fn failed_verification_receipt() -> Result<HarnessReceipt, serde_json::Error> {
+fn failed_verification_receipt() -> Result<Receipt, serde_json::Error> {
     let mut receipt = post_merge_observer_receipt()?;
     receipt.seal.reason_code = "failed_verification".to_owned();
     receipt.seal.summary = "Merged PR was observed, but post-merge verification failed.".to_owned();
@@ -734,17 +731,15 @@ fn failed_verification_receipt() -> Result<HarnessReceipt, serde_json::Error> {
         }
     }
     receipt
-        .harness
         .acts
         .retain(|act| act.form != ActForm::Revision);
-    receipt.harness.idempotency.content_hash =
+    receipt.idempotency.content_hash =
         "sha256:post-merge-closure-failed-verification-nitrosend".to_owned();
-    receipt.harness.seal = Some(receipt.seal.clone());
     Ok(receipt)
 }
 
 fn dedupe_plan(
-    receipt: &HarnessReceipt,
+    receipt: &Receipt,
     signal_source: PostMergeObserverSignalSource,
 ) -> PostMergeObserverRuntimeDedupePlan {
     PostMergeObserverRuntimeDedupePlan {
@@ -752,27 +747,27 @@ fn dedupe_plan(
         signal_source,
         lock_key: format!(
             "post-merge-observer:{}",
-            receipt.harness.idempotency.content_hash
+            receipt.idempotency.content_hash
         ),
         receipt_id: receipt.id.clone(),
         receipt_ref: Reference {
-            reference_type: ReferenceType::HarnessReceipt,
-            uri: format!("runx:harness_receipt:{}", receipt.id),
+            reference_type: ReferenceType::Receipt,
+            uri: format!("runx:receipt:{}", receipt.id),
             provider: None,
-            locator: Some(receipt.seal.digest.clone()),
+            locator: Some(receipt.digest.clone()),
             label: Some("post-merge observer harness receipt".to_owned()),
             observed_at: None,
             proof_kind: None,
         },
         publication_key: format!(
             "post-merge-publication:{}:{}",
-            receipt.harness.idempotency.intent_key, receipt.harness.idempotency.content_hash
+            receipt.idempotency.intent_key, receipt.idempotency.content_hash
         ),
-        content_hash: receipt.harness.idempotency.content_hash.clone(),
+        content_hash: receipt.idempotency.content_hash.clone(),
     }
 }
 
-fn strip_slack_thread_metadata(receipt: &mut HarnessReceipt) {
+fn strip_slack_thread_metadata(receipt: &mut Receipt) {
     for criterion in &mut receipt.seal.criteria {
         for reference in &mut criterion.evidence_refs {
             if reference.reference_type == ReferenceType::SlackThread {
@@ -781,15 +776,14 @@ fn strip_slack_thread_metadata(receipt: &mut HarnessReceipt) {
             }
         }
     }
-    for act in &mut receipt.harness.acts {
-        for reference in &mut act.surface_refs {
+    for act in &mut receipt.acts {
+        for reference in &mut act.artifact_refs {
             if reference.reference_type == ReferenceType::SlackThread {
                 reference.provider = None;
                 reference.locator = None;
             }
         }
     }
-    receipt.harness.seal = Some(receipt.seal.clone());
 }
 
 struct RecordingGithubPrTransport {
@@ -965,7 +959,7 @@ fn assert_post_merge_source_publication_request(
     );
     assert_eq!(
         request.receipt_ref.reference_type,
-        ReferenceType::HarnessReceipt
+        ReferenceType::Receipt
     );
     assert_eq!(request.reason_code, "merged_verified");
     assert!(request.close_source_issue);

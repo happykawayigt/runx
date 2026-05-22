@@ -1,11 +1,11 @@
 use serde::Deserialize;
 
-use runx_contracts::{Act, ActForm, GovernedActRef, HarnessReceipt, ReferenceType, Signal};
+use runx_contracts::{Act, ActForm, GovernedActRef, Receipt, ReferenceType, Signal};
 
 const FIXTURES: &[&str] = &[
     include_str!("../../../fixtures/contracts/harness-spine/act-ref.json"),
-    include_str!("../../../fixtures/contracts/harness-spine/harness-receipt-abnormal.json"),
-    include_str!("../../../fixtures/contracts/harness-spine/harness-receipt-success.json"),
+    include_str!("../../../fixtures/contracts/harness-spine/receipt-abnormal.json"),
+    include_str!("../../../fixtures/contracts/harness-spine/receipt-success.json"),
     include_str!(
         "../../../fixtures/contracts/harness-spine/post-merge-observer-merged-verified.json"
     ),
@@ -28,7 +28,7 @@ struct Fixture {
 enum FixtureKind {
     Act,
     GovernedActRef,
-    HarnessReceipt,
+    Receipt,
     Signal,
 }
 
@@ -42,20 +42,20 @@ fn harness_spine_fixtures_roundtrip() -> Result<(), serde_json::Error> {
 }
 
 #[test]
-fn harness_receipt_rejects_unknown_governed_fields() -> Result<(), serde_json::Error> {
+fn receipt_rejects_unknown_fields() -> Result<(), serde_json::Error> {
     let mut fixture: Fixture = serde_json::from_str(include_str!(
-        "../../../fixtures/contracts/harness-spine/harness-receipt-success.json"
+        "../../../fixtures/contracts/harness-spine/receipt-success.json"
     ))?;
-    fixture.expected["harness"]["unexpected"] = serde_json::json!(true);
+    fixture.expected["unexpected"] = serde_json::json!(true);
 
-    let result = serde_json::from_value::<HarnessReceipt>(fixture.expected);
+    let result = serde_json::from_value::<Receipt>(fixture.expected);
 
     assert!(result.is_err());
     Ok(())
 }
 
 #[test]
-fn governed_act_ref_requires_harness_receipt_context() {
+fn governed_act_ref_requires_receipt_context() {
     let value = serde_json::json!({
         "act_ref": {
             "act_id": "act_revision_1"
@@ -98,19 +98,18 @@ fn provider_workflow_act_form_is_rejected() {
 }
 
 #[test]
-fn post_merge_observer_fixture_binds_closure_to_contained_acts()
+fn post_merge_observer_fixture_binds_seal_criteria_to_acts()
 -> Result<(), Box<dyn std::error::Error>> {
     let fixture: Fixture = serde_json::from_str(POST_MERGE_OBSERVER_FIXTURE)?;
-    let receipt: HarnessReceipt = serde_json::from_value(fixture.expected)?;
+    let receipt: Receipt = serde_json::from_value(fixture.expected)?;
 
     assert_eq!(receipt.seal.reason_code, "merged_verified");
     assert_eq!(
-        receipt.harness.idempotency.intent_key,
+        receipt.idempotency.intent_key,
         "post-merge:github://runxhq/nitrosend/issues/77:github://runxhq/nitrosend/pulls/188"
     );
 
     let act_forms = receipt
-        .harness
         .acts
         .iter()
         .map(|act| act.form.clone())
@@ -160,12 +159,9 @@ fn post_merge_observer_fixture_binds_closure_to_contained_acts()
     }));
 
     let retired_tokens = [
-        ["runx.issue", "_to_pr_", "outcome.v1"].concat(),
-        ["issue", "_to_pr_", "outcome"].concat(),
-        "effect".to_owned(),
-        ["verification", "_", "report"].concat(),
-        ["verification", "-", "report"].concat(),
-        ["target", "_", "outcome"].concat(),
+        ["harness", "_receipt"].concat(),
+        ["runx.harness", "_receipt.v1"].concat(),
+        ["verification", "_", "summary"].concat(),
     ];
     for retired_token in &retired_tokens {
         assert!(
@@ -181,7 +177,7 @@ fn assert_roundtrip(fixture: Fixture) -> Result<(), serde_json::Error> {
     match fixture.fixture_kind {
         FixtureKind::Act => roundtrip::<Act>(fixture.expected),
         FixtureKind::GovernedActRef => roundtrip::<GovernedActRef>(fixture.expected),
-        FixtureKind::HarnessReceipt => roundtrip::<HarnessReceipt>(fixture.expected),
+        FixtureKind::Receipt => roundtrip::<Receipt>(fixture.expected),
         FixtureKind::Signal => roundtrip::<Signal>(fixture.expected),
     }
 }

@@ -290,8 +290,8 @@ const graphNameKey = `graph_${"name"}`;
 
 function receiptReference(receipt: LocalKnowledgeIndexableReceipt): LocalKnowledgeReference {
   const record = receipt as unknown as Readonly<Record<string, unknown>>;
-  if (stringField(record, "schema") === "runx.harness_receipt.v1") {
-    return { type: "harness_receipt", uri: `runx:harness_receipt:${receipt.id}`, label: receiptExecutionName(receipt) };
+  if (stringField(record, "schema") === "runx.receipt.v1") {
+    return { type: "receipt", uri: `runx:receipt:${receipt.id}`, label: receiptExecutionName(receipt) };
   }
   if (stringField(record, "kind") === graphExecutionKind) {
     return { type: "graph_receipt", uri: `runx:graph_receipt:${receipt.id}`, label: receiptExecutionName(receipt) };

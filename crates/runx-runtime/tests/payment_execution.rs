@@ -107,7 +107,7 @@ fn payment_approval_step_is_recorded_with_receipt() -> Result<(), Box<dyn std::e
     let approval_step = step_run(&run.steps, "approve-spend")?;
     assert_eq!(approval_step.attempt, 1);
     assert_eq!(
-        approval_step.receipt.harness.harness_id,
+        approval_step.receipt.subject.reference.uri,
         "hrn_x402-pay-approval_approve-spend"
     );
     assert_eq!(
@@ -142,9 +142,10 @@ fn payment_graph_seals_with_strict_parent_child_receipt_proof()
     );
     let fulfill = step_run(&run.steps, "fulfill")?;
     assert!(
-        fulfill.receipt.harness.acts[0]
-            .verification_refs
+        fulfill.receipt.acts[0]
+            .criteria
             .iter()
+            .flat_map(|criterion| criterion.verification_refs.iter())
             .any(|reference| reference.uri == X402_APPROVAL_PROOF_REF
                 && reference.proof_kind.as_ref() == Some(&ProofKind::PaymentRail)),
         "payment fulfillment act must carry the rail proof reference into the sealed receipt"
@@ -325,9 +326,10 @@ fn x402_paid_echo_returns_echo_only_after_sealed_payment_proof()
 
     let fulfill = step_run(&run.steps, "fulfill")?;
     assert!(
-        fulfill.receipt.harness.acts[0]
-            .verification_refs
+        fulfill.receipt.acts[0]
+            .criteria
             .iter()
+            .flat_map(|criterion| criterion.verification_refs.iter())
             .any(
                 |reference| reference.uri == "receipt-proof:mock:paid-echo-001"
                     && reference.proof_kind.as_ref() == Some(&ProofKind::PaymentRail)
@@ -413,8 +415,8 @@ fn x402_paid_echo_replays_sealed_idempotency_without_second_rail()
         "idempotency replay must return the first sealed step receipt id"
     );
     assert_eq!(
-        step_run(&second.steps, "fulfill")?.receipt.seal.digest,
-        step_run(&first.steps, "fulfill")?.receipt.seal.digest,
+        step_run(&second.steps, "fulfill")?.receipt.digest,
+        step_run(&first.steps, "fulfill")?.receipt.digest,
         "idempotency replay must rebuild the first sealed step receipt digest"
     );
     assert_eq!(

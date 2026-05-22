@@ -134,10 +134,6 @@
                     "type": "string"
                   },
                   {
-                    "const": "harness_receipt",
-                    "type": "string"
-                  },
-                  {
                     "const": "artifact",
                     "type": "string"
                   },

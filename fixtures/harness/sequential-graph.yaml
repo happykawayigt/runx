@@ -4,16 +4,16 @@ target: ../graphs/sequential/graph.yaml
 expect:
   status: sealed
   receipt:
-    schema: runx.harness_receipt.v1
-    body_digest: sha256:c8f3bf64a2a9b7788f13ce0f98eabb8f574a57525bf94def09fe400f15d95988
-    receipt_digest: sha256:b77c532fc1570f9a17fd912bb8f97f0cfcd74714462efe9fdedc4c7fc4f125db
+    schema: runx.receipt.v1
+    body_digest: sha256:fabb38c06729055c4b712eea6341e4642ff517f34c5c619566dd6bf8a5932aa8
+    receipt_digest: sha256:39041dbd0cd827c6a28381e98a2cbe37ebfcf655d3ad12717e66c5f15333091e
     harness_id: hrn_sequential-echo_graph
     state: sealed
     disposition: closed
     reason_code: graph_closed
     child_receipt_refs:
-      - runx:harness_receipt:hrn_rcpt_sequential-echo_first
-      - runx:harness_receipt:hrn_rcpt_sequential-echo_second
+      - runx:receipt:hrn_rcpt_sequential-echo_first
+      - runx:receipt:hrn_rcpt_sequential-echo_second
   steps:
     - first
     - second

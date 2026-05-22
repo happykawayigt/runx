@@ -573,13 +573,13 @@ harness:
       expect:
         status: sealed
         receipt:
-          schema: runx.harness_receipt.v1
+          schema: runx.receipt.v1
           harness_id: hrn_evolve_plan-only
           state: sealed
           disposition: closed
           reason_code: graph_closed
           child_receipt_refs:
-            - runx:harness_receipt:hrn_rcpt_evolve_plan-only
+            - runx:receipt:hrn_rcpt_evolve_plan-only
 `),
     );
 
@@ -597,12 +597,12 @@ harness:
         expect: {
           status: "sealed",
           receipt: {
-            schema: "runx.harness_receipt.v1",
+            schema: "runx.receipt.v1",
             harness_id: "hrn_evolve_plan-only",
             state: "sealed",
             disposition: "closed",
             reason_code: "graph_closed",
-            child_receipt_refs: ["runx:harness_receipt:hrn_rcpt_evolve_plan-only"],
+            child_receipt_refs: ["runx:receipt:hrn_rcpt_evolve_plan-only"],
           },
         },
       },

@@ -6,8 +6,8 @@ use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use runx_contracts::{HARNESS_RECEIPT_SCHEMA, HarnessReceipt};
-use runx_receipts::{ReceiptProofContextProvider, verify_harness_receipt_proof};
+use runx_contracts::{RECEIPT_SCHEMA, Receipt};
+use runx_receipts::{ReceiptFindingCode, ReceiptProofContextProvider, verify_receipt_proof};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -44,7 +44,7 @@ impl LocalReceiptStore {
         safe_receipt_store_projection(&self.root, workspace_base, project_runx_dir)
     }
 
-    pub fn read_exact(&self, receipt_id: &str) -> Result<HarnessReceipt, ReceiptStoreError> {
+    pub fn read_exact(&self, receipt_id: &str) -> Result<Receipt, ReceiptStoreError> {
         self.read_exact_with_policy(
             receipt_id,
             RuntimeReceiptSignaturePolicy::local_development(),
@@ -55,19 +55,19 @@ impl LocalReceiptStore {
         &self,
         receipt_id: &str,
         signature_policy: RuntimeReceiptSignaturePolicy<'_>,
-    ) -> Result<HarnessReceipt, ReceiptStoreError> {
+    ) -> Result<Receipt, ReceiptStoreError> {
         let file_name = receipt_file_name(receipt_id)?;
         self.ensure_store_dir()?;
         read_receipt_file(&self.root.join(file_name), receipt_id, signature_policy)
     }
 
-    pub fn write_receipt(&self, receipt: &HarnessReceipt) -> Result<(), ReceiptStoreError> {
+    pub fn write_receipt(&self, receipt: &Receipt) -> Result<(), ReceiptStoreError> {
         self.write_receipt_with_policy(receipt, RuntimeReceiptSignaturePolicy::local_development())
     }
 
     pub fn write_receipt_with_policy(
         &self,
-        receipt: &HarnessReceipt,
+        receipt: &Receipt,
         signature_policy: RuntimeReceiptSignaturePolicy<'_>,
     ) -> Result<(), ReceiptStoreError> {
         let file_name = receipt_file_name(&receipt.id)?;
@@ -86,7 +86,7 @@ impl LocalReceiptStore {
                     source,
                 })?;
             if existing == contents {
-                verify_receipt_proof(&file_path, receipt, signature_policy)?;
+                verify_stored_receipt_proof(&file_path, receipt, signature_policy)?;
                 return Ok(());
             }
             return Err(ReceiptStoreError::ReceiptAlreadyExists {
@@ -94,7 +94,7 @@ impl LocalReceiptStore {
             });
         }
 
-        verify_receipt_proof(&file_path, receipt, signature_policy)?;
+        verify_stored_receipt_proof(&file_path, receipt, signature_policy)?;
         write_atomic(&self.root, &file_name, &contents)?;
         match self.rebuild_index_with_policy(signature_policy) {
             Ok(_) => Ok(()),
@@ -105,14 +105,14 @@ impl LocalReceiptStore {
         }
     }
 
-    pub fn list(&self) -> Result<Vec<HarnessReceipt>, ReceiptStoreError> {
+    pub fn list(&self) -> Result<Vec<Receipt>, ReceiptStoreError> {
         self.list_with_policy(RuntimeReceiptSignaturePolicy::local_development())
     }
 
     pub fn list_with_policy(
         &self,
         signature_policy: RuntimeReceiptSignaturePolicy<'_>,
-    ) -> Result<Vec<HarnessReceipt>, ReceiptStoreError> {
+    ) -> Result<Vec<Receipt>, ReceiptStoreError> {
         self.ensure_store_dir()?;
         let mut receipts = Vec::new();
         for entry in
@@ -142,7 +142,7 @@ impl LocalReceiptStore {
 
     pub(crate) fn list_without_proof_for_history(
         &self,
-    ) -> Result<Vec<HarnessReceipt>, ReceiptStoreError> {
+    ) -> Result<Vec<Receipt>, ReceiptStoreError> {
         self.ensure_store_dir()?;
         let mut receipts = Vec::new();
         for entry in
@@ -453,7 +453,7 @@ fn read_receipt_file(
     path: &Path,
     expected_id: &str,
     signature_policy: RuntimeReceiptSignaturePolicy<'_>,
-) -> Result<HarnessReceipt, ReceiptStoreError> {
+) -> Result<Receipt, ReceiptStoreError> {
     let contents = fs::read_to_string(path).map_err(|source| {
         if source.kind() == ErrorKind::NotFound {
             ReceiptStoreError::MissingReceipt {
@@ -472,7 +472,7 @@ fn read_receipt_file(
 fn read_receipt_file_without_proof(
     path: &Path,
     expected_id: &str,
-) -> Result<HarnessReceipt, ReceiptStoreError> {
+) -> Result<Receipt, ReceiptStoreError> {
     let contents = fs::read_to_string(path).map_err(|source| {
         if source.kind() == ErrorKind::NotFound {
             ReceiptStoreError::MissingReceipt {
@@ -493,9 +493,9 @@ fn parse_receipt_contents(
     path: &Path,
     expected_id: &str,
     signature_policy: RuntimeReceiptSignaturePolicy<'_>,
-) -> Result<HarnessReceipt, ReceiptStoreError> {
+) -> Result<Receipt, ReceiptStoreError> {
     let receipt = parse_receipt_contents_without_proof(contents, path, expected_id)?;
-    verify_receipt_proof(path, &receipt, signature_policy)?;
+    verify_stored_receipt_proof(path, &receipt, signature_policy)?;
     Ok(receipt)
 }
 
@@ -503,7 +503,7 @@ fn parse_receipt_contents_without_proof(
     contents: &str,
     path: &Path,
     expected_id: &str,
-) -> Result<HarnessReceipt, ReceiptStoreError> {
+) -> Result<Receipt, ReceiptStoreError> {
     let probe = serde_json::from_str::<ReceiptSchemaProbe>(contents).map_err(|source| {
         ReceiptStoreError::MalformedJson {
             path: path.to_path_buf(),
@@ -511,13 +511,13 @@ fn parse_receipt_contents_without_proof(
         }
     })?;
     let schema = probe.schema.as_deref().unwrap_or("<missing>");
-    if schema != HARNESS_RECEIPT_SCHEMA {
+    if schema != RECEIPT_SCHEMA {
         return Err(ReceiptStoreError::WrongSchema {
             path: path.to_path_buf(),
             schema: schema.to_owned(),
         });
     }
-    let receipt = serde_json::from_str::<HarnessReceipt>(contents).map_err(|source| {
+    let receipt = serde_json::from_str::<Receipt>(contents).map_err(|source| {
         ReceiptStoreError::MalformedReceipt {
             path: path.to_path_buf(),
             message: source.to_string(),
@@ -538,21 +538,31 @@ struct ReceiptSchemaProbe {
     schema: Option<String>,
 }
 
-fn verify_receipt_proof(
+fn verify_stored_receipt_proof(
     path: &Path,
-    receipt: &HarnessReceipt,
+    receipt: &Receipt,
     signature_policy: RuntimeReceiptSignaturePolicy<'_>,
 ) -> Result<(), ReceiptStoreError> {
     let proof_contexts = RuntimeReceiptProofContextProvider::new(signature_policy);
     let context = proof_contexts.proof_context(receipt);
-    let verification = verify_harness_receipt_proof(receipt, &context);
-    if verification.valid {
+    let verification = verify_receipt_proof(receipt, &context);
+    // The decision -> act-id integrity check is journal-dependent and reported
+    // as `unverified` by plain proof verification; the store proves it through
+    // the journal at higher layers, so it is not a blocking finding here.
+    let blocking: Vec<_> = verification
+        .findings
+        .iter()
+        .filter(|finding| {
+            !matches!(finding.code, ReceiptFindingCode::DecisionIntegrityUnverified)
+        })
+        .collect();
+    if blocking.is_empty() {
         Ok(())
     } else {
         Err(ReceiptStoreError::ReceiptProofInvalid {
             path: path.to_path_buf(),
             receipt_id: receipt.id.clone(),
-            message: format!("{:?}", verification.findings),
+            message: format!("{blocking:?}"),
         })
     }
 }

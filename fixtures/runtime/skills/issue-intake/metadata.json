@@ -7,7 +7,7 @@
   },
   "skill_name": "issue-intake",
   "manifest_hash": "sha256:b4c9bcb7a9df347a391f3aa97899d20f3290fff68664312b7b0fc7c79deafe8b",
-  "harness_schema": "runx.harness_receipt.v1",
+  "harness_schema": "runx.receipt.v1",
   "case_names": [
     "bounded-docs-fix",
     "feature-needs-decomposition",

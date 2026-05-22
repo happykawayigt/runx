@@ -8,7 +8,7 @@ use runx_runtime::adapters::cli_tool::CliToolAdapter;
 use runx_runtime::{Runtime, RuntimeOptions, run_graph_file};
 
 #[test]
-fn hello_graph_runs_to_harness_receipt_tree() -> Result<(), Box<dyn std::error::Error>> {
+fn hello_graph_runs_to_receipt_tree() -> Result<(), Box<dyn std::error::Error>> {
     let run = run_graph_file(Path::new("../../examples/hello-graph/graph.yaml"))?;
 
     assert_eq!(run.graph.name, "hello-graph");

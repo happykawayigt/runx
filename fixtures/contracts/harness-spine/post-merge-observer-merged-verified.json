@@ -1,1 +1,256 @@
-{"description":"Merged-and-verified post-merge observer harness receipt for Nitrosend dogfood without live provider replay.","expected":{"created_at":"2026-05-20T04:56:00Z","harness":{"acts":[{"act_id":"act_observe_pr_merged","artifact_refs":[],"closure":{"closed_at":"2026-05-20T04:55:00Z","disposition":"closed","reason_code":"provider_pr_merged","summary":"Provider state is merged with merge sha 9f14c0ffee1234567890abcdef1234567890abcd."},"criterion_bindings":[{"criterion_id":"post_merge.provider_state","evidence_refs":[{"label":"human-merged PR","locator":"runxhq/nitrosend#188","observed_at":"2026-05-20T04:55:00Z","provider":"github","type":"github_pull_request","uri":"github://runxhq/nitrosend/pulls/188"}],"status":"verified","summary":"Provider reported merged.","verification_refs":[]},{"criterion_id":"post_merge.human_gate","evidence_refs":[{"label":"human-merged PR","locator":"runxhq/nitrosend#188","observed_at":"2026-05-20T04:55:00Z","provider":"github","type":"github_pull_request","uri":"github://runxhq/nitrosend/pulls/188"}],"status":"verified","summary":"The fixture observes a merge that happened outside the harness.","verification_refs":[]}],"form":"observation","harness_refs":[{"type":"harness_receipt","uri":"runx:harness_receipt:hrn_rcpt_issue_to_pr_nitrosend_77"}],"intent":{"constraints":["No automatic merge act is emitted."],"derived_from":[{"observed_at":"2026-05-20T04:55:00Z","provider":"github","type":"webhook_delivery","uri":"github://delivery/post-merge-nitrosend-77-188"}],"legitimacy":"Observation records provider state without merging or changing the PR.","purpose":"Observe the GitHub PR state after the human merge gate.","success_criteria":[{"criterion_id":"post_merge.provider_state","required":true,"statement":"Provider reports the PR as merged."},{"criterion_id":"post_merge.human_gate","required":true,"statement":"The merge is treated as an external human gate."}]},"performed_at":"2026-05-20T04:55:00Z","source_refs":[{"label":"Nitrosend dogfood issue","locator":"runxhq/nitrosend#77","provider":"github","type":"github_issue","uri":"github://runxhq/nitrosend/issues/77"},{"observed_at":"2026-05-20T04:55:00Z","provider":"github","type":"webhook_delivery","uri":"github://delivery/post-merge-nitrosend-77-188"}],"summary":"Observed GitHub PR 188 merged by the human gate.","surface_refs":[],"target_refs":[{"label":"human-merged PR","locator":"runxhq/nitrosend#188","observed_at":"2026-05-20T04:55:00Z","provider":"github","type":"github_pull_request","uri":"github://runxhq/nitrosend/pulls/188"}],"verification_refs":[]},{"act_id":"act_verify_nitrosend_dogfood","artifact_refs":[{"type":"artifact","uri":"runx:artifact:post_merge_observer_projection_1"}],"closure":{"closed_at":"2026-05-20T04:55:30Z","disposition":"closed","reason_code":"verification_passed","summary":"Sanitized Nitrosend dogfood smoke check passed."},"criterion_bindings":[{"criterion_id":"post_merge.verification_passed","evidence_refs":[{"label":"Nitrosend dogfood deploy","provider":"nitrosend","type":"deployment","uri":"deploy://nitrosend/dogfood/2026-05-20T04-52Z"},{"type":"artifact","uri":"runx:artifact:post_merge_observer_projection_1"}],"status":"verified","summary":"Dogfood verification passed with sanitized evidence.","verification_refs":[{"type":"verification","uri":"runx:verification:nitrosend-dogfood-smoke"}]}],"form":"verification","harness_refs":[{"type":"harness_receipt","uri":"runx:harness_receipt:hrn_rcpt_issue_to_pr_nitrosend_77"}],"intent":{"constraints":["Use sanitized verification output only."],"derived_from":[{"label":"human-merged PR","locator":"runxhq/nitrosend#188","observed_at":"2026-05-20T04:55:00Z","provider":"github","type":"github_pull_request","uri":"github://runxhq/nitrosend/pulls/188"}],"legitimacy":"Verification runs from sanitized fixture evidence and binds to the merged PR closure.","purpose":"Verify the Nitrosend dogfood deployment after the observed merge.","success_criteria":[{"criterion_id":"post_merge.verification_passed","required":true,"statement":"Dogfood verification passes."}]},"performed_at":"2026-05-20T04:55:30Z","source_refs":[{"label":"human-merged PR","locator":"runxhq/nitrosend#188","observed_at":"2026-05-20T04:55:00Z","provider":"github","type":"github_pull_request","uri":"github://runxhq/nitrosend/pulls/188"}],"summary":"Nitrosend dogfood smoke verification passed.","surface_refs":[],"target_refs":[{"label":"Nitrosend dogfood deploy","provider":"nitrosend","type":"deployment","uri":"deploy://nitrosend/dogfood/2026-05-20T04-52Z"}],"verification":{"criterion_ids":["post_merge.verification_passed"],"deployment_ref":{"label":"Nitrosend dogfood deploy","provider":"nitrosend","type":"deployment","uri":"deploy://nitrosend/dogfood/2026-05-20T04-52Z"},"verification":{"checks":[{"check_id":"check_nitrosend_dogfood_smoke","checked_refs":[{"label":"Nitrosend dogfood deploy","provider":"nitrosend","type":"deployment","uri":"deploy://nitrosend/dogfood/2026-05-20T04-52Z"}],"criterion_ids":["post_merge.verification_passed"],"evidence_refs":[{"type":"artifact","uri":"runx:artifact:post_merge_observer_projection_1"}],"status":"passed","summary":"Dogfood smoke check passed from sanitized fixture evidence.","verified_at":"2026-05-20T04:55:30Z"}],"evidence_refs":[{"label":"Nitrosend dogfood deploy","provider":"nitrosend","type":"deployment","uri":"deploy://nitrosend/dogfood/2026-05-20T04-52Z"},{"type":"artifact","uri":"runx:artifact:post_merge_observer_projection_1"}],"schema":"runx.verification.v1","status":"passed","verification_id":"ver_nitrosend_dogfood_smoke","verified_at":"2026-05-20T04:55:30Z"}},"verification_refs":[{"type":"verification","uri":"runx:verification:nitrosend-dogfood-smoke"}]},{"act_id":"act_publish_final_threads","artifact_refs":[{"type":"artifact","uri":"runx:artifact:post_merge_observer_projection_1"}],"closure":{"closed_at":"2026-05-20T04:55:45Z","disposition":"closed","reason_code":"final_replies_published","summary":"Final replies cite the verified merge closure and thread locator."},"criterion_bindings":[{"criterion_id":"post_merge.source_thread_target_present","evidence_refs":[{"label":"Nitrosend dogfood issue","locator":"runxhq/nitrosend#77","provider":"github","type":"github_issue","uri":"github://runxhq/nitrosend/issues/77"},{"label":"Nitrosend source thread","locator":"T01NITRO/C02DOGFOOD/1716180900.000100","provider":"slack","type":"slack_thread","uri":"slack://T01NITRO/C02DOGFOOD/p1716180900.000100"}],"status":"verified","summary":"Slack publication is bound to a thread locator, not a channel root.","verification_refs":[{"type":"verification","uri":"runx:verification:nitrosend-dogfood-smoke"}]}],"form":"reply","harness_refs":[{"type":"harness_receipt","uri":"runx:harness_receipt:hrn_rcpt_post_merge_nitrosend_77_188"}],"intent":{"constraints":["Do not post to a Slack channel root.","Do not include raw logs."],"derived_from":[{"type":"harness_receipt","uri":"runx:harness_receipt:hrn_rcpt_post_merge_nitrosend_77_188"}],"legitimacy":"Publication is allowed only after source-thread metadata and verification are sealed.","purpose":"Publish the final source issue and Slack thread replies.","success_criteria":[{"criterion_id":"post_merge.source_thread_target_present","required":true,"statement":"Final Slack publication has a thread locator."}]},"performed_at":"2026-05-20T04:55:45Z","source_refs":[{"type":"harness_receipt","uri":"runx:harness_receipt:hrn_rcpt_post_merge_nitrosend_77_188"}],"summary":"Published final source issue and Slack thread replies from the sealed observer receipt.","surface_refs":[{"label":"Nitrosend dogfood issue","locator":"runxhq/nitrosend#77","provider":"github","type":"github_issue","uri":"github://runxhq/nitrosend/issues/77"},{"label":"Nitrosend source thread","locator":"T01NITRO/C02DOGFOOD/1716180900.000100","provider":"slack","type":"slack_thread","uri":"slack://T01NITRO/C02DOGFOOD/p1716180900.000100"}],"target_refs":[{"label":"Nitrosend dogfood issue","locator":"runxhq/nitrosend#77","provider":"github","type":"github_issue","uri":"github://runxhq/nitrosend/issues/77"},{"label":"Nitrosend source thread","locator":"T01NITRO/C02DOGFOOD/1716180900.000100","provider":"slack","type":"slack_thread","uri":"slack://T01NITRO/C02DOGFOOD/p1716180900.000100"}],"verification_refs":[{"type":"verification","uri":"runx:verification:nitrosend-dogfood-smoke"}]},{"act_id":"act_close_source_issue","artifact_refs":[],"closure":{"closed_at":"2026-05-20T04:56:00Z","disposition":"closed","reason_code":"source_issue_closed_by_policy","summary":"Source issue close is backed by verified merge closure."},"criterion_bindings":[{"criterion_id":"post_merge.close_policy_authorized","evidence_refs":[{"label":"Nitrosend dogfood issue","locator":"runxhq/nitrosend#77","provider":"github","type":"github_issue","uri":"github://runxhq/nitrosend/issues/77"}],"status":"verified","summary":"Close policy is authorized after verification and final replies.","verification_refs":[{"type":"verification","uri":"runx:verification:nitrosend-dogfood-smoke"}]}],"form":"revision","harness_refs":[{"type":"harness_receipt","uri":"runx:harness_receipt:hrn_rcpt_post_merge_nitrosend_77_188"}],"intent":{"constraints":["Do not close when verification fails.","Do not close without final source-thread publication."],"derived_from":[{"type":"harness_receipt","uri":"runx:harness_receipt:hrn_rcpt_post_merge_nitrosend_77_188"}],"legitimacy":"Close policy allows source issue closure only after sealed merged verification.","purpose":"Close the source issue after verified post-merge publication.","success_criteria":[{"criterion_id":"post_merge.close_policy_authorized","required":true,"statement":"Source issue close is authorized by verified closure policy."}]},"performed_at":"2026-05-20T04:56:00Z","revision":{"change_plan":{"plan_id":"plan_close_nitrosend_77","risks":[],"steps":["Add verified-merge label.","Close source issue with final receipt reference."],"summary":"Apply verified-merge label and close the source issue."},"change_request":{"request_id":"change_close_nitrosend_77","success_criteria":[{"criterion_id":"post_merge.close_policy_authorized","required":true,"statement":"Source issue close is authorized by verified closure policy."}],"summary":"Close Nitrosend source issue after verified human merge.","target_surfaces":[{"mutating":true,"rationale":"The issue is closed only after the merged PR and verification are sealed.","surface_ref":{"label":"Nitrosend dogfood issue","locator":"runxhq/nitrosend#77","provider":"github","type":"github_issue","uri":"github://runxhq/nitrosend/issues/77"}}]},"handoff_refs":[],"invariants":["Do not close when verification fails.","Do not publish without source-thread metadata."],"revision_refs":[{"label":"Nitrosend dogfood issue","locator":"runxhq/nitrosend#77","provider":"github","type":"github_issue","uri":"github://runxhq/nitrosend/issues/77"}],"target_surfaces":[{"mutating":true,"rationale":"Policy permits closure after verification and final replies.","surface_ref":{"label":"Nitrosend dogfood issue","locator":"runxhq/nitrosend#77","provider":"github","type":"github_issue","uri":"github://runxhq/nitrosend/issues/77"}}],"verification":{"checks":[{"check_id":"check_close_policy","checked_refs":[{"type":"harness_receipt","uri":"runx:harness_receipt:hrn_rcpt_post_merge_nitrosend_77_188"}],"criterion_ids":["post_merge.close_policy_authorized"],"evidence_refs":[{"label":"Nitrosend dogfood issue","locator":"runxhq/nitrosend#77","provider":"github","type":"github_issue","uri":"github://runxhq/nitrosend/issues/77"}],"status":"passed","summary":"Close policy requires verified merge and final publication.","verified_at":"2026-05-20T04:55:50Z"}],"evidence_refs":[{"type":"harness_receipt","uri":"runx:harness_receipt:hrn_rcpt_post_merge_nitrosend_77_188"}],"schema":"runx.verification.v1","status":"passed","verification_id":"ver_nitrosend_dogfood_smoke","verified_at":"2026-05-20T04:55:50Z"}},"source_refs":[{"type":"harness_receipt","uri":"runx:harness_receipt:hrn_rcpt_post_merge_nitrosend_77_188"}],"summary":"Closed the source issue because merge verification and final replies are sealed.","surface_refs":[{"label":"Nitrosend dogfood issue","locator":"runxhq/nitrosend#77","provider":"github","type":"github_issue","uri":"github://runxhq/nitrosend/issues/77"}],"target_refs":[{"label":"Nitrosend dogfood issue","locator":"runxhq/nitrosend#77","provider":"github","type":"github_issue","uri":"github://runxhq/nitrosend/issues/77"}],"verification_refs":[{"type":"verification","uri":"runx:verification:nitrosend-dogfood-smoke"}]}],"artifact_refs":[{"type":"artifact","uri":"runx:artifact:post_merge_observer_projection_1"}],"authority":{"actor_ref":{"type":"principal","uri":"runx:principal:post_merge_observer"},"attenuation":{"parent_authority_ref":{"type":"grant","uri":"runx:grant:post_merge_publication"},"subset_proof":{"checked_at":"2026-05-20T04:54:00Z","compared_terms":[{"child_term_id":"term_post_merge_publication","parent_term_id":"term_post_merge_publication","relation":"equal"}],"comparison_algorithm":"runx.authority-subset.v1","parent_authority_ref":{"type":"grant","uri":"runx:grant:post_merge_publication"},"result":"subset"}},"authority_proof_refs":[{"type":"authority_proof","uri":"runx:authority_proof:post_merge_publication"}],"grant_refs":[{"type":"grant","uri":"runx:grant:post_merge_publication"}],"policy_refs":[{"type":"redaction_policy","uri":"runx:redaction_policy:post_merge_public"}],"scope_refs":[{"type":"scope_admission","uri":"runx:scope_admission:nitrosend-post-merge"}],"terms":[{"approvals":[],"bounds":{"deployment_environments":["nitrosend-dogfood"],"max_child_depth":0},"capabilities":["provider_mutation","public_publication"],"conditions":[{"condition_id":"cond_post_merge_decision_selected","predicate":"decision_selected","refs":[{"type":"decision","uri":"runx:decision:dec_post_merge_observe"}]}],"issued_by_ref":{"type":"principal","uri":"runx:principal:operator"},"principal_ref":{"type":"principal","uri":"runx:principal:post_merge_observer"},"resource_family":"publication","resource_ref":{"type":"github_issue","uri":"github://runxhq/nitrosend/issues/77"},"term_id":"term_post_merge_publication","verbs":["read","comment","update","verify"]}]},"child_harness_receipt_refs":[],"decisions":[{"artifact_refs":[],"choice":"monitor","closure":null,"decision_id":"dec_post_merge_observe","inputs":{"opportunity_refs":[],"selection_ref":null,"signal_refs":[{"observed_at":"2026-05-20T04:55:00Z","provider":"github","type":"webhook_delivery","uri":"github://delivery/post-merge-nitrosend-77-188"}],"target_ref":{"label":"human-merged PR","locator":"runxhq/nitrosend#188","observed_at":"2026-05-20T04:55:00Z","provider":"github","type":"github_pull_request","uri":"github://runxhq/nitrosend/pulls/188"}},"justification":{"evidence_refs":[{"label":"Nitrosend dogfood issue","locator":"runxhq/nitrosend#77","provider":"github","type":"github_issue","uri":"github://runxhq/nitrosend/issues/77"},{"label":"Nitrosend source thread","locator":"T01NITRO/C02DOGFOOD/1716180900.000100","provider":"slack","type":"slack_thread","uri":"slack://T01NITRO/C02DOGFOOD/p1716180900.000100"}],"summary":"The source issue has a linked PR and source thread metadata, so the observer can seal closure proof."},"proposed_intent":{"constraints":["Do not merge the PR.","Do not publish to a Slack channel root.","Do not publish raw logs."],"derived_from":[{"label":"Nitrosend dogfood issue","locator":"runxhq/nitrosend#77","provider":"github","type":"github_issue","uri":"github://runxhq/nitrosend/issues/77"}],"legitimacy":"The post-merge observer only reads provider closure state and publishes after verification.","purpose":"Observe the human-gated PR closure and publish the final source-thread status.","success_criteria":[{"criterion_id":"post_merge.provider_state","required":true,"statement":"Provider PR state is observed."},{"criterion_id":"post_merge.verification_passed","required":true,"statement":"Nitrosend dogfood verification passes."},{"criterion_id":"post_merge.source_thread_target_present","required":true,"statement":"Source Slack thread metadata is present before publication."}]},"selected_act_id":"act_observe_pr_merged","selected_harness_ref":null}],"enforcement":{"enforcement_profile_hash":"sha256:post-merge-observer-fixture","redaction_refs":[{"type":"redaction_policy","uri":"runx:redaction_policy:post_merge_public"}],"sandbox":{"cwd_policy":"none","filesystem":"read_only","network":"none","profile":"fixture-only"},"version":"2026-05-20"},"harness_id":"hrn_post_merge_nitrosend_77_188","harness_ref":{"type":"harness","uri":"runx:harness:post-merge-observer"},"host_ref":{"type":"host","uri":"runx:host:post-merge-observer"},"idempotency":{"content_hash":"sha256:post-merge-closure-merged-verified-nitrosend","intent_key":"post-merge:github://runxhq/nitrosend/issues/77:github://runxhq/nitrosend/pulls/188","trigger_fingerprint":"sha256:post-merge-signal-nitrosend-77-188"},"parent_harness_ref":{"type":"harness_receipt","uri":"runx:harness_receipt:hrn_rcpt_issue_to_pr_nitrosend_77"},"revision":{"previous_ref":null,"sequence":1},"seal":{"artifact_refs":[{"type":"artifact","uri":"runx:artifact:post_merge_observer_projection_1"}],"canonicalization":"runx.harness-receipt.c14n.v1","closed_at":"2026-05-20T04:56:00Z","criteria":[{"act_id":"act_observe_pr_merged","criterion_id":"post_merge.provider_state","evidence_refs":[{"label":"human-merged PR","locator":"runxhq/nitrosend#188","observed_at":"2026-05-20T04:55:00Z","provider":"github","type":"github_pull_request","uri":"github://runxhq/nitrosend/pulls/188"}],"status":"verified","summary":"Provider reported merged.","verification_refs":[]},{"act_id":"act_observe_pr_merged","criterion_id":"post_merge.human_gate","evidence_refs":[{"label":"human-merged PR","locator":"runxhq/nitrosend#188","observed_at":"2026-05-20T04:55:00Z","provider":"github","type":"github_pull_request","uri":"github://runxhq/nitrosend/pulls/188"}],"status":"verified","summary":"Human merge gate remained outside the harness.","verification_refs":[]},{"act_id":"act_verify_nitrosend_dogfood","criterion_id":"post_merge.verification_passed","evidence_refs":[{"label":"Nitrosend dogfood deploy","provider":"nitrosend","type":"deployment","uri":"deploy://nitrosend/dogfood/2026-05-20T04-52Z"},{"type":"artifact","uri":"runx:artifact:post_merge_observer_projection_1"}],"status":"verified","summary":"Nitrosend dogfood verification passed.","verification_refs":[{"type":"verification","uri":"runx:verification:nitrosend-dogfood-smoke"}]},{"act_id":"act_publish_final_threads","criterion_id":"post_merge.source_thread_target_present","evidence_refs":[{"label":"Nitrosend source thread","locator":"T01NITRO/C02DOGFOOD/1716180900.000100","provider":"slack","type":"slack_thread","uri":"slack://T01NITRO/C02DOGFOOD/p1716180900.000100"},{"label":"Nitrosend dogfood issue","locator":"runxhq/nitrosend#77","provider":"github","type":"github_issue","uri":"github://runxhq/nitrosend/issues/77"}],"status":"verified","summary":"Final Slack publication has a thread locator.","verification_refs":[{"type":"verification","uri":"runx:verification:nitrosend-dogfood-smoke"}]},{"act_id":"act_close_source_issue","criterion_id":"post_merge.close_policy_authorized","evidence_refs":[{"label":"Nitrosend dogfood issue","locator":"runxhq/nitrosend#77","provider":"github","type":"github_issue","uri":"github://runxhq/nitrosend/issues/77"}],"status":"verified","summary":"Close policy was authorized after verified publication.","verification_refs":[{"type":"verification","uri":"runx:verification:nitrosend-dogfood-smoke"}]}],"digest":"sha256:post-merge-observer-merged-verified","disposition":"closed","hash_commitments":[{"algorithm":"sha256","canonicalization":"runx.artifact-hash.v1","value":"sha256:sanitized-post-merge-observer-summary"}],"last_observed_at":"2026-05-20T04:55:00Z","reason_code":"merged_verified","redaction_refs":[{"type":"redaction_policy","uri":"runx:redaction_policy:post_merge_public"}],"summary":"Merged PR was observed, Nitrosend dogfood verification passed, final replies were published, and close policy was authorized.","verification_summary":{"authority_attenuation_valid":true,"criteria_bound":true,"external_attestations_present":true,"hash_commitments_valid":true,"redaction_valid":true,"signature_valid":true}},"signal_refs":[{"observed_at":"2026-05-20T04:55:00Z","provider":"github","type":"webhook_delivery","uri":"github://delivery/post-merge-nitrosend-77-188"}],"state":"sealed"},"id":"hrn_rcpt_post_merge_nitrosend_77_188","issuer":{"kid":"fixture-post-merge-observer","public_key_sha256":"sha256:post-merge-observer-public","type":"local"},"metadata":{"observer_contract":{"closure_key":"github://runxhq/nitrosend/pulls/188@merge:9f14c0ffee1234567890abcdef1234567890abcd","closure_reason":"merged_verified","idempotency":{"act_forms":["observation","verification","reply","revision"],"pull_request_key":"github://runxhq/nitrosend/pulls/188","source_issue_key":"github://runxhq/nitrosend/issues/77"},"pr":{"merge_sha":"9f14c0ffee1234567890abcdef1234567890abcd","merged_by":"github:user:human-reviewer"},"publication":{"github_issue_comment":"required","slack_thread":"required"},"verification":{"summary":"Nitrosend dogfood smoke passed on sanitized fixture output."}}},"schema":"runx.harness_receipt.v1","seal":{"artifact_refs":[{"type":"artifact","uri":"runx:artifact:post_merge_observer_projection_1"}],"canonicalization":"runx.harness-receipt.c14n.v1","closed_at":"2026-05-20T04:56:00Z","criteria":[{"act_id":"act_observe_pr_merged","criterion_id":"post_merge.provider_state","evidence_refs":[{"label":"human-merged PR","locator":"runxhq/nitrosend#188","observed_at":"2026-05-20T04:55:00Z","provider":"github","type":"github_pull_request","uri":"github://runxhq/nitrosend/pulls/188"}],"status":"verified","summary":"Provider reported merged.","verification_refs":[]},{"act_id":"act_observe_pr_merged","criterion_id":"post_merge.human_gate","evidence_refs":[{"label":"human-merged PR","locator":"runxhq/nitrosend#188","observed_at":"2026-05-20T04:55:00Z","provider":"github","type":"github_pull_request","uri":"github://runxhq/nitrosend/pulls/188"}],"status":"verified","summary":"Human merge gate remained outside the harness.","verification_refs":[]},{"act_id":"act_verify_nitrosend_dogfood","criterion_id":"post_merge.verification_passed","evidence_refs":[{"label":"Nitrosend dogfood deploy","provider":"nitrosend","type":"deployment","uri":"deploy://nitrosend/dogfood/2026-05-20T04-52Z"},{"type":"artifact","uri":"runx:artifact:post_merge_observer_projection_1"}],"status":"verified","summary":"Nitrosend dogfood verification passed.","verification_refs":[{"type":"verification","uri":"runx:verification:nitrosend-dogfood-smoke"}]},{"act_id":"act_publish_final_threads","criterion_id":"post_merge.source_thread_target_present","evidence_refs":[{"label":"Nitrosend source thread","locator":"T01NITRO/C02DOGFOOD/1716180900.000100","provider":"slack","type":"slack_thread","uri":"slack://T01NITRO/C02DOGFOOD/p1716180900.000100"},{"label":"Nitrosend dogfood issue","locator":"runxhq/nitrosend#77","provider":"github","type":"github_issue","uri":"github://runxhq/nitrosend/issues/77"}],"status":"verified","summary":"Final Slack publication has a thread locator.","verification_refs":[{"type":"verification","uri":"runx:verification:nitrosend-dogfood-smoke"}]},{"act_id":"act_close_source_issue","criterion_id":"post_merge.close_policy_authorized","evidence_refs":[{"label":"Nitrosend dogfood issue","locator":"runxhq/nitrosend#77","provider":"github","type":"github_issue","uri":"github://runxhq/nitrosend/issues/77"}],"status":"verified","summary":"Close policy was authorized after verified publication.","verification_refs":[{"type":"verification","uri":"runx:verification:nitrosend-dogfood-smoke"}]}],"digest":"sha256:post-merge-observer-merged-verified","disposition":"closed","hash_commitments":[{"algorithm":"sha256","canonicalization":"runx.artifact-hash.v1","value":"sha256:sanitized-post-merge-observer-summary"}],"last_observed_at":"2026-05-20T04:55:00Z","reason_code":"merged_verified","redaction_refs":[{"type":"redaction_policy","uri":"runx:redaction_policy:post_merge_public"}],"summary":"Merged PR was observed, Nitrosend dogfood verification passed, final replies were published, and close policy was authorized.","verification_summary":{"authority_attenuation_valid":true,"criteria_bound":true,"external_attestations_present":true,"hash_commitments_valid":true,"redaction_valid":true,"signature_valid":true}},"signature":{"alg":"Ed25519","value":"base64:post-merge-observer-signature"}},"fixture_kind":"harness_receipt","name":"post-merge-observer-merged-verified","scope":"harness-spine"}
+{
+  "description": "Sealed post-merge observer runx.receipt.v1.",
+  "expected": {
+    "acts": [
+      {
+        "artifact_refs": [
+          {
+            "locator": "runxhq/nitrosend#77",
+            "provider": "github",
+            "type": "github_issue",
+            "uri": "github://runxhq/nitrosend/issues/77"
+          },
+          {
+            "locator": "runxhq/nitrosend!188",
+            "provider": "github",
+            "type": "github_pull_request",
+            "uri": "github://runxhq/nitrosend/pulls/188"
+          },
+          {
+            "locator": "team/channel/1700000000.0001",
+            "provider": "slack",
+            "type": "slack_thread",
+            "uri": "slack://team/channel/1700000000.0001"
+          }
+        ],
+        "criteria": [],
+        "form": "observation",
+        "id": "act_observe",
+        "summary": "post-merge act_observe"
+      },
+      {
+        "artifact_refs": [
+          {
+            "locator": "runxhq/nitrosend#77",
+            "provider": "github",
+            "type": "github_issue",
+            "uri": "github://runxhq/nitrosend/issues/77"
+          },
+          {
+            "locator": "runxhq/nitrosend!188",
+            "provider": "github",
+            "type": "github_pull_request",
+            "uri": "github://runxhq/nitrosend/pulls/188"
+          },
+          {
+            "locator": "team/channel/1700000000.0001",
+            "provider": "slack",
+            "type": "slack_thread",
+            "uri": "slack://team/channel/1700000000.0001"
+          }
+        ],
+        "criteria": [],
+        "form": "verification",
+        "id": "act_verify",
+        "summary": "post-merge act_verify"
+      },
+      {
+        "artifact_refs": [
+          {
+            "locator": "runxhq/nitrosend#77",
+            "provider": "github",
+            "type": "github_issue",
+            "uri": "github://runxhq/nitrosend/issues/77"
+          },
+          {
+            "locator": "runxhq/nitrosend!188",
+            "provider": "github",
+            "type": "github_pull_request",
+            "uri": "github://runxhq/nitrosend/pulls/188"
+          },
+          {
+            "locator": "team/channel/1700000000.0001",
+            "provider": "slack",
+            "type": "slack_thread",
+            "uri": "slack://team/channel/1700000000.0001"
+          }
+        ],
+        "criteria": [],
+        "form": "reply",
+        "id": "act_reply",
+        "summary": "post-merge act_reply"
+      },
+      {
+        "artifact_refs": [
+          {
+            "locator": "runxhq/nitrosend#77",
+            "provider": "github",
+            "type": "github_issue",
+            "uri": "github://runxhq/nitrosend/issues/77"
+          },
+          {
+            "locator": "runxhq/nitrosend!188",
+            "provider": "github",
+            "type": "github_pull_request",
+            "uri": "github://runxhq/nitrosend/pulls/188"
+          },
+          {
+            "locator": "team/channel/1700000000.0001",
+            "provider": "slack",
+            "type": "slack_thread",
+            "uri": "slack://team/channel/1700000000.0001"
+          }
+        ],
+        "criteria": [],
+        "form": "revision",
+        "id": "act_revise",
+        "summary": "post-merge act_revise"
+      }
+    ],
+    "authority": {
+      "actor_ref": {
+        "type": "principal",
+        "uri": "runx:principal:local_runtime"
+      },
+      "attenuation": {
+        "parent_authority_ref": null,
+        "subset_proof": null
+      },
+      "authority_proof_refs": [],
+      "enforcement": {
+        "profile_hash": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+        "redaction_refs": [],
+        "setup_refs": [],
+        "teardown_refs": []
+      },
+      "grant_refs": [],
+      "scope_refs": [],
+      "terms": []
+    },
+    "canonicalization": "runx.receipt.c14n.v1",
+    "created_at": "2026-05-22T00:00:00Z",
+    "digest": "sha256:cc0d8818fa07f9c085ebc11abc056d700bbe591d6af105b0eef65cfcaeac0bbb",
+    "id": "hrn_rcpt_post_merge_nitrosend_77_188",
+    "idempotency": {
+      "content_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "intent_key": "post-merge:github://runxhq/nitrosend/issues/77:github://runxhq/nitrosend/pulls/188",
+      "trigger_fingerprint": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+    },
+    "issuer": {
+      "kid": "fixture-key",
+      "public_key_sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "type": "local"
+    },
+    "lineage": {
+      "children": [],
+      "signal_refs": [],
+      "sync": []
+    },
+    "metadata": {
+      "observer_contract": {
+        "pr": {
+          "merge_sha": "9f14c0ffee1234567890abcdef1234567890abcd"
+        }
+      }
+    },
+    "schema": "runx.receipt.v1",
+    "seal": {
+      "closed_at": "2026-05-22T00:00:00Z",
+      "criteria": [
+        {
+          "criterion_id": "post_merge.provider_state",
+          "evidence_refs": [
+            {
+              "locator": "runxhq/nitrosend!188",
+              "provider": "github",
+              "type": "github_pull_request",
+              "uri": "github://runxhq/nitrosend/pulls/188"
+            }
+          ],
+          "status": "verified",
+          "verification_refs": []
+        },
+        {
+          "criterion_id": "post_merge.human_gate",
+          "evidence_refs": [],
+          "status": "verified",
+          "verification_refs": []
+        },
+        {
+          "criterion_id": "post_merge.verification_passed",
+          "evidence_refs": [
+            {
+              "locator": "runxhq/nitrosend!188",
+              "provider": "github",
+              "type": "github_pull_request",
+              "uri": "github://runxhq/nitrosend/pulls/188"
+            }
+          ],
+          "status": "verified",
+          "summary": "Nitrosend dogfood verification passed.",
+          "verification_refs": [
+            {
+              "type": "verification",
+              "uri": "runx:verification:ver_post_merge_verified"
+            }
+          ]
+        },
+        {
+          "criterion_id": "post_merge.source_thread_target_present",
+          "evidence_refs": [
+            {
+              "locator": "team/channel/1700000000.0001",
+              "provider": "slack",
+              "type": "slack_thread",
+              "uri": "slack://team/channel/1700000000.0001"
+            },
+            {
+              "locator": "runxhq/nitrosend#77",
+              "provider": "github",
+              "type": "github_issue",
+              "uri": "github://runxhq/nitrosend/issues/77"
+            }
+          ],
+          "status": "verified",
+          "verification_refs": [
+            {
+              "type": "verification",
+              "uri": "runx:verification:ver_post_merge_verified"
+            }
+          ]
+        },
+        {
+          "criterion_id": "post_merge.close_policy_authorized",
+          "evidence_refs": [],
+          "status": "verified",
+          "verification_refs": []
+        }
+      ],
+      "disposition": "closed",
+      "reason_code": "merged_verified",
+      "summary": "Target PR shipped and verified."
+    },
+    "signature": {
+      "alg": "Ed25519",
+      "value": "sig:sha256:cc0d8818fa07f9c085ebc11abc056d700bbe591d6af105b0eef65cfcaeac0bbb"
+    },
+    "subject": {
+      "commitments": [
+        {
+          "algorithm": "sha256",
+          "canonicalization": "runx.stable-json.v1",
+          "scope": "output",
+          "value": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+        }
+      ],
+      "kind": "skill",
+      "ref": {
+        "type": "harness",
+        "uri": "runx:harness:post_merge_observer"
+      }
+    }
+  },
+  "fixture_kind": "receipt",
+  "name": "post_merge_observer_merged_verified",
+  "scope": "harness-spine"
+}

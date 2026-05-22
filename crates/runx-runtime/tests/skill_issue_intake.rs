@@ -3,13 +3,13 @@
 use std::path::{Path, PathBuf};
 
 use runx_contracts::{ClosureDisposition, JsonValue};
-use runx_receipts::validate_harness_receipt;
+use runx_receipts::validate_receipt;
 use runx_runtime::{
     HarnessExpectedStatus, HarnessReplayOutput, load_harness_fixture, run_harness_fixture,
 };
 
 #[test]
-fn issue_intake_generated_fixtures_replay_to_harness_receipts()
+fn issue_intake_generated_fixtures_replay_to_receipts()
 -> Result<(), Box<dyn std::error::Error>> {
     for case_name in [
         "bounded-docs-fix",
@@ -20,9 +20,9 @@ fn issue_intake_generated_fixtures_replay_to_harness_receipts()
         let output = run_case(case_name)?;
         assert_eq!(output.status, HarnessExpectedStatus::Sealed, "{case_name}");
         assert_eq!(output.receipt.seal.disposition, ClosureDisposition::Closed);
-        validate_harness_receipt(&output.receipt)
+        validate_receipt(&output.receipt)
             .map_err(|verification| format!("{case_name}: {:?}", verification.findings))?;
-        assert_eq!(output.receipt.harness.acts.len(), 1);
+        assert_eq!(output.receipt.acts.len(), 1);
         assert_eq!(output.receipt.harness.decisions.len(), 1);
 
         let payload = skill_payload(&output)?;
@@ -53,7 +53,7 @@ fn issue_intake_generated_fixtures_replay_to_harness_receipts()
             output.receipt.harness.decisions[0]
                 .selected_act_id
                 .as_deref(),
-            Some(act.act_id.as_str())
+            Some(act.id.as_str())
         );
     }
     Ok(())

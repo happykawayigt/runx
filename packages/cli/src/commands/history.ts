@@ -103,7 +103,7 @@ function normalizeHistoryReceipt(value: unknown): LocalReceiptSummary {
   const verification = asRecord(receipt.verification);
   return {
     id: receipt.id,
-    kind: stringValue(receipt.source_type) ?? "harness_receipt",
+    kind: stringValue(receipt.source_type) ?? "receipt",
     name: receipt.name,
     status: receipt.status,
     sourceType: stringValue(receipt.source_type),

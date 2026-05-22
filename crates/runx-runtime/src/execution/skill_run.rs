@@ -103,7 +103,7 @@ fn agent_run_id(request: &SkillRunRequest, request_id: &str) -> Result<String, S
     }
 }
 
-fn agent_skill_output(stdout: String, receipt: &runx_contracts::HarnessReceipt) -> SkillOutput {
+fn agent_skill_output(stdout: String, receipt: &runx_contracts::Receipt) -> SkillOutput {
     let succeeded = receipt.seal.disposition == ClosureDisposition::Closed;
     SkillOutput {
         status: if succeeded {
@@ -271,7 +271,7 @@ fn execute_cli_tool_skill_run(
 
 fn write_skill_receipt(
     request: &SkillRunRequest,
-    receipt: &runx_contracts::HarnessReceipt,
+    receipt: &runx_contracts::Receipt,
 ) -> Result<(), SkillRunError> {
     let receipt_path = resolve_receipt_path(ReceiptPathInputs {
         explicit_dir: request.receipt_dir.as_deref(),
@@ -352,7 +352,7 @@ fn seal_skill_answer(
     runner: &SkillRunnerDefinition,
     stdout: &str,
     disposition: ClosureDisposition,
-) -> Result<runx_contracts::HarnessReceipt, SkillRunError> {
+) -> Result<runx_contracts::Receipt, SkillRunError> {
     let disposition_label = closure_disposition_label(&disposition);
     let succeeded = disposition == ClosureDisposition::Closed;
     let status = if succeeded {
@@ -411,7 +411,7 @@ fn seal_skill_output(
     disposition: ClosureDisposition,
     reason_code: String,
     summary: String,
-) -> Result<runx_contracts::HarnessReceipt, SkillRunError> {
+) -> Result<runx_contracts::Receipt, SkillRunError> {
     let graph_name = identifier_segment(run_id);
     let step_id = identifier_segment(&runner.name);
     Ok(step_receipt_with_disposition(StepReceiptWithDisposition {
@@ -463,7 +463,7 @@ fn sealed_output(
     run_id: &str,
     skill_output: &SkillOutput,
     payload: &JsonValue,
-    receipt: &runx_contracts::HarnessReceipt,
+    receipt: &runx_contracts::Receipt,
     receipt_value: JsonValue,
 ) -> JsonObject {
     let mut execution = JsonObject::new();
@@ -517,7 +517,7 @@ fn sealed_output(
     output
 }
 
-fn closure_output(seal: &runx_contracts::HarnessSeal) -> JsonObject {
+fn closure_output(seal: &runx_contracts::Seal) -> JsonObject {
     let mut closure = JsonObject::new();
     closure.insert(
         "disposition".to_owned(),

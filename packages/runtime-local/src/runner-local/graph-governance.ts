@@ -21,15 +21,15 @@ import {
 } from "@runxhq/core/util";
 import {
   RUNX_LOGICAL_SCHEMAS,
-  validateHarnessReceiptContract,
+  validateReceiptContract,
   validateScopeAdmissionContract,
   type ActContract,
   type ClosureRecordContract,
   type HarnessAuthorityContract,
   type HarnessContract,
-  type HarnessReceiptContract,
-  type HarnessReceiptIssuerContract,
-  type HarnessReceiptSignatureContract,
+  type ReceiptContract,
+  type ReceiptIssuerContract,
+  type ReceiptSignatureContract,
   type HarnessSealContract,
   type HarnessSealDispositionContract,
   type ReferenceContract,
@@ -57,11 +57,11 @@ export interface RuntimeReceiptExecution {
   readonly metadata?: Readonly<Record<string, unknown>>;
 }
 
-export type RunnerSkillReceipt = HarnessReceiptContract;
-export type RunnerGraphReceipt = HarnessReceiptContract;
-export type RunnerReceipt = HarnessReceiptContract;
-type RunnerReceiptIssuer = HarnessReceiptIssuerContract;
-type RunnerReceiptSignature = HarnessReceiptSignatureContract;
+export type RunnerSkillReceipt = ReceiptContract;
+export type RunnerGraphReceipt = ReceiptContract;
+export type RunnerReceipt = ReceiptContract;
+type RunnerReceiptIssuer = ReceiptIssuerContract;
+type RunnerReceiptSignature = ReceiptSignatureContract;
 
 interface RunnerReceiptKeyPair {
   readonly privateKey: KeyObject;
@@ -170,7 +170,7 @@ export async function writeRunnerSkillReceipt(
     stderr: options.stderr,
     inputs: options.inputs,
   });
-  const receipt = signHarnessReceipt({
+  const receipt = signReceipt({
     id,
     createdAt: completedAt,
     issuer: runnerReceiptIssuer(keyPair),
@@ -217,7 +217,7 @@ export async function writeRunnerSkillReceipt(
       extra: options.execution.metadata,
     }),
   });
-  validateHarnessReceiptContract(receipt);
+  validateReceiptContract(receipt);
   await persistRunnerReceipt(options.receiptDir, receipt);
   return receipt;
 }
@@ -238,7 +238,7 @@ export async function writeRunnerGraphReceipt(
   const childReceiptRefs = normalizedSteps
     .map((step) => step.receipt_id)
     .filter((receiptId): receiptId is string => typeof receiptId === "string" && receiptId.trim().length > 0)
-    .map(harnessReceiptReference);
+    .map(receiptReference);
   const seal = sealRecord({
     disposition,
     reasonCode: options.status === "sealed" ? "graph_closed" : "graph_failed",
@@ -250,7 +250,7 @@ export async function writeRunnerGraphReceipt(
     stderr: options.errorMessage ?? "",
     inputs: options.inputs,
   });
-  const receipt = signHarnessReceipt({
+  const receipt = signReceipt({
     id: options.graphId,
     createdAt: completedAt,
     issuer: runnerReceiptIssuer(keyPair),
@@ -296,7 +296,7 @@ export async function writeRunnerGraphReceipt(
       extra: options.metadata,
     }),
   });
-  validateHarnessReceiptContract(receipt);
+  validateReceiptContract(receipt);
   await persistRunnerReceipt(options.receiptDir, receipt);
   return receipt;
 }
@@ -314,7 +314,7 @@ export function runnerReceiptCategory(receipt: RunnerReceipt): "skill" | "graph"
 }
 
 export function runnerReceiptDisplayName(receipt: RunnerReceipt): string {
-  return runtimeMetadata(receipt).name ?? receipt.harness.harness_ref.label ?? receipt.harness.harness_id;
+  return runtimeMetadata(receipt).name ?? receipt.subject.ref.label ?? receipt.subject.ref.uri;
 }
 
 export function runnerReceiptSource(receipt: RunnerReceipt): string | undefined {
@@ -801,7 +801,7 @@ interface RuntimeReceiptMetadata {
   readonly steps?: readonly GraphReceiptStep[];
 }
 
-function signHarnessReceipt(options: {
+function signReceipt(options: {
   readonly id: string;
   readonly createdAt: string;
   readonly issuer: RunnerReceiptIssuer;
@@ -811,20 +811,73 @@ function signHarnessReceipt(options: {
   readonly syncPoints?: readonly GraphReceiptSyncPoint[];
   readonly metadata?: Readonly<Record<string, unknown>>;
 }): RunnerReceipt {
+  // Project the nested harness builder output into the flat runx.receipt.v1
+  // shape: idempotency/subject/authority/acts/seal/lineage at the top level.
+  const harness = options.harness;
   const unsigned = {
-    schema: RUNX_LOGICAL_SCHEMAS.harnessReceipt,
+    schema: RUNX_LOGICAL_SCHEMAS.receipt,
     id: options.id,
     created_at: options.createdAt,
+    canonicalization: "runx.receipt.c14n.v1",
     issuer: options.issuer,
-    harness: options.harness,
-    seal: options.seal,
-    sync_points: options.syncPoints && options.syncPoints.length > 0 ? options.syncPoints : undefined,
+    digest: `sha256:${hashStable({ harness, seal: options.seal })}`,
+    idempotency: harness.idempotency,
+    subject: {
+      kind: runnerSubjectKind(options.metadata),
+      ref: harness.harness_ref,
+      commitments: [],
+    },
+    authority: {
+      actor_ref: harness.authority.actor_ref,
+      grant_refs: harness.authority.grant_refs ?? [],
+      scope_refs: harness.authority.scope_refs ?? [],
+      authority_proof_refs: harness.authority.authority_proof_refs ?? [],
+      attenuation: harness.authority.attenuation,
+      terms: harness.authority.terms ?? [],
+      enforcement: {
+        profile_hash: harness.enforcement.enforcement_profile_hash,
+        redaction_refs: harness.enforcement.redaction_refs ?? [],
+        setup_refs: [],
+        teardown_refs: [],
+      },
+    },
+    acts: harness.acts.map((act) => ({
+      id: act.act_id,
+      form: act.form,
+      summary: act.summary,
+      criteria: (act.criterion_bindings ?? []).map((binding) => ({
+        criterion_id: binding.criterion_id,
+        status: binding.status,
+        evidence_refs: binding.evidence_refs ?? [],
+        verification_refs: binding.verification_refs ?? [],
+        summary: binding.summary,
+      })),
+      artifact_refs: act.artifact_refs ?? [],
+    })),
+    seal: {
+      disposition: options.seal.disposition,
+      reason_code: options.seal.reason_code,
+      summary: options.seal.summary,
+      closed_at: options.seal.closed_at,
+      criteria: options.seal.criteria ?? [],
+    },
+    lineage: {
+      parent: harness.parent_harness_ref ?? undefined,
+      children: harness.child_receipt_refs ?? [],
+      sync: options.syncPoints && options.syncPoints.length > 0 ? options.syncPoints : [],
+      signal_refs: harness.signal_refs ?? [],
+    },
     metadata: options.metadata,
   };
   return {
     ...unsigned,
     signature: signPayloadString(stableStringify(unsigned), options.signatureKey),
-  };
+  } as RunnerReceipt;
+}
+
+function runnerSubjectKind(metadata?: Readonly<Record<string, unknown>>): "skill" | "graph" {
+  const category = metadata && typeof metadata.category === "string" ? metadata.category : undefined;
+  return category === "graph" ? "graph" : "skill";
 }
 
 function harnessRecord(options: {
@@ -847,7 +900,7 @@ function harnessRecord(options: {
   const harnessRef = harnessReference(options.id, options.name);
   return {
     harness_id: `hrn_${harnessIdentitySegment(options.id)}`,
-    parent_harness_ref: options.parentReceipt ? harnessReceiptReference(options.parentReceipt) : null,
+    parent_harness_ref: options.parentReceipt ? receiptReference(options.parentReceipt) : null,
     state: "sealed",
     host_ref: { type: "host", uri: "runx:host:local-runtime", label: "local runtime" },
     harness_ref: harnessRef,
@@ -906,7 +959,7 @@ function harnessRecord(options: {
       artifact_refs: options.artifactRefs,
     }],
     acts: options.acts,
-    child_harness_receipt_refs: options.childReceiptRefs,
+    child_receipt_refs: options.childReceiptRefs,
     artifact_refs: options.artifactRefs,
     seal: options.seal,
   };
@@ -989,7 +1042,7 @@ function sealRecord(options: {
     summary: options.summary,
     closed_at: options.closedAt,
     last_observed_at: options.closedAt,
-    canonicalization: "runx.harness-receipt.c14n.v1",
+    canonicalization: "runx.receipt.c14n.v1",
     digest: `sha256:${hashStable({
       disposition: options.disposition,
       stdout: options.stdout,
@@ -1160,10 +1213,10 @@ function verificationReferences(outcome: NormalizedExecutionSemantics["outcome"]
   }];
 }
 
-function harnessReceiptReference(id: string): ReferenceContract {
+function receiptReference(id: string): ReferenceContract {
   return {
-    type: "harness_receipt",
-    uri: id.startsWith("runx:harness_receipt:") ? id : `runx:harness_receipt:${id}`,
+    type: "receipt",
+    uri: id.startsWith("runx:receipt:") ? id : `runx:receipt:${id}`,
   };
 }
 
@@ -1191,7 +1244,7 @@ function normalizeReferenceType(type: string): ReferenceContract["type"] {
     "act",
     "receipt",
     "graph_receipt",
-    "harness_receipt",
+    "receipt",
     "artifact",
     "verification",
     "harness",

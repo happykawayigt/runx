@@ -25,7 +25,7 @@ import type { ToolCatalogAdapter } from "@runxhq/runtime-local/tool-catalogs";
 import type {
   HarnessCallerFixture,
   HarnessExpectation,
-  HarnessReceiptExpectation,
+  ReceiptExpectation,
   RunnerHarnessCase,
 } from "../parser-types.js";
 import { parseSkillFrontmatter } from "./skill-frontmatter.js";
@@ -34,12 +34,12 @@ import {
   validateRunnerManifestYamlViaParser,
 } from "../runner-local/parser-bridge.js";
 
-const harnessReceiptSchema = "runx.harness_receipt.v1";
+const receiptSchemaName = "runx.receipt.v1";
 
 type HarnessKind = "skill" | "graph";
 
-interface HarnessReceiptShapeExpectation extends HarnessReceiptExpectation {
-  readonly schema?: typeof harnessReceiptSchema;
+interface ReceiptShapeExpectation extends ReceiptExpectation {
+  readonly schema?: typeof receiptSchemaName;
   readonly body_digest?: string;
   readonly receipt_digest?: string;
   readonly harness_id?: string;
@@ -51,11 +51,11 @@ interface HarnessReceiptShapeExpectation extends HarnessReceiptExpectation {
 }
 
 interface HarnessResultExpectation extends Omit<HarnessExpectation, "receipt"> {
-  readonly receipt?: HarnessReceiptShapeExpectation;
+  readonly receipt?: ReceiptShapeExpectation;
 }
 
-interface HarnessReceiptShape {
-  readonly schema: typeof harnessReceiptSchema;
+interface ReceiptShape {
+  readonly schema: typeof receiptSchemaName;
   readonly id: string;
   readonly signature?: {
     readonly value?: string;
@@ -66,7 +66,7 @@ interface HarnessReceiptShape {
     readonly acts?: readonly {
       readonly act_id?: string;
     }[];
-    readonly child_harness_receipt_refs?: readonly {
+    readonly child_receipt_refs?: readonly {
       readonly uri?: string;
     }[];
   };
@@ -77,7 +77,7 @@ interface HarnessReceiptShape {
   };
 }
 
-interface HarnessReceiptIds {
+interface ReceiptIds {
   readonly runId: string;
   readonly stepRunIds?: Readonly<Record<string, string>>;
 }
@@ -253,7 +253,7 @@ async function executeHarnessFixture(args: {
   const runxHome = path.join(tempDir, "home");
   const trace = createTrace();
   const caller = createReplayCaller(args.fixture.caller, trace);
-  const receiptIds = await deterministicHarnessReceiptIds(args.fixture, args.targetPath, args.options.env);
+  const receiptIds = await deterministicReceiptIds(args.fixture, args.targetPath, args.options.env);
   const env = {
     ...(args.options.env ?? process.env),
     ...args.fixture.env,
@@ -321,11 +321,11 @@ async function executeHarnessFixture(args: {
   }
 }
 
-async function deterministicHarnessReceiptIds(
+async function deterministicReceiptIds(
   fixture: HarnessFixture,
   targetPath: string,
   env?: NodeJS.ProcessEnv,
-): Promise<HarnessReceiptIds> {
+): Promise<ReceiptIds> {
   if (fixture.kind === "skill") {
     const skillName = await targetSkillName(targetPath);
     return { runId: harnessReceiptId(fixture.name, skillName) };
@@ -425,10 +425,10 @@ function assertHarnessResult(
   if (fixture.expect.receipt) {
     if (!receipt) {
       errors.push("Expected a receipt, but run did not produce one.");
-    } else if (fixture.expect.receipt.schema === harnessReceiptSchema) {
-      errors.push(...assertHarnessReceiptShape(fixture.expect.receipt, receipt));
+    } else if (fixture.expect.receipt.schema === receiptSchemaName) {
+      errors.push(...assertReceiptShape(fixture.expect.receipt, receipt));
     } else {
-      errors.push(`Expected receipt schema ${harnessReceiptSchema}.`);
+      errors.push(`Expected receipt schema ${receiptSchemaName}.`);
     }
   }
 
@@ -453,11 +453,11 @@ function hasHistoricalReceiptSteps(receipt: unknown): receipt is { readonly step
     && receipt.steps.every((step) => isRecord(step) && typeof step.step_id === "string");
 }
 
-function assertHarnessReceiptShape(
-  expected: HarnessReceiptShapeExpectation,
+function assertReceiptShape(
+  expected: ReceiptShapeExpectation,
   receipt: SkillReceipt | Extract<RunLocalGraphResult, { readonly receipt: unknown }>["receipt"],
 ): readonly string[] {
-  if (!isHarnessReceiptShape(receipt)) {
+  if (!isReceiptShape(receipt)) {
     return [];
   }
 
@@ -490,7 +490,7 @@ function assertHarnessReceiptShape(
     }
   }
   if (expected.child_receipt_refs) {
-    const actualChildRefs = (receipt.harness.child_harness_receipt_refs ?? [])
+    const actualChildRefs = (receipt.harness.child_receipt_refs ?? [])
       .map((ref) => ref.uri)
       .filter((uri): uri is string => typeof uri === "string");
     if (JSON.stringify(actualChildRefs) !== JSON.stringify(expected.child_receipt_refs)) {
@@ -500,12 +500,12 @@ function assertHarnessReceiptShape(
   return errors;
 }
 
-function hasPseudoLocalSignature(receipt: HarnessReceiptShape): boolean {
+function hasPseudoLocalSignature(receipt: ReceiptShape): boolean {
   return typeof receipt.signature?.value === "string" && receipt.signature.value.startsWith("sig:");
 }
 
-function isHarnessReceiptShape(value: unknown): value is HarnessReceiptShape {
-  if (!isRecord(value) || value.schema !== harnessReceiptSchema || !isRecord(value.harness) || !isRecord(value.seal)) {
+function isReceiptShape(value: unknown): value is ReceiptShape {
+  if (!isRecord(value) || value.schema !== receiptSchemaName || !isRecord(value.harness) || !isRecord(value.seal)) {
     return false;
   }
   return (
@@ -602,7 +602,7 @@ function validateExpectation(value: Record<string, unknown>): HarnessResultExpec
   };
 }
 
-function validateReceiptExpectation(value: Record<string, unknown> | undefined): HarnessReceiptShapeExpectation | undefined {
+function validateReceiptExpectation(value: Record<string, unknown> | undefined): ReceiptShapeExpectation | undefined {
   if (!value) {
     return undefined;
   }
@@ -611,7 +611,7 @@ function validateReceiptExpectation(value: Record<string, unknown> | undefined):
     status: optionalSuccessFailure(value.status, "expect.receipt.status"),
     source_type: optionalString(value.source_type, "expect.receipt.source_type"),
     owner: optionalString(value.owner, "expect.receipt.owner"),
-    schema: optionalHarnessReceiptSchema(value.schema, "expect.receipt.schema") ?? harnessReceiptSchema,
+    schema: optionalReceiptSchema(value.schema, "expect.receipt.schema") ?? receiptSchemaName,
     body_digest: optionalString(value.body_digest, "expect.receipt.body_digest"),
     receipt_digest: optionalString(value.receipt_digest, "expect.receipt.receipt_digest"),
     harness_id: optionalString(value.harness_id, "expect.receipt.harness_id"),
@@ -621,7 +621,7 @@ function validateReceiptExpectation(value: Record<string, unknown> | undefined):
     act_ids: optionalStringArray(value.act_ids, "expect.receipt.act_ids"),
     child_receipt_refs: optionalStringArray(value.child_receipt_refs, "expect.receipt.child_receipt_refs"),
   };
-  return expectation as HarnessReceiptShapeExpectation;
+  return expectation as ReceiptShapeExpectation;
 }
 
 function validateEnv(value: Record<string, unknown>): Readonly<Record<string, string>> {
@@ -698,22 +698,22 @@ function optionalSuccessFailure(value: unknown, field: string): "sealed" | "fail
   throw new Error(`${field} must be sealed or failure.`);
 }
 
-function optionalReceiptKind(value: unknown, field: string): HarnessReceiptExpectation["kind"] {
+function optionalReceiptKind(value: unknown, field: string): ReceiptExpectation["kind"] {
   if (value === undefined || value === null) {
     return undefined;
   }
-  if (value === "harness_receipt") {
-    return value as HarnessReceiptExpectation["kind"];
+  if (value === "receipt") {
+    return value as ReceiptExpectation["kind"];
   }
-  throw new Error(`${field} must be harness_receipt.`);
+  throw new Error(`${field} must be receipt.`);
 }
 
-function optionalHarnessReceiptSchema(value: unknown, field: string): typeof harnessReceiptSchema | undefined {
+function optionalReceiptSchema(value: unknown, field: string): typeof receiptSchemaName | undefined {
   if (value === undefined || value === null) {
     return undefined;
   }
-  if (value === harnessReceiptSchema) {
+  if (value === receiptSchemaName) {
     return value;
   }
-  throw new Error(`${field} must be ${harnessReceiptSchema}.`);
+  throw new Error(`${field} must be ${receiptSchemaName}.`);
 }

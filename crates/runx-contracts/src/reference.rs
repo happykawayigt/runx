@@ -13,7 +13,6 @@ pub enum ReferenceType {
     Act,
     Receipt,
     GraphReceipt,
-    HarnessReceipt,
     Artifact,
     Verification,
     Harness,
@@ -55,7 +54,6 @@ impl ReferenceType {
             ReferenceType::Act => "act",
             ReferenceType::Receipt => "receipt",
             ReferenceType::GraphReceipt => "graph_receipt",
-            ReferenceType::HarnessReceipt => "harness_receipt",
             ReferenceType::Artifact => "artifact",
             ReferenceType::Verification => "verification",
             ReferenceType::Harness => "harness",
@@ -133,6 +131,6 @@ impl Reference {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ActRef {
-    pub harness_receipt_ref: Reference,
+    pub receipt_ref: Reference,
     pub act_id: String,
 }

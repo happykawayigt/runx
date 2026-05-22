@@ -1,5 +1,5 @@
 import type {
-  HarnessReceiptContract,
+  ReceiptContract,
   HarnessSealDispositionContract,
   ResolutionRequestContract as ResolutionRequest,
   ResolutionResponseContract as ResolutionResponse,
@@ -77,7 +77,7 @@ interface CliReceiptRuntimeMetadata {
   readonly steps?: readonly unknown[];
 }
 
-export type CliRuntimeReceipt = Partial<HarnessReceiptContract> & {
+export type CliRuntimeReceipt = Partial<ReceiptContract> & {
   readonly id: string;
   readonly schema: string;
   readonly seal?: {

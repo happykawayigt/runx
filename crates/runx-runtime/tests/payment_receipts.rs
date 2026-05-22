@@ -17,30 +17,28 @@ fn payment_rail_receipts_carry_proof_and_scoped_credential_refs()
     };
 
     let receipt = step_receipt("payment_execute", "fulfill", 1, &output, CREATED_AT)?;
-    let act = &receipt.harness.acts[0];
+    let act = &receipt.acts[0];
 
-    assert!(act.verification_refs.iter().any(|reference| {
+    let verification_refs: Vec<_> = act
+        .criteria
+        .iter()
+        .flat_map(|criterion| criterion.verification_refs.iter())
+        .collect();
+    assert!(verification_refs.iter().any(|reference| {
         reference.reference_type == ReferenceType::Verification
             && reference.uri == "receipt-proof:mock:demo-search-001"
             && reference.locator.as_deref() == Some("payment:demo-search-001")
             && reference.proof_kind.as_ref() == Some(&ProofKind::PaymentRail)
     }));
-    assert!(
-        act.criterion_bindings[0]
-            .verification_refs
-            .iter()
-            .any(|reference| reference.uri == "receipt-proof:mock:demo-search-001")
-    );
-    assert!(act.source_refs.iter().any(|reference| {
+    // The scoped credential ref rides on the criterion evidence refs.
+    let evidence_refs: Vec<_> = act
+        .criteria
+        .iter()
+        .flat_map(|criterion| criterion.evidence_refs.iter())
+        .collect();
+    assert!(evidence_refs.iter().any(|reference| {
         reference.reference_type == ReferenceType::Credential
             && reference.uri == "credential:mock:demo-search-001"
     }));
-    assert!(
-        receipt
-            .seal
-            .verification_summary
-            .as_ref()
-            .is_some_and(|summary| !summary.authority_attenuation_valid)
-    );
     Ok(())
 }

@@ -16,14 +16,14 @@ fn native_x402_mock_dogfood_fixtures_run_without_typescript()
             "rail-session-material:mock:payment-execution-001",
         ],
     )?;
-    assert_eq!(approved["schema"], "runx.harness_receipt.v1");
+    assert_eq!(approved["schema"], "runx.receipt.v1");
     assert_eq!(approved["harness"]["state"], "sealed");
     assert_eq!(approved["seal"]["disposition"], "closed");
     assert_eq!(
         child_receipt_uris(&approved),
         vec![
-            "runx:harness_receipt:hrn_rcpt_x402-pay-approval_approve-spend",
-            "runx:harness_receipt:hrn_rcpt_x402-pay-approval_fulfill",
+            "runx:receipt:hrn_rcpt_x402-pay-approval_approve-spend",
+            "runx:receipt:hrn_rcpt_x402-pay-approval_fulfill",
         ]
     );
 
@@ -35,13 +35,13 @@ fn native_x402_mock_dogfood_fixtures_run_without_typescript()
             "rail-session-material:mock:payment-execution-001",
         ],
     )?;
-    assert_eq!(denied["schema"], "runx.harness_receipt.v1");
+    assert_eq!(denied["schema"], "runx.receipt.v1");
     assert_eq!(denied["harness"]["state"], "sealed");
     assert_eq!(denied["seal"]["disposition"], "blocked");
     assert_eq!(denied["seal"]["reason_code"], "graph_blocked");
     assert_eq!(
         child_receipt_uris(&denied),
-        vec!["runx:harness_receipt:hrn_rcpt_x402-pay-approval_approve-spend",]
+        vec!["runx:receipt:hrn_rcpt_x402-pay-approval_approve-spend",]
     );
 
     Ok(())
@@ -59,17 +59,17 @@ fn native_x402_paid_echo_fixture_passes_only_refs_downstream()
         ],
     )?;
 
-    assert_eq!(receipt["schema"], "runx.harness_receipt.v1");
+    assert_eq!(receipt["schema"], "runx.receipt.v1");
     assert_eq!(receipt["harness"]["state"], "sealed");
     assert_eq!(receipt["seal"]["disposition"], "closed");
     assert_eq!(
         child_receipt_uris(&receipt),
         vec![
-            "runx:harness_receipt:hrn_rcpt_x402-pay-paid-echo_quote",
-            "runx:harness_receipt:hrn_rcpt_x402-pay-paid-echo_reserve",
-            "runx:harness_receipt:hrn_rcpt_x402-pay-paid-echo_approve-spend",
-            "runx:harness_receipt:hrn_rcpt_x402-pay-paid-echo_fulfill",
-            "runx:harness_receipt:hrn_rcpt_x402-pay-paid-echo_echo",
+            "runx:receipt:hrn_rcpt_x402-pay-paid-echo_quote",
+            "runx:receipt:hrn_rcpt_x402-pay-paid-echo_reserve",
+            "runx:receipt:hrn_rcpt_x402-pay-paid-echo_approve-spend",
+            "runx:receipt:hrn_rcpt_x402-pay-paid-echo_fulfill",
+            "runx:receipt:hrn_rcpt_x402-pay-paid-echo_echo",
         ]
     );
 
@@ -129,11 +129,11 @@ fn native_x402_ledger_projection() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(event["entry"]["data"]["kind"], "payment_ledger_projected");
     assert_eq!(
         event["entry"]["data"]["detail"]["projection_artifact_id"],
-        "x402-pay:runx:harness_receipt:hrn_rcpt_x402-pay-paid-echo"
+        "x402-pay:runx:receipt:hrn_rcpt_x402-pay-paid-echo"
     );
     assert_eq!(
         event["entry"]["data"]["detail"]["source_receipt_id"],
-        "runx:harness_receipt:hrn_rcpt_x402-pay-paid-echo"
+        "runx:receipt:hrn_rcpt_x402-pay-paid-echo"
     );
 
     fs::remove_dir_all(&receipt_dir).ok();
@@ -191,7 +191,7 @@ fn native_x402_refusal_ledger_projection() -> Result<(), Box<dyn std::error::Err
     assert_eq!(event["entry"]["data"]["kind"], "payment_ledger_projected");
     assert_eq!(
         event["entry"]["data"]["detail"]["projection_artifact_id"],
-        "x402-pay:runx:harness_receipt:hrn_rcpt_x402-pay-ledger-governed-refusal"
+        "x402-pay:runx:receipt:hrn_rcpt_x402-pay-ledger-governed-refusal"
     );
     assert_eq!(event["entry"]["data"]["detail"]["disposition"], "refused");
 
@@ -214,16 +214,16 @@ fn native_x402_stripe_spt_happy_path_runs_without_typescript()
         ],
     )?;
 
-    assert_eq!(receipt["schema"], "runx.harness_receipt.v1");
+    assert_eq!(receipt["schema"], "runx.receipt.v1");
     assert_eq!(receipt["harness"]["state"], "sealed");
     assert_eq!(receipt["seal"]["disposition"], "closed");
     assert_eq!(
         child_receipt_uris(&receipt),
         vec![
-            "runx:harness_receipt:hrn_rcpt_stripe-spt-payment_quote",
-            "runx:harness_receipt:hrn_rcpt_stripe-spt-payment_reserve",
-            "runx:harness_receipt:hrn_rcpt_stripe-spt-payment_approve-spend",
-            "runx:harness_receipt:hrn_rcpt_stripe-spt-payment_fulfill",
+            "runx:receipt:hrn_rcpt_stripe-spt-payment_quote",
+            "runx:receipt:hrn_rcpt_stripe-spt-payment_reserve",
+            "runx:receipt:hrn_rcpt_stripe-spt-payment_approve-spend",
+            "runx:receipt:hrn_rcpt_stripe-spt-payment_fulfill",
         ]
     );
 
@@ -235,33 +235,33 @@ fn native_x402_negative_fixtures_refuse_without_settlement()
 -> Result<(), Box<dyn std::error::Error>> {
     let malformed = run_harness_fixture(
         "fixtures/harness/x402-pay-negative-malformed-challenge.yaml",
-        &["runx:harness_receipt:hrn_rcpt_x402-pay-negative-malformed-challenge_reserve"],
+        &["runx:receipt:hrn_rcpt_x402-pay-negative-malformed-challenge_reserve"],
     )?;
-    assert_eq!(malformed["schema"], "runx.harness_receipt.v1");
+    assert_eq!(malformed["schema"], "runx.receipt.v1");
     assert_eq!(malformed["harness"]["state"], "sealed");
     assert_eq!(malformed["seal"]["disposition"], "blocked");
     assert_eq!(malformed["seal"]["reason_code"], "graph_blocked");
     assert_eq!(
         child_receipt_uris(&malformed),
-        vec!["runx:harness_receipt:hrn_rcpt_x402-pay-negative-malformed-challenge_quote",]
+        vec!["runx:receipt:hrn_rcpt_x402-pay-negative-malformed-challenge_quote",]
     );
 
     let ambiguous = run_harness_fixture(
         "fixtures/harness/x402-pay-negative-ambiguous-bounds.yaml",
         &[
-            "runx:harness_receipt:hrn_rcpt_x402-pay-negative-ambiguous-bounds_approve-spend",
-            "runx:harness_receipt:hrn_rcpt_x402-pay-negative-ambiguous-bounds_fulfill",
+            "runx:receipt:hrn_rcpt_x402-pay-negative-ambiguous-bounds_approve-spend",
+            "runx:receipt:hrn_rcpt_x402-pay-negative-ambiguous-bounds_fulfill",
         ],
     )?;
-    assert_eq!(ambiguous["schema"], "runx.harness_receipt.v1");
+    assert_eq!(ambiguous["schema"], "runx.receipt.v1");
     assert_eq!(ambiguous["harness"]["state"], "sealed");
     assert_eq!(ambiguous["seal"]["disposition"], "blocked");
     assert_eq!(ambiguous["seal"]["reason_code"], "graph_blocked");
     assert_eq!(
         child_receipt_uris(&ambiguous),
         vec![
-            "runx:harness_receipt:hrn_rcpt_x402-pay-negative-ambiguous-bounds_quote",
-            "runx:harness_receipt:hrn_rcpt_x402-pay-negative-ambiguous-bounds_reserve",
+            "runx:receipt:hrn_rcpt_x402-pay-negative-ambiguous-bounds_quote",
+            "runx:receipt:hrn_rcpt_x402-pay-negative-ambiguous-bounds_reserve",
         ]
     );
 
@@ -413,7 +413,7 @@ fn assert_success(output: &Output) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn child_receipt_uris(receipt: &Value) -> Vec<String> {
-    receipt["harness"]["child_harness_receipt_refs"]
+    receipt["lineage"]["children"]
         .as_array()
         .into_iter()
         .flatten()

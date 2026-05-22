@@ -1,29 +1,29 @@
 use std::collections::BTreeMap;
 
-use runx_contracts::{HarnessReceipt, JsonNumber, JsonValue, sha256_prefixed};
+use runx_contracts::{JsonNumber, JsonValue, Receipt, sha256_prefixed};
 
 use crate::ReceiptError;
 
-pub fn canonical_receipt_json(receipt: &HarnessReceipt) -> Result<String, ReceiptError> {
+pub fn canonical_receipt_json(receipt: &Receipt) -> Result<String, ReceiptError> {
     let value = receipt_json(receipt)?;
     canonical_json_value(&value)
 }
 
-pub fn canonical_receipt_digest(receipt: &HarnessReceipt) -> Result<String, ReceiptError> {
+pub fn canonical_receipt_digest(receipt: &Receipt) -> Result<String, ReceiptError> {
     canonical_receipt_json(receipt).map(|json| sha256_prefixed(json.as_bytes()))
 }
 
-pub fn canonical_receipt_body_json(receipt: &HarnessReceipt) -> Result<String, ReceiptError> {
+pub fn canonical_receipt_body_json(receipt: &Receipt) -> Result<String, ReceiptError> {
     let mut value = receipt_json(receipt)?;
-    strip_body_proof_fields(&mut value, true);
+    strip_body_proof_fields(&mut value);
     canonical_json_value(&value)
 }
 
-pub fn canonical_receipt_body_digest(receipt: &HarnessReceipt) -> Result<String, ReceiptError> {
+pub fn canonical_receipt_body_digest(receipt: &Receipt) -> Result<String, ReceiptError> {
     canonical_receipt_body_json(receipt).map(|json| sha256_prefixed(json.as_bytes()))
 }
 
-fn receipt_json(receipt: &HarnessReceipt) -> Result<JsonValue, ReceiptError> {
+fn receipt_json(receipt: &Receipt) -> Result<JsonValue, ReceiptError> {
     let value = serde_json::to_value(receipt).map_err(|source| ReceiptError::Serialization {
         message: source.to_string(),
     })?;
@@ -32,26 +32,14 @@ fn receipt_json(receipt: &HarnessReceipt) -> Result<JsonValue, ReceiptError> {
     })
 }
 
-fn strip_body_proof_fields(value: &mut JsonValue, is_root: bool) {
-    match value {
-        JsonValue::Object(map) => {
-            if is_root {
-                map.remove("signature");
-            }
-            if let Some(JsonValue::Object(seal)) = map.get_mut("seal") {
-                seal.remove("digest");
-                seal.remove("verification_summary");
-            }
-            for child in map.values_mut() {
-                strip_body_proof_fields(child, false);
-            }
-        }
-        JsonValue::Array(items) => {
-            for item in items {
-                strip_body_proof_fields(item, false);
-            }
-        }
-        JsonValue::Null | JsonValue::Bool(_) | JsonValue::Number(_) | JsonValue::String(_) => {}
+/// The signed body commits every flat field except the envelope's own
+/// `signature` and `digest`. `metadata` is a runtime-local read aid and is not
+/// part of the signed body.
+fn strip_body_proof_fields(value: &mut JsonValue) {
+    if let JsonValue::Object(map) = value {
+        map.remove("signature");
+        map.remove("digest");
+        map.remove("metadata");
     }
 }
 
@@ -98,8 +86,8 @@ fn canonical_json_number(value: &JsonNumber) -> String {
 
 #[cfg(test)]
 mod tests {
-    use runx_contracts::HarnessReceipt;
     use runx_contracts::JsonValue;
+    use runx_contracts::Receipt;
     use serde::Deserialize;
 
     use super::{
@@ -108,29 +96,29 @@ mod tests {
     };
 
     const SUCCESS_RECEIPT: &str =
-        include_str!("../../../fixtures/contracts/harness-spine/harness-receipt-success.json");
+        include_str!("../../../fixtures/contracts/harness-spine/receipt-success.json");
     const ABNORMAL_RECEIPT: &str =
-        include_str!("../../../fixtures/contracts/harness-spine/harness-receipt-abnormal.json");
+        include_str!("../../../fixtures/contracts/harness-spine/receipt-abnormal.json");
     const POST_MERGE_OBSERVER_RECEIPT: &str = include_str!(
         "../../../fixtures/contracts/harness-spine/post-merge-observer-merged-verified.json"
     );
-    const HARNESS_RECEIPT_ORACLE: &str = include_str!(
-        "../../../fixtures/contracts/canonical-json/runx-harness-receipt-c14n-v1.oracles.json"
+    const RECEIPT_ORACLE: &str = include_str!(
+        "../../../fixtures/contracts/canonical-json/runx-receipt-c14n-v1.oracles.json"
     );
 
     #[derive(Debug, Deserialize)]
     struct Fixture {
-        expected: HarnessReceipt,
+        expected: Receipt,
     }
 
     #[derive(Debug, Deserialize)]
-    struct HarnessReceiptOracleFixture {
+    struct ReceiptOracleFixture {
         canonicalization: String,
-        cases: Vec<HarnessReceiptOracleCase>,
+        cases: Vec<ReceiptOracleCase>,
     }
 
     #[derive(Debug, Deserialize)]
-    struct HarnessReceiptOracleCase {
+    struct ReceiptOracleCase {
         name: String,
         fixture: String,
         full_canonical_json: String,
@@ -166,16 +154,7 @@ mod tests {
         let baseline_digest = canonical_receipt_body_digest(&receipt)?;
 
         receipt.signature.value = "base64:changed".to_owned();
-        receipt.seal.digest = "sha256:changed".to_owned();
-        if let Some(summary) = receipt.seal.verification_summary.as_mut() {
-            summary.signature_valid = false;
-        }
-        if let Some(seal) = receipt.harness.seal.as_mut() {
-            seal.digest = "sha256:also_changed".to_owned();
-            if let Some(summary) = seal.verification_summary.as_mut() {
-                summary.signature_valid = false;
-            }
-        }
+        receipt.digest = "sha256:changed".to_owned();
 
         assert_eq!(canonical_receipt_body_json(&receipt)?, baseline_json);
         assert_eq!(canonical_receipt_body_digest(&receipt)?, baseline_digest);
@@ -183,30 +162,27 @@ mod tests {
     }
 
     #[test]
-    fn body_commitment_includes_nested_metadata_signature_keys() -> Result<(), ReceiptError> {
+    fn body_commitment_excludes_metadata_read_aid() -> Result<(), ReceiptError> {
         let mut receipt = fixture()?;
-        receipt.metadata.get_or_insert_default().insert(
-            "signature".to_owned(),
-            JsonValue::String("metadata-signature-1".to_owned()),
-        );
         let baseline_digest = canonical_receipt_body_digest(&receipt)?;
 
         receipt.metadata.get_or_insert_default().insert(
-            "signature".to_owned(),
-            JsonValue::String("metadata-signature-2".to_owned()),
+            "skill_name".to_owned(),
+            JsonValue::String("changed-read-aid".to_owned()),
         );
 
-        assert_ne!(canonical_receipt_body_digest(&receipt)?, baseline_digest);
+        assert_eq!(canonical_receipt_body_digest(&receipt)?, baseline_digest);
         Ok(())
     }
 
     #[test]
-    fn harness_receipt_oracle_matches_rust_canonical_json() -> Result<(), ReceiptError> {
-        let oracle: HarnessReceiptOracleFixture = serde_json::from_str(HARNESS_RECEIPT_ORACLE)
-            .map_err(|source| ReceiptError::Serialization {
+    fn receipt_oracle_matches_rust_canonical_json() -> Result<(), ReceiptError> {
+        let oracle: ReceiptOracleFixture = serde_json::from_str(RECEIPT_ORACLE).map_err(
+            |source| ReceiptError::Serialization {
                 message: source.to_string(),
-            })?;
-        assert_eq!(oracle.canonicalization, "runx.harness-receipt.c14n.v1");
+            },
+        )?;
+        assert_eq!(oracle.canonicalization, "runx.receipt.c14n.v1");
 
         for case in oracle.cases {
             let receipt = fixture_by_path(&case.fixture)?;
@@ -238,7 +214,7 @@ mod tests {
         Ok(())
     }
 
-    fn fixture() -> Result<HarnessReceipt, ReceiptError> {
+    fn fixture() -> Result<Receipt, ReceiptError> {
         serde_json::from_str::<Fixture>(SUCCESS_RECEIPT)
             .map(|fixture| fixture.expected)
             .map_err(|source| ReceiptError::Serialization {
@@ -246,14 +222,14 @@ mod tests {
             })
     }
 
-    fn fixture_by_path(path: &str) -> Result<HarnessReceipt, ReceiptError> {
+    fn fixture_by_path(path: &str) -> Result<Receipt, ReceiptError> {
         let json = match path {
-            "harness-spine/harness-receipt-abnormal.json" => ABNORMAL_RECEIPT,
-            "harness-spine/harness-receipt-success.json" => SUCCESS_RECEIPT,
+            "harness-spine/receipt-abnormal.json" => ABNORMAL_RECEIPT,
+            "harness-spine/receipt-success.json" => SUCCESS_RECEIPT,
             "harness-spine/post-merge-observer-merged-verified.json" => POST_MERGE_OBSERVER_RECEIPT,
             _ => {
                 return Err(ReceiptError::Serialization {
-                    message: format!("unknown harness receipt oracle fixture: {path}"),
+                    message: format!("unknown receipt oracle fixture: {path}"),
                 });
             }
         };

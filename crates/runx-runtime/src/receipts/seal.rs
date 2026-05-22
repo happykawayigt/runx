@@ -2,18 +2,17 @@
 // signature policy, and local proof sealing stay together until the runtime
 // receipt builder is split out.
 use runx_contracts::{
-    Act, ActForm, Authority, AuthorityAttenuation, AuthoritySubsetResult, Closure,
-    ClosureDisposition, CriterionBinding, Decision, DecisionChoice, DecisionInputs,
-    DecisionJustification, FanoutReceiptSyncPoint, Harness, HarnessEnforcement, HarnessIdempotency,
-    HarnessReceipt, HarnessReceiptSchema, HarnessRevision, HarnessSandbox, HarnessSeal,
-    HarnessState, Intent, JsonObject, JsonValue, ProofKind, ReceiptIssuer, ReceiptIssuerType,
-    ReceiptVerificationSummary, Reference, ReferenceType, SealCriterion, SignatureAlgorithm,
-    SuccessCriterion,
+    ActForm, AuthorityAttenuation, AuthoritySubsetResult, ClosureDisposition, CriterionStatus,
+    Decision, DecisionChoice, DecisionInputs, DecisionJustification, FanoutReceiptSyncPoint,
+    JsonObject, JsonValue, Lineage, ProofKind, RECEIPT_CANONICALIZATION, Receipt, ReceiptAct,
+    ReceiptAuthority, ReceiptCriterion, ReceiptEnforcement, ReceiptIdempotency, ReceiptIssuer,
+    ReceiptIssuerType, ReceiptSchema, ReceiptSubjectKind, Reference, ReferenceType, Seal,
+    SignatureAlgorithm, Subject,
 };
 use runx_receipts::{
-    ReceiptProofContext, ReceiptProofContextProvider, ReceiptSignature, ReceiptTreeConfig,
-    SignatureVerificationFailure, SignatureVerifier, canonical_receipt_body_digest,
-    validate_harness_receipt_proof,
+    ReceiptJournal, ReceiptJournalDecision, ReceiptProofContext, ReceiptProofContextProvider,
+    ReceiptSignature, ReceiptTreeConfig, SignatureVerificationFailure, SignatureVerifier,
+    canonical_receipt_body_digest,
 };
 
 use crate::adapter::SkillOutput;
@@ -30,7 +29,7 @@ pub fn step_receipt(
     attempt: u32,
     output: &SkillOutput,
     created_at: &str,
-) -> Result<HarnessReceipt, RuntimeError> {
+) -> Result<Receipt, RuntimeError> {
     let disposition = disposition(output);
     step_receipt_with_disposition(StepReceiptWithDisposition {
         graph_name,
@@ -51,7 +50,7 @@ pub fn step_receipt_with_signature_policy(
     output: &SkillOutput,
     created_at: &str,
     signature_policy: RuntimeReceiptSignaturePolicy<'_>,
-) -> Result<HarnessReceipt, RuntimeError> {
+) -> Result<Receipt, RuntimeError> {
     let disposition = disposition(output);
     step_receipt_with_disposition_and_policy(
         StepReceiptWithDisposition {
@@ -81,7 +80,7 @@ pub(crate) struct StepReceiptWithDisposition<'a> {
 
 pub(crate) fn step_receipt_with_disposition(
     params: StepReceiptWithDisposition<'_>,
-) -> Result<HarnessReceipt, RuntimeError> {
+) -> Result<Receipt, RuntimeError> {
     step_receipt_with_disposition_and_policy(
         params,
         RuntimeReceiptSignaturePolicy::local_development(),
@@ -91,7 +90,7 @@ pub(crate) fn step_receipt_with_disposition(
 pub(crate) fn step_receipt_with_disposition_and_policy(
     params: StepReceiptWithDisposition<'_>,
     signature_policy: RuntimeReceiptSignaturePolicy<'_>,
-) -> Result<HarnessReceipt, RuntimeError> {
+) -> Result<Receipt, RuntimeError> {
     let StepReceiptWithDisposition {
         graph_name,
         step_id,
@@ -103,36 +102,31 @@ pub(crate) fn step_receipt_with_disposition_and_policy(
         summary,
     } = params;
     let output_refs = output_refs(output);
-    let act = observation_act(
-        step_id,
-        output,
-        created_at,
-        disposition.clone(),
-        &output_refs,
-    );
-    let mut seal = seal(disposition, reason_code, summary, created_at, Vec::new());
-    seal.artifact_refs = output_refs.artifact_refs.clone();
-    let mut receipt = HarnessReceipt {
-        schema: HarnessReceiptSchema::V1,
-        id: step_receipt_id(graph_name, step_id, attempt),
-        created_at: created_at.to_owned(),
-        issuer: local_issuer(),
-        signature: placeholder_signature(),
-        harness: harness(HarnessParts {
-            graph_name,
-            step_id,
-            parent_harness_ref: None,
-            state: HarnessState::Sealed,
-            acts: vec![act],
-            child_refs: Vec::new(),
-            seal: seal.clone(),
-            signal_refs: output_refs.signal_refs,
-            artifact_refs: output_refs.artifact_refs,
-        }),
-        seal,
-        sync_points: Vec::new(),
-        metadata: None,
+    let act = observation_act(step_id, output, disposition.clone(), &output_refs);
+    let seal_criterion = ReceiptCriterion {
+        criterion_id: "process_exit".to_owned(),
+        status: if output.succeeded() {
+            CriterionStatus::Verified
+        } else {
+            CriterionStatus::Failed
+        },
+        evidence_refs: output_refs.source_refs.clone(),
+        verification_refs: output_refs.verification_refs.clone(),
+        summary: Some(output_summary(output)),
     };
+    let seal = seal(disposition, reason_code, summary, created_at, vec![seal_criterion]);
+    let mut receipt = build_receipt(BuildReceipt {
+        id: step_receipt_id(graph_name, step_id, attempt),
+        graph_name,
+        node_id: step_id,
+        kind: ReceiptSubjectKind::Skill,
+        created_at,
+        acts: vec![act],
+        seal,
+        children: Vec::new(),
+        sync_points: Vec::new(),
+        signal_refs: output_refs.signal_refs,
+    });
     seal_receipt(&mut receipt, signature_policy)?;
     Ok(receipt)
 }
@@ -142,7 +136,7 @@ pub fn graph_receipt(
     steps: &mut [StepRun],
     sync_points: Vec<FanoutReceiptSyncPoint>,
     created_at: &str,
-) -> Result<HarnessReceipt, RuntimeError> {
+) -> Result<Receipt, RuntimeError> {
     graph_receipt_with_disposition(
         graph_name,
         steps,
@@ -160,7 +154,7 @@ pub fn graph_receipt_with_signature_policy(
     sync_points: Vec<FanoutReceiptSyncPoint>,
     created_at: &str,
     signature_policy: RuntimeReceiptSignaturePolicy<'_>,
-) -> Result<HarnessReceipt, RuntimeError> {
+) -> Result<Receipt, RuntimeError> {
     graph_receipt_with_disposition_and_policy(
         graph_name,
         steps,
@@ -183,7 +177,7 @@ pub(crate) fn graph_receipt_with_disposition(
     disposition: ClosureDisposition,
     reason_code: String,
     summary: String,
-) -> Result<HarnessReceipt, RuntimeError> {
+) -> Result<Receipt, RuntimeError> {
     graph_receipt_with_disposition_and_policy(
         graph_name,
         steps,
@@ -211,9 +205,9 @@ fn graph_receipt_with_disposition_and_policy(
     created_at: &str,
     closure: GraphClosure,
     signature_policy: RuntimeReceiptSignaturePolicy<'_>,
-) -> Result<HarnessReceipt, RuntimeError> {
-    let parent_harness_ref = harness_ref(graph_name, "graph");
-    attach_parent_to_child_receipts(steps, &parent_harness_ref, signature_policy)?;
+) -> Result<Receipt, RuntimeError> {
+    let receipt_id = format!("hrn_rcpt_{graph_name}");
+    attach_parent_to_child_receipts(steps, &receipt_id, signature_policy)?;
     let child_refs = steps
         .iter()
         .map(|step| child_receipt_reference(&step.receipt))
@@ -225,27 +219,18 @@ fn graph_receipt_with_disposition_and_policy(
         created_at,
         Vec::new(),
     );
-    let mut receipt = HarnessReceipt {
-        schema: HarnessReceiptSchema::V1,
-        id: format!("hrn_rcpt_{graph_name}"),
-        created_at: created_at.to_owned(),
-        issuer: local_issuer(),
-        signature: placeholder_signature(),
-        harness: harness(HarnessParts {
-            graph_name,
-            step_id: "graph",
-            parent_harness_ref: None,
-            state: HarnessState::Sealed,
-            acts: Vec::new(),
-            child_refs,
-            seal: seal.clone(),
-            signal_refs: Vec::new(),
-            artifact_refs: Vec::new(),
-        }),
+    let mut receipt = build_receipt(BuildReceipt {
+        id: receipt_id,
+        graph_name,
+        node_id: "graph",
+        kind: ReceiptSubjectKind::Graph,
+        created_at,
+        acts: Vec::new(),
         seal,
+        children: child_refs,
         sync_points,
-        metadata: None,
-    };
+        signal_refs: Vec::new(),
+    });
     seal_receipt(&mut receipt, signature_policy)?;
     let children = steps
         .iter()
@@ -256,8 +241,8 @@ fn graph_receipt_with_disposition_and_policy(
 }
 
 fn validate_receipt_tree_with_policy(
-    root: &HarnessReceipt,
-    children: &[HarnessReceipt],
+    root: &Receipt,
+    children: &[Receipt],
     signature_policy: RuntimeReceiptSignaturePolicy<'_>,
 ) -> Result<(), RuntimeError> {
     super::tree::validate_runtime_receipt_tree_with_policy(
@@ -291,135 +276,130 @@ fn process_reason_code(disposition: &ClosureDisposition) -> String {
     format!("process_{suffix}")
 }
 
-struct HarnessParts<'a> {
+struct BuildReceipt<'a> {
+    id: String,
     graph_name: &'a str,
-    step_id: &'a str,
-    parent_harness_ref: Option<Reference>,
-    state: HarnessState,
-    acts: Vec<Act>,
-    child_refs: Vec<Reference>,
-    seal: HarnessSeal,
+    node_id: &'a str,
+    kind: ReceiptSubjectKind,
+    created_at: &'a str,
+    acts: Vec<ReceiptAct>,
+    seal: Seal,
+    children: Vec<Reference>,
+    sync_points: Vec<FanoutReceiptSyncPoint>,
     signal_refs: Vec<Reference>,
-    artifact_refs: Vec<Reference>,
 }
 
-fn harness(parts: HarnessParts<'_>) -> Harness {
-    let HarnessParts {
+fn build_receipt(parts: BuildReceipt<'_>) -> Receipt {
+    let BuildReceipt {
+        id,
         graph_name,
-        step_id,
-        parent_harness_ref,
-        state,
+        node_id,
+        kind,
+        created_at,
         acts,
-        child_refs,
         seal,
+        children,
+        sync_points,
         signal_refs,
-        artifact_refs,
     } = parts;
-    let decisions = decision(step_id, &acts, &signal_refs, &artifact_refs);
-    Harness {
-        schema: None,
-        harness_id: format!("hrn_{graph_name}_{step_id}"),
-        parent_harness_ref,
-        state,
-        host_ref: Reference::runx(ReferenceType::Host, "cli"),
-        harness_ref: harness_ref(graph_name, step_id),
-        authority: authority(),
-        enforcement: enforcement(),
-        idempotency: idempotency(graph_name, step_id),
-        revision: HarnessRevision {
-            sequence: 1,
-            previous_ref: None,
-        },
+    let lineage = Lineage {
+        parent: None,
+        previous: None,
+        children,
+        sync: sync_points,
         signal_refs,
-        decisions,
+        journal_ref: None,
+        resume_ref: None,
+    };
+    Receipt {
+        schema: ReceiptSchema::V1,
+        id,
+        created_at: created_at.to_owned(),
+        canonicalization: RECEIPT_CANONICALIZATION.to_owned(),
+        issuer: local_issuer(),
+        signature: placeholder_signature(),
+        digest: "sha256:runtime-skeleton".to_owned(),
+        idempotency: idempotency(graph_name, node_id),
+        subject: subject(graph_name, node_id, kind),
+        authority: authority(),
         acts,
-        child_harness_receipt_refs: child_refs,
-        artifact_refs,
-        seal: Some(seal),
+        seal,
+        lineage: Some(lineage),
+        metadata: None,
+    }
+}
+
+/// The planner deliberation written beside the receipt and committed by
+/// `lineage.journal_ref`.
+fn receipt_journal(receipt: &Receipt) -> ReceiptJournal {
+    let node_id = receipt
+        .acts
+        .first()
+        .map(|act| act.id.clone())
+        .unwrap_or_else(|| receipt.id.clone());
+    let selected_act_id = receipt.acts.first().map(|act| act.id.clone());
+    let signal_refs = receipt
+        .lineage
+        .as_ref()
+        .map(|lineage| lineage.signal_refs.clone())
+        .unwrap_or_default();
+    ReceiptJournal {
+        receipt_id: receipt.id.clone(),
+        decisions: vec![ReceiptJournalDecision {
+            decision: Decision {
+                decision_id: format!("dec_{node_id}"),
+                choice: DecisionChoice::Open,
+                inputs: DecisionInputs {
+                    signal_refs: signal_refs.clone(),
+                    ..DecisionInputs::default()
+                },
+                proposed_intent: runx_contracts::Intent {
+                    purpose: format!("Open runtime node {node_id}"),
+                    legitimacy: "Local graph execution requested this node".to_owned(),
+                    success_criteria: Vec::new(),
+                    constraints: Vec::new(),
+                    derived_from: Vec::new(),
+                },
+                selected_act_id,
+                selected_harness_ref: None,
+                justification: DecisionJustification {
+                    summary: "runtime graph planner selected this node".to_owned(),
+                    evidence_refs: signal_refs,
+                },
+                closure: None,
+                artifact_refs: Vec::new(),
+            },
+        }],
     }
 }
 
 fn observation_act(
     step_id: &str,
     output: &SkillOutput,
-    performed_at: &str,
-    disposition: ClosureDisposition,
+    _disposition: ClosureDisposition,
     refs: &OutputRefs,
-) -> Act {
-    Act {
-        schema: None,
-        act_id: format!("act_{step_id}"),
+) -> ReceiptAct {
+    let mut artifact_refs = refs.artifact_refs.clone();
+    artifact_refs.extend(refs.surface_refs.iter().cloned());
+    ReceiptAct {
+        id: format!("act_{step_id}"),
         form: ActForm::Observation,
-        intent: Intent {
-            purpose: format!("Run graph step {step_id}"),
-            legitimacy: "Runtime graph execution was admitted by the local harness".to_owned(),
-            success_criteria: vec![SuccessCriterion {
-                criterion_id: "process_exit".to_owned(),
-                statement: "cli-tool exits successfully".to_owned(),
-                required: true,
-            }],
-            constraints: Vec::new(),
-            derived_from: Vec::new(),
-        },
         summary: format!("Executed graph step {step_id}"),
-        closure: Closure {
-            disposition,
-            reason_code: "process_exit".to_owned(),
-            summary: output_summary(output),
-            closed_at: performed_at.to_owned(),
-        },
-        criterion_bindings: vec![CriterionBinding {
+        criteria: vec![ReceiptCriterion {
             criterion_id: "process_exit".to_owned(),
             status: if output.succeeded() {
-                runx_contracts::CriterionStatus::Verified
+                CriterionStatus::Verified
             } else {
-                runx_contracts::CriterionStatus::Failed
+                CriterionStatus::Failed
             },
             evidence_refs: refs.source_refs.clone(),
             verification_refs: refs.verification_refs.clone(),
             summary: Some(output_summary(output)),
         }],
-        source_refs: refs.source_refs.clone(),
-        target_refs: Vec::new(),
-        surface_refs: refs.surface_refs.clone(),
-        artifact_refs: refs.artifact_refs.clone(),
-        verification_refs: refs.verification_refs.clone(),
-        harness_refs: Vec::new(),
-        revision: None,
-        verification: None,
-        performed_at: performed_at.to_owned(),
+        by: None,
+        artifact_refs,
+        detail_ref: None,
     }
-}
-
-fn decision(
-    node_id: &str,
-    acts: &[Act],
-    signal_refs: &[Reference],
-    artifact_refs: &[Reference],
-) -> Vec<Decision> {
-    vec![Decision {
-        decision_id: format!("dec_{node_id}"),
-        choice: DecisionChoice::Open,
-        inputs: DecisionInputs {
-            signal_refs: signal_refs.to_vec(),
-            ..DecisionInputs::default()
-        },
-        proposed_intent: Intent {
-            purpose: format!("Open runtime harness node {node_id}"),
-            legitimacy: "Local graph execution requested this harness node".to_owned(),
-            success_criteria: Vec::new(),
-            constraints: Vec::new(),
-            derived_from: Vec::new(),
-        },
-        selected_act_id: acts.first().map(|act| act.act_id.clone()),
-        selected_harness_ref: None,
-        justification: DecisionJustification {
-            summary: "runtime graph planner selected this node".to_owned(),
-            evidence_refs: signal_refs.to_vec(),
-        },
-        closure: None,
-        artifact_refs: artifact_refs.to_vec(),
-    }]
 }
 
 fn seal(
@@ -427,70 +407,53 @@ fn seal(
     reason_code: String,
     summary: String,
     closed_at: &str,
-    criteria: Vec<SealCriterion>,
-) -> HarnessSeal {
-    HarnessSeal {
+    criteria: Vec<ReceiptCriterion>,
+) -> Seal {
+    Seal {
         disposition,
         reason_code,
         summary,
         closed_at: closed_at.to_owned(),
-        last_observed_at: closed_at.to_owned(),
-        canonicalization: "runx.harness-receipt.c14n.v1".to_owned(),
-        digest: "sha256:runtime-skeleton".to_owned(),
         criteria,
-        verification_summary: Some(ReceiptVerificationSummary {
-            signature_valid: true,
-            hash_commitments_valid: true,
-            authority_attenuation_valid: false,
-            criteria_bound: true,
-            redaction_valid: true,
-            external_attestations_present: false,
-        }),
-        redaction_refs: Vec::new(),
-        artifact_refs: Vec::new(),
-        hash_commitments: Vec::new(),
     }
 }
 
-fn authority() -> Authority {
-    Authority {
-        schema: None,
+fn subject(graph_name: &str, node_id: &str, kind: ReceiptSubjectKind) -> Subject {
+    Subject {
+        kind,
+        // The subject reference retains the harness identity (`hrn_<graph>_<node>`)
+        // so history/replay projections keep a stable subject id.
+        reference: Reference::with_uri(
+            ReferenceType::Harness,
+            format!("hrn_{graph_name}_{node_id}"),
+        ),
+        commitments: Vec::new(),
+    }
+}
+
+fn authority() -> ReceiptAuthority {
+    ReceiptAuthority {
         actor_ref: Reference::runx(ReferenceType::Principal, "local_runtime"),
         authority_proof_refs: Vec::new(),
         grant_refs: Vec::new(),
         scope_refs: Vec::new(),
-        policy_refs: Vec::new(),
         terms: Vec::new(),
         attenuation: AuthorityAttenuation {
             parent_authority_ref: None,
             subset_proof: None,
         },
         mandate_ref: None,
-    }
-}
-
-fn enforcement() -> HarnessEnforcement {
-    HarnessEnforcement {
-        harness_ref: None,
-        version: "runtime-skeleton".to_owned(),
-        enforcement_profile_hash: "sha256:runtime-skeleton-enforcement".to_owned(),
-        enforcer_ref: None,
-        sandbox: HarnessSandbox {
-            profile: "process-boundary".to_owned(),
-            cwd_policy: "skill-directory".to_owned(),
-            network: "declared-by-skill".to_owned(),
-            filesystem: "declared-by-skill".to_owned(),
+        enforcement: ReceiptEnforcement {
+            profile_hash: "sha256:runtime-skeleton-enforcement".to_owned(),
+            redaction_refs: Vec::new(),
+            setup_refs: Vec::new(),
+            teardown_refs: Vec::new(),
         },
-        redaction_refs: Vec::new(),
-        stdout_hash: None,
-        stderr_hash: None,
-        setup_receipt_refs: Vec::new(),
-        teardown_receipt_refs: Vec::new(),
     }
 }
 
-fn idempotency(graph_name: &str, node_id: &str) -> HarnessIdempotency {
-    HarnessIdempotency {
+fn idempotency(graph_name: &str, node_id: &str) -> ReceiptIdempotency {
+    ReceiptIdempotency {
         intent_key: format!("sha256:{graph_name}-{node_id}-intent"),
         trigger_fingerprint: format!("sha256:{graph_name}-{node_id}-trigger"),
         content_hash: format!("sha256:{graph_name}-{node_id}-content"),
@@ -703,24 +666,24 @@ fn output_summary(output: &SkillOutput) -> String {
     }
 }
 
-fn child_receipt_reference(receipt: &HarnessReceipt) -> Reference {
+fn child_receipt_reference(receipt: &Receipt) -> Reference {
     Reference {
-        locator: Some(receipt.seal.digest.clone()),
-        ..Reference::runx(ReferenceType::HarnessReceipt, &receipt.id)
+        locator: Some(receipt.digest.clone()),
+        ..Reference::runx(ReferenceType::Receipt, &receipt.id)
     }
-}
-
-fn harness_ref(graph_name: &str, step_id: &str) -> Reference {
-    Reference::runx(ReferenceType::Harness, &format!("{graph_name}_{step_id}"))
 }
 
 fn attach_parent_to_child_receipts(
     steps: &mut [StepRun],
-    parent_harness_ref: &Reference,
+    parent_receipt_id: &str,
     signature_policy: RuntimeReceiptSignaturePolicy<'_>,
 ) -> Result<(), RuntimeError> {
+    let parent_ref = Reference::runx(ReferenceType::Receipt, parent_receipt_id);
     for step in steps {
-        step.receipt.harness.parent_harness_ref = Some(parent_harness_ref.clone());
+        step.receipt
+            .lineage
+            .get_or_insert_with(Lineage::default)
+            .parent = Some(parent_ref.clone());
         seal_receipt(&mut step.receipt, signature_policy)?;
         // Re-bind any supervisor proof to the re-sealed child digest so payment
         // ledger projection validates against the final receipt body.
@@ -749,33 +712,67 @@ fn placeholder_signature() -> ReceiptSignature {
 }
 
 fn seal_receipt(
-    receipt: &mut HarnessReceipt,
+    receipt: &mut Receipt,
     signature_policy: RuntimeReceiptSignaturePolicy<'_>,
 ) -> Result<(), RuntimeError> {
     signature_policy.prepare_receipt(receipt)?;
-    sync_verification_summary(receipt);
+    // Write the planner deliberation as a separate journal artifact and commit
+    // it by hash on lineage.journal_ref before the body digest is computed.
+    let journal = receipt_journal(receipt);
+    let journal_digest = journal.digest();
+    receipt
+        .lineage
+        .get_or_insert_with(Lineage::default)
+        .journal_ref = Some(Reference {
+        locator: Some(journal_digest),
+        ..Reference::runx(ReferenceType::Decision, &format!("{}_journal", receipt.id))
+    });
     let digest =
         canonical_receipt_body_digest(receipt).map_err(|error| RuntimeError::ReceiptInvalid {
             message: error.to_string(),
         })?;
-    receipt.seal.digest = digest.clone();
-    if let Some(seal) = receipt.harness.seal.as_mut() {
-        seal.digest = digest.clone();
-    }
+    receipt.digest = digest.clone();
     signature_policy.sign_receipt(receipt, &digest)?;
 
     let proof_contexts = RuntimeReceiptProofContextProvider::new(signature_policy);
     let context = proof_contexts.proof_context(receipt);
-    validate_harness_receipt_proof(receipt, &context).map_err(receipt_error)
+    validate_receipt_proof_allowing_journal(receipt, &context).map_err(receipt_error)
+}
+
+/// Plain proof verification reports the journal-dependent decision integrity as
+/// `unverified`; at seal time that is the expected (not-yet-confirmed) state, so
+/// the runtime confirms it with the in-hand journal and ignores the lone
+/// journal-dependent finding.
+fn validate_receipt_proof_allowing_journal(
+    receipt: &Receipt,
+    context: &ReceiptProofContext<'_>,
+) -> Result<(), runx_receipts::ReceiptVerification> {
+    let verification = runx_receipts::verify_receipt_proof(receipt, context);
+    let blocking: Vec<_> = verification
+        .findings
+        .iter()
+        .filter(|finding| {
+            !matches!(
+                finding.code,
+                runx_receipts::ReceiptFindingCode::DecisionIntegrityUnverified
+            )
+        })
+        .cloned()
+        .collect();
+    if blocking.is_empty() {
+        Ok(())
+    } else {
+        Err(runx_receipts::ReceiptVerification::from_findings(blocking))
+    }
 }
 
 pub(crate) fn proof_context<'a>(
     signature_verifier: Option<&'a dyn SignatureVerifier>,
-    receipt: &HarnessReceipt,
+    receipt: &Receipt,
 ) -> ReceiptProofContext<'a> {
     ReceiptProofContext {
         signature_verifier,
-        authority_verified: authority_attenuation_verified(&receipt.harness.authority.attenuation),
+        authority_verified: authority_attenuation_verified(&receipt.authority.attenuation),
         external_attestations_verified: true,
         verified_redaction_refs: std::collections::BTreeSet::new(),
         verified_hash_commitments: std::collections::BTreeSet::new(),
@@ -871,7 +868,7 @@ impl<'a> RuntimeReceiptSignaturePolicy<'a> {
         self.mode == RuntimeReceiptSignatureMode::Production && self.production_verifier.is_some()
     }
 
-    fn prepare_receipt(self, receipt: &mut HarnessReceipt) -> Result<(), RuntimeError> {
+    fn prepare_receipt(self, receipt: &mut Receipt) -> Result<(), RuntimeError> {
         if self.allows_local_pseudo_signatures() {
             receipt.issuer = local_issuer();
             return Ok(());
@@ -890,7 +887,7 @@ impl<'a> RuntimeReceiptSignaturePolicy<'a> {
 
     fn sign_receipt(
         self,
-        receipt: &mut HarnessReceipt,
+        receipt: &mut Receipt,
         body_digest: &str,
     ) -> Result<(), RuntimeError> {
         if self.allows_local_pseudo_signatures() {
@@ -950,7 +947,7 @@ impl<'a> RuntimeReceiptProofContextProvider<'a> {
 }
 
 impl ReceiptProofContextProvider for RuntimeReceiptProofContextProvider<'_> {
-    fn proof_context<'a>(&'a self, receipt: &HarnessReceipt) -> ReceiptProofContext<'a> {
+    fn proof_context<'a>(&'a self, receipt: &Receipt) -> ReceiptProofContext<'a> {
         proof_context(
             self.signature_verifier
                 .as_ref()
@@ -992,19 +989,6 @@ impl SignatureVerifier for RuntimeReceiptSignatureVerifier<'_> {
 fn signing_error(error: RuntimeReceiptSigningError) -> RuntimeError {
     RuntimeError::ReceiptInvalid {
         message: error.to_string(),
-    }
-}
-
-fn sync_verification_summary(receipt: &mut HarnessReceipt) {
-    let authority_attenuation_valid =
-        authority_attenuation_verified(&receipt.harness.authority.attenuation);
-    if let Some(summary) = receipt.seal.verification_summary.as_mut() {
-        summary.authority_attenuation_valid = authority_attenuation_valid;
-    }
-    if let Some(harness_seal) = receipt.harness.seal.as_mut() {
-        if let Some(summary) = harness_seal.verification_summary.as_mut() {
-            summary.authority_attenuation_valid = authority_attenuation_valid;
-        }
     }
 }
 

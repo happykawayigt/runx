@@ -9,11 +9,11 @@ pub enum ReceiptError {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ReceiptFindingCode {
     EmptyEnvelopeField,
-    ReceiptSealMismatch,
-    TerminalHarnessMissingSeal,
-    NonTerminalHarnessHasSeal,
     ActFormDetailsInvalid,
     DecisionSelectedActMissing,
+    DecisionIntegrityUnverified,
+    JournalRefMissing,
+    JournalHashMismatch,
     SealCriterionActMissing,
     SealCriterionUnbound,
     ChildReceiptRefInvalid,

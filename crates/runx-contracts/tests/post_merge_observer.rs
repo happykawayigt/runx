@@ -2,7 +2,7 @@ use runx_contracts::post_merge_observer::{
     PostMergeObserverCommandRequest, normalize_post_merge_observer_command,
 };
 use runx_contracts::{
-    ActForm, ClosureDisposition, CriterionStatus, HarnessReceipt, HarnessState, OperationalPolicy,
+    ActForm, ClosureDisposition, CriterionStatus, OperationalPolicy, Receipt,
     OperationalPolicyAction, OperationalPolicySourceProvider, PostMergeObserverClosureState,
     PostMergeObserverCriterionPlan, PostMergeObserverPlan, PostMergeObserverPlanError,
     PostMergeObserverPlanRequest, PostMergeObserverRuntimeDecision, PostMergeObserverSignalSource,
@@ -472,7 +472,7 @@ fn webhook_command_rejects_non_github_delivery_provider_before_provider_readback
 }
 
 #[test]
-fn sealed_harness_receipt_projects_publication_and_close_authority()
+fn sealed_receipt_projects_publication_and_close_authority()
 -> Result<(), Box<dyn std::error::Error>> {
     let receipt = post_merge_observer_receipt()?;
     let projection = project_post_merge_observer_publication_from_receipt(&receipt)?;
@@ -519,8 +519,8 @@ fn sealed_harness_receipt_projects_publication_and_close_authority()
         Some(ReferenceType::SlackThread)
     );
     assert_eq!(
-        projection.harness_receipt_ref.uri,
-        "runx:harness_receipt:hrn_rcpt_post_merge_nitrosend_77_188"
+        projection.receipt_ref.uri,
+        "runx:receipt:hrn_rcpt_post_merge_nitrosend_77_188"
     );
     Ok(())
 }
@@ -559,7 +559,7 @@ fn sealed_closed_unmerged_receipt_projects_without_verification_or_close()
 fn publication_projection_rejects_unsealed_or_under_proven_receipts()
 -> Result<(), Box<dyn std::error::Error>> {
     let mut unsealed = post_merge_observer_receipt()?;
-    unsealed.harness.state = HarnessState::Running;
+    unsealed.seal.disposition = ClosureDisposition::Deferred;
     assert!(matches!(
         project_post_merge_observer_publication_from_receipt(&unsealed),
         Err(PostMergeObserverPlanError::ReceiptNotSealed)
@@ -571,7 +571,6 @@ fn publication_projection_rejects_unsealed_or_under_proven_receipts()
             criterion.verification_refs.clear();
         }
     }
-    missing_verification.harness.seal = Some(missing_verification.seal.clone());
     assert!(matches!(
         project_post_merge_observer_publication_from_receipt(&missing_verification),
         Err(PostMergeObserverPlanError::ReceiptPublicationNotAuthorized(
@@ -646,7 +645,7 @@ fn nitrosend_policy() -> Result<OperationalPolicy, serde_json::Error> {
     serde_json::from_str(NITROSEND_LIKE)
 }
 
-fn post_merge_observer_receipt() -> Result<HarnessReceipt, serde_json::Error> {
+fn post_merge_observer_receipt() -> Result<Receipt, serde_json::Error> {
     #[derive(serde::Deserialize)]
     struct Fixture {
         expected: serde_json::Value,
@@ -656,7 +655,7 @@ fn post_merge_observer_receipt() -> Result<HarnessReceipt, serde_json::Error> {
     serde_json::from_value(fixture.expected)
 }
 
-fn closed_unmerged_receipt() -> Result<HarnessReceipt, serde_json::Error> {
+fn closed_unmerged_receipt() -> Result<Receipt, serde_json::Error> {
     let mut receipt = post_merge_observer_receipt()?;
     receipt.seal.reason_code = "closed_unmerged".to_owned();
     receipt.seal.summary =
@@ -676,12 +675,10 @@ fn closed_unmerged_receipt() -> Result<HarnessReceipt, serde_json::Error> {
         }
     }
     receipt
-        .harness
         .acts
         .retain(|act| act.form == ActForm::Observation || act.form == ActForm::Reply);
-    receipt.harness.idempotency.content_hash =
+    receipt.idempotency.content_hash =
         "sha256:post-merge-closure-closed-unmerged-nitrosend".to_owned();
-    receipt.harness.seal = Some(receipt.seal.clone());
     Ok(receipt)
 }
 

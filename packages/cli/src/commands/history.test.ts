@@ -10,7 +10,7 @@ describe("renderHistory", () => {
       {
         id: "rx_history_harness",
         name: "issue-intake",
-        kind: "runx.harness_receipt.v1",
+        kind: "runx.receipt.v1",
         status: "success",
         sourceType: "agent-step",
         verification: {

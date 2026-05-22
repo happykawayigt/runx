@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use runx_contracts::{
-    ClosureDisposition, HarnessReceiptSchema, HarnessState, JsonObject, JsonValue,
+    ClosureDisposition, ReceiptSchema, JsonObject, JsonValue,
 };
 use runx_receipts::canonical_receipt_json;
 use runx_runtime::{
@@ -78,8 +78,8 @@ fn loads_active_harness_fixtures_without_retired_receipt_fields() -> Result<(), 
             .ok_or(HarnessFixtureError::Required {
                 field: "expect.receipt".to_owned(),
             })?;
-        assert_eq!(receipt.schema, HarnessReceiptSchema::V1);
-        assert_eq!(receipt.state, Some(HarnessState::Sealed));
+        assert_eq!(receipt.schema, ReceiptSchema::V1);
+        assert_eq!(receipt.state.as_deref(), Some("sealed"));
         assert_eq!(receipt.disposition, Some(expected_disposition));
     }
     Ok(())
@@ -160,8 +160,8 @@ fn parses_harness_graph_fixture_contract() -> Result<(), HarnessFixtureError> {
     assert_eq!(
         receipt.child_receipt_refs,
         vec![
-            "runx:harness_receipt:hrn_rcpt_sequential-echo_first",
-            "runx:harness_receipt:hrn_rcpt_sequential-echo_second"
+            "runx:receipt:hrn_rcpt_sequential-echo_first",
+            "runx:receipt:hrn_rcpt_sequential-echo_second"
         ]
     );
     Ok(())
@@ -246,7 +246,7 @@ fn replays_active_harness_skill_fixture() -> Result<(), Box<dyn std::error::Erro
     let output = run_fixture_with_test_adapter("fixtures/harness/echo-skill.yaml")?;
 
     assert_eq!(output.status, HarnessExpectedStatus::Sealed);
-    assert_eq!(output.receipt.harness.harness_id, "hrn_echo-skill_echo");
+    assert_eq!(output.receipt.subject.reference.uri, "hrn_echo-skill_echo");
     assert_eq!(output.receipt.seal.disposition, ClosureDisposition::Closed);
     let skill_output = output.skill_output.ok_or(HarnessFixtureError::Required {
         field: "skill_output".to_owned(),
@@ -261,13 +261,13 @@ fn replays_active_harness_graph_fixture() -> Result<(), Box<dyn std::error::Erro
 
     assert_eq!(output.status, HarnessExpectedStatus::Sealed);
     assert_eq!(
-        output.receipt.harness.harness_id,
+        output.receipt.subject.reference.uri,
         "hrn_sequential-echo_graph"
     );
     assert_eq!(output.receipt.seal.disposition, ClosureDisposition::Closed);
     assert_eq!(output.step_receipts.len(), 2);
-    assert_eq!(output.step_receipts[0].harness.acts[0].act_id, "act_first");
-    assert_eq!(output.step_receipts[1].harness.acts[0].act_id, "act_second");
+    assert_eq!(output.step_receipts[0].acts[0].id, "act_first");
+    assert_eq!(output.step_receipts[1].acts[0].id, "act_second");
     Ok(())
 }
 
@@ -278,22 +278,21 @@ fn replays_payment_approval_graph_fixture_with_rail_proof() -> Result<(), Box<dy
 
     assert_eq!(output.status, HarnessExpectedStatus::Sealed);
     assert_eq!(
-        output.receipt.harness.harness_id,
+        output.receipt.subject.reference.uri,
         "hrn_x402-pay-approval_graph"
     );
     assert_eq!(output.receipt.seal.disposition, ClosureDisposition::Closed);
     assert_eq!(output.step_receipts.len(), 2);
     assert_eq!(
-        output.step_receipts[0].harness.harness_id,
+        output.step_receipts[0].subject.reference.uri,
         "hrn_x402-pay-approval_approve-spend"
     );
     assert_eq!(
-        output.step_receipts[1].harness.harness_id,
+        output.step_receipts[1].subject.reference.uri,
         "hrn_x402-pay-approval_fulfill"
     );
     let fulfill_act =
         output.step_receipts[1]
-            .harness
             .acts
             .first()
             .ok_or(HarnessFixtureError::Required {
@@ -301,8 +300,9 @@ fn replays_payment_approval_graph_fixture_with_rail_proof() -> Result<(), Box<dy
             })?;
     assert_eq!(
         fulfill_act
-            .verification_refs
+            .criteria
             .iter()
+            .flat_map(|criterion| criterion.verification_refs.iter())
             .map(|reference| reference.uri.as_str())
             .collect::<Vec<_>>(),
         vec!["receipt-proof:mock:x402-pay-approval-001"]
@@ -317,14 +317,14 @@ fn replays_payment_denied_graph_fixture_as_policy_denied() -> Result<(), Box<dyn
 
     assert_eq!(output.status, HarnessExpectedStatus::PolicyDenied);
     assert_eq!(
-        output.receipt.harness.harness_id,
+        output.receipt.subject.reference.uri,
         "hrn_x402-pay-approval_graph"
     );
     assert_eq!(output.receipt.seal.disposition, ClosureDisposition::Blocked);
     assert_eq!(output.receipt.seal.reason_code, "graph_blocked");
     assert_eq!(output.step_receipts.len(), 1);
     assert_eq!(
-        output.step_receipts[0].harness.harness_id,
+        output.step_receipts[0].subject.reference.uri,
         "hrn_x402-pay-approval_approve-spend"
     );
     Ok(())

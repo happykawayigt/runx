@@ -5,8 +5,8 @@ import path from "node:path";
 
 import {
   RUNX_LOGICAL_SCHEMAS,
-  validateHarnessReceiptContract,
-  type HarnessReceiptContract,
+  validateReceiptContract,
+  type ReceiptContract,
 } from "@runxhq/contracts";
 import {
   inspectLedger,
@@ -36,7 +36,7 @@ export interface ReceiptVerification {
   readonly reason?: string;
 }
 
-export type RuntimeReceipt = HarnessReceiptContract;
+export type RuntimeReceipt = ReceiptContract;
 
 interface VerifiedRuntimeReceipt {
   readonly receipt: RuntimeReceipt;
@@ -51,7 +51,7 @@ export async function readVerifiedRuntimeReceipt(
   const receipt = await readRuntimeReceipt(receiptDir, id);
   return {
     receipt,
-    verification: await verifyHarnessReceipt(receipt, runxHome),
+    verification: await verifyReceipt(receipt, runxHome),
   };
 }
 
@@ -291,7 +291,7 @@ export async function inspectLocalGraph(options: InspectLocalGraphOptions): Prom
     options.graphId,
     options.runxHome ?? options.env?.RUNX_HOME,
   );
-  if (!isHarnessReceipt(receipt) || runnerReceiptCategory(receipt) !== "graph") {
+  if (!isReceipt(receipt) || runnerReceiptCategory(receipt) !== "graph") {
     throw new Error(`Receipt ${options.graphId} is not a graph execution receipt.`);
   }
 
@@ -310,7 +310,7 @@ export async function inspectLocalGraph(options: InspectLocalGraphOptions): Prom
         receiptId: step.receipt_id,
         fanoutGroup: step.fanout_group,
       })),
-      syncPoints: (receipt.sync_points ?? []).map((syncPoint) => ({
+      syncPoints: (receipt.lineage?.sync ?? []).map((syncPoint) => ({
         groupId: syncPoint.group_id,
         decision: syncPoint.decision,
         ruleFired: syncPoint.rule_fired,
@@ -650,17 +650,17 @@ async function summarizeLocalReceipt(
   const runnerProvider = metadata ? readNestedString(metadata, ["runner", "provider"]) : undefined;
   return {
     id: receipt.id,
-    kind: RUNX_LOGICAL_SCHEMAS.harnessReceipt,
+    kind: RUNX_LOGICAL_SCHEMAS.receipt,
     status: runnerReceiptStatus(receipt),
     verification,
     name: runnerReceiptDisplayName(receipt),
     sourceType: runnerReceiptSource(receipt),
     startedAt: runnerReceiptStartedAt(receipt) ?? receipt.created_at,
-    completedAt: runnerReceiptCompletedAt(receipt) ?? receipt.seal.closed_at ?? receipt.seal.last_observed_at,
+    completedAt: runnerReceiptCompletedAt(receipt) ?? receipt.seal.closed_at,
     actors,
     artifactTypes,
     disposition: receipt.seal.disposition,
-    outcomeState: receipt.harness.state,
+    outcomeState: receipt.seal.disposition === "deferred" ? "deferred" : "sealed",
     approval,
     lineage,
     runnerProvider,
@@ -675,10 +675,10 @@ function extractReceiptHarness(
   receipt: RuntimeReceipt,
   ledgerEntries: readonly ArtifactEnvelope[],
 ): { readonly id?: string; readonly state?: string; readonly sealSummary?: string } | undefined {
-  if (isHarnessReceipt(receipt)) {
+  if (isReceipt(receipt)) {
     return {
-      id: receipt.harness.harness_id,
-      state: receipt.harness.state,
+      id: receipt.subject.ref.uri,
+      state: receipt.seal.disposition === "deferred" ? "deferred" : "sealed",
       sealSummary: receipt.seal.summary,
     };
   }
@@ -725,8 +725,7 @@ function resolveSummaryName(field: string | null | undefined, fallbackId: string
 
 function extractReceiptActors(receipt: RuntimeReceipt): readonly string[] | undefined {
   const harnessActors = [
-    receipt.harness.host_ref.uri,
-    receipt.harness.authority.actor_ref.uri,
+    receipt.authority.actor_ref.uri,
   ].filter((entry) => entry.trim().length > 0);
   const metadata = isRecord(receipt.metadata) ? receipt.metadata : undefined;
   if (!metadata) {
@@ -946,17 +945,17 @@ async function readRuntimeReceipt(receiptDir: string, id: string): Promise<Runti
       { cause: error },
     );
   }
-  if (isRecord(parsed) && parsed.schema === RUNX_LOGICAL_SCHEMAS.harnessReceipt) {
-    return validateHarnessReceiptContract(parsed, filePath);
+  if (isRecord(parsed) && parsed.schema === RUNX_LOGICAL_SCHEMAS.receipt) {
+    return validateReceiptContract(parsed, filePath);
   }
-  throw new Error(`${filePath} is not a ${RUNX_LOGICAL_SCHEMAS.harnessReceipt} receipt.`);
+  throw new Error(`${filePath} is not a ${RUNX_LOGICAL_SCHEMAS.receipt} receipt.`);
 }
 
-async function verifyHarnessReceipt(
+async function verifyReceipt(
   receipt: RuntimeReceipt,
   runxHome: string,
 ): Promise<ReceiptVerification> {
-  if (receipt.schema !== RUNX_LOGICAL_SCHEMAS.harnessReceipt || receipt.signature.alg !== "Ed25519") {
+  if (receipt.schema !== RUNX_LOGICAL_SCHEMAS.receipt || receipt.signature.alg !== "Ed25519") {
     return {
       status: "unverified",
       reason: "unsupported_receipt_version_or_signature_algorithm",
@@ -1017,15 +1016,15 @@ function defaultRunxHome(): string {
 }
 
 function receiptTimestamp(receipt: RuntimeReceipt): string {
-  return receipt.seal.closed_at ?? receipt.seal.last_observed_at ?? receipt.created_at;
+  return receipt.seal.closed_at ?? receipt.created_at;
 }
 
 function pausedRunKind(pending: PendingRunState): string {
-  return pending.stepIds.length > 0 ? RUNX_LOGICAL_SCHEMAS.harness : RUNX_LOGICAL_SCHEMAS.harnessReceipt;
+  return pending.stepIds.length > 0 ? RUNX_LOGICAL_SCHEMAS.harness : RUNX_LOGICAL_SCHEMAS.receipt;
 }
 
-function isHarnessReceipt(receipt: RuntimeReceipt): receipt is HarnessReceiptContract {
-  return "schema" in receipt && receipt.schema === RUNX_LOGICAL_SCHEMAS.harnessReceipt;
+function isReceipt(receipt: RuntimeReceipt): receipt is ReceiptContract {
+  return "schema" in receipt && receipt.schema === RUNX_LOGICAL_SCHEMAS.receipt;
 }
 
 function assertSafeReceiptFileStem(id: string): void {

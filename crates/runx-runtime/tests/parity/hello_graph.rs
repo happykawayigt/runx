@@ -43,7 +43,7 @@ fn hello_graph_matches_post_cutover_fixture() -> Result<(), Box<dyn std::error::
         expected.stdout
     );
     assert_eq!(run.receipt.created_at, expected.created_at);
-    assert_eq!(run.receipt.seal.digest, expected.graph_seal_digest);
+    assert_eq!(run.receipt.digest, expected.graph_seal_digest);
     assert_eq!(
         run.receipt.harness.enforcement.sandbox.profile,
         expected.sandbox_profile
@@ -58,7 +58,7 @@ fn hello_graph_matches_post_cutover_fixture() -> Result<(), Box<dyn std::error::
     assert_eq!(
         run.steps
             .iter()
-            .map(|step| step.receipt.seal.digest.clone())
+            .map(|step| step.receipt.digest.clone())
             .collect::<Vec<_>>(),
         expected.child_seal_digests
     );

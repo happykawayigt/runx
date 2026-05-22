@@ -10,7 +10,7 @@ metadata:
 expect:
   status: escalated
   receipt:
-    schema: runx.harness_receipt.v1
+    schema: runx.receipt.v1
     harness_id: hrn_x402-pay-idempotency-crash-recovery_graph
     state: sealed
     disposition: deferred

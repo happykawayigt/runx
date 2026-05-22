@@ -2,7 +2,7 @@
   "schema_version": "runx.payment_ledger_projection.v1",
   "payment_profile": "x402-pay",
   "scenario_id": "P1.5",
-  "source_receipt_id": "runx:harness_receipt:hrn_rcpt_x402-pay-paid-echo_graph",
+  "source_receipt_id": "runx:receipt:hrn_rcpt_x402-pay-paid-echo_graph",
   "disposition": "settled",
   "accrual": {
     "amount_minor": 125,
@@ -17,8 +17,8 @@
   },
   "refusal": null,
   "evidence_refs": [
-    "runx:harness:x402-pay-paid-echo_fulfill",
-    "runx:harness_receipt:hrn_rcpt_x402-pay-paid-echo_fulfill",
+    "hrn_x402-pay-paid-echo_fulfill",
+    "runx:receipt:hrn_rcpt_x402-pay-paid-echo_fulfill",
     "runx:payment-capability:paid-echo-spend-1"
   ]
 }

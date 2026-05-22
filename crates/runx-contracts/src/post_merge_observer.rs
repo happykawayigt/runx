@@ -229,7 +229,7 @@ pub struct PostMergeObserverRuntimeDedupePlan {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct PostMergeObserverPublicationProjection {
-    pub harness_receipt_ref: Reference,
+    pub receipt_ref: Reference,
     pub source_issue_ref: Reference,
     pub pull_request_ref: Reference,
     #[serde(skip_serializing_if = "Option::is_none")]

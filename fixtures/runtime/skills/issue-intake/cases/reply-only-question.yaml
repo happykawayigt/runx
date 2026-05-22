@@ -80,7 +80,7 @@ caller:
 expect:
   status: "sealed"
   receipt:
-    schema: "runx.harness_receipt.v1"
+    schema: "runx.receipt.v1"
     receipt_id: "hrn_rcpt_reply-only-question_reply-only-question"
     harness_id: "hrn_reply-only-question_reply-only-question"
     state: "sealed"

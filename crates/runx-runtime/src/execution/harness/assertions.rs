@@ -1,10 +1,10 @@
-use runx_contracts::{ClosureDisposition, HarnessReceipt, HarnessReceiptSchema, HarnessState};
+use runx_contracts::{ClosureDisposition, Receipt, ReceiptSchema};
 use runx_receipts::{
-    ReceiptProofContextProvider, canonical_receipt_body_digest, canonical_receipt_digest,
-    validate_harness_receipt_proof, verify_harness_receipt_proof,
+    ReceiptFindingCode, ReceiptProofContextProvider, canonical_receipt_body_digest,
+    canonical_receipt_digest, verify_receipt_proof,
 };
 
-use crate::execution::harness::fixtures::{HarnessExpectedStatus, HarnessReceiptExpectation};
+use crate::execution::harness::fixtures::{HarnessExpectedStatus, ReceiptExpectation};
 use crate::execution::harness::runner::{HarnessReplayError, HarnessReplayOutput};
 use crate::receipts::RuntimeReceiptProofContextProvider;
 
@@ -12,7 +12,7 @@ use crate::receipts::RuntimeReceiptProofContextProvider;
 pub struct HarnessReplayReceipt {
     pub receipt_id: String,
     pub harness_id: String,
-    pub state: HarnessState,
+    pub state: String,
     pub disposition: ClosureDisposition,
     pub reason_code: String,
     pub act_ids: Vec<String>,
@@ -61,8 +61,8 @@ pub(super) fn status_from_disposition(disposition: &ClosureDisposition) -> Harne
 }
 
 fn assert_receipt(
-    expected: &HarnessReceiptExpectation,
-    actual: &HarnessReceipt,
+    expected: &ReceiptExpectation,
+    actual: &Receipt,
 ) -> Result<(), HarnessReplayError> {
     assert_receipt_proof(actual)?;
     assert_equal(
@@ -80,7 +80,7 @@ fn assert_receipt(
 }
 
 fn assert_receipt_identity(
-    expected: &HarnessReceiptExpectation,
+    expected: &ReceiptExpectation,
     summary: &HarnessReplayReceipt,
 ) -> Result<(), HarnessReplayError> {
     if let Some(expected_harness_id) = &expected.harness_id {
@@ -93,8 +93,8 @@ fn assert_receipt_identity(
     if let Some(expected_state) = &expected.state {
         assert_equal(
             "expect.receipt.state",
-            state_name(expected_state),
-            state_name(&summary.state),
+            expected_state.as_str(),
+            summary.state.as_str(),
         )?;
     }
     if let Some(expected_disposition) = &expected.disposition {
@@ -115,7 +115,7 @@ fn assert_receipt_identity(
 }
 
 fn assert_receipt_lists(
-    expected: &HarnessReceiptExpectation,
+    expected: &ReceiptExpectation,
     summary: &HarnessReplayReceipt,
 ) -> Result<(), HarnessReplayError> {
     assert_optional_list(
@@ -141,8 +141,8 @@ fn assert_receipt_lists(
 }
 
 fn assert_receipt_digests(
-    expected: &HarnessReceiptExpectation,
-    actual: &HarnessReceipt,
+    expected: &ReceiptExpectation,
+    actual: &Receipt,
 ) -> Result<(), HarnessReplayError> {
     if let Some(expected_body_digest) = &expected.body_digest {
         let body_digest = canonical_receipt_body_digest(actual).map_err(receipt_digest_error)?;
@@ -163,22 +163,26 @@ fn assert_receipt_digests(
     Ok(())
 }
 
-fn assert_receipt_proof(receipt: &HarnessReceipt) -> Result<(), HarnessReplayError> {
+fn assert_receipt_proof(receipt: &Receipt) -> Result<(), HarnessReplayError> {
     let proof_contexts = RuntimeReceiptProofContextProvider::local_development();
     let context = proof_contexts.proof_context(receipt);
-    validate_harness_receipt_proof(receipt, &context).map_err(|verification| {
-        HarnessReplayError::ReceiptProofInvalid {
-            receipt_id: receipt.id.clone(),
-            findings: format!("{:?}", verification.findings),
-        }
-    })?;
-    let verification = verify_harness_receipt_proof(receipt, &context);
-    if verification.valid {
+    let verification = verify_receipt_proof(receipt, &context);
+    // The decision -> act-id integrity property is journal-dependent and reported
+    // as `unverified` by plain proof verification; the runtime confirms it through
+    // the in-hand journal, so it is not a blocking replay finding.
+    let blocking: Vec<_> = verification
+        .findings
+        .iter()
+        .filter(|finding| {
+            !matches!(finding.code, ReceiptFindingCode::DecisionIntegrityUnverified)
+        })
+        .collect();
+    if blocking.is_empty() {
         Ok(())
     } else {
         Err(HarnessReplayError::ReceiptProofInvalid {
             receipt_id: receipt.id.clone(),
-            findings: format!("{:?}", verification.findings),
+            findings: format!("{blocking:?}"),
         })
     }
 }
@@ -189,45 +193,50 @@ fn receipt_digest_error(error: runx_receipts::ReceiptError) -> HarnessReplayErro
     }
 }
 
-fn summarize_receipt(receipt: &HarnessReceipt) -> HarnessReplayReceipt {
+fn summarize_receipt(receipt: &Receipt) -> HarnessReplayReceipt {
+    let state = if matches!(receipt.seal.disposition, ClosureDisposition::Deferred) {
+        "deferred".to_owned()
+    } else {
+        "sealed".to_owned()
+    };
     HarnessReplayReceipt {
         receipt_id: receipt.id.clone(),
-        harness_id: receipt.harness.harness_id.clone(),
-        state: receipt.harness.state.clone(),
+        harness_id: receipt.subject.reference.uri.clone(),
+        state,
         disposition: receipt.seal.disposition.clone(),
         reason_code: receipt.seal.reason_code.clone(),
-        act_ids: receipt
-            .harness
-            .acts
-            .iter()
-            .map(|act| act.act_id.clone())
-            .collect(),
+        act_ids: receipt.acts.iter().map(|act| act.id.clone()).collect(),
         decision_ids: receipt
-            .harness
-            .decisions
-            .iter()
-            .map(|decision| decision.decision_id.clone())
-            .collect(),
+            .lineage
+            .as_ref()
+            .and_then(|lineage| lineage.journal_ref.as_ref())
+            .map(|reference| vec![reference.uri.clone()])
+            .unwrap_or_default(),
         child_receipt_refs: receipt
-            .harness
-            .child_harness_receipt_refs
-            .iter()
-            .map(|reference| reference.uri.clone())
-            .collect(),
+            .lineage
+            .as_ref()
+            .map(|lineage| {
+                lineage
+                    .children
+                    .iter()
+                    .map(|reference| reference.uri.clone())
+                    .collect()
+            })
+            .unwrap_or_default(),
         verification_refs: receipt
-            .harness
             .acts
             .iter()
-            .flat_map(|act| act.verification_refs.iter())
+            .flat_map(|act| act.criteria.iter())
+            .flat_map(|criterion| criterion.verification_refs.iter())
             .map(|reference| reference.uri.clone())
             .collect(),
     }
 }
 
-fn receipt_step_name(receipt: &HarnessReceipt) -> String {
-    receipt.harness.acts.first().map_or_else(
-        || receipt.harness.harness_id.clone(),
-        |act| act.act_id.trim_start_matches("act_").to_owned(),
+fn receipt_step_name(receipt: &Receipt) -> String {
+    receipt.acts.first().map_or_else(
+        || receipt.subject.reference.uri.clone(),
+        |act| act.id.trim_start_matches("act_").to_owned(),
     )
 }
 
@@ -259,25 +268,9 @@ fn assert_equal(
     })
 }
 
-fn schema_name(schema: &HarnessReceiptSchema) -> &'static str {
+fn schema_name(schema: &ReceiptSchema) -> &'static str {
     match schema {
-        HarnessReceiptSchema::V1 => "runx.harness_receipt.v1",
-    }
-}
-
-fn state_name(state: &HarnessState) -> &'static str {
-    match state {
-        HarnessState::Forming => "forming",
-        HarnessState::Admitted => "admitted",
-        HarnessState::Running => "running",
-        HarnessState::Waiting => "waiting",
-        HarnessState::Delegated => "delegated",
-        HarnessState::Sealing => "sealing",
-        HarnessState::Sealed => "sealed",
-        HarnessState::Killed => "killed",
-        HarnessState::TimedOut => "timed_out",
-        HarnessState::Failed => "failed",
-        HarnessState::Superseded => "superseded",
+        ReceiptSchema::V1 => "runx.receipt.v1",
     }
 }
 

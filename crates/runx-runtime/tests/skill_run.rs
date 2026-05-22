@@ -61,7 +61,7 @@ fn native_skill_run_pauses_with_agent_act_request() -> Result<(), Box<dyn std::e
 }
 
 #[test]
-fn native_skill_run_resumes_and_seals_harness_receipt() -> Result<(), Box<dyn std::error::Error>> {
+fn native_skill_run_resumes_and_seals_receipt() -> Result<(), Box<dyn std::error::Error>> {
     let temp = tempdir()?;
     let skill_dir = write_agent_step_skill(temp.path())?;
     let receipt_dir = temp.path().join("receipts");
@@ -106,14 +106,13 @@ fn native_skill_run_resumes_and_seals_harness_receipt() -> Result<(), Box<dyn st
     let receipt = LocalReceiptStore::new(&receipt_dir).read_exact(receipt_id)?;
     assert_eq!(
         serde_json::to_value(&receipt.schema)?,
-        serde_json::json!("runx.harness_receipt.v1")
+        serde_json::json!("runx.receipt.v1")
     );
     assert_eq!(serde_json::to_value(&receipt.seal.disposition)?, "declined");
-    assert_eq!(receipt.harness.acts.len(), 1);
-    assert_eq!(receipt.harness.decisions.len(), 1);
+    assert_eq!(receipt.acts.len(), 1);
     assert_eq!(
-        serde_json::to_value(&receipt.harness.acts[0].closure.disposition)?,
-        "declined"
+        serde_json::to_value(&receipt.acts[0].criteria[0].status)?,
+        "failed"
     );
 
     let payload = object_field(output, "payload").ok_or("missing payload")?;

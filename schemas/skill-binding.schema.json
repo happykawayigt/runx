@@ -80,10 +80,6 @@
               "type": "string"
             },
             {
-              "const": "harness_receipt",
-              "type": "string"
-            },
-            {
               "const": "artifact",
               "type": "string"
             },
@@ -340,10 +336,6 @@
                 "type": "string"
               },
               {
-                "const": "harness_receipt",
-                "type": "string"
-              },
-              {
                 "const": "artifact",
                 "type": "string"
               },
@@ -529,10 +521,6 @@
                 "type": "string"
               },
               {
-                "const": "harness_receipt",
-                "type": "string"
-              },
-              {
                 "const": "artifact",
                 "type": "string"
               },
@@ -715,10 +703,6 @@
                 },
                 {
                   "const": "graph_receipt",
-                  "type": "string"
-                },
-                {
-                  "const": "harness_receipt",
                   "type": "string"
                 },
                 {

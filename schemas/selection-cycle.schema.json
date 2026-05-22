@@ -16,7 +16,7 @@
     "ranked_selection_refs",
     "chosen_selection_ref",
     "decision_ref",
-    "harness_receipt_ref",
+    "receipt_ref",
     "no_action_closure",
     "fingerprint"
   ],
@@ -119,10 +119,6 @@
               },
               {
                 "const": "graph_receipt",
-                "type": "string"
-              },
-              {
-                "const": "harness_receipt",
                 "type": "string"
               },
               {
@@ -311,10 +307,6 @@
                 "type": "string"
               },
               {
-                "const": "harness_receipt",
-                "type": "string"
-              },
-              {
                 "const": "artifact",
                 "type": "string"
               },
@@ -497,10 +489,6 @@
               },
               {
                 "const": "graph_receipt",
-                "type": "string"
-              },
-              {
-                "const": "harness_receipt",
                 "type": "string"
               },
               {
@@ -689,10 +677,6 @@
                 "type": "string"
               },
               {
-                "const": "harness_receipt",
-                "type": "string"
-              },
-              {
                 "const": "artifact",
                 "type": "string"
               },
@@ -875,10 +859,6 @@
                 },
                 {
                   "const": "graph_receipt",
-                  "type": "string"
-                },
-                {
-                  "const": "harness_receipt",
                   "type": "string"
                 },
                 {
@@ -1071,10 +1051,6 @@
                   "type": "string"
                 },
                 {
-                  "const": "harness_receipt",
-                  "type": "string"
-                },
-                {
                   "const": "artifact",
                   "type": "string"
                 },
@@ -1208,7 +1184,7 @@
         }
       ]
     },
-    "harness_receipt_ref": {
+    "receipt_ref": {
       "anyOf": [
         {
           "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1261,10 +1237,6 @@
                 },
                 {
                   "const": "graph_receipt",
-                  "type": "string"
-                },
-                {
-                  "const": "harness_receipt",
                   "type": "string"
                 },
                 {
@@ -1545,10 +1517,6 @@
                   },
                   {
                     "const": "graph_receipt",
-                    "type": "string"
-                  },
-                  {
-                    "const": "harness_receipt",
                     "type": "string"
                   },
                   {

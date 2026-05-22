@@ -41,18 +41,20 @@ fn stripe_spt_payment_seals_happy_path_with_scoped_proof() -> Result<(), Box<dyn
 
     let fulfill = step_run(&run.steps, "fulfill")?;
     assert!(
-        fulfill.receipt.harness.acts[0]
-            .verification_refs
+        fulfill.receipt.acts[0]
+            .criteria
             .iter()
+            .flat_map(|criterion| criterion.verification_refs.iter())
             .any(|reference| reference.uri == STRIPE_SPT_PROOF_REF
                 && reference.locator.as_deref() == Some(STRIPE_SPT_IDEMPOTENCY_KEY)
                 && reference.proof_kind.as_ref() == Some(&ProofKind::PaymentRail)),
         "stripe-spt fulfillment must seal a typed payment rail proof"
     );
     assert!(
-        fulfill.receipt.harness.acts[0]
-            .source_refs
+        fulfill.receipt.acts[0]
+            .criteria
             .iter()
+            .flat_map(|criterion| criterion.evidence_refs.iter())
             .any(|reference| reference.uri == STRIPE_SPT_CREDENTIAL_REF),
         "paid tool receives only the scoped credential reference"
     );

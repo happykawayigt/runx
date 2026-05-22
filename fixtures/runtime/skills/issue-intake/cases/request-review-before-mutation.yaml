@@ -91,7 +91,7 @@ caller:
 expect:
   status: "sealed"
   receipt:
-    schema: "runx.harness_receipt.v1"
+    schema: "runx.receipt.v1"
     receipt_id: "hrn_rcpt_request-review-before-mutation_request-review-before-mutation"
     harness_id: "hrn_request-review-before-mutation_request-review-before-mutation"
     state: "sealed"

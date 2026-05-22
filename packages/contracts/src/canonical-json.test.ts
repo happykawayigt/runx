@@ -23,12 +23,12 @@ interface CanonicalJsonCase {
   readonly expected_sha256: string;
 }
 
-interface HarnessReceiptOracleFixture {
+interface ReceiptOracleFixture {
   readonly canonicalization: string;
-  readonly cases: readonly HarnessReceiptOracleCase[];
+  readonly cases: readonly ReceiptOracleCase[];
 }
 
-interface HarnessReceiptOracleCase {
+interface ReceiptOracleCase {
   readonly name: string;
   readonly fixture: string;
   readonly full_canonical_json: string;
@@ -48,14 +48,14 @@ const fixtureUrl = new URL(
 
 const fixture = JSON.parse(readFileSync(fixtureUrl, "utf8")) as CanonicalJsonFixture;
 
-const harnessReceiptOracleUrl = new URL(
-  "../../../fixtures/contracts/canonical-json/runx-harness-receipt-c14n-v1.oracles.json",
+const receiptOracleUrl = new URL(
+  "../../../fixtures/contracts/canonical-json/runx-receipt-c14n-v1.oracles.json",
   import.meta.url,
 );
 
-const harnessReceiptOracle = JSON.parse(
-  readFileSync(harnessReceiptOracleUrl, "utf8"),
-) as HarnessReceiptOracleFixture;
+const receiptOracle = JSON.parse(
+  readFileSync(receiptOracleUrl, "utf8"),
+) as ReceiptOracleFixture;
 
 describe("runx.stable-json.v1 canonical JSON", () => {
   it("exports the canonicalization tag", () => {
@@ -115,12 +115,12 @@ describe("runx.stable-json.v1 canonical JSON", () => {
   });
 });
 
-describe("runx.harness-receipt.c14n.v1 conformance", () => {
+describe("runx.receipt.c14n.v1 conformance", () => {
   it("uses Rust receipt canonicalization as the oracle", () => {
-    expect(harnessReceiptOracle.canonicalization).toBe("runx.harness-receipt.c14n.v1");
+    expect(receiptOracle.canonicalization).toBe("runx.receipt.c14n.v1");
   });
 
-  it.each(harnessReceiptOracle.cases.map((testCase) => [testCase.name, testCase] as const))(
+  it.each(receiptOracle.cases.map((testCase) => [testCase.name, testCase] as const))(
     "matches Rust full receipt canonical JSON and digest for %s",
     (_name, testCase) => {
       const fixture = readHarnessSpineFixture(testCase.fixture);
@@ -131,7 +131,7 @@ describe("runx.harness-receipt.c14n.v1 conformance", () => {
     },
   );
 
-  it.each(harnessReceiptOracle.cases.map((testCase) => [testCase.name, testCase] as const))(
+  it.each(receiptOracle.cases.map((testCase) => [testCase.name, testCase] as const))(
     "matches Rust body receipt canonical JSON and digest for %s",
     (_name, testCase) => {
       const fixture = readHarnessSpineFixture(testCase.fixture);
@@ -158,35 +158,19 @@ function readHarnessSpineFixture(fixture: string): HarnessSpineFixture {
 }
 
 function stripBodyProofFields(value: unknown, isRoot: boolean): unknown {
-  if (Array.isArray(value)) {
-    return value.map((item) => stripBodyProofFields(item, false));
-  }
-  if (isJsonRecord(value)) {
+  // The signed body commits every flat field except the envelope's own
+  // signature and digest. metadata is a runtime read aid, never signed.
+  if (isRoot && isJsonRecord(value)) {
     const stripped: Record<string, unknown> = {};
     for (const key of Object.keys(value)) {
-      if (isRoot && key === "signature") {
+      if (key === "signature" || key === "digest" || key === "metadata") {
         continue;
       }
-      if (key === "seal" && isJsonRecord(value[key])) {
-        stripped[key] = stripSealProofFields(value[key]);
-        continue;
-      }
-      stripped[key] = stripBodyProofFields(value[key], false);
+      stripped[key] = value[key];
     }
     return stripped;
   }
   return value;
-}
-
-function stripSealProofFields(value: Record<string, unknown>): Record<string, unknown> {
-  const stripped: Record<string, unknown> = {};
-  for (const key of Object.keys(value)) {
-    if (key === "digest" || key === "verification_summary") {
-      continue;
-    }
-    stripped[key] = stripBodyProofFields(value[key], false);
-  }
-  return stripped;
 }
 
 function isJsonRecord(value: unknown): value is Record<string, unknown> {

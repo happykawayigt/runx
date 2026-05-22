@@ -1,4 +1,4 @@
-use runx_contracts::{ClosureDisposition, HarnessReceipt, JsonObject};
+use runx_contracts::{ClosureDisposition, Receipt, JsonObject};
 use runx_core::state_machine::StepAdmissionWitness;
 use runx_runtime::payment_ledger::{
     PaidToolEvidence, PaymentLedgerEvidence, PaymentLedgerEvidencePacket,
@@ -152,9 +152,9 @@ fn x402_projection_artifact_writer_persists_under_receipt_dir_and_returns_event_
             kind: "payment_ledger_projected".to_owned(),
             payment_profile: "x402-pay".to_owned(),
             projection_artifact_id:
-                "x402-pay:runx:harness_receipt:hrn_rcpt_x402-pay-paid-echo_graph".to_owned(),
+                "x402-pay:runx:receipt:hrn_rcpt_x402-pay-paid-echo_graph".to_owned(),
             projection_artifact_path: artifact.path.to_string_lossy().into_owned(),
-            source_receipt_id: "runx:harness_receipt:hrn_rcpt_x402-pay-paid-echo_graph".to_owned(),
+            source_receipt_id: "runx:receipt:hrn_rcpt_x402-pay-paid-echo_graph".to_owned(),
             scenario_id: "P1.5".to_owned(),
             disposition: projection.disposition.clone(),
         }
@@ -229,7 +229,7 @@ fn x402_projection_event_persists_after_sealed_graph_receipt()
     assert_eq!(record["entry"]["data"]["kind"], "payment_ledger_projected");
     assert_eq!(
         record["entry"]["data"]["detail"]["source_receipt_id"],
-        "runx:harness_receipt:hrn_rcpt_x402-pay-paid-echo_graph"
+        "runx:receipt:hrn_rcpt_x402-pay-paid-echo_graph"
     );
     assert_eq!(record["entry"]["meta"]["run_id"], "gx_x402-pay-paid-echo");
     assert!(second.is_ok(), "second write must be idempotent");
@@ -289,7 +289,7 @@ fn x402_projection_event_persists_refusal_for_blocked_graph_receipt()
     Ok(())
 }
 
-fn paid_echo_supervisor_proof(receipt: &HarnessReceipt) -> PaymentSupervisorProof {
+fn paid_echo_supervisor_proof(receipt: &Receipt) -> PaymentSupervisorProof {
     PaymentSupervisorProof {
         verifier_id: PAYMENT_RAIL_SUPERVISOR_VERIFIER_ID.to_owned(),
         proof_ref: "receipt-proof:mock:paid-echo-001".to_owned(),
@@ -301,7 +301,7 @@ fn paid_echo_supervisor_proof(receipt: &HarnessReceipt) -> PaymentSupervisorProo
         spend_capability_ref: "runx:payment-capability:paid-echo-spend-1".to_owned(),
         act_id: "act_fulfill".to_owned(),
         receipt_ref: receipt.id.clone(),
-        receipt_digest: receipt.seal.digest.clone(),
+        receipt_digest: receipt.digest.clone(),
         evidence_digest: "sha256:test-supervisor-evidence".to_owned(),
     }
 }
@@ -325,7 +325,7 @@ fn paid_echo_reservation(
 fn graph(
     graph_name: &str,
     steps: &[StepRun],
-) -> Result<HarnessReceipt, Box<dyn std::error::Error>> {
+) -> Result<Receipt, Box<dyn std::error::Error>> {
     let mut steps = steps.to_vec();
     Ok(graph_receipt(
         graph_name,

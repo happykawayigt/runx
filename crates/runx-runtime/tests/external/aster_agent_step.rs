@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use runx_contracts::{ClosureDisposition, JsonObject, JsonValue};
-use runx_receipts::validate_harness_receipt;
+use runx_receipts::validate_receipt;
 use runx_runtime::{
     HarnessExpectedStatus, HarnessReplayOutput, InvocationStatus, RuntimeOptions, SkillAdapter,
     SkillInvocation, SkillOutput, load_harness_fixture, run_harness_fixture_with_adapter,
@@ -14,7 +14,7 @@ fn aster_agent_step_replays_current_rust_bridge_terminal_report()
 
     assert_eq!(output.status, HarnessExpectedStatus::Sealed);
     assert_eq!(output.receipt.seal.disposition, ClosureDisposition::Closed);
-    validate_harness_receipt(&output.receipt)
+    validate_receipt(&output.receipt)
         .map_err(|verification| format!("{:?}", verification.findings))?;
 
     let payload = skill_payload(&output)?;
@@ -31,7 +31,7 @@ fn aster_agent_step_replays_current_rust_bridge_terminal_report()
     );
 
     let receipt = object_field_value(&payload, "receipt")?;
-    assert_eq!(string_field(receipt, "schema")?, "runx.harness_receipt.v1");
+    assert_eq!(string_field(receipt, "schema")?, "runx.receipt.v1");
     assert_eq!(
         string_field(receipt, "id")?,
         "hrn_rcpt_aster_issue_triage_14"
@@ -68,7 +68,7 @@ fn aster_external_fixture_records_grounded_bridge_sources() -> Result<(), Box<dy
     );
     assert_eq!(
         fixture.metadata.get("receipt_contract"),
-        Some(&JsonValue::String("runx.harness_receipt.v1".to_owned()))
+        Some(&JsonValue::String("runx.receipt.v1".to_owned()))
     );
 
     let inputs = JsonValue::Object(fixture.inputs);

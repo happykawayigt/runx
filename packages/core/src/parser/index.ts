@@ -143,9 +143,9 @@ export interface HarnessCallerFixture {
   readonly approvals?: Readonly<Record<string, boolean>>;
 }
 
-export interface HarnessReceiptExpectation {
+export interface ReceiptExpectation {
   readonly [key: string]: unknown;
-  readonly schema?: "runx.harness_receipt.v1";
+  readonly schema?: "runx.receipt.v1";
   readonly status?: "sealed" | "failure";
   readonly source_type?: string;
   readonly body_digest?: string;
@@ -161,7 +161,7 @@ export interface HarnessReceiptExpectation {
 
 export interface HarnessExpectation {
   readonly status?: "sealed" | "failure" | "needs_agent" | "policy_denied" | "escalated";
-  readonly receipt?: HarnessReceiptExpectation;
+  readonly receipt?: ReceiptExpectation;
   readonly steps?: readonly string[];
 }
 
@@ -856,21 +856,21 @@ function validateHarnessCaller(value: Record<string, unknown>, field: string): H
 function validateHarnessExpectation(value: Record<string, unknown>, field: string): HarnessExpectation {
   return {
     status: optionalHarnessStatus(value.status, `${field}.status`),
-    receipt: validateHarnessReceiptExpectation(optionalRecord(value.receipt, `${field}.receipt`), `${field}.receipt`),
+    receipt: validateReceiptExpectation(optionalRecord(value.receipt, `${field}.receipt`), `${field}.receipt`),
     steps: optionalStringArray(value.steps, `${field}.steps`),
   };
 }
 
-function validateHarnessReceiptExpectation(
+function validateReceiptExpectation(
   value: Record<string, unknown> | undefined,
   field: string,
-): HarnessReceiptExpectation | undefined {
+): ReceiptExpectation | undefined {
   if (!value) {
     return undefined;
   }
   return {
-    schema: optionalHarnessReceiptSchema(value.schema, `${field}.schema`),
-    status: optionalHarnessReceiptStatus(value.status, `${field}.status`),
+    schema: optionalReceiptSchema(value.schema, `${field}.schema`),
+    status: optionalReceiptStatus(value.status, `${field}.status`),
     source_type: optionalString(value.source_type, `${field}.source_type`),
     body_digest: optionalString(value.body_digest, `${field}.body_digest`),
     receipt_digest: optionalString(value.receipt_digest, `${field}.receipt_digest`),
@@ -922,7 +922,7 @@ function optionalHarnessStatus(value: unknown, field: string): HarnessExpectatio
   throw new SkillValidationError(`${field} must be sealed, failure, needs_agent, policy_denied, or escalated.`);
 }
 
-function optionalHarnessReceiptStatus(value: unknown, field: string): HarnessReceiptExpectation["status"] {
+function optionalReceiptStatus(value: unknown, field: string): ReceiptExpectation["status"] {
   if (value === undefined || value === null) {
     return undefined;
   }
@@ -932,14 +932,14 @@ function optionalHarnessReceiptStatus(value: unknown, field: string): HarnessRec
   throw new SkillValidationError(`${field} must be sealed or failure.`);
 }
 
-function optionalHarnessReceiptSchema(value: unknown, field: string): HarnessReceiptExpectation["schema"] {
+function optionalReceiptSchema(value: unknown, field: string): ReceiptExpectation["schema"] {
   if (value === undefined || value === null) {
     return undefined;
   }
-  if (value === "runx.harness_receipt.v1") {
+  if (value === "runx.receipt.v1") {
     return value;
   }
-  throw new SkillValidationError(`${field} must be runx.harness_receipt.v1.`);
+  throw new SkillValidationError(`${field} must be runx.receipt.v1.`);
 }
 
 function requiredString(value: unknown, field: string): string {

@@ -21,7 +21,6 @@ export const referenceTypes = [
   "act",
   "receipt",
   "graph_receipt",
-  "harness_receipt",
   "artifact",
   "verification",
   "harness",
@@ -273,7 +272,7 @@ export const nullableReferenceSchema = Type.Union([referenceSchema, Type.Null()]
 
 export const actReferenceSchema = Type.Object(
   {
-    harness_receipt_ref: referenceSchema,
+    receipt_ref: referenceSchema,
     act_id: Type.String({ minLength: 1 }),
   },
   { additionalProperties: false },
@@ -803,7 +802,7 @@ export const harnessSchema = Type.Object(
     signal_refs: Type.Array(referenceSchema),
     decisions: Type.Array(decisionSchema),
     acts: Type.Array(actSchema),
-    child_harness_receipt_refs: Type.Array(referenceSchema),
+    child_receipt_refs: Type.Array(referenceSchema),
     artifact_refs: Type.Array(referenceSchema),
     seal: Type.Union([harnessSealSchema, Type.Null()]),
   },
@@ -822,7 +821,7 @@ export const artifactSchema = Type.Object(
     artifact_ref: referenceSchema,
     produced_by: Type.Object(
       {
-        harness_receipt_ref: Type.Optional(referenceSchema),
+        receipt_ref: Type.Optional(referenceSchema),
         harness_ref: Type.Optional(referenceSchema),
         act_ref: Type.Optional(actReferenceSchema),
         decision_ref: Type.Optional(referenceSchema),
@@ -848,7 +847,7 @@ export const artifactSchema = Type.Object(
   },
 );
 
-export const harnessReceiptIssuerSchema = Type.Object(
+export const receiptIssuerSchema = Type.Object(
   {
     type: stringEnum(["local", "hosted", "ci", "verifier"] as const),
     kid: Type.String({ minLength: 1 }),
@@ -857,7 +856,7 @@ export const harnessReceiptIssuerSchema = Type.Object(
   { additionalProperties: false },
 );
 
-export const harnessReceiptSignatureSchema = Type.Object(
+export const receiptSignatureSchema = Type.Object(
   {
     alg: Type.Literal("Ed25519"),
     value: Type.String({ minLength: 1 }),
@@ -881,28 +880,6 @@ export const fanoutReceiptSyncPointSchema = Type.Object(
   },
   { additionalProperties: false },
 );
-
-export const harnessReceiptEnvelopeSchema = Type.Object(
-  {
-    schema: Type.Literal(RUNX_LOGICAL_SCHEMAS.harnessReceipt),
-    id: Type.String({ minLength: 1 }),
-    created_at: dateTimeStringSchema(),
-    issuer: harnessReceiptIssuerSchema,
-    signature: harnessReceiptSignatureSchema,
-    harness: harnessSchema,
-    seal: harnessSealSchema,
-    sync_points: Type.Optional(Type.Array(fanoutReceiptSyncPointSchema)),
-    metadata: Type.Optional(unknownRecordSchema()),
-  },
-  {
-    $schema: JSON_SCHEMA_DRAFT_2020_12,
-    $id: RUNX_CONTRACT_IDS.harnessReceipt,
-    "x-runx-schema": RUNX_LOGICAL_SCHEMAS.harnessReceipt,
-    additionalProperties: false,
-  },
-);
-
-export const harnessReceiptSchema = harnessReceiptEnvelopeSchema;
 
 export const targetCooldownSchema = Type.Object(
   {
@@ -1042,7 +1019,7 @@ export const targetTransitionEntrySchema = Type.Object(
     summary: Type.String({ minLength: 1 }),
     source_refs: Type.Array(referenceSchema),
     decision_ref: nullableReferenceSchema,
-    harness_receipt_ref: nullableReferenceSchema,
+    receipt_ref: nullableReferenceSchema,
     recorded_at: dateTimeStringSchema(),
   },
   {
@@ -1066,7 +1043,7 @@ export const selectionCycleSchema = Type.Object(
     ranked_selection_refs: Type.Array(referenceSchema),
     chosen_selection_ref: nullableReferenceSchema,
     decision_ref: nullableReferenceSchema,
-    harness_receipt_ref: nullableReferenceSchema,
+    receipt_ref: nullableReferenceSchema,
     no_action_closure: Type.Union([closureSchema, Type.Null()]),
     fingerprint: fingerprintSchema,
   },
@@ -1086,7 +1063,7 @@ export const reflectionEntrySchema = Type.Object(
     opportunity_ref: nullableReferenceSchema,
     selection_ref: nullableReferenceSchema,
     decision_ref: nullableReferenceSchema,
-    harness_receipt_refs: Type.Array(referenceSchema),
+    receipt_refs: Type.Array(referenceSchema),
     act_refs: Type.Array(actReferenceSchema),
     summary: Type.String({ minLength: 1 }),
     lessons: Type.Array(Type.String({ minLength: 1 })),
@@ -1113,7 +1090,7 @@ export const feedEntrySchema = Type.Object(
     opportunity_ref: nullableReferenceSchema,
     selection_ref: nullableReferenceSchema,
     decision_refs: Type.Array(referenceSchema, { minItems: 1 }),
-    harness_receipt_refs: Type.Array(referenceSchema, { minItems: 1 }),
+    receipt_refs: Type.Array(referenceSchema, { minItems: 1 }),
     act_refs: Type.Array(actReferenceSchema, { minItems: 1 }),
     verification_refs: Type.Array(referenceSchema, { minItems: 1 }),
     evidence_refs: Type.Array(referenceSchema, { minItems: 1 }),
@@ -1187,11 +1164,9 @@ export type ReceiptVerificationSummaryContract = DeepReadonly<Static<typeof rece
 export type HarnessSealContract = DeepReadonly<Static<typeof harnessSealSchema>>;
 export type HarnessContract = DeepReadonly<Static<typeof harnessSchema>>;
 export type ArtifactContract = DeepReadonly<Static<typeof artifactSchema>>;
-export type HarnessReceiptIssuerContract = DeepReadonly<Static<typeof harnessReceiptIssuerSchema>>;
-export type HarnessReceiptSignatureContract = DeepReadonly<Static<typeof harnessReceiptSignatureSchema>>;
+export type ReceiptIssuerContract = DeepReadonly<Static<typeof receiptIssuerSchema>>;
+export type ReceiptSignatureContract = DeepReadonly<Static<typeof receiptSignatureSchema>>;
 export type FanoutReceiptSyncPointContract = DeepReadonly<Static<typeof fanoutReceiptSyncPointSchema>>;
-export type HarnessReceiptContract = DeepReadonly<Static<typeof harnessReceiptEnvelopeSchema>>;
-export type HarnessReceiptEnvelopeContract = HarnessReceiptContract;
 export type TargetCooldownContract = DeepReadonly<Static<typeof targetCooldownSchema>>;
 export type TargetContract = DeepReadonly<Static<typeof targetSchema>>;
 export type OpportunityContract = DeepReadonly<Static<typeof opportunitySchema>>;
@@ -1243,18 +1218,6 @@ export function validateHarnessContract(value: unknown, label = "harness"): Harn
     assertActFormDetails(act, `${label}.acts[${index}]`);
   }
   return harness;
-}
-
-export function validateHarnessReceiptContract(
-  value: unknown,
-  label = "harness_receipt",
-): HarnessReceiptContract {
-  const receipt = validateContractSchema(harnessReceiptEnvelopeSchema, value, label);
-  assertHarnessSealState(receipt.harness, `${label}.harness`);
-  if (!sameJsonValue(receipt.harness.seal, receipt.seal)) {
-    throw new Error(`${label}.seal must match ${label}.harness.seal.`);
-  }
-  return receipt;
 }
 
 export function validateSpineArtifactContract(value: unknown, label = "artifact"): ArtifactContract {
@@ -1337,7 +1300,7 @@ function assertActFormDetails(act: ActContract, label: string): void {
   }
 }
 
-function assertHarnessSealState(harness: HarnessContract, label: string): void {
+function assertHarnessSealState(node: HarnessContract, label: string): void {
   const terminalStates = new Set<HarnessStateContract>([
     "sealed",
     "killed",
@@ -1345,32 +1308,13 @@ function assertHarnessSealState(harness: HarnessContract, label: string): void {
     "failed",
     "superseded",
   ]);
-  const terminal = terminalStates.has(harness.state);
-  if (terminal && harness.seal === null) {
-    throw new Error(`${label}.seal is required when state is ${harness.state}.`);
+  const terminal = terminalStates.has(node.state);
+  const seal = node.seal;
+  if (terminal && seal === null) {
+    throw new Error(`${label}.seal is required when state is ${node.state}.`);
   }
-  if (!terminal && harness.seal !== null) {
-    throw new Error(`${label}.seal must be null when state is ${harness.state}.`);
+  if (!terminal && seal !== null) {
+    throw new Error(`${label}.seal must be null when state is ${node.state}.`);
   }
 }
 
-function sameJsonValue(left: unknown, right: unknown): boolean {
-  if (left === right) {
-    return true;
-  }
-  if (Array.isArray(left) || Array.isArray(right)) {
-    return Array.isArray(left)
-      && Array.isArray(right)
-      && left.length === right.length
-      && left.every((entry, index) => sameJsonValue(entry, right[index]));
-  }
-  if (!left || !right || typeof left !== "object" || typeof right !== "object") {
-    return false;
-  }
-  const leftRecord = left as Readonly<Record<string, unknown>>;
-  const rightRecord = right as Readonly<Record<string, unknown>>;
-  const leftKeys = Object.keys(leftRecord).sort();
-  const rightKeys = Object.keys(rightRecord).sort();
-  return leftKeys.length === rightKeys.length
-    && leftKeys.every((key, index) => key === rightKeys[index] && sameJsonValue(leftRecord[key], rightRecord[key]));
-}

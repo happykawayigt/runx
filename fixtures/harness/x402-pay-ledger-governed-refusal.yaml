@@ -10,14 +10,14 @@ metadata:
 expect:
   status: policy_denied
   receipt:
-    schema: runx.harness_receipt.v1
+    schema: runx.receipt.v1
     harness_id: hrn_x402-pay-ledger-governed-refusal_graph
     state: sealed
     disposition: blocked
     reason_code: graph_blocked
     child_receipt_refs:
-      - runx:harness_receipt:hrn_rcpt_x402-pay-ledger-governed-refusal_quote
-      - runx:harness_receipt:hrn_rcpt_x402-pay-ledger-governed-refusal_reserve
+      - runx:receipt:hrn_rcpt_x402-pay-ledger-governed-refusal_quote
+      - runx:receipt:hrn_rcpt_x402-pay-ledger-governed-refusal_reserve
   steps:
     - quote
     - reserve

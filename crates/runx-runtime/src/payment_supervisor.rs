@@ -3,7 +3,7 @@
 // synthesis, and verification in one trusted boundary until the payment
 // execution modules are split.
 use runx_contracts::{
-    HarnessReceipt, JsonObject, JsonValue, ProofKind, Reference, ReferenceType, sha256_prefixed,
+    JsonObject, JsonValue, ProofKind, Receipt, Reference, ReferenceType, sha256_prefixed,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -51,7 +51,7 @@ pub struct PaymentSupervisorProof {
 pub struct PaymentSupervisorVerificationInput<'a> {
     pub outputs: &'a JsonObject,
     pub metadata: &'a JsonObject,
-    pub receipt: &'a HarnessReceipt,
+    pub receipt: &'a Receipt,
     pub rail: &'a str,
     pub counterparty: &'a str,
     pub amount_minor: u64,
@@ -162,7 +162,7 @@ pub fn verify_payment_rail_supervisor_proof(
             spend_capability_ref: input.spend_capability_ref,
             act_id: input.act_id,
             receipt_ref: &input.receipt.id,
-            receipt_digest: &input.receipt.seal.digest,
+            receipt_digest: &input.receipt.digest,
         },
     )
 }
@@ -312,7 +312,7 @@ pub fn synthesize_payment_supervisor_evidence(
 /// step output carries no supervisor proof.
 pub fn rebind_supervisor_proof_to_receipt(
     metadata: &mut JsonObject,
-    receipt: &HarnessReceipt,
+    receipt: &Receipt,
 ) -> Result<(), PaymentSupervisorError> {
     let Some(proof) = payment_supervisor_proof_from_metadata(metadata)? else {
         return Ok(());
@@ -332,7 +332,7 @@ pub fn rebind_supervisor_proof_to_receipt(
             spend_capability_ref: &proof.spend_capability_ref,
             act_id: &proof.act_id,
             receipt_ref: &receipt.id,
-            receipt_digest: &receipt.seal.digest,
+            receipt_digest: &receipt.digest,
         },
     )?;
     insert_payment_supervisor_proof_metadata(metadata, &rebound)
@@ -345,16 +345,20 @@ pub fn payment_supervisor_proof_metadata_value(
 }
 
 pub fn receipt_act_has_payment_rail_proof(
-    receipt: &HarnessReceipt,
+    receipt: &Receipt,
     act_id: &str,
     proof_ref: &str,
     idempotency_key: &str,
 ) -> bool {
-    receipt.harness.acts.iter().any(|act| {
-        act.act_id == act_id
-            && act.verification_refs.iter().any(|reference| {
-                is_matching_payment_rail_ref(reference, proof_ref, idempotency_key)
-            })
+    receipt.acts.iter().any(|act| {
+        act.id == act_id
+            && act
+                .criteria
+                .iter()
+                .flat_map(|criterion| criterion.verification_refs.iter())
+                .any(|reference| {
+                    is_matching_payment_rail_ref(reference, proof_ref, idempotency_key)
+                })
     })
 }
 
@@ -417,12 +421,12 @@ fn validate_supervisor_evidence(
 }
 
 fn validate_receipt_binding(
-    receipt: &HarnessReceipt,
+    receipt: &Receipt,
     act_id: &str,
     proof_ref: &str,
     idempotency_key: &str,
 ) -> Result<(), PaymentSupervisorError> {
-    if !receipt.harness.acts.iter().any(|act| act.act_id == act_id) {
+    if !receipt.acts.iter().any(|act| act.id == act_id) {
         return Err(PaymentSupervisorError::MissingReceiptAct {
             act_id: act_id.to_owned(),
         });

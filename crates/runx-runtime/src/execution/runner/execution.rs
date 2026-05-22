@@ -435,7 +435,7 @@ impl GraphExecution {
     pub(super) fn finish(
         self,
         graph: ExecutionGraph,
-        receipt: runx_contracts::HarnessReceipt,
+        receipt: runx_contracts::Receipt,
     ) -> GraphRun {
         GraphRun {
             graph,

@@ -59,7 +59,7 @@ fn native_skill_pauses_and_resumes_with_run_id() -> Result<(), Box<dyn std::erro
     assert_eq!(resume_json["status"], "sealed");
     assert_eq!(resume_json["run_id"], "issue-intake-run");
     assert_eq!(resume_json["closure"]["disposition"], "closed");
-    assert_eq!(resume_json["receipt"]["schema"], "runx.harness_receipt.v1");
+    assert_eq!(resume_json["receipt"]["schema"], "runx.receipt.v1");
     let receipt_id = resume_json["receipt_id"]
         .as_str()
         .ok_or("missing receipt_id")?;

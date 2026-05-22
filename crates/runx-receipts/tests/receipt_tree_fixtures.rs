@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use runx_contracts::{HarnessReceipt, Reference, ReferenceType};
+use runx_contracts::{Receipt, Reference, ReferenceType};
 use runx_receipts::{
     ReceiptResolveResult, ReceiptResolver, ReceiptTreeConfig, ReceiptVerification, ResolvedReceipt,
     verify_receipt_tree_with_resolver,
@@ -12,7 +12,7 @@ const ORACLE: &str = include_str!("../../../fixtures/runtime/receipt-tree/oracle
 #[derive(Debug, Deserialize)]
 struct Oracle {
     cases: Vec<TreeCase>,
-    receipts: BTreeMap<String, HarnessReceipt>,
+    receipts: BTreeMap<String, Receipt>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -87,13 +87,13 @@ fn receipt_tree_fixture_oracle_matches_ordered_findings() -> Result<(), String> 
 }
 
 impl Oracle {
-    fn receipt(&self, name: &str) -> Result<&HarnessReceipt, String> {
+    fn receipt(&self, name: &str) -> Result<&Receipt, String> {
         self.receipts
             .get(name)
             .ok_or_else(|| format!("receipt fixture {name} is missing"))
     }
 
-    fn child_receipts(&self, names: &[String]) -> Result<Vec<HarnessReceipt>, String> {
+    fn child_receipts(&self, names: &[String]) -> Result<Vec<Receipt>, String> {
         names
             .iter()
             .map(|name| self.receipt(name).cloned())
@@ -102,7 +102,7 @@ impl Oracle {
 }
 
 struct FixtureResolver<'a> {
-    children: &'a [HarnessReceipt],
+    children: &'a [Receipt],
     resolver_error_receipt_ids: &'a [String],
 }
 
@@ -148,12 +148,12 @@ impl ReceiptResolver for FixtureResolver<'_> {
 }
 
 fn referenced_receipt_id(reference: &Reference) -> Option<&str> {
-    if reference.reference_type != ReferenceType::HarnessReceipt {
+    if reference.reference_type != ReferenceType::Receipt {
         return None;
     }
     reference
         .uri
-        .strip_prefix("runx:harness_receipt:")
+        .strip_prefix("runx:receipt:")
         .filter(|id| !id.is_empty())
 }
 

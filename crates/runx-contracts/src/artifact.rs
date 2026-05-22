@@ -15,7 +15,7 @@ pub enum ArtifactSchema {
 #[serde(deny_unknown_fields)]
 pub struct ArtifactProducedBy {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub harness_receipt_ref: Option<Reference>,
+    pub receipt_ref: Option<Reference>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub harness_ref: Option<Reference>,
     #[serde(skip_serializing_if = "Option::is_none")]

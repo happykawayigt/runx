@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use runx_contracts::{ClosureDisposition, HarnessReceiptSchema, HarnessState, JsonObject};
+use runx_contracts::{ClosureDisposition, JsonObject, ReceiptSchema};
 use serde::Deserialize;
 use thiserror::Error;
 
@@ -49,18 +49,18 @@ pub struct HarnessFixture {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct HarnessExpectation {
     pub status: Option<HarnessExpectedStatus>,
-    pub receipt: Option<HarnessReceiptExpectation>,
+    pub receipt: Option<ReceiptExpectation>,
     pub steps: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct HarnessReceiptExpectation {
-    pub schema: HarnessReceiptSchema,
+pub struct ReceiptExpectation {
+    pub schema: ReceiptSchema,
     pub body_digest: Option<String>,
     pub receipt_id: Option<String>,
     pub receipt_digest: Option<String>,
     pub harness_id: Option<String>,
-    pub state: Option<HarnessState>,
+    pub state: Option<String>,
     pub disposition: Option<ClosureDisposition>,
     pub reason_code: Option<String>,
     pub act_ids: Vec<String>,
@@ -93,20 +93,20 @@ struct RawHarnessFixture {
 #[serde(deny_unknown_fields)]
 struct RawHarnessExpectation {
     status: Option<HarnessExpectedStatus>,
-    receipt: Option<RawHarnessReceiptExpectation>,
+    receipt: Option<RawReceiptExpectation>,
     #[serde(default)]
     steps: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
-struct RawHarnessReceiptExpectation {
-    #[serde(default = "default_harness_receipt_schema")]
-    schema: HarnessReceiptSchema,
+struct RawReceiptExpectation {
+    #[serde(default = "default_receipt_schema")]
+    schema: ReceiptSchema,
     body_digest: Option<String>,
     receipt_id: Option<String>,
     receipt_digest: Option<String>,
     harness_id: Option<String>,
-    state: Option<HarnessState>,
+    state: Option<String>,
     disposition: Option<ClosureDisposition>,
     reason_code: Option<String>,
     #[serde(default)]
@@ -193,8 +193,8 @@ fn validate_expectation(
 }
 
 fn validate_receipt_expectation(
-    receipt: RawHarnessReceiptExpectation,
-) -> Result<HarnessReceiptExpectation, HarnessFixtureError> {
+    receipt: RawReceiptExpectation,
+) -> Result<ReceiptExpectation, HarnessFixtureError> {
     if let Some(field) = receipt.extra.keys().next() {
         let field_path = format!("expect.receipt.{field}");
         if is_retired_receipt_field(field) {
@@ -202,7 +202,7 @@ fn validate_receipt_expectation(
         }
         return Err(HarnessFixtureError::UnknownReceiptField { field_path });
     }
-    Ok(HarnessReceiptExpectation {
+    Ok(ReceiptExpectation {
         schema: receipt.schema,
         body_digest: receipt.body_digest,
         receipt_id: receipt.receipt_id,
@@ -264,15 +264,15 @@ fn require_non_empty(value: &str, field: &'static str) -> Result<(), HarnessFixt
     }
 }
 
-fn default_harness_receipt_schema() -> HarnessReceiptSchema {
-    HarnessReceiptSchema::V1
+fn default_receipt_schema() -> ReceiptSchema {
+    ReceiptSchema::V1
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        HarnessFixtureError, HarnessFixtureKind, HarnessReceiptSchema, HarnessState,
-        parse_harness_fixture, retired_execution_receipt_field,
+        HarnessFixtureError, HarnessFixtureKind, ReceiptSchema, parse_harness_fixture,
+        retired_execution_receipt_field,
     };
 
     #[test]
@@ -287,7 +287,7 @@ inputs:
 expect:
   status: sealed
   receipt:
-    schema: runx.harness_receipt.v1
+    schema: runx.receipt.v1
     body_digest: sha256:test
     harness_id: echo-skill
     state: sealed
@@ -305,8 +305,8 @@ expect:
             .ok_or(HarnessFixtureError::Required {
                 field: "expect.receipt".to_owned(),
             })?;
-        assert_eq!(receipt.schema, HarnessReceiptSchema::V1);
-        assert_eq!(receipt.state, Some(HarnessState::Sealed));
+        assert_eq!(receipt.schema, ReceiptSchema::V1);
+        assert_eq!(receipt.state.as_deref(), Some("sealed"));
         assert_eq!(receipt.act_ids, vec!["echo"]);
         Ok(())
     }

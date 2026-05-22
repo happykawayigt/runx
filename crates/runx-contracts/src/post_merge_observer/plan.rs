@@ -2,7 +2,7 @@
 // projection, and idempotency helpers share one fixture-driven oracle.
 use crate::operational_policy::OperationalPolicySourceRule;
 use crate::{
-    ActForm, ClosureDisposition, CriterionStatus, HarnessReceipt, HarnessState, JsonValue,
+    ActForm, ClosureDisposition, CriterionStatus, JsonValue, Receipt,
     OperationalPolicy, OperationalPolicyOutcomeCloseMode, OperationalPolicyPublishMode, Reference,
     ReferenceType, validate_operational_policy_semantics,
 };
@@ -115,10 +115,10 @@ pub fn plan_post_merge_observer_runtime_dedupe(
     let receipt_id = post_merge_observer_receipt_id(plan);
     let already_published = existing_receipt_ref
         .as_ref()
-        .is_some_and(|reference| reference.uri == format!("runx:harness_receipt:{receipt_id}"));
+        .is_some_and(|reference| reference.uri == format!("runx:receipt:{receipt_id}"));
     let receipt_ref = existing_receipt_ref.unwrap_or_else(|| Reference {
-        reference_type: ReferenceType::HarnessReceipt,
-        uri: format!("runx:harness_receipt:{receipt_id}"),
+        reference_type: ReferenceType::Receipt,
+        uri: format!("runx:receipt:{receipt_id}"),
         provider: None,
         locator: Some(plan.idempotency.content_hash.clone()),
         label: Some("post-merge observer harness receipt".to_owned()),
@@ -144,7 +144,7 @@ pub fn plan_post_merge_observer_runtime_dedupe(
 }
 
 pub fn project_post_merge_observer_publication_from_receipt(
-    receipt: &HarnessReceipt,
+    receipt: &Receipt,
 ) -> Result<PostMergeObserverPublicationProjection, PostMergeObserverPlanError> {
     let final_state = require_projectable_post_merge_receipt(receipt)?;
     let publication_criteria = require_publication_criteria(receipt, final_state)?;
@@ -161,7 +161,7 @@ pub fn project_post_merge_observer_publication_from_receipt(
     let close_authorized = receipt_close_authorized(receipt)?;
 
     Ok(PostMergeObserverPublicationProjection {
-        harness_receipt_ref: harness_receipt_ref(receipt),
+        receipt_ref: receipt_ref(receipt),
         source_issue_ref,
         pull_request_ref,
         source_thread_ref: Some(source_thread_ref),
@@ -186,11 +186,9 @@ struct PostMergeObserverPublicationCriteria {
 }
 
 fn require_projectable_post_merge_receipt(
-    receipt: &HarnessReceipt,
+    receipt: &Receipt,
 ) -> Result<PostMergeObserverClosureState, PostMergeObserverPlanError> {
-    if receipt.harness.state != HarnessState::Sealed
-        || receipt.harness.seal.as_ref() != Some(&receipt.seal)
-    {
+    if matches!(receipt.seal.disposition, ClosureDisposition::Deferred) {
         return Err(PostMergeObserverPlanError::ReceiptNotSealed);
     }
     closure_state_from_reason(&receipt.seal.reason_code)
@@ -198,7 +196,7 @@ fn require_projectable_post_merge_receipt(
 }
 
 fn require_publication_criteria(
-    receipt: &HarnessReceipt,
+    receipt: &Receipt,
     final_state: PostMergeObserverClosureState,
 ) -> Result<PostMergeObserverPublicationCriteria, PostMergeObserverPlanError> {
     require_receipt_criterion(receipt, "post_merge.provider_state")?;
@@ -219,7 +217,7 @@ fn require_publication_criteria(
     })
 }
 
-fn receipt_close_authorized(receipt: &HarnessReceipt) -> Result<bool, PostMergeObserverPlanError> {
+fn receipt_close_authorized(receipt: &Receipt) -> Result<bool, PostMergeObserverPlanError> {
     let close_authorized = receipt
         .seal
         .criteria
@@ -232,7 +230,7 @@ fn receipt_close_authorized(receipt: &HarnessReceipt) -> Result<bool, PostMergeO
 }
 
 fn required_receipt_reference(
-    receipt: &HarnessReceipt,
+    receipt: &Receipt,
     reference_type: ReferenceType,
     label: &'static str,
 ) -> Result<Reference, PostMergeObserverPlanError> {
@@ -241,7 +239,7 @@ fn required_receipt_reference(
 }
 
 fn receipt_merge_sha(
-    receipt: &HarnessReceipt,
+    receipt: &Receipt,
     final_state: PostMergeObserverClosureState,
 ) -> Result<Option<String>, PostMergeObserverPlanError> {
     if !matches!(
@@ -260,7 +258,7 @@ fn receipt_merge_sha(
     Ok(Some(merge_sha.to_owned()))
 }
 
-fn receipt_criterion_summary(receipt: &HarnessReceipt, criterion_id: &str) -> Option<String> {
+fn receipt_criterion_summary(receipt: &Receipt, criterion_id: &str) -> Option<String> {
     receipt
         .seal
         .criteria
@@ -271,7 +269,7 @@ fn receipt_criterion_summary(receipt: &HarnessReceipt, criterion_id: &str) -> Op
         .map(str::to_owned)
 }
 
-fn receipt_metadata_string<'a>(receipt: &'a HarnessReceipt, path: &[&str]) -> Option<&'a str> {
+fn receipt_metadata_string<'a>(receipt: &'a Receipt, path: &[&str]) -> Option<&'a str> {
     let (first, rest) = path.split_first()?;
     let mut value = receipt.metadata.as_ref()?.get(*first)?;
     for key in rest {
@@ -286,12 +284,12 @@ fn receipt_metadata_string<'a>(receipt: &'a HarnessReceipt, path: &[&str]) -> Op
     }
 }
 
-fn harness_receipt_ref(receipt: &HarnessReceipt) -> Reference {
+fn receipt_ref(receipt: &Receipt) -> Reference {
     Reference {
-        reference_type: ReferenceType::HarnessReceipt,
-        uri: format!("runx:harness_receipt:{}", receipt.id),
+        reference_type: ReferenceType::Receipt,
+        uri: format!("runx:receipt:{}", receipt.id),
         provider: None,
-        locator: Some(receipt.seal.digest.clone()),
+        locator: Some(receipt.digest.clone()),
         label: Some("sealed post-merge observer receipt".to_owned()),
         observed_at: Some(receipt.seal.closed_at.clone()),
         proof_kind: None,
@@ -1004,9 +1002,9 @@ fn closure_state_from_reason(reason_code: &str) -> Option<PostMergeObserverClosu
 }
 
 fn require_receipt_criterion<'a>(
-    receipt: &'a HarnessReceipt,
+    receipt: &'a Receipt,
     criterion_id: &str,
-) -> Result<&'a crate::SealCriterion, PostMergeObserverPlanError> {
+) -> Result<&'a crate::ReceiptCriterion, PostMergeObserverPlanError> {
     receipt
         .seal
         .criteria
@@ -1015,7 +1013,7 @@ fn require_receipt_criterion<'a>(
         .ok_or_else(|| PostMergeObserverPlanError::MissingReceiptCriterion(criterion_id.to_owned()))
 }
 
-fn receipt_reference(receipt: &HarnessReceipt, reference_type: ReferenceType) -> Option<Reference> {
+fn receipt_reference(receipt: &Receipt, reference_type: ReferenceType) -> Option<Reference> {
     receipt
         .seal
         .criteria
@@ -1023,10 +1021,9 @@ fn receipt_reference(receipt: &HarnessReceipt, reference_type: ReferenceType) ->
         .flat_map(|criterion| criterion.evidence_refs.iter())
         .chain(
             receipt
-                .harness
                 .acts
                 .iter()
-                .flat_map(|act| act.surface_refs.iter()),
+                .flat_map(|act| act.artifact_refs.iter()),
         )
         .find(|reference| reference.reference_type == reference_type)
         .cloned()

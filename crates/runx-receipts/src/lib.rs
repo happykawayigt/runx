@@ -12,8 +12,8 @@ pub use canonical::{
     canonical_receipt_json,
 };
 pub use runx_contracts::{
-    HARNESS_RECEIPT_SCHEMA, HarnessReceipt, HarnessReceiptSchema, HarnessSeal, HarnessState,
-    ReceiptIssuer, ReceiptIssuerType, ReceiptSignature, SealCriterion, SignatureAlgorithm,
+    RECEIPT_CANONICALIZATION, RECEIPT_SCHEMA, Receipt, ReceiptIssuer, ReceiptIssuerType,
+    ReceiptSchema, ReceiptSignature, Seal, SignatureAlgorithm,
 };
 pub use tree::{
     ReceiptProofContextProvider, ReceiptResolveResult, ReceiptResolver, ReceiptTreeConfig,
@@ -23,11 +23,12 @@ pub use tree::{
     verify_receipt_tree_with_resolver,
 };
 pub use verify::{
-    ReceiptError, ReceiptFinding, ReceiptFindingCode, ReceiptProofContext,
-    ReceiptProofFindingSummary, ReceiptProofStatus, ReceiptProofStatusKind, ReceiptVerification,
-    SignatureVerificationFailure, SignatureVerifier, receipt_proof_status, validate_harness,
-    validate_harness_receipt, validate_harness_receipt_proof, verify_harness,
-    verify_harness_receipt, verify_harness_receipt_proof,
+    ReceiptError, ReceiptFinding, ReceiptFindingCode, ReceiptJournal, ReceiptJournalDecision,
+    ReceiptProofContext, ReceiptProofFindingSummary, ReceiptProofStatus, ReceiptProofStatusKind,
+    ReceiptVerification, SignatureVerificationFailure, SignatureVerifier,
+    compute_verification_summary, receipt_proof_status, validate_receipt, validate_receipt_proof,
+    validate_receipt_with_journal, verify_receipt, verify_receipt_proof,
+    verify_receipt_with_journal,
 };
 
 #[cfg(test)]

@@ -7,12 +7,11 @@ use std::io::ErrorKind;
 use std::path::Path;
 
 use runx_contracts::{
-    ClosureDisposition, ExecutionEvent, HarnessReceipt, HarnessState, JsonObject, JsonValue,
+    ClosureDisposition, ExecutionEvent, JsonObject, JsonValue, Receipt, ReceiptSubjectKind,
     Reference, ReferenceType,
 };
 use runx_receipts::{
-    ReceiptFindingCode, ReceiptProofContextProvider, ReceiptVerification,
-    verify_harness_receipt_proof,
+    ReceiptFindingCode, ReceiptProofContextProvider, verify_receipt_proof,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -24,7 +23,7 @@ use crate::receipts::{RuntimeReceiptProofContextProvider, RuntimeReceiptSignatur
 pub const JOURNAL_PROJECTION_SCHEMA: &str = "runx.journal_projection.v1";
 pub const JOURNAL_PROJECTOR_ID: &str = "runx-runtime.local-journal.v1";
 pub const HISTORY_PROJECTOR_ID: &str = "runx-runtime.local-history.v1";
-pub const HARNESS_RECEIPT_REF_PREFIX: &str = "runx:harness_receipt:";
+pub const RECEIPT_REF_PREFIX: &str = "runx:receipt:";
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct JournalEntry {
@@ -273,7 +272,7 @@ pub fn project_journal_for_receipt(
 // rust-style-allow: long-function because this projection assembles one sealed
 // harness receipt into a deterministic row set; splitting it before CLI and
 // paused-run sources land would obscure the ordering invariants.
-pub fn project_receipt_journal(receipt: &HarnessReceipt) -> JournalProjection {
+pub fn project_receipt_journal(receipt: &Receipt) -> JournalProjection {
     project_receipt_journal_with_policy(receipt, RuntimeReceiptSignaturePolicy::local_development())
 }
 
@@ -282,11 +281,12 @@ pub fn project_receipt_journal(receipt: &HarnessReceipt) -> JournalProjection {
 // harness receipt into a deterministic row set; splitting it before CLI and
 // paused-run sources land would obscure the ordering invariants.
 pub fn project_receipt_journal_with_policy(
-    receipt: &HarnessReceipt,
+    receipt: &Receipt,
     signature_policy: RuntimeReceiptSignaturePolicy<'_>,
 ) -> JournalProjection {
     let watermark = receipt_watermark(receipt);
-    let receipt_ref = harness_receipt_ref(&receipt.id);
+    let receipt_ref = receipt_uri(&receipt.id);
+    let subject_uri = receipt.subject.reference.uri.clone();
     let verification = ReceiptVerificationProjection {
         status: verification_status(receipt, signature_policy),
     };
@@ -297,65 +297,37 @@ pub fn project_receipt_journal_with_policy(
         projector_id: JOURNAL_PROJECTOR_ID.to_owned(),
         source_refs: vec![receipt_ref.clone()],
         watermark: watermark.clone(),
-        event_kind: "harness_receipt_sealed".to_owned(),
+        event_kind: "receipt_sealed".to_owned(),
         summary: receipt.seal.summary.clone(),
         receipt_ref: Some(receipt_ref.clone()),
-        harness_ref: Some(receipt.harness.harness_ref.uri.clone()),
+        harness_ref: Some(subject_uri.clone()),
         act_ref: None,
-        decision_ref: None,
-        artifact_refs: reference_uris(&receipt.seal.artifact_refs),
+        decision_ref: receipt
+            .lineage
+            .as_ref()
+            .and_then(|lineage| lineage.journal_ref.as_ref())
+            .map(|reference| reference.uri.clone()),
+        artifact_refs: Vec::new(),
         status: Some(disposition_status(&receipt.seal.disposition)),
         verification: Some(verification),
     }];
 
-    for act in &receipt.harness.acts {
+    for act in &receipt.acts {
         rows.push(JournalProjectionRow {
             schema: JOURNAL_PROJECTION_SCHEMA.to_owned(),
-            entry_id: format!("journal:{}:act:{}", receipt.id, act.act_id),
-            recorded_at: act.performed_at.clone(),
+            entry_id: format!("journal:{}:act:{}", receipt.id, act.id),
+            recorded_at: receipt.created_at.clone(),
             projector_id: JOURNAL_PROJECTOR_ID.to_owned(),
-            source_refs: vec![receipt_ref.clone(), format!("runx:act:{}", act.act_id)],
+            source_refs: vec![receipt_ref.clone(), format!("runx:act:{}", act.id)],
             watermark: watermark.clone(),
             event_kind: "act_closed".to_owned(),
             summary: act.summary.clone(),
             receipt_ref: Some(receipt_ref.clone()),
-            harness_ref: Some(receipt.harness.harness_ref.uri.clone()),
-            act_ref: Some(format!("runx:act:{}", act.act_id)),
+            harness_ref: Some(subject_uri.clone()),
+            act_ref: Some(format!("runx:act:{}", act.id)),
             decision_ref: None,
             artifact_refs: reference_uris(&act.artifact_refs),
-            status: Some(disposition_status(&act.closure.disposition)),
-            verification: None,
-        });
-    }
-
-    for decision in &receipt.harness.decisions {
-        rows.push(JournalProjectionRow {
-            schema: JOURNAL_PROJECTION_SCHEMA.to_owned(),
-            entry_id: format!("journal:{}:decision:{}", receipt.id, decision.decision_id),
-            recorded_at: receipt.created_at.clone(),
-            projector_id: JOURNAL_PROJECTOR_ID.to_owned(),
-            source_refs: vec![
-                receipt_ref.clone(),
-                format!("runx:decision:{}", decision.decision_id),
-            ],
-            watermark: watermark.clone(),
-            event_kind: "decision_recorded".to_owned(),
-            summary: decision.justification.summary.clone(),
-            receipt_ref: Some(receipt_ref.clone()),
-            harness_ref: decision
-                .selected_harness_ref
-                .as_ref()
-                .map(|reference| reference.uri.clone()),
-            act_ref: decision
-                .selected_act_id
-                .as_ref()
-                .map(|act_id| format!("runx:act:{act_id}")),
-            decision_ref: Some(format!("runx:decision:{}", decision.decision_id)),
-            artifact_refs: reference_uris(&decision.artifact_refs),
-            status: decision
-                .closure
-                .as_ref()
-                .map(|closure| disposition_status(&closure.disposition)),
+            status: Some(disposition_status(&receipt.seal.disposition)),
             verification: None,
         });
     }
@@ -375,31 +347,31 @@ pub fn project_receipt_journal_with_policy(
 }
 
 #[must_use]
-pub fn harness_receipt_ref(receipt_id: &str) -> String {
-    format!("{HARNESS_RECEIPT_REF_PREFIX}{receipt_id}")
+pub fn receipt_uri(receipt_id: &str) -> String {
+    format!("{RECEIPT_REF_PREFIX}{receipt_id}")
 }
 
 #[must_use]
 pub fn exact_receipt_id(reference: &str) -> String {
     reference
-        .strip_prefix(HARNESS_RECEIPT_REF_PREFIX)
+        .strip_prefix(RECEIPT_REF_PREFIX)
         .unwrap_or(reference)
         .to_owned()
 }
 
 fn history_row_with_policy(
-    receipt: &HarnessReceipt,
+    receipt: &Receipt,
     signature_policy: RuntimeReceiptSignaturePolicy<'_>,
 ) -> LocalHistoryReceipt {
     LocalHistoryReceipt {
         id: receipt.id.clone(),
-        receipt_ref: harness_receipt_ref(&receipt.id),
+        receipt_ref: receipt_uri(&receipt.id),
         name: metadata_string(receipt.metadata.as_ref(), &["skill_name", "name"])
-            .unwrap_or_else(|| receipt.harness.harness_id.clone()),
+            .unwrap_or_else(|| receipt.subject.reference.uri.clone()),
         status: disposition_status(&receipt.seal.disposition),
         created_at: receipt.created_at.clone(),
-        harness_id: receipt.harness.harness_id.clone(),
-        harness_state: harness_state(&receipt.harness.state),
+        harness_id: receipt.subject.reference.uri.clone(),
+        harness_state: subject_state(&receipt.subject.kind, &receipt.seal.disposition),
         summary: receipt.seal.summary.clone(),
         source_type: metadata_string(receipt.metadata.as_ref(), &["source_type", "source"]),
         actors: metadata_values(receipt.metadata.as_ref(), &["actor", "runner", "provider"]),
@@ -493,40 +465,42 @@ fn normalized(value: &Option<String>) -> Option<String> {
 }
 
 fn verification_status(
-    receipt: &HarnessReceipt,
+    receipt: &Receipt,
     signature_policy: RuntimeReceiptSignaturePolicy<'_>,
 ) -> String {
     let proof_contexts = RuntimeReceiptProofContextProvider::new(signature_policy);
     let context = proof_contexts.proof_context(receipt);
-    let verification = verify_harness_receipt_proof(receipt, &context);
-    if verification.valid {
+    let verification = verify_receipt_proof(receipt, &context);
+    // The decision -> act-id integrity property is journal-dependent and reported
+    // as `unverified` by plain proof verification; the runtime confirms it through
+    // the in-hand journal, so it never downgrades the read-time status.
+    let blocking: Vec<_> = verification
+        .findings
+        .iter()
+        .filter(|finding| {
+            !matches!(finding.code, ReceiptFindingCode::DecisionIntegrityUnverified)
+        })
+        .collect();
+    if blocking.is_empty() {
         if signature_policy.can_report_production_verified() {
             "verified".to_owned()
         } else {
             "unverified".to_owned()
         }
-    } else if only_missing_verifier_input(&verification) {
+    } else if blocking
+        .iter()
+        .all(|finding| matches!(finding.code, ReceiptFindingCode::SignatureVerifierMissing))
+    {
         "unverified".to_owned()
     } else {
         "invalid".to_owned()
     }
 }
 
-fn only_missing_verifier_input(verification: &ReceiptVerification) -> bool {
-    !verification.findings.is_empty()
-        && verification.findings.iter().all(|finding| {
-            matches!(
-                finding.code,
-                ReceiptFindingCode::SignatureVerifierMissing
-                    | ReceiptFindingCode::VerificationSummaryInvalid
-            )
-        })
-}
-
-fn receipt_watermark(receipt: &HarnessReceipt) -> String {
+fn receipt_watermark(receipt: &Receipt) -> String {
     format!(
         "{}@{}",
-        harness_receipt_ref(&receipt.id),
+        receipt_uri(&receipt.id),
         receipt.created_at
     )
 }
@@ -535,27 +509,12 @@ fn reference_uris(refs: &[Reference]) -> Vec<String> {
     refs.iter().map(|reference| reference.uri.clone()).collect()
 }
 
-fn artifact_types(receipt: &HarnessReceipt) -> Vec<String> {
+fn artifact_types(receipt: &Receipt) -> Vec<String> {
     let mut types = BTreeSet::new();
     for reference in receipt
-        .harness
-        .artifact_refs
+        .acts
         .iter()
-        .chain(receipt.seal.artifact_refs.iter())
-        .chain(
-            receipt
-                .harness
-                .acts
-                .iter()
-                .flat_map(|act| act.artifact_refs.iter()),
-        )
-        .chain(
-            receipt
-                .harness
-                .decisions
-                .iter()
-                .flat_map(|decision| decision.artifact_refs.iter()),
-        )
+        .flat_map(|act| act.artifact_refs.iter())
     {
         if reference.reference_type == ReferenceType::Artifact {
             if let Some(label) = reference.label.as_ref().filter(|label| !label.is_empty()) {
@@ -1047,11 +1006,14 @@ fn compare_optional_timestamp_desc(
     }
 }
 
-fn harness_state(state: &HarnessState) -> String {
-    serde_json::to_value(state).map_or_else(
-        |_| format!("{state:?}").to_lowercase(),
-        |value| value.as_str().unwrap_or("unknown").to_owned(),
-    )
+fn subject_state(_kind: &ReceiptSubjectKind, disposition: &ClosureDisposition) -> String {
+    // The eleven-state machine collapses to one durable invariant: a receipt is
+    // either suspended (deferred) or terminally sealed.
+    if matches!(disposition, ClosureDisposition::Deferred) {
+        "deferred".to_owned()
+    } else {
+        "sealed".to_owned()
+    }
 }
 
 fn disposition_status(disposition: &ClosureDisposition) -> String {

@@ -79,10 +79,6 @@
               "type": "string"
             },
             {
-              "const": "harness_receipt",
-              "type": "string"
-            },
-            {
               "const": "artifact",
               "type": "string"
             },
@@ -215,7 +211,7 @@
       "additionalProperties": false,
       "type": "object",
       "properties": {
-        "harness_receipt_ref": {
+        "receipt_ref": {
           "$schema": "https://json-schema.org/draft/2020-12/schema",
           "$id": "https://schemas.runx.dev/runx/reference/v1.json",
           "x-runx-schema": "runx.reference.v1",
@@ -266,10 +262,6 @@
                 },
                 {
                   "const": "graph_receipt",
-                  "type": "string"
-                },
-                {
-                  "const": "harness_receipt",
                   "type": "string"
                 },
                 {
@@ -455,10 +447,6 @@
                   "type": "string"
                 },
                 {
-                  "const": "harness_receipt",
-                  "type": "string"
-                },
-                {
                   "const": "artifact",
                   "type": "string"
                 },
@@ -591,11 +579,11 @@
           "additionalProperties": false,
           "type": "object",
           "required": [
-            "harness_receipt_ref",
+            "receipt_ref",
             "act_id"
           ],
           "properties": {
-            "harness_receipt_ref": {
+            "receipt_ref": {
               "$schema": "https://json-schema.org/draft/2020-12/schema",
               "$id": "https://schemas.runx.dev/runx/reference/v1.json",
               "x-runx-schema": "runx.reference.v1",
@@ -646,10 +634,6 @@
                     },
                     {
                       "const": "graph_receipt",
-                      "type": "string"
-                    },
-                    {
-                      "const": "harness_receipt",
                       "type": "string"
                     },
                     {
@@ -841,10 +825,6 @@
                   "type": "string"
                 },
                 {
-                  "const": "harness_receipt",
-                  "type": "string"
-                },
-                {
                   "const": "artifact",
                   "type": "string"
                 },
@@ -1024,10 +1004,6 @@
                 },
                 {
                   "const": "graph_receipt",
-                  "type": "string"
-                },
-                {
-                  "const": "harness_receipt",
                   "type": "string"
                 },
                 {
@@ -1253,10 +1229,6 @@
                 "type": "string"
               },
               {
-                "const": "harness_receipt",
-                "type": "string"
-              },
-              {
                 "const": "artifact",
                 "type": "string"
               },
@@ -1442,10 +1414,6 @@
                 "type": "string"
               },
               {
-                "const": "harness_receipt",
-                "type": "string"
-              },
-              {
                 "const": "artifact",
                 "type": "string"
               },
@@ -1626,10 +1594,6 @@
             },
             {
               "const": "graph_receipt",
-              "type": "string"
-            },
-            {
-              "const": "harness_receipt",
               "type": "string"
             },
             {

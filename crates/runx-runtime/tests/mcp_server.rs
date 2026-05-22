@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 #[cfg(feature = "mcp")]
-use runx_contracts::{HarnessReceiptSchema, HarnessState};
+use runx_contracts::{ClosureDisposition, ReceiptSchema};
 use runx_contracts::{JsonObject, JsonValue};
 #[cfg(feature = "mcp")]
 use runx_runtime::adapters::mcp::McpServerExecutionOptions;
@@ -213,7 +213,7 @@ fn mcp_server_skill_tool_execution_returns_completed_runx_structured_content()
 
 #[test]
 #[cfg(feature = "mcp")]
-fn mcp_server_single_skill_call_writes_sealed_harness_receipt()
+fn mcp_server_single_skill_call_writes_sealed_receipt()
 -> Result<(), Box<dyn std::error::Error>> {
     let receipt_root = tempfile::tempdir()?;
     let responses = run_server_with_options(
@@ -258,9 +258,8 @@ fn mcp_server_single_skill_call_writes_sealed_harness_receipt()
     };
 
     let receipt = LocalReceiptStore::new(receipt_root.path()).read_exact(receipt_id)?;
-    assert_eq!(receipt.schema, HarnessReceiptSchema::V1);
-    assert_eq!(receipt.harness.state, HarnessState::Sealed);
-    assert_eq!(receipt.harness.seal.as_ref(), Some(&receipt.seal));
+    assert_eq!(receipt.schema, ReceiptSchema::V1);
+    assert_eq!(receipt.seal.disposition, ClosureDisposition::Closed);
     assert_eq!(receipt.id, *receipt_id);
     Ok(())
 }

@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.runx.dev/runx/run-summary/v1.json",
+  "x-runx-schema": "runx.run-summary.v1",
+  "additionalProperties": false,
+  "type": "object",
+  "required": [
+    "schema",
+    "run_id",
+    "command",
+    "status",
+    "started_at",
+    "root",
+    "steps"
+  ],
+  "properties": {
+    "schema": {
+      "const": "runx.run-summary.v1",
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "command": {
+      "type": "string"
+    },
+    "status": {
+      "anyOf": [
+        {
+          "const": "success",
+          "type": "string"
+        },
+        {
+          "const": "failure",
+          "type": "string"
+        },
+        {
+          "const": "skipped",
+          "type": "string"
+        },
+        {
+          "const": "needs_approval",
+          "type": "string"
+        }
+      ]
+    },
+    "started_at": {
+      "type": "string"
+    },
+    "finished_at": {
+      "type": "string"
+    },
+    "root": {
+      "type": "string"
+    },
+    "unit": {
+      "type": "object",
+      "patternProperties": {
+        "^(.*)$": {}
+      }
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "patternProperties": {
+          "^(.*)$": {}
+        }
+      }
+    },
+    "receipt_ref": {
+      "type": "string"
+    }
+  }
+}

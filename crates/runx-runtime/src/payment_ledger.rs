@@ -6,7 +6,7 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use runx_contracts::{ClosureDisposition, HarnessReceipt, JsonValue, Reference, sha256_prefixed};
+use runx_contracts::{ClosureDisposition, Receipt, JsonValue, Reference, sha256_prefixed};
 use serde::{Deserialize, Serialize};
 use serde_json::{self, Value as JsonWireValue, json};
 use thiserror::Error;
@@ -97,14 +97,14 @@ pub struct PaymentLedgerRefusal {
 
 #[derive(Clone, Debug)]
 pub struct PaymentLedgerProjectionInput<'a> {
-    pub graph_receipt: &'a HarnessReceipt,
+    pub graph_receipt: &'a Receipt,
     pub scenario_id: &'a str,
     pub evidence: Vec<PaymentLedgerEvidence<'a>>,
 }
 
 #[derive(Clone, Debug)]
 pub struct PaymentLedgerEvidence<'a> {
-    pub receipt: &'a HarnessReceipt,
+    pub receipt: &'a Receipt,
     pub packet: PaymentLedgerEvidencePacket,
 }
 
@@ -364,7 +364,7 @@ pub fn persist_x402_payment_ledger_projection_event(
     receipt_dir: impl AsRef<Path>,
     run_id: &str,
     created_at: &str,
-    graph_receipt: &HarnessReceipt,
+    graph_receipt: &Receipt,
     steps: &[StepRun],
     scenario_id: &str,
 ) -> Result<Option<PaymentLedgerRuntimeEvent>, PaymentLedgerProjectionError> {
@@ -391,7 +391,7 @@ pub fn persist_x402_payment_ledger_projection_event(
 }
 
 pub fn build_x402_payment_ledger_projection_from_steps(
-    graph_receipt: &HarnessReceipt,
+    graph_receipt: &Receipt,
     steps: &[StepRun],
     scenario_id: &str,
 ) -> Result<PaymentLedgerProjection, PaymentLedgerProjectionError> {
@@ -520,12 +520,14 @@ fn refused_accrual(reservation: &PaymentReservationEvidence) -> PaymentLedgerAcc
 }
 
 fn validate_child_receipts(
-    graph_receipt: &HarnessReceipt,
+    graph_receipt: &Receipt,
     evidence: &[PaymentLedgerEvidence<'_>],
 ) -> Result<(), PaymentLedgerProjectionError> {
+    let empty = Vec::new();
     let graph_child_receipts = graph_receipt
-        .harness
-        .child_harness_receipt_refs
+        .lineage
+        .as_ref()
+        .map_or(&empty, |lineage| &lineage.children)
         .iter()
         .map(|reference| reference.uri.as_str())
         .collect::<HashSet<_>>();
@@ -557,19 +559,19 @@ fn validate_settlement_matches_reservation(
 }
 
 fn validate_receipt_rail_proof(
-    receipt: &HarnessReceipt,
+    receipt: &Receipt,
     settlement: &PaymentRailSettlementEvidence,
 ) -> Result<String, PaymentLedgerProjectionError> {
     let act_id = receipt
-        .harness
         .acts
         .iter()
         .find(|act| {
-            act.verification_refs
+            act.criteria
                 .iter()
+                .flat_map(|criterion| criterion.verification_refs.iter())
                 .any(|reference| is_matching_payment_rail_proof(reference, settlement))
         })
-        .map(|act| act.act_id.clone())
+        .map(|act| act.id.clone())
         .ok_or_else(|| PaymentLedgerProjectionError::MissingReceiptRailProof {
             receipt_id: receipt.id.clone(),
             proof_ref: settlement.proof_ref.clone(),
@@ -604,7 +606,7 @@ fn validate_paid_tool_refs(
 
 fn validate_settlement_supervisor_proof(
     reservation: &PaymentReservationEvidence,
-    receipt: &HarnessReceipt,
+    receipt: &Receipt,
     settlement: &PaymentRailSettlementEvidence,
     act_id: &str,
 ) -> Result<(), PaymentLedgerProjectionError> {
@@ -625,7 +627,7 @@ fn validate_settlement_supervisor_proof(
             spend_capability_ref: &reservation.spend_capability_ref,
             act_id,
             receipt_ref: &receipt.id,
-            receipt_digest: &receipt.seal.digest,
+            receipt_digest: &receipt.digest,
         },
     )
     .map_err(
@@ -643,7 +645,7 @@ fn evidence_refs(evidence: &[PaymentLedgerEvidence<'_>]) -> Vec<String> {
             PaymentLedgerEvidencePacket::RailSettlement(_)
                 | PaymentLedgerEvidencePacket::Refusal(_)
         ) {
-            push_unique(&mut refs, evidence.receipt.harness.harness_ref.uri.clone());
+            push_unique(&mut refs, evidence.receipt.subject.reference.uri.clone());
             push_unique(&mut refs, receipt_ref(evidence.receipt));
         }
     }
@@ -655,12 +657,12 @@ fn evidence_refs(evidence: &[PaymentLedgerEvidence<'_>]) -> Vec<String> {
     refs
 }
 
-fn receipt_ref(receipt: &HarnessReceipt) -> String {
-    format!("runx:harness_receipt:{}", receipt.id)
+fn receipt_ref(receipt: &Receipt) -> String {
+    format!("runx:receipt:{}", receipt.id)
 }
 
 fn source_receipt_file_stem(source_receipt_id: &str) -> Result<&str, PaymentLedgerProjectionError> {
-    const PREFIX: &str = "runx:harness_receipt:";
+    const PREFIX: &str = "runx:receipt:";
     let Some(receipt_id) = source_receipt_id.strip_prefix(PREFIX) else {
         return Err(PaymentLedgerProjectionError::InvalidSourceReceiptId {
             source_receipt_id: source_receipt_id.to_owned(),

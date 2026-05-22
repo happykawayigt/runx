@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use runx_contracts::{HarnessReceipt, JsonObject};
+use runx_contracts::{Receipt, JsonObject};
 use runx_runtime::receipts::{RuntimeReceiptSignaturePolicy, step_receipt};
 use runx_runtime::{InvocationStatus, LocalReceiptStore, ReceiptStoreError, SkillOutput};
 use serde_json::json;
@@ -63,7 +63,7 @@ fn wrong_receipt_schema_is_typed_error() -> Result<(), Box<dyn std::error::Error
         temp.path(),
         "hrn_rcpt_wrong.json",
         &json!({
-            "schema": "runx.not_harness_receipt.v1",
+            "schema": "runx.not_receipt.v1",
             "id": "hrn_rcpt_wrong"
         }),
     )?;
@@ -81,7 +81,7 @@ fn receipt_id_must_match_file_name() -> Result<(), Box<dyn std::error::Error>> {
     write_json(
         temp.path(),
         "hrn_rcpt_other.json",
-        &success_harness_receipt()?,
+        &success_receipt()?,
     )?;
     let store = LocalReceiptStore::new(temp.path());
 
@@ -100,7 +100,7 @@ fn exact_read_does_not_use_partial_or_suffix_lookup() -> Result<(), Box<dyn std:
     write_json(
         temp.path(),
         &receipt_file_name(SUCCESS_RECEIPT_ID),
-        &success_harness_receipt()?,
+        &success_receipt()?,
     )?;
     let store = LocalReceiptStore::new(temp.path());
 
@@ -119,12 +119,12 @@ fn exact_read_list_and_rebuild_index_succeed() -> Result<(), Box<dyn std::error:
     write_json(
         temp.path(),
         &receipt_file_name(SUCCESS_RECEIPT_ID),
-        &success_harness_receipt()?,
+        &success_receipt()?,
     )?;
     write_json(
         temp.path(),
         &receipt_file_name(ABNORMAL_RECEIPT_ID),
-        &abnormal_harness_receipt()?,
+        &abnormal_receipt()?,
     )?;
     fs::write(temp.path().join("notes.txt"), "ignored")?;
     let store = LocalReceiptStore::new(temp.path());
@@ -163,7 +163,7 @@ fn exact_read_list_and_rebuild_index_succeed() -> Result<(), Box<dyn std::error:
 fn valid_runtime_generated_receipt_is_accepted_by_read_list_and_index()
 -> Result<(), Box<dyn std::error::Error>> {
     let temp = TestDir::new()?;
-    let receipt = success_harness_receipt()?;
+    let receipt = success_receipt()?;
     write_json(temp.path(), &receipt_file_name(&receipt.id), &receipt)?;
     let store = LocalReceiptStore::new(temp.path());
 
@@ -178,7 +178,7 @@ fn valid_runtime_generated_receipt_is_accepted_by_read_list_and_index()
 fn production_read_policy_without_verifier_rejects_local_pseudo_receipt()
 -> Result<(), Box<dyn std::error::Error>> {
     let temp = TestDir::new()?;
-    let receipt = success_harness_receipt()?;
+    let receipt = success_receipt()?;
     write_json(temp.path(), &receipt_file_name(&receipt.id), &receipt)?;
     let store = LocalReceiptStore::new(temp.path());
 
@@ -204,7 +204,7 @@ fn production_read_policy_without_verifier_rejects_local_pseudo_receipt()
 fn exact_read_rejects_structural_receipt_with_tampered_signature()
 -> Result<(), Box<dyn std::error::Error>> {
     let temp = TestDir::new()?;
-    let mut receipt = success_harness_receipt()?;
+    let mut receipt = success_receipt()?;
     receipt.signature.value = "sig:tampered".to_owned();
     write_json(temp.path(), &receipt_file_name(&receipt.id), &receipt)?;
     let store = LocalReceiptStore::new(temp.path());
@@ -222,11 +222,8 @@ fn exact_read_rejects_structural_receipt_with_tampered_signature()
 fn list_rejects_structural_receipt_with_tampered_digest() -> Result<(), Box<dyn std::error::Error>>
 {
     let temp = TestDir::new()?;
-    let mut receipt = success_harness_receipt()?;
-    receipt.seal.digest = "sha256:tampered".to_owned();
-    if let Some(seal) = receipt.harness.seal.as_mut() {
-        seal.digest = "sha256:tampered".to_owned();
-    }
+    let mut receipt = success_receipt()?;
+    receipt.digest = "sha256:tampered".to_owned();
     write_json(temp.path(), &receipt_file_name(&receipt.id), &receipt)?;
     let store = LocalReceiptStore::new(temp.path());
 
@@ -243,7 +240,7 @@ fn list_rejects_structural_receipt_with_tampered_digest() -> Result<(), Box<dyn 
 fn load_index_rejects_indexed_structural_receipt_with_invalid_proof()
 -> Result<(), Box<dyn std::error::Error>> {
     let temp = TestDir::new()?;
-    let mut receipt = success_harness_receipt()?;
+    let mut receipt = success_receipt()?;
     receipt.signature.value = "sig:tampered".to_owned();
     write_json(temp.path(), &receipt_file_name(&receipt.id), &receipt)?;
     write_json(
@@ -274,7 +271,7 @@ fn load_index_rejects_indexed_structural_receipt_with_invalid_proof()
 fn write_receipt_commits_readable_receipt_and_index() -> Result<(), Box<dyn std::error::Error>> {
     let temp = TestDir::new()?;
     let store = LocalReceiptStore::new(temp.path().join("receipts"));
-    let receipt = success_harness_receipt()?;
+    let receipt = success_receipt()?;
 
     store.write_receipt(&receipt)?;
 
@@ -292,7 +289,7 @@ fn write_receipt_commits_readable_receipt_and_index() -> Result<(), Box<dyn std:
 fn write_receipt_rejects_invalid_proof_without_writing() -> Result<(), Box<dyn std::error::Error>> {
     let temp = TestDir::new()?;
     let store = LocalReceiptStore::new(temp.path().join("receipts"));
-    let mut receipt = success_harness_receipt()?;
+    let mut receipt = success_receipt()?;
     receipt.signature.value = "sig:tampered".to_owned();
 
     let result = store.write_receipt(&receipt);
@@ -310,7 +307,7 @@ fn write_receipt_allows_identical_and_rejects_divergent_rewrite()
 -> Result<(), Box<dyn std::error::Error>> {
     let temp = TestDir::new()?;
     let store = LocalReceiptStore::new(temp.path());
-    let receipt = success_harness_receipt()?;
+    let receipt = success_receipt()?;
     let mut changed = receipt.clone();
     changed.signature.value = "sig:different".to_owned();
 
@@ -331,7 +328,7 @@ fn index_write_failure_reports_stale_but_receipt_stays_readable()
     let temp = TestDir::new()?;
     fs::create_dir(temp.path().join("index.json"))?;
     let store = LocalReceiptStore::new(temp.path());
-    let receipt = success_harness_receipt()?;
+    let receipt = success_receipt()?;
 
     let result = store.write_receipt(&receipt);
 
@@ -364,7 +361,7 @@ fn stale_index_is_typed_error() -> Result<(), Box<dyn std::error::Error>> {
     write_json(
         temp.path(),
         &receipt_file_name(SUCCESS_RECEIPT_ID),
-        &success_harness_receipt()?,
+        &success_receipt()?,
     )?;
     write_json(
         temp.path(),
@@ -480,19 +477,19 @@ fn receipt_store_error_public_message_redacts_path_like_fields() {
     assert_redacts_external_path(&mismatch_message);
 }
 
-fn success_harness_receipt() -> Result<HarnessReceipt, Box<dyn std::error::Error>> {
-    runtime_harness_receipt("store", "alpha", InvocationStatus::Success)
+fn success_receipt() -> Result<Receipt, Box<dyn std::error::Error>> {
+    runtime_receipt("store", "alpha", InvocationStatus::Success)
 }
 
-fn abnormal_harness_receipt() -> Result<HarnessReceipt, Box<dyn std::error::Error>> {
-    runtime_harness_receipt("store", "beta", InvocationStatus::Failure)
+fn abnormal_receipt() -> Result<Receipt, Box<dyn std::error::Error>> {
+    runtime_receipt("store", "beta", InvocationStatus::Failure)
 }
 
-fn runtime_harness_receipt(
+fn runtime_receipt(
     graph_name: &str,
     step_id: &str,
     status: InvocationStatus,
-) -> Result<HarnessReceipt, Box<dyn std::error::Error>> {
+) -> Result<Receipt, Box<dyn std::error::Error>> {
     step_receipt(
         graph_name,
         step_id,

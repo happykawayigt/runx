@@ -149,7 +149,7 @@ caller:
 expect:
   status: "sealed"
   receipt:
-    schema: "runx.harness_receipt.v1"
+    schema: "runx.receipt.v1"
     receipt_id: "hrn_rcpt_bounded-docs-fix_bounded-docs-fix"
     harness_id: "hrn_bounded-docs-fix_bounded-docs-fix"
     state: "sealed"

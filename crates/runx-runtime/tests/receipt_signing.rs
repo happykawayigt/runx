@@ -1,13 +1,13 @@
 use std::error::Error;
 
 use runx_contracts::{
-    HarnessReceipt, JsonObject, ReceiptIssuer, ReceiptIssuerType, ReceiptSignature,
+    Receipt, JsonObject, ReceiptIssuer, ReceiptIssuerType, ReceiptSignature,
     SignatureAlgorithm,
 };
 use runx_core::state_machine::StepAdmissionWitness;
 use runx_receipts::{
     ReceiptFindingCode, ReceiptProofContext, ReceiptVerification, canonical_receipt_body_digest,
-    validate_harness_receipt_proof, verify_harness_receipt_proof,
+    verify_receipt_proof,
 };
 use runx_runtime::receipts::{
     Ed25519ReceiptSigner, Ed25519ReceiptVerifier, ProductionReceiptKey,
@@ -34,7 +34,13 @@ fn production_step_receipt_uses_real_ed25519_signature() -> Result<(), Box<dyn E
     assert!(receipt.signature.value.starts_with("base64:"));
     assert!(!receipt.signature.value.starts_with("sig:"));
     assert!(!serde_json::to_string(&receipt)?.contains("QkJCQkJC"));
-    assert!(validate_harness_receipt_proof(&receipt, &proof_context(&verifier)).is_ok());
+    let verification = verify_receipt_proof(&receipt, &proof_context(&verifier));
+    // The decision -> act-id integrity property is journal-dependent and reported
+    // as `unverified`; everything else must verify cleanly.
+    assert!(verification.findings.iter().all(|finding| matches!(
+        finding.code,
+        ReceiptFindingCode::DecisionIntegrityUnverified
+    )));
     Ok(())
 }
 
@@ -64,8 +70,12 @@ fn production_graph_receipt_resigns_children_and_verifies_tree() -> Result<(), B
     assert!(graph.signature.value.starts_with("base64:"));
     assert!(children[0].signature.value.starts_with("base64:"));
     assert_eq!(
-        children[0].harness.parent_harness_ref.as_ref(),
-        Some(&graph.harness.harness_ref)
+        children[0]
+            .lineage
+            .as_ref()
+            .and_then(|l| l.parent.as_ref())
+            .map(|r| r.uri.clone()),
+        Some(format!("runx:receipt:{}", graph.id))
     );
     assert!(
         runx_runtime::receipt_tree::validate_runtime_receipt_tree_with_policy(
@@ -152,39 +162,36 @@ fn production_verifier_reports_tamper_findings() -> Result<(), Box<dyn Error>> {
     let receipt = production_step_receipt(&signer, &verifier)?;
 
     let mut tampered_body = receipt.clone();
-    tampered_body.harness.acts[0].summary = "tampered body".to_owned();
-    let verification = verify_harness_receipt_proof(&tampered_body, &proof_context(&verifier));
+    tampered_body.acts[0].summary = "tampered body".to_owned();
+    let verification = verify_receipt_proof(&tampered_body, &proof_context(&verifier));
     assert_finding(&verification, ReceiptFindingCode::SealDigestMismatch);
     assert_finding(&verification, ReceiptFindingCode::SignatureInvalid);
 
     let mut tampered_seal = receipt.clone();
-    tampered_seal.seal.digest = format!("sha256:{}", "0".repeat(64));
-    if let Some(seal) = tampered_seal.harness.seal.as_mut() {
-        seal.digest = tampered_seal.seal.digest.clone();
-    }
-    let verification = verify_harness_receipt_proof(&tampered_seal, &proof_context(&verifier));
+    tampered_seal.digest = format!("sha256:{}", "0".repeat(64));
+    let verification = verify_receipt_proof(&tampered_seal, &proof_context(&verifier));
     assert_finding(&verification, ReceiptFindingCode::SealDigestMismatch);
 
     let mut malformed_signature = receipt.clone();
     malformed_signature.signature.value = "base64:!".to_owned();
     let verification =
-        verify_harness_receipt_proof(&malformed_signature, &proof_context(&verifier));
+        verify_receipt_proof(&malformed_signature, &proof_context(&verifier));
     assert_finding(&verification, ReceiptFindingCode::SignatureMalformed);
 
     let mut missing_key = receipt.clone();
     missing_key.issuer.kid = "missing-key".to_owned();
-    let verification = verify_harness_receipt_proof(&missing_key, &proof_context(&verifier));
+    let verification = verify_receipt_proof(&missing_key, &proof_context(&verifier));
     assert_finding(&verification, ReceiptFindingCode::SignatureKeyMissing);
 
     let mut hash_mismatch = receipt.clone();
     hash_mismatch.issuer.public_key_sha256 = format!("sha256:{}", "1".repeat(64));
-    let verification = verify_harness_receipt_proof(&hash_mismatch, &proof_context(&verifier));
+    let verification = verify_receipt_proof(&hash_mismatch, &proof_context(&verifier));
     assert_finding(&verification, ReceiptFindingCode::SignatureKeyHashMismatch);
 
     let mut missing_verifier = receipt;
     refresh_digest_and_signature(&mut missing_verifier, &signer)?;
     let verification =
-        verify_harness_receipt_proof(&missing_verifier, &ReceiptProofContext::default());
+        verify_receipt_proof(&missing_verifier, &ReceiptProofContext::default());
     assert_finding(&verification, ReceiptFindingCode::SignatureVerifierMissing);
     Ok(())
 }
@@ -197,12 +204,12 @@ fn production_verifier_rejects_pseudo_and_malformed_public_key() -> Result<(), B
 
     let digest = canonical_receipt_body_digest(&receipt)?;
     receipt.signature.value = format!("sig:{digest}");
-    let verification = verify_harness_receipt_proof(&receipt, &proof_context(&verifier));
+    let verification = verify_receipt_proof(&receipt, &proof_context(&verifier));
     assert_finding(&verification, ReceiptFindingCode::SignatureMalformed);
 
     let bad_key = ProductionReceiptKey::new(FIXTURE_KID, vec![0x99; 31]);
     let bad_verifier = Ed25519ReceiptVerifier::new([bad_key]);
-    let verification = verify_harness_receipt_proof(&receipt, &proof_context(&bad_verifier));
+    let verification = verify_receipt_proof(&receipt, &proof_context(&bad_verifier));
     assert_finding(&verification, ReceiptFindingCode::SignatureKeyMalformed);
     Ok(())
 }
@@ -210,7 +217,7 @@ fn production_verifier_rejects_pseudo_and_malformed_public_key() -> Result<(), B
 fn production_step_receipt(
     signer: &Ed25519ReceiptSigner,
     verifier: &Ed25519ReceiptVerifier,
-) -> Result<HarnessReceipt, Box<dyn Error>> {
+) -> Result<Receipt, Box<dyn Error>> {
     Ok(step_receipt_with_signature_policy(
         "prod_step",
         "seal",
@@ -283,14 +290,11 @@ fn skill_output(status: InvocationStatus) -> SkillOutput {
 }
 
 fn refresh_digest_and_signature(
-    receipt: &mut HarnessReceipt,
+    receipt: &mut Receipt,
     signer: &Ed25519ReceiptSigner,
 ) -> Result<(), Box<dyn Error>> {
     let digest = canonical_receipt_body_digest(receipt)?;
-    receipt.seal.digest = digest.clone();
-    if let Some(seal) = receipt.harness.seal.as_mut() {
-        seal.digest = digest.clone();
-    }
+    receipt.digest = digest.clone();
     receipt.signature = signer.sign_receipt_body(&digest)?;
     Ok(())
 }
@@ -298,7 +302,7 @@ fn refresh_digest_and_signature(
 fn sign_with_fixed_signer(
     signer: &FixedSigner,
     verifier: &Ed25519ReceiptVerifier,
-) -> Result<HarnessReceipt, runx_runtime::RuntimeError> {
+) -> Result<Receipt, runx_runtime::RuntimeError> {
     step_receipt_with_signature_policy(
         "prod_bad_metadata",
         "seal",

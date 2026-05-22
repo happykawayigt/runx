@@ -3,7 +3,7 @@ use std::path::Path;
 use serde::Deserialize;
 
 use runx_contracts::{
-    HarnessReceipt, OperationalPolicy, OperationalPolicyAction, OperationalPolicySourceProvider,
+    OperationalPolicy, OperationalPolicyAction, OperationalPolicySourceProvider, Receipt,
     TargetRepoRunnerPlanRequest, TargetRepoRunnerSourceContext, plan_target_repo_runner,
     plan_target_repo_runner_dedupe_lookup,
 };
@@ -161,7 +161,7 @@ fn nitrosend_external_fixture_cites_existing_runtime_and_post_merge_fixtures()
         "fixtures/contracts/harness-spine/post-merge-observer-merged-verified.json"
     );
     let harness_fixture: HarnessFixture = serde_json::from_str(POST_MERGE_JSON)?;
-    let receipt: HarnessReceipt = serde_json::from_value(harness_fixture.expected)?;
+    let receipt: Receipt = serde_json::from_value(harness_fixture.expected)?;
     assert_eq!(receipt.seal.reason_code, "merged_verified");
     Ok(())
 }

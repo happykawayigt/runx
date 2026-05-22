@@ -219,9 +219,9 @@ export interface HarnessCallerFixture {
   readonly approvals?: Readonly<Record<string, boolean>>;
 }
 
-export interface HarnessReceiptExpectation {
+export interface ReceiptExpectation {
   readonly [key: string]: unknown;
-  readonly schema?: "runx.harness_receipt.v1";
+  readonly schema?: "runx.receipt.v1";
   readonly status?: "sealed" | "failure";
   readonly source_type?: string;
   readonly body_digest?: string;
@@ -237,7 +237,7 @@ export interface HarnessReceiptExpectation {
 
 export interface HarnessExpectation {
   readonly status?: "sealed" | "failure" | "needs_agent" | "policy_denied" | "escalated";
-  readonly receipt?: HarnessReceiptExpectation;
+  readonly receipt?: ReceiptExpectation;
   readonly steps?: readonly string[];
 }
 

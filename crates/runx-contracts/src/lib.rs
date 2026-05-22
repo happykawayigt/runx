@@ -83,10 +83,11 @@ pub use external_adapter::{
 };
 pub use fingerprint::{Fingerprint, FingerprintAlgorithm, hex_lower, sha256_hex, sha256_prefixed};
 pub use harness::{
-    FanoutReceiptDecision, FanoutReceiptStrategy, FanoutReceiptSyncPoint, HARNESS_RECEIPT_SCHEMA,
-    Harness, HarnessEnforcement, HarnessIdempotency, HarnessReceipt, HarnessReceiptSchema,
-    HarnessRevision, HarnessSandbox, HarnessSeal, HarnessState, ReceiptIssuer, ReceiptIssuerType,
-    ReceiptSignature, SealCriterion, SignatureAlgorithm,
+    FanoutReceiptDecision, FanoutReceiptStrategy, FanoutReceiptSyncPoint, Lineage,
+    RECEIPT_CANONICALIZATION, RECEIPT_SCHEMA, Receipt, ReceiptAct, ReceiptAuthority,
+    ReceiptCommitment, ReceiptCommitmentScope, ReceiptCriterion, ReceiptEnforcement,
+    ReceiptIdempotency, ReceiptIssuer, ReceiptIssuerType, ReceiptSchema, ReceiptSignature,
+    ReceiptSubjectKind, RunnerProvenance, Seal, SignatureAlgorithm, Subject,
 };
 pub use host_protocol::{
     AgentActInvocation, AgentActSourceType, ApprovalDecision, ApprovalGate, ExecutionEvent,

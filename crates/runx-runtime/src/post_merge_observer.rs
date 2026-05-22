@@ -10,7 +10,7 @@ use runx_contracts::post_merge_observer::{
     normalize_post_merge_observer_command,
 };
 use runx_contracts::{
-    HarnessReceipt, OperationalPolicy, PostMergeObserverPlan, PostMergeObserverPlanError,
+    Receipt, OperationalPolicy, PostMergeObserverPlan, PostMergeObserverPlanError,
     PostMergeObserverPlanRequest, PostMergeObserverPublicationProjection,
     PostMergeObserverRuntimeDecision, PostMergeObserverRuntimeDedupePlan,
     PostMergeObserverSignalSource, PostMergeProvider, PostMergePullRequestObservation,
@@ -712,7 +712,7 @@ pub enum PostMergeObserverRuntimeError {
 pub fn execute_post_merge_observer_with_adapter<A: PostMergeObserverAdapter>(
     policy: &OperationalPolicy,
     request: &PostMergeObserverLivePublicationRequest,
-    sealed_receipt: &HarnessReceipt,
+    sealed_receipt: &Receipt,
     adapter: &mut A,
     ledger: &mut PostMergeObserverPublicationLedger,
 ) -> Result<PostMergeObserverLivePublication, PostMergeObserverRuntimeError> {
@@ -749,7 +749,7 @@ pub fn execute_post_merge_observer_with_publication_adapter<
 >(
     policy: &OperationalPolicy,
     request: &PostMergeObserverLivePublicationRequest,
-    sealed_receipt: &HarnessReceipt,
+    sealed_receipt: &Receipt,
     adapter: &mut A,
     publisher: &mut P,
     ledger: &mut PostMergeObserverPublicationLedger,
@@ -805,7 +805,7 @@ struct ObservedPostMergeClosure {
 fn observe_post_merge_closure<A: PostMergeObserverAdapter>(
     policy: &OperationalPolicy,
     command: &PostMergeObserverCommand,
-    sealed_receipt: &HarnessReceipt,
+    sealed_receipt: &Receipt,
     adapter: &mut A,
 ) -> Result<ObservedPostMergeClosure, PostMergeObserverRuntimeError> {
     let pull_request =
@@ -847,7 +847,7 @@ fn observe_post_merge_closure<A: PostMergeObserverAdapter>(
 
 pub fn project_post_merge_observer_publication_commands(
     dedupe: &PostMergeObserverRuntimeDedupePlan,
-    sealed_receipt: &HarnessReceipt,
+    sealed_receipt: &Receipt,
     ledger: &mut PostMergeObserverPublicationLedger,
 ) -> Result<PostMergeObserverPublicationRuntime, PostMergeObserverRuntimeError> {
     let (runtime, _) =
@@ -860,7 +860,7 @@ pub fn project_post_merge_observer_publication_commands(
 
 fn plan_post_merge_observer_publication_commands(
     dedupe: &PostMergeObserverRuntimeDedupePlan,
-    sealed_receipt: &HarnessReceipt,
+    sealed_receipt: &Receipt,
     ledger: &PostMergeObserverPublicationLedger,
 ) -> Result<
     (
@@ -877,10 +877,10 @@ fn plan_post_merge_observer_publication_commands(
     }
 
     let projection = project_post_merge_observer_publication_from_receipt(sealed_receipt)?;
-    if dedupe.receipt_ref.uri != projection.harness_receipt_ref.uri {
+    if dedupe.receipt_ref.uri != projection.receipt_ref.uri {
         return Err(PostMergeObserverRuntimeError::ReceiptRefMismatch {
             dedupe_receipt_ref: dedupe.receipt_ref.uri.clone(),
-            receipt_ref: projection.harness_receipt_ref.uri.clone(),
+            receipt_ref: projection.receipt_ref.uri.clone(),
         });
     }
 
@@ -891,7 +891,7 @@ fn plan_post_merge_observer_publication_commands(
             PostMergeObserverPublicationRuntime {
                 decision: PostMergeObserverPublicationRuntimeDecision::AlreadyPublished,
                 publication_key: dedupe.publication_key.clone(),
-                receipt_ref: projection.harness_receipt_ref.clone(),
+                receipt_ref: projection.receipt_ref.clone(),
                 commands: Vec::new(),
             },
             projection,
@@ -904,7 +904,7 @@ fn plan_post_merge_observer_publication_commands(
         PostMergeObserverPublicationRuntime {
             decision: PostMergeObserverPublicationRuntimeDecision::Publish,
             publication_key: dedupe.publication_key.clone(),
-            receipt_ref: projection.harness_receipt_ref.clone(),
+            receipt_ref: projection.receipt_ref.clone(),
             commands,
         },
         projection,
@@ -912,7 +912,7 @@ fn plan_post_merge_observer_publication_commands(
 }
 
 fn sealed_receipt_dedupe_plan(
-    sealed_receipt: &HarnessReceipt,
+    sealed_receipt: &Receipt,
     signal_source: PostMergeObserverSignalSource,
 ) -> PostMergeObserverRuntimeDedupePlan {
     PostMergeObserverRuntimeDedupePlan {
@@ -920,24 +920,24 @@ fn sealed_receipt_dedupe_plan(
         signal_source,
         lock_key: format!(
             "post-merge-observer:{}",
-            sealed_receipt.harness.idempotency.content_hash
+            sealed_receipt.idempotency.content_hash
         ),
         receipt_id: sealed_receipt.id.clone(),
         receipt_ref: Reference {
-            reference_type: ReferenceType::HarnessReceipt,
-            uri: format!("runx:harness_receipt:{}", sealed_receipt.id),
+            reference_type: ReferenceType::Receipt,
+            uri: format!("runx:receipt:{}", sealed_receipt.id),
             provider: None,
-            locator: Some(sealed_receipt.seal.digest.clone()),
+            locator: Some(sealed_receipt.digest.clone()),
             label: Some("post-merge observer harness receipt".to_owned()),
             observed_at: Some(sealed_receipt.seal.closed_at.clone()),
             proof_kind: None,
         },
         publication_key: format!(
             "post-merge-publication:{}:{}",
-            sealed_receipt.harness.idempotency.intent_key,
-            sealed_receipt.harness.idempotency.content_hash
+            sealed_receipt.idempotency.intent_key,
+            sealed_receipt.idempotency.content_hash
         ),
-        content_hash: sealed_receipt.harness.idempotency.content_hash.clone(),
+        content_hash: sealed_receipt.idempotency.content_hash.clone(),
     }
 }
 
@@ -956,13 +956,13 @@ fn publication_commands(
         PostMergeObserverPublicationCommand::SourceIssueComment {
             publication_key: publication_key.to_owned(),
             target: projection.source_issue_ref.clone(),
-            receipt_ref: projection.harness_receipt_ref.clone(),
+            receipt_ref: projection.receipt_ref.clone(),
             body: body.clone(),
         },
         PostMergeObserverPublicationCommand::SourceThreadReply {
             publication_key: publication_key.to_owned(),
             target: source_thread_ref.clone(),
-            receipt_ref: projection.harness_receipt_ref.clone(),
+            receipt_ref: projection.receipt_ref.clone(),
             body,
         },
     ];
@@ -973,7 +973,7 @@ fn publication_commands(
         commands.push(PostMergeObserverPublicationCommand::SourceIssueClose {
             publication_key: publication_key.to_owned(),
             target: projection.source_issue_ref.clone(),
-            receipt_ref: projection.harness_receipt_ref.clone(),
+            receipt_ref: projection.receipt_ref.clone(),
             reason_code: projection.reason_code.clone(),
         });
     }
@@ -1273,7 +1273,7 @@ fn public_reply_body(projection: &PostMergeObserverPublicationProjection) -> Str
             .unwrap_or("not_required"),
         projection.proof_criterion_id,
         next_human_action(projection),
-        projection.harness_receipt_ref.uri
+        projection.receipt_ref.uri
     ))
 }
 

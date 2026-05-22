@@ -2,7 +2,7 @@
   "schema_version": "runx.payment_ledger_projection.v1",
   "payment_profile": "x402-pay",
   "scenario_id": "P1.3",
-  "source_receipt_id": "runx:harness_receipt:hrn_rcpt_x402-pay-negative-cap-exceeded_graph",
+  "source_receipt_id": "runx:receipt:hrn_rcpt_x402-pay-negative-cap-exceeded_graph",
   "disposition": "refused",
   "accrual": {
     "amount_minor": 0,
@@ -20,8 +20,8 @@
     "ledger_spend_recorded": false
   },
   "evidence_refs": [
-    "runx:harness:x402-pay-negative-cap-exceeded_reserve",
-    "runx:harness_receipt:hrn_rcpt_x402-pay-negative-cap-exceeded_reserve",
+    "hrn_x402-pay-negative-cap-exceeded_reserve",
+    "runx:receipt:hrn_rcpt_x402-pay-negative-cap-exceeded_reserve",
     "runx:payment-capability:paid-echo-cap-exceeded-spend"
   ]
 }

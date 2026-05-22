@@ -27,7 +27,7 @@ describe("CLI presentation", () => {
         state: {},
         receipt: {
           id: "gx_escalated",
-          schema: "runx.harness_receipt.v1",
+          schema: "runx.receipt.v1",
           harness: {
             state: "sealed",
           },

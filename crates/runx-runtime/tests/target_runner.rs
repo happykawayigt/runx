@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::fmt::Write as _;
 
 use runx_contracts::{
-    ActForm, HarnessState, JsonValue, OperationalPolicy, OperationalPolicyAction, Reference,
+    ActForm, ClosureDisposition, JsonValue, OperationalPolicy, OperationalPolicyAction, Reference,
     ReferenceType, TargetRepoRunnerDedupeLookupObservation, TargetRepoRunnerDedupeResult,
     TargetRepoRunnerExistingPullRequest, TargetRepoRunnerPlanRequest, TargetRepoRunnerProvider,
     TargetRepoRunnerProviderPullRequest, TargetRepoRunnerPullRequestDisposition,
@@ -566,14 +566,12 @@ fn live_adapter_composes_observations_into_revision_receipt_without_network()
         Some(git_mutation.branch.as_str())
     );
 
-    assert_eq!(live.revision_receipt.harness.state, HarnessState::Sealed);
-    assert_eq!(live.revision_receipt.harness.revision.sequence, 1);
-    assert_eq!(live.revision_receipt.harness.acts.len(), 1);
-    let act = &live.revision_receipt.harness.acts[0];
+    assert_eq!(live.revision_receipt.seal.disposition, ClosureDisposition::Closed);
+    assert_eq!(live.revision_receipt.acts.len(), 1);
+    let act = &live.revision_receipt.acts[0];
     assert_eq!(act.form, ActForm::Revision);
-    assert!(act.revision.is_some());
-    assert!(act.verification.is_none());
-    assert_eq!(act.closure.reason_code, "target_runner_pr_created");
+    assert!(act.detail_ref.is_some());
+    assert_eq!(live.revision_receipt.seal.reason_code, "target_runner_pr_created");
     assert_eq!(
         live.revision_projection.pull_request_ref.uri,
         "https://github.com/nitrosend/api/pull/145"
@@ -595,18 +593,16 @@ fn live_adapter_composes_observations_into_revision_receipt_without_network()
     );
     assert_eq!(live.source_publication_request.commands.len(), 2);
     assert_eq!(
-        live.source_publication_receipt.harness.state,
-        HarnessState::Sealed
+        live.source_publication_receipt.seal.disposition,
+        ClosureDisposition::Closed
     );
-    assert_eq!(live.source_publication_receipt.harness.acts.len(), 1);
+    assert_eq!(live.source_publication_receipt.acts.len(), 1);
     assert_eq!(
-        live.source_publication_receipt.harness.acts[0].form,
+        live.source_publication_receipt.acts[0].form,
         ActForm::Reply
     );
     assert_eq!(
-        live.source_publication_receipt.harness.acts[0]
-            .closure
-            .reason_code,
+        live.source_publication_receipt.seal.reason_code,
         "target_runner_source_published"
     );
     assert_eq!(
@@ -633,7 +629,7 @@ fn live_adapter_composes_observations_into_revision_receipt_without_network()
     );
 
     let digest = canonical_receipt_body_digest(&live.revision_receipt)?;
-    assert_eq!(live.revision_receipt.seal.digest, digest);
+    assert_eq!(live.revision_receipt.digest, digest);
     assert_eq!(
         live.revision_receipt.signature.value,
         format!("sig:{digest}")
@@ -712,7 +708,7 @@ fn live_adapter_reuses_provider_pull_request_without_runner_and_seals_reuse_meta
         Some("reused")
     );
     assert_eq!(
-        live.revision_receipt.harness.acts[0].closure.reason_code,
+        live.revision_receipt.seal.reason_code,
         "target_runner_pr_reused"
     );
     assert_eq!(

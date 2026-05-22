@@ -1,26 +1,26 @@
-use runx_contracts::{HarnessReceipt, Reference, ReferenceType};
+use runx_contracts::{Receipt, Reference, ReferenceType};
 use runx_receipts::{
-    ReceiptResolveResult, ReceiptResolver, ReceiptTreeConfig, ReceiptVerification, ResolvedReceipt,
-    verify_receipt_tree_proof_with_resolver,
+    ReceiptFindingCode, ReceiptResolveResult, ReceiptResolver, ReceiptTreeConfig,
+    ReceiptVerification, ResolvedReceipt, verify_receipt_tree_proof_with_resolver,
 };
 
 use super::seal::{RuntimeReceiptProofContextProvider, RuntimeReceiptSignaturePolicy};
 
 #[derive(Clone, Debug, Default)]
 pub struct RuntimeReceiptResolver {
-    receipts: Vec<HarnessReceipt>,
+    receipts: Vec<Receipt>,
 }
 
 impl RuntimeReceiptResolver {
     #[must_use]
-    pub fn new(receipts: impl IntoIterator<Item = HarnessReceipt>) -> Self {
+    pub fn new(receipts: impl IntoIterator<Item = Receipt>) -> Self {
         Self {
             receipts: receipts.into_iter().collect(),
         }
     }
 
     #[must_use]
-    pub fn receipts(&self) -> &[HarnessReceipt] {
+    pub fn receipts(&self) -> &[Receipt] {
         &self.receipts
     }
 }
@@ -60,8 +60,8 @@ impl ReceiptResolver for RuntimeReceiptResolver {
 }
 
 pub fn validate_runtime_receipt_tree(
-    root: &HarnessReceipt,
-    receipts: impl IntoIterator<Item = HarnessReceipt>,
+    root: &Receipt,
+    receipts: impl IntoIterator<Item = Receipt>,
     config: ReceiptTreeConfig,
 ) -> Result<(), ReceiptVerification> {
     let verification = verify_runtime_receipt_tree(root, receipts, config);
@@ -73,8 +73,8 @@ pub fn validate_runtime_receipt_tree(
 }
 
 pub fn validate_runtime_receipt_tree_with_policy(
-    root: &HarnessReceipt,
-    receipts: impl IntoIterator<Item = HarnessReceipt>,
+    root: &Receipt,
+    receipts: impl IntoIterator<Item = Receipt>,
     config: ReceiptTreeConfig,
     signature_policy: RuntimeReceiptSignaturePolicy<'_>,
 ) -> Result<(), ReceiptVerification> {
@@ -89,8 +89,8 @@ pub fn validate_runtime_receipt_tree_with_policy(
 
 #[must_use]
 pub fn verify_runtime_receipt_tree(
-    root: &HarnessReceipt,
-    receipts: impl IntoIterator<Item = HarnessReceipt>,
+    root: &Receipt,
+    receipts: impl IntoIterator<Item = Receipt>,
     config: ReceiptTreeConfig,
 ) -> ReceiptVerification {
     verify_runtime_receipt_tree_with_policy(
@@ -103,19 +103,30 @@ pub fn verify_runtime_receipt_tree(
 
 #[must_use]
 pub fn verify_runtime_receipt_tree_with_policy(
-    root: &HarnessReceipt,
-    receipts: impl IntoIterator<Item = HarnessReceipt>,
+    root: &Receipt,
+    receipts: impl IntoIterator<Item = Receipt>,
     config: ReceiptTreeConfig,
     signature_policy: RuntimeReceiptSignaturePolicy<'_>,
 ) -> ReceiptVerification {
     let resolver = RuntimeReceiptResolver::new(receipts);
     let proof_contexts = RuntimeReceiptProofContextProvider::new(signature_policy);
-    verify_receipt_tree_proof_with_resolver(
+    let verification = verify_receipt_tree_proof_with_resolver(
         root,
         &resolver,
         runtime_receipt_tree_config(config),
         &proof_contexts,
-    )
+    );
+    // The decision -> act-id integrity property is journal-dependent and
+    // reported as `unverified` by plain proof verification; the runtime confirms
+    // it through the in-hand journal, so it is not a blocking tree finding.
+    let blocking: Vec<_> = verification
+        .findings
+        .into_iter()
+        .filter(|finding| {
+            !matches!(finding.code, ReceiptFindingCode::DecisionIntegrityUnverified)
+        })
+        .collect();
+    ReceiptVerification::from_findings(blocking)
 }
 
 fn runtime_receipt_path(index: usize) -> String {
@@ -128,11 +139,11 @@ fn runtime_receipt_tree_config(mut config: ReceiptTreeConfig) -> ReceiptTreeConf
 }
 
 fn referenced_receipt_id(reference: &Reference) -> Option<&str> {
-    if reference.reference_type != ReferenceType::HarnessReceipt {
+    if reference.reference_type != ReferenceType::Receipt {
         return None;
     }
     reference
         .uri
-        .strip_prefix("runx:harness_receipt:")
+        .strip_prefix("runx:receipt:")
         .filter(|id| !id.is_empty())
 }

@@ -851,7 +851,7 @@ harness:
       expect:
         status: sealed
         receipt:
-          schema: runx.harness_receipt.v1
+          schema: runx.receipt.v1
           state: sealed
           disposition: closed
 "#;
@@ -882,7 +882,7 @@ harness:
       expect:
         status: success
         receipt:
-          schema: runx.harness_receipt.v1
+          schema: runx.receipt.v1
           state: sealed
           disposition: closed
 "#;

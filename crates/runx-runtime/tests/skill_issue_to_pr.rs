@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use runx_contracts::{ClosureDisposition, JsonValue};
-use runx_receipts::{validate_harness_receipt, validate_receipt_tree};
+use runx_receipts::{validate_receipt, validate_receipt_tree};
 use runx_runtime::{
     HarnessExpectedStatus, HarnessReplayOutput, load_harness_fixture, run_harness_fixture,
 };
@@ -25,14 +25,14 @@ fn issue_to_pr_generated_fixtures_replay_to_needs_agent_receipts()
             output.receipt.seal.disposition,
             ClosureDisposition::Deferred
         );
-        validate_harness_receipt(&output.receipt)
+        validate_receipt(&output.receipt)
             .map_err(|verification| format!("{case_name}: {:?}", verification.findings))?;
         validate_receipt_tree(&output.receipt, &output.step_receipts)
             .map_err(|verification| format!("{case_name}: {:?}", verification.findings))?;
-        assert_eq!(output.receipt.harness.acts.len(), 0);
+        assert_eq!(output.receipt.acts.len(), 0);
         assert_eq!(output.receipt.harness.decisions.len(), 1);
         assert!(
-            !output.receipt.harness.child_harness_receipt_refs.is_empty(),
+            !output.receipt.lineage.as_ref().map(|l| l.children.as_slice()).unwrap_or_default().is_empty(),
             "{case_name}: graph receipt should cite child harness receipts"
         );
     }

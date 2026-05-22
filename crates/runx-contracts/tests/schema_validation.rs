@@ -163,19 +163,19 @@ const CONTRACT_FIXTURE_SCHEMA_MAPPINGS: &[FixtureSchemaMapping] = &[
         "thread-outbox-provider-push.schema.json",
     ),
     FixtureSchemaMapping::new(
-        "fixtures/contracts/harness-spine/harness-receipt-abnormal.json",
+        "fixtures/contracts/harness-spine/receipt-abnormal.json",
         "/expected",
-        "harness-receipt.schema.json",
+        "receipt.schema.json",
     ),
     FixtureSchemaMapping::new(
-        "fixtures/contracts/harness-spine/harness-receipt-success.json",
+        "fixtures/contracts/harness-spine/receipt-success.json",
         "/expected",
-        "harness-receipt.schema.json",
+        "receipt.schema.json",
     ),
     FixtureSchemaMapping::new(
         "fixtures/contracts/harness-spine/post-merge-observer-merged-verified.json",
         "/expected",
-        "harness-receipt.schema.json",
+        "receipt.schema.json",
     ),
     FixtureSchemaMapping::new(
         "fixtures/contracts/harness-spine/signal-fingerprint-links.json",

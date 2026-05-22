@@ -63,7 +63,7 @@ describe("voice profile injection", () => {
         content: voiceProfileContent,
       });
 
-      if (result.status !== "sealed" || result.receipt.schema !== "runx.harness_receipt.v1") {
+      if (result.status !== "sealed" || result.receipt.schema !== "runx.receipt.v1") {
         return;
       }
 

@@ -1,5 +1,5 @@
 use runx_contracts::{
-    FanoutReceiptDecision, FanoutReceiptStrategy, FanoutReceiptSyncPoint, HarnessReceipt,
+    FanoutReceiptDecision, FanoutReceiptStrategy, FanoutReceiptSyncPoint, Receipt,
     JsonObject, ReceiptIssuer, ReceiptSignature,
 };
 use runx_core::state_machine::StepAdmissionWitness;
@@ -26,7 +26,8 @@ fn runtime_resolver_verifies_graph_receipt_with_children() -> Result<(), Box<dyn
 
     assert_eq!(resolver.receipts().len(), 2);
     assert!(children.iter().all(|child| {
-        child.harness.parent_harness_ref.as_ref() == Some(&root.harness.harness_ref)
+        child.lineage.as_ref().and_then(|l| l.parent.as_ref()).map(|r| r.uri.as_str())
+            == Some(format!("runx:receipt:{}", root.id).as_str())
     }));
     assert!(
         runx_receipts::validate_receipt_tree_with_resolver(
@@ -43,7 +44,7 @@ fn runtime_resolver_verifies_graph_receipt_with_children() -> Result<(), Box<dyn
 #[test]
 fn runtime_tree_rejects_legacy_exact_id_child_ref() -> Result<(), Box<dyn std::error::Error>> {
     let (mut root, children) = graph_with_steps("tree_runtime_exact", &["child"])?;
-    root.harness.child_harness_receipt_refs[0].uri = children[0].id.clone();
+    root.lineage.as_mut().unwrap().children[0].uri = children[0].id.clone();
     refresh_local_digest_and_signature(&mut root)?;
 
     let verification = verify_runtime_receipt_tree(&root, children, ReceiptTreeConfig::default());
@@ -51,7 +52,7 @@ fn runtime_tree_rejects_legacy_exact_id_child_ref() -> Result<(), Box<dyn std::e
     assert_finding(
         &verification,
         ReceiptFindingCode::ChildReceiptRefMalformed,
-        "harness.child_harness_receipt_refs[0]",
+        "lineage.children[0]",
     );
     Ok(())
 }
@@ -71,7 +72,7 @@ fn runtime_resolver_reports_ambiguous_scoped_receipts() -> Result<(), Box<dyn st
     assert_finding(
         &verification,
         ReceiptFindingCode::ChildReceiptAmbiguous,
-        "harness.child_harness_receipt_refs[0]",
+        "lineage.children[0]",
     );
     Ok(())
 }
@@ -85,7 +86,7 @@ fn runtime_tree_rejects_missing_child_receipt() -> Result<(), Box<dyn std::error
     assert_finding(
         &verification,
         ReceiptFindingCode::ChildReceiptMissing,
-        "harness.child_harness_receipt_refs[0]",
+        "lineage.children[0]",
     );
     Ok(())
 }
@@ -143,7 +144,7 @@ fn runtime_fanout_receipt_tree_uses_explicit_receipts() -> Result<(), Box<dyn st
     )?;
     let children = child_receipts(&steps);
 
-    assert_eq!(root.sync_points, vec![sync_point]);
+    assert_eq!(root.lineage.as_ref().unwrap().sync, vec![sync_point]);
     assert!(validate_runtime_receipt_tree(&root, children, ReceiptTreeConfig::default()).is_ok());
     Ok(())
 }
@@ -152,7 +153,7 @@ fn runtime_fanout_receipt_tree_uses_explicit_receipts() -> Result<(), Box<dyn st
 fn runtime_tree_rejects_structurally_valid_child_proof_tamper()
 -> Result<(), Box<dyn std::error::Error>> {
     let (root, mut children) = graph_with_steps("tree_runtime_child_tamper", &["child"])?;
-    children[0].harness.acts[0].summary = "tampered child proof body".to_owned();
+    children[0].acts[0].summary = "tampered child proof body".to_owned();
 
     assert!(runx_receipts::verify_receipt_tree(&root, &children).valid);
     let verification = verify_runtime_receipt_tree(&root, children, ReceiptTreeConfig::default());
@@ -175,7 +176,7 @@ fn runtime_tree_rejects_valid_alternate_child_with_same_id()
 -> Result<(), Box<dyn std::error::Error>> {
     let (root, children) = graph_with_steps("tree_runtime_child_digest", &["child"])?;
     let mut alternate = children[0].clone();
-    alternate.harness.acts[0].summary = "valid alternate child body".to_owned();
+    alternate.acts[0].summary = "valid alternate child body".to_owned();
     refresh_local_digest_and_signature(&mut alternate)?;
 
     let verification =
@@ -193,7 +194,7 @@ fn runtime_tree_rejects_valid_alternate_child_with_same_id()
 fn runtime_tree_rejects_child_ref_without_digest_locator() -> Result<(), Box<dyn std::error::Error>>
 {
     let (mut root, children) = graph_with_steps("tree_runtime_missing_child_digest", &["child"])?;
-    root.harness.child_harness_receipt_refs[0].locator = None;
+    root.lineage.as_mut().unwrap().children[0].locator = None;
     refresh_local_digest_and_signature(&mut root)?;
 
     assert!(runx_receipts::verify_receipt_tree(&root, &children).valid);
@@ -210,7 +211,7 @@ fn runtime_tree_rejects_child_ref_without_digest_locator() -> Result<(), Box<dyn
 #[test]
 fn runtime_tree_rejects_child_without_parent_link() -> Result<(), Box<dyn std::error::Error>> {
     let (root, mut children) = graph_with_steps("tree_runtime_missing_parent", &["child"])?;
-    children[0].harness.parent_harness_ref = None;
+    children[0].lineage.as_mut().unwrap().parent = None;
     refresh_local_digest_and_signature(&mut children[0])?;
 
     assert!(runx_receipts::verify_receipt_tree(&root, &children).valid);
@@ -219,7 +220,7 @@ fn runtime_tree_rejects_child_without_parent_link() -> Result<(), Box<dyn std::e
     assert_finding(
         &verification,
         ReceiptFindingCode::ChildReceiptParentMismatch,
-        "harness.child_harness_receipt_refs[0].parent_harness_ref",
+        "lineage.children[0].lineage.parent",
     );
     Ok(())
 }
@@ -290,7 +291,7 @@ fn production_tree_policy_without_verifier_fails_closed() -> Result<(), Box<dyn 
 fn graph_with_steps(
     graph_name: &str,
     step_ids: &[&str],
-) -> Result<(HarnessReceipt, Vec<HarnessReceipt>), Box<dyn std::error::Error>> {
+) -> Result<(Receipt, Vec<Receipt>), Box<dyn std::error::Error>> {
     let steps = step_ids
         .iter()
         .map(|step_id| step_run(graph_name, step_id, None, InvocationStatus::Success))
@@ -300,7 +301,7 @@ fn graph_with_steps(
     Ok((root, child_receipts(&steps)))
 }
 
-fn child_receipts(steps: &[StepRun]) -> Vec<HarnessReceipt> {
+fn child_receipts(steps: &[StepRun]) -> Vec<Receipt> {
     steps.iter().map(|step| step.receipt.clone()).collect()
 }
 
@@ -361,7 +362,7 @@ fn fanout_sync_point(steps: &[StepRun]) -> FanoutReceiptSyncPoint {
 }
 
 fn resign_for_test_verifier(
-    receipt: &mut HarnessReceipt,
+    receipt: &mut Receipt,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let digest = canonical_receipt_body_digest(receipt)?;
     receipt.signature.value = format!("ed25519-test:{digest}");
@@ -369,13 +370,10 @@ fn resign_for_test_verifier(
 }
 
 fn refresh_local_digest_and_signature(
-    receipt: &mut HarnessReceipt,
+    receipt: &mut Receipt,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let digest = canonical_receipt_body_digest(receipt)?;
-    receipt.seal.digest = digest.clone();
-    if let Some(seal) = receipt.harness.seal.as_mut() {
-        seal.digest = digest.clone();
-    }
+    receipt.digest = digest.clone();
     receipt.signature.value = format!("sig:{digest}");
     Ok(())
 }

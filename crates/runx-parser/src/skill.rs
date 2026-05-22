@@ -365,7 +365,7 @@ pub struct HarnessCallerFixture {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct HarnessReceiptExpectation {
+pub struct ReceiptExpectation {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub kind: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -385,7 +385,7 @@ pub struct HarnessExpectation {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub receipt: Option<HarnessReceiptExpectation>,
+    pub receipt: Option<ReceiptExpectation>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub steps: Option<Vec<String>>,
 }
@@ -1498,7 +1498,7 @@ fn validate_harness_expectation(
 ) -> Result<HarnessExpectation, ValidationError> {
     Ok(HarnessExpectation {
         status: optional_harness_status(value.get("status"), &format!("{field}.status"))?,
-        receipt: validate_harness_receipt_expectation(
+        receipt: validate_receipt_expectation(
             optional_object(value.get("receipt"), &format!("{field}.receipt"))?,
             &format!("{field}.receipt"),
         )?,
@@ -1506,16 +1506,16 @@ fn validate_harness_expectation(
     })
 }
 
-fn validate_harness_receipt_expectation(
+fn validate_receipt_expectation(
     value: Option<JsonObject>,
     field: &str,
-) -> Result<Option<HarnessReceiptExpectation>, ValidationError> {
+) -> Result<Option<ReceiptExpectation>, ValidationError> {
     let Some(value) = value else {
         return Ok(None);
     };
-    Ok(Some(HarnessReceiptExpectation {
-        kind: optional_harness_receipt_kind(value.get("kind"), &format!("{field}.kind"))?,
-        status: optional_harness_receipt_status(value.get("status"), &format!("{field}.status"))?,
+    Ok(Some(ReceiptExpectation {
+        kind: optional_receipt_kind(value.get("kind"), &format!("{field}.kind"))?,
+        status: optional_receipt_status(value.get("status"), &format!("{field}.status"))?,
         skill_name: optional_string(value.get("skill_name"), &format!("{field}.skill_name"))?,
         source_type: optional_string(value.get("source_type"), &format!("{field}.source_type"))?,
         graph_name: optional_string(value.get("graph_name"), &format!("{field}.graph_name"))?,
@@ -1540,18 +1540,18 @@ fn optional_harness_status(
     )
 }
 
-fn optional_harness_receipt_status(
+fn optional_receipt_status(
     value: Option<&JsonValue>,
     field: &str,
 ) -> Result<Option<String>, ValidationError> {
     validate_enum(value, field, &["sealed", "failure"])
 }
 
-fn optional_harness_receipt_kind(
+fn optional_receipt_kind(
     value: Option<&JsonValue>,
     field: &str,
 ) -> Result<Option<String>, ValidationError> {
-    validate_enum(value, field, &["harness_receipt"])
+    validate_enum(value, field, &["receipt"])
 }
 
 fn validate_enum(

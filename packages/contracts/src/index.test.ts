@@ -28,7 +28,7 @@ import {
   validateDoctorReportContract,
   validateHandoffSignalContract,
   validateHandoffStateContract,
-  validateHarnessReceiptContract,
+  validateReceiptContract,
   validateTargetContract,
   validateOpportunityContract,
   validateThesisAssessmentContract,
@@ -275,7 +275,10 @@ describe("@runxhq/contracts", () => {
     expect(runxAuxiliarySchemas.reviewReceiptOutput).toBe(reviewReceiptOutputSchema);
     expect(runxGeneratedSchemaArtifacts["doctor.schema.json"]).toBe(runxContractSchemas.doctor);
     expect(runxGeneratedSchemaArtifacts["act-assignment.schema.json"]).toBe(runxContractSchemas.actAssignment);
-    expect(runxGeneratedSchemaArtifacts["harness-receipt.schema.json"]).toBe(runxContractSchemas.harnessReceipt);
+    expect(runxGeneratedSchemaArtifacts["receipt.schema.json"]).toBe(runxContractSchemas.receipt);
+    expect(runxGeneratedSchemaArtifacts["run-summary.schema.json"]).toBe(runxContractSchemas.runSummary);
+    const retiredReceiptArtifact = `${"harness"}-receipt.schema.json` as keyof typeof runxGeneratedSchemaArtifacts;
+    expect(runxGeneratedSchemaArtifacts[retiredReceiptArtifact]).toBeUndefined();
     const retiredCentralArtifact = `${"engage"}ment.schema.json` as keyof typeof runxGeneratedSchemaArtifacts;
     const retiredEvidenceArtifact = `${"evidence"}-bundle.schema.json` as keyof typeof runxGeneratedSchemaArtifacts;
     expect(runxGeneratedSchemaArtifacts[retiredCentralArtifact]).toBeUndefined();
@@ -366,8 +369,9 @@ describe("@runxhq/contracts", () => {
   });
 
   it("owns the runx harness spine and retires retired central artifacts", () => {
-    expect(RUNX_LOGICAL_SCHEMAS.harnessReceipt).toBe("runx.harness_receipt.v1");
-    expect(RUNX_CONTRACT_IDS.harnessReceipt).toBe("https://schemas.runx.dev/runx/harness-receipt/v1.json");
+    expect(RUNX_LOGICAL_SCHEMAS.receipt).toBe("runx.receipt.v1");
+    expect("harnessReceipt" in RUNX_LOGICAL_SCHEMAS).toBe(false);
+    expect("harnessReceipt" in RUNX_CONTRACT_IDS).toBe(false);
     const retiredCentralKey = `${"engage"}ment`;
     expect(retiredCentralKey in RUNX_LOGICAL_SCHEMAS).toBe(false);
     expect("evidenceBundle" in RUNX_LOGICAL_SCHEMAS).toBe(false);
@@ -410,30 +414,11 @@ describe("@runxhq/contracts", () => {
       reason_code: "revision_ready",
       summary: "Revision act completed and reviewable PR was observed.",
       closed_at: "2026-05-18T00:03:00Z",
-      last_observed_at: "2026-05-18T00:03:00Z",
-      canonicalization: "runx.harness-receipt.c14n.v1",
-      digest: "sha256:receipt",
       criteria: [{
         criterion_id: "crit_revision_reviewable",
         status: "verified",
-        act_id: "act_revision",
         verification_refs: [{ type: "verification", uri: "runx:verification:check_pr_open" }],
         evidence_refs: [{ type: "github_pull_request", uri: "github://runxhq/example/pulls/102" }],
-      }],
-      verification_summary: {
-        signature_valid: true,
-        hash_commitments_valid: true,
-        authority_attenuation_valid: true,
-        criteria_bound: true,
-        redaction_valid: true,
-        external_attestations_present: true,
-      },
-      redaction_refs: [{ type: "redaction_policy", uri: "runx:redaction_policy:public_safe" }],
-      artifact_refs: [{ type: "artifact", uri: "runx:artifact:summary_1" }],
-      hash_commitments: [{
-        algorithm: "sha256",
-        value: "sha256:private-transcript",
-        canonicalization: "runx.artifact-hash.v1",
       }],
     };
 
@@ -455,10 +440,14 @@ describe("@runxhq/contracts", () => {
       evidence_refs: [issueRef],
     })).toMatchObject({ schema: "runx.signal.v1", signal_type: "issue_opened" });
 
-    expect(validateHarnessReceiptContract({
-      schema: "runx.harness_receipt.v1",
+    void intent;
+    void verification;
+    void criterion;
+    expect(validateReceiptContract({
+      schema: "runx.receipt.v1",
       id: "hrn_rcpt_123",
       created_at: "2026-05-18T00:03:01Z",
+      canonicalization: "runx.receipt.c14n.v1",
       issuer: {
         type: "local",
         kid: "key_1",
@@ -468,152 +457,84 @@ describe("@runxhq/contracts", () => {
         alg: "Ed25519",
         value: "sig_123",
       },
-      harness: {
-        harness_id: "hrn_123",
-        parent_harness_ref: null,
-        state: "sealed",
-        host_ref: { type: "host", uri: "runx:host:cli" },
-        harness_ref: { type: "harness", uri: "runx:harness:local-cli" },
-        authority: {
-          actor_ref: principalRef,
-          authority_proof_refs: [{ type: "authority_proof", uri: "runx:authority_proof:proof_1" }],
-          grant_refs: [{ type: "grant", uri: "runx:grant:repo_write" }],
-          scope_refs: [{ type: "scope_admission", uri: "runx:scope_admission:repo_write" }],
-          policy_refs: [{ type: "redaction_policy", uri: "runx:redaction_policy:public_safe" }],
-          terms: [{
-            term_id: "term_repo_write",
-            principal_ref: principalRef,
-            resource_ref: { type: "github_repo", uri: "github://runxhq/example" },
-            resource_family: "github_repo",
-            verbs: ["read", "write", "create"],
-            bounds: {
-              repo_path_globs: ["app/checkout/**"],
-              branch_patterns: ["runx/**"],
-              max_child_depth: 1,
-            },
-            conditions: [{
-              condition_id: "cond_signal_verified",
-              predicate: "signal_verified",
-              refs: [{ type: "signal", uri: "runx:signal:sig_101" }],
-            }],
-            approvals: [],
-            capabilities: ["filesystem_read", "filesystem_write", "provider_mutation"],
-            issued_by_ref: principalRef,
-            credential_ref: { type: "credential", uri: "runx:credential:github_installation" },
-          }],
-          attenuation: {
-            parent_authority_ref: null,
-            subset_proof: null,
+      digest: "sha256:receipt",
+      idempotency: {
+        intent_key: "sha256:checkout-retry",
+        trigger_fingerprint: "sha256:trigger",
+        content_hash: "sha256:content",
+      },
+      subject: {
+        kind: "skill",
+        ref: { type: "harness", uri: "runx:harness:local-cli" },
+        commitments: [{
+          scope: "output",
+          algorithm: "sha256",
+          value: "sha256:private-transcript",
+          canonicalization: "runx.artifact-hash.v1",
+        }],
+      },
+      authority: {
+        actor_ref: principalRef,
+        grant_refs: [{ type: "grant", uri: "runx:grant:repo_write" }],
+        scope_refs: [{ type: "scope_admission", uri: "runx:scope_admission:repo_write" }],
+        authority_proof_refs: [{ type: "authority_proof", uri: "runx:authority_proof:proof_1" }],
+        attenuation: { parent_authority_ref: null, subset_proof: null },
+        terms: [{
+          term_id: "term_repo_write",
+          principal_ref: principalRef,
+          resource_ref: { type: "github_repo", uri: "github://runxhq/example" },
+          resource_family: "github_repo",
+          verbs: ["read", "write", "create"],
+          bounds: {
+            repo_path_globs: ["app/checkout/**"],
+            branch_patterns: ["runx/**"],
+            max_child_depth: 1,
           },
-        },
+          conditions: [{
+            condition_id: "cond_signal_verified",
+            predicate: "signal_verified",
+            refs: [{ type: "signal", uri: "runx:signal:sig_101" }],
+          }],
+          approvals: [],
+          capabilities: ["filesystem_read", "filesystem_write", "provider_mutation"],
+          issued_by_ref: principalRef,
+          credential_ref: { type: "credential", uri: "runx:credential:github_installation" },
+        }],
         enforcement: {
-          version: "2026-05-18",
-          enforcement_profile_hash: "sha256:profile",
-          sandbox: {
-            profile: "workspace-write",
-            cwd_policy: "workspace",
-            network: "none",
-            filesystem: "workspace_read_artifact_write",
-          },
+          profile_hash: "sha256:profile",
           redaction_refs: [{ type: "redaction_policy", uri: "runx:redaction_policy:public_safe" }],
+          setup_refs: [],
+          teardown_refs: [],
         },
-        idempotency: {
-          intent_key: "checkout-retry",
-          trigger_fingerprint: "sha256:trigger",
-          content_hash: "sha256:content",
-        },
-        revision: {
-          sequence: 1,
-          previous_ref: null,
-        },
-        signal_refs: [{ type: "signal", uri: "runx:signal:sig_101" }],
-        decisions: [{
-          decision_id: "dec_open",
-          choice: "open",
-          inputs: {
-            signal_refs: [{ type: "signal", uri: "runx:signal:sig_101" }],
-            target_ref: null,
-            opportunity_refs: [],
-            selection_ref: null,
-          },
-          proposed_intent: intent,
-          selected_act_id: "act_revision",
-          selected_harness_ref: null,
-          justification: {
-            summary: "Authenticated issue fits a bounded revision.",
-            evidence_refs: [issueRef],
-          },
-          closure: null,
-          artifact_refs: [],
-        }],
-        acts: [{
-          act_id: "act_revision",
-          form: "revision",
-          intent,
-          summary: "Prepared a reviewable checkout retry revision.",
-          closure: {
-            disposition: "closed",
-            reason_code: "revision_prepared",
-            summary: "Reviewable revision is ready.",
-            closed_at: "2026-05-18T00:03:00Z",
-          },
-          source_refs: [{ type: "signal", uri: "runx:signal:sig_101" }],
-          target_refs: [{ type: "github_repo", uri: "github://runxhq/example" }],
-          surface_refs: [{
-            type: "surface",
-            uri: "repo://runxhq/example/app/checkout/retry.ts",
-          }],
-          artifact_refs: [{ type: "artifact", uri: "runx:artifact:summary_1" }],
+      },
+      acts: [{
+        id: "act_revision",
+        form: "revision",
+        summary: "Prepared a reviewable checkout retry revision.",
+        criteria: [{
+          criterion_id: "crit_revision_reviewable",
+          status: "verified",
+          evidence_refs: [{ type: "github_pull_request", uri: "github://runxhq/example/pulls/102" }],
           verification_refs: [{ type: "verification", uri: "runx:verification:check_pr_open" }],
-          harness_refs: [],
-          revision: {
-            change_request: {
-              request_id: "change_checkout_retry",
-              summary: "Fix checkout retry failure.",
-              target_surfaces: [{
-                surface_ref: { type: "surface", uri: "repo://runxhq/example/app/checkout/retry.ts" },
-                mutating: true,
-              }],
-              success_criteria: [criterion],
-            },
-            change_plan: {
-              plan_id: "plan_checkout_retry",
-              summary: "Patch retry guard and add regression coverage.",
-              steps: ["Update retry guard.", "Add regression coverage."],
-            },
-            target_surfaces: [{
-              surface_ref: { type: "surface", uri: "repo://runxhq/example/app/checkout/retry.ts" },
-              mutating: true,
-            }],
-            invariants: ["Do not alter billing side effects."],
-            verification,
-            handoff_refs: [],
-            revision_refs: [{ type: "github_pull_request", uri: "github://runxhq/example/pulls/102" }],
-          },
-          criterion_bindings: [{
-            criterion_id: "crit_revision_reviewable",
-            status: "verified",
-            evidence_refs: [{ type: "github_pull_request", uri: "github://runxhq/example/pulls/102" }],
-            verification_refs: [{ type: "verification", uri: "runx:verification:check_pr_open" }],
-          }],
-          performed_at: "2026-05-18T00:02:00Z",
         }],
-        child_harness_receipt_refs: [],
         artifact_refs: [{ type: "artifact", uri: "runx:artifact:summary_1" }],
-        seal,
-      },
+        detail_ref: { type: "act", uri: "runx:act:act_revision_detail" },
+      }],
       seal,
-    })).toMatchObject({
-      schema: "runx.harness_receipt.v1",
-      harness: {
-        acts: [expect.objectContaining({ act_id: "act_revision" })],
+      lineage: {
+        children: [],
+        sync: [],
+        signal_refs: [{ type: "signal", uri: "runx:signal:sig_101" }],
       },
+    })).toMatchObject({
+      schema: "runx.receipt.v1",
+      acts: [expect.objectContaining({ id: "act_revision" })],
     });
 
-    expect(() => validateHarnessReceiptContract({
-      schema: "runx.harness_receipt.v1",
-      schema_version: "runx.harness_receipt.v1",
-    })).toThrow(/harness-receipt\/v1\.json/);
+    expect(() => validateReceiptContract({
+      schema: "runx.receipt.v1",
+      id: "hrn_rcpt_bad",
+    })).toThrow(/receipt\/v1\.json/);
     expect(() => validateSignalContract({
       schema: "runx.signal.v1",
       signal_id: "sig_bad",
@@ -918,7 +839,7 @@ describe("@runxhq/contracts", () => {
     const selectionCycleRef = { type: "selection_cycle", uri: "runx:selection_cycle:cycle_1" };
     const selectionRef = { type: "selection", uri: "runx:selection:sel_1" };
     const decisionRef = { type: "decision", uri: "runx:decision:dec_1" };
-    const harnessReceiptRef = { type: "harness_receipt", uri: "runx:harness_receipt:hrn_1" };
+    const receiptRef = { type: "receipt", uri: "runx:receipt:hrn_1" };
     const verificationRef = { type: "verification", uri: "runx:verification:ver_1" };
     const evidenceRef = { type: "artifact", uri: "runx:artifact:evidence_1" };
     const redactionPolicyRef = { type: "redaction_policy", uri: "runx:redaction_policy:public" };
@@ -936,7 +857,7 @@ describe("@runxhq/contracts", () => {
       closed_at: "2026-05-18T00:05:00Z",
     };
     const actRef = {
-      harness_receipt_ref: harnessReceiptRef,
+      receipt_ref: receiptRef,
       act_id: "act_publish_feed",
     };
 
@@ -1023,7 +944,7 @@ describe("@runxhq/contracts", () => {
       summary: "Target entered the active selector set.",
       source_refs: [sourceRef],
       decision_ref: decisionRef,
-      harness_receipt_ref: harnessReceiptRef,
+      receipt_ref: receiptRef,
       recorded_at: "2026-05-18T00:03:30Z",
     })).toMatchObject({ schema: "runx.target_transition_entry.v1", to_state: "active" });
 
@@ -1039,7 +960,7 @@ describe("@runxhq/contracts", () => {
       ranked_selection_refs: [selectionRef],
       chosen_selection_ref: selectionRef,
       decision_ref: decisionRef,
-      harness_receipt_ref: harnessReceiptRef,
+      receipt_ref: receiptRef,
       no_action_closure: null,
       fingerprint,
     })).toMatchObject({ schema: "runx.selection_cycle.v1", state: "closed" });
@@ -1082,7 +1003,7 @@ describe("@runxhq/contracts", () => {
       opportunity_ref: opportunityRef,
       selection_ref: selectionRef,
       decision_ref: decisionRef,
-      harness_receipt_refs: [harnessReceiptRef],
+      receipt_refs: [receiptRef],
       act_refs: [actRef],
       summary: "Public proof entry was useful and low-risk.",
       lessons: ["Keep feed projections tied to sealed harness receipts."],
@@ -1101,7 +1022,7 @@ describe("@runxhq/contracts", () => {
       opportunity_ref: opportunityRef,
       selection_ref: selectionRef,
       decision_refs: [decisionRef],
-      harness_receipt_refs: [harnessReceiptRef],
+      receipt_refs: [receiptRef],
       act_refs: [actRef],
       verification_refs: [verificationRef],
       evidence_refs: [evidenceRef],
@@ -1115,14 +1036,14 @@ describe("@runxhq/contracts", () => {
     expect(feedEntry).toMatchObject({
       schema: "runx.feed_entry.v1",
       decision_refs: [decisionRef],
-      harness_receipt_refs: [harnessReceiptRef],
+      receipt_refs: [receiptRef],
       act_refs: [actRef],
       verification_refs: [verificationRef],
       redaction_policy_ref: redactionPolicyRef,
     });
     expect(() => validateFeedEntryContract({
       ...feedEntry,
-      harness_receipt_refs: [],
+      receipt_refs: [],
     })).toThrow(/feed-entry\/v1\.json/);
   });
 });
