@@ -13,6 +13,6 @@ expect:
     disposition: blocked
     reason_code: graph_blocked
     child_receipt_refs:
-      - runx:receipt:hrn_rcpt_x402-pay-negative-malformed-challenge_quote
+      - runx:receipt:sha256:0b169c32175d9878a5332a982b51d1f186e6f6383f61ba84c7492f90d5ec80d1
   steps:
     - quote

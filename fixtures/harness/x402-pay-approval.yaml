@@ -13,8 +13,8 @@ expect:
     disposition: closed
     reason_code: graph_closed
     child_receipt_refs:
-      - runx:receipt:hrn_rcpt_x402-pay-approval_approve-spend
-      - runx:receipt:hrn_rcpt_x402-pay-approval_fulfill
+      - runx:receipt:sha256:52e7c50c456df404c8035bd61adbc9d8569c185ba021f92f78c17af8b25fac3c
+      - runx:receipt:sha256:2c62cf2ece1da3e9e893575013af294c67e40bd2aca96122448c3eba6551a578
   steps:
     - approve-spend
     - fulfill

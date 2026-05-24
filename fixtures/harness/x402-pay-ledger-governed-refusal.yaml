@@ -16,8 +16,8 @@ expect:
     disposition: blocked
     reason_code: graph_blocked
     child_receipt_refs:
-      - runx:receipt:hrn_rcpt_x402-pay-ledger-governed-refusal_quote
-      - runx:receipt:hrn_rcpt_x402-pay-ledger-governed-refusal_reserve
+      - runx:receipt:sha256:1d6f7741b78a56cf500375a3bba36e741e7607d9977622d94802cb5c10c04cf6
+      - runx:receipt:sha256:3684a6db164a094b6d07fc16ddd30d981aa210dc43d9228c2fed6c215ed7deb9
   steps:
     - quote
     - reserve
