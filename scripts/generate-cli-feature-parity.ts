@@ -80,6 +80,8 @@ const commands: readonly CommandMatrixEntry[] = [
   command("list", "runx list [tools|skills|graphs|packets|overlays]", [], ["--ok-only", "--invalid-only", "--json"], "none", ["list", "tool-catalog"], ["list.tools.execute"]),
   command("doctor", "runx doctor [path]", [], ["--fix", "--explain", "--list-diagnostics", "--json"], "filesystem", ["doctor", "cli-presentation"], ["doctor.validate"]),
   command("dev", "runx dev [path]", [], ["--lane", "--record", "--real-agents", "--watch", "--json"], "local-runtime", ["dev", "harness", "receipts"], ["dev.validate"]),
+  command("kernel", "runx kernel eval --input <file|-> --json", [], ["--input", "--json"], "local-runtime", [], []),
+  command("registry", "runx registry search|read|resolve|install|publish ... --json", [], ["--json"], "none", [], []),
   command("mcp.serve", "runx mcp serve <skill-ref>", [], [], "adapter", ["mcp", "adapter-mcp"], ["mcp.serve.validate"]),
   command("tool.search", "runx tool search <query>", [], ["--source", "--json"], "external-stub", ["tool-catalog", "adapter-catalog"], ["tool.search.validate"]),
   command("tool.inspect", "runx tool inspect <ref>", [], ["--source", "--json"], "external-stub", ["tool-catalog", "adapter-catalog"], ["tool.inspect.validate"]),
@@ -286,10 +288,9 @@ function checkUsageCoverage(): void {
 
 function extractUsageCommands(helpSource: string): readonly string[] {
   const quoted = [...helpSource.matchAll(/"([^"]*)"/g)].map((match) => match[1] ?? "");
-  return [
-    ...extractQuotedHelpBlock(quoted, "Usage:"),
-    ...extractQuotedHelpBlock(quoted, "Commands:"),
-  ];
+  // The Usage block holds generic invocation syntax (`runx <command>`, flags);
+  // the concrete command surface lives under Commands.
+  return extractQuotedHelpBlock(quoted, "Commands:");
 }
 
 function extractQuotedHelpBlock(quoted: readonly string[], label: string): readonly string[] {
