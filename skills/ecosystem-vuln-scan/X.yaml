@@ -50,7 +50,7 @@ harness:
       expect:
         status: sealed
         receipt:
-          schema: runx.harness_receipt.v1
+          schema: runx.receipt.v1
 
     - name: ecosystem-vuln-scan-needs-target
       inputs: {}

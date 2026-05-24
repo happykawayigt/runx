@@ -238,7 +238,7 @@ runners:
       harness:
         type: json
         required: false
-        description: "Optional runx.harness.v1 packet for the governed run boundary."
+        description: "Optional runx.receipt.v1 packet for the governed run boundary."
       signal:
         type: json
         required: false

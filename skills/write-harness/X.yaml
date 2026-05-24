@@ -65,7 +65,7 @@ harness:
       expect:
         status: sealed
         receipt:
-          schema: runx.harness_receipt.v1
+          schema: runx.receipt.v1
     - name: write-harness-turns-review-into-regression-fixtures
       inputs:
         objective: Improve design-skill structured context handling
@@ -106,7 +106,7 @@ harness:
       expect:
         status: sealed
         receipt:
-          schema: runx.harness_receipt.v1
+          schema: runx.receipt.v1
 
     - name: write-harness-honors-pass-verdict
       inputs:
@@ -138,7 +138,7 @@ harness:
       expect:
         status: sealed
         receipt:
-          schema: runx.harness_receipt.v1
+          schema: runx.receipt.v1
 
 runners:
   write-harness-agent:

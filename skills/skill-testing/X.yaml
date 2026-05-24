@@ -59,7 +59,7 @@ harness:
       expect:
         status: sealed
         receipt:
-          schema: runx.harness_receipt.v1
+          schema: runx.receipt.v1
 
     - name: skill-testing-needs-required-inputs
       inputs: {}

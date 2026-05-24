@@ -36,7 +36,7 @@ harness:
       expect:
         status: sealed
         receipt:
-          schema: runx.harness_receipt.v1
+          schema: runx.receipt.v1
     - name: vuln-scan-advisory-packet
       runner: advisory
       inputs:
@@ -59,7 +59,7 @@ harness:
       expect:
         status: sealed
         receipt:
-          schema: runx.harness_receipt.v1
+          schema: runx.receipt.v1
 
 runners:
   agent:

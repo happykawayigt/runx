@@ -69,7 +69,7 @@ harness:
       expect:
         status: sealed
         receipt:
-          schema: runx.harness_receipt.v1
+          schema: runx.receipt.v1
           state: sealed
           disposition: closed
           reason_code: stripe_charge_closed

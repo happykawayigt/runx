@@ -42,7 +42,7 @@ harness:
       expect:
         status: sealed
         receipt:
-          schema: runx.harness_receipt.v1
+          schema: runx.receipt.v1
     - name: moltbook-post-packet
       runner: post
       inputs:
@@ -67,7 +67,7 @@ harness:
       expect:
         status: sealed
         receipt:
-          schema: runx.harness_receipt.v1
+          schema: runx.receipt.v1
 
 runners:
   agent:

@@ -46,7 +46,7 @@ harness:
       expect:
         status: sealed
         receipt:
-          schema: runx.harness_receipt.v1
+          schema: runx.receipt.v1
 
     - name: improve-skill-passes-on-paused-graph
       inputs:
@@ -81,7 +81,7 @@ harness:
       expect:
         status: sealed
         receipt:
-          schema: runx.harness_receipt.v1
+          schema: runx.receipt.v1
 
 runners:
   improve-skill:

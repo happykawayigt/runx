@@ -116,7 +116,7 @@ harness:
       expect:
         status: sealed
         receipt:
-          schema: runx.harness_receipt.v1
+          schema: runx.receipt.v1
           state: sealed
           disposition: closed
     - name: work-plan-phased-workspace-plan
@@ -283,7 +283,7 @@ harness:
       expect:
         status: sealed
         receipt:
-          schema: runx.harness_receipt.v1
+          schema: runx.receipt.v1
           state: sealed
           disposition: closed
 
@@ -328,4 +328,4 @@ runners:
       harness_context:
         type: object
         required: false
-        description: "Optional runx.harness_receipt.v1 packet; preserve it when planning a source-thread change."
+        description: "Optional runx.receipt.v1 packet; preserve it when planning a source-thread change."

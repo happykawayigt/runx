@@ -20,7 +20,7 @@ harness:
       expect:
         status: sealed
         receipt:
-          schema: runx.harness_receipt.v1
+          schema: runx.receipt.v1
     - name: reflect-digest-below-floor
       inputs:
         min_support: 1
@@ -46,7 +46,7 @@ harness:
       expect:
         status: sealed
         receipt:
-          schema: runx.harness_receipt.v1
+          schema: runx.receipt.v1
     - name: reflect-digest-single-skill
       inputs:
         min_support: 2
@@ -101,7 +101,7 @@ harness:
       expect:
         status: sealed
         receipt:
-          schema: runx.harness_receipt.v1
+          schema: runx.receipt.v1
     - name: reflect-digest-multi-skill
       inputs:
         min_support: 2
@@ -199,7 +199,7 @@ harness:
       expect:
         status: sealed
         receipt:
-          schema: runx.harness_receipt.v1
+          schema: runx.receipt.v1
 
 runners:
   reflect-digest:

@@ -73,7 +73,7 @@ harness:
       expect:
         status: sealed
         receipt:
-          schema: runx.harness_receipt.v1
+          schema: runx.receipt.v1
         steps:
           - prepare-release
           - approve-publish
@@ -116,7 +116,7 @@ harness:
       expect:
         status: sealed
         receipt:
-          schema: runx.harness_receipt.v1
+          schema: runx.receipt.v1
 
     - name: release-prepare-needs-required-inputs
       runner: prepare

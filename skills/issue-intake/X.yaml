@@ -147,7 +147,7 @@ harness:
       expect:
         status: sealed
         receipt:
-          schema: runx.harness_receipt.v1
+          schema: runx.receipt.v1
           state: sealed
           disposition: closed
     - name: feature-needs-decomposition
@@ -254,7 +254,7 @@ harness:
       expect:
         status: sealed
         receipt:
-          schema: runx.harness_receipt.v1
+          schema: runx.receipt.v1
           state: sealed
           disposition: closed
     - name: reply-only-question
@@ -328,7 +328,7 @@ harness:
       expect:
         status: sealed
         receipt:
-          schema: runx.harness_receipt.v1
+          schema: runx.receipt.v1
           state: sealed
           disposition: closed
     - name: request-review-before-mutation
@@ -414,7 +414,7 @@ harness:
       expect:
         status: sealed
         receipt:
-          schema: runx.harness_receipt.v1
+          schema: runx.receipt.v1
           state: sealed
           disposition: closed
 
