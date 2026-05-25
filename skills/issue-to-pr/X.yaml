@@ -354,10 +354,10 @@ runners:
             thread_body, thread_locator,
             thread, outbox_entry, target_repo, repo_snapshot,
             repo_snapshot_path, and repo_context to keep the spec grounded in
-            the actual request and repository. Preserve the front matter shape:
-            spec_version '2.0', task_id, created, updated, status: draft,
-            title: non-empty thread title, harden_status: not_run, size as one
-            of small, medium, or large, and risk_level. The body must include
+            the actual request and repository. Preserve the front matter shape
+            with spec_version '2.0', task_id, created, updated, status set to
+            draft, a non-empty thread title, harden_status set to not_run, size
+            as one of small, medium, or large, and risk_level. The body must include
             Current State, Summary, Context, Objectives, Scope, Dependencies,
             Assumptions, Touchpoints, Risks, Acceptance, at least one Phase
             section, Rollback, Review, Self Eval, Deviations, Metadata, Origin,
@@ -484,12 +484,12 @@ runners:
             write the new file when the desired contents are inferable from the
             spec and thread. Do not widen scope.
             Do not hand-edit scafld lifecycle files. Return
-            fix_bundle.status: blocked with a reason and files: [] only when no
-            concrete repo-relative target is declared, a required existing file
-            cannot be read, or the requested behavior cannot be inferred after
-            inspecting the supplied target files without inventing requirements;
-            name the missing evidence and path in the reason because an empty
-            bundle is a terminal policy denial.
+            fix_bundle status set to blocked with a reason and an empty files
+            array only when no concrete repo-relative target is declared, a
+            required existing file cannot be read, or the requested behavior
+            cannot be inferred after inspecting the supplied target files
+            without inventing requirements; name the missing evidence and path
+            in the reason because an empty bundle is a terminal policy denial.
           allowed_tools:
             - fs.read
             - git.status
