@@ -403,7 +403,7 @@ runners:
           mutation: true
           context:
             path: scafld-plan.result.path
-            contents: normalize-spec.normalized_spec.data.data.contents
+            contents: normalize-spec.data.contents
         - id: read-draft-spec
           label: read draft spec
           tool: fs.read
@@ -441,7 +441,7 @@ runners:
           inputs:
             extra_files: $input.repo_snapshot.recommended_files
           context:
-            spec_contents: read-approved-spec.file_read.data.data.contents
+            spec_contents: read-approved-spec.data.contents
         - id: author-fix
           label: author bounded fix
           run:
@@ -495,9 +495,9 @@ runners:
             - git.status
           context:
             spec_path: scafld-approve.result.path
-            spec_file: read-approved-spec.file_read.data.data
-            spec_contents: read-approved-spec.file_read.data.data.contents
-            declared_file_context: read-declared-files.declared_file_context.data.data
+            spec_file: read-approved-spec.data
+            spec_contents: read-approved-spec.data.contents
+            declared_file_context: read-declared-files.data
           artifacts:
             named_emits:
               fix_bundle: fix_bundle
@@ -510,7 +510,7 @@ runners:
             - fs.write
           mutation: true
           context:
-            files: author-fix.fix_bundle.data.files
+            files: author-fix.fix_bundle.files
         - id: scafld-build
           label: build to review
           skill: ../scafld
@@ -582,8 +582,8 @@ runners:
             review_result: scafld-review.result
             completion_result: scafld-complete.result
             status_snapshot: scafld-final-status.result
-            current_branch: read-current-branch.git_branch.data
-            fix_bundle: author-fix.fix_bundle.data
+            current_branch: read-current-branch.data
+            fix_bundle: author-fix.fix_bundle
           inputs:
             operational_policy: $input.operational_policy
             source_id: $input.source_id
@@ -597,8 +597,8 @@ runners:
           scopes:
             - thread:push
           context:
-            outbox_entry: package-pull-request.outbox_entry.data
-            draft_pull_request: package-pull-request.draft_pull_request.data
+            outbox_entry: package-pull-request.outbox_entry
+            draft_pull_request: package-pull-request.draft_pull_request
           inputs:
             next_status: draft
         - id: package-feed-entry
@@ -613,7 +613,7 @@ runners:
             review_result: scafld-review.result
             completion_result: scafld-complete.result
             status_snapshot: scafld-final-status.result
-            draft_pull_request: package-pull-request.draft_pull_request.data
+            draft_pull_request: package-pull-request.draft_pull_request
             pull_request_outbox_entry: push-pull-request.outbox_entry
             push_result: push-pull-request.push
         - id: push-feed-entry
@@ -623,12 +623,12 @@ runners:
             - thread:push
           context:
             thread: push-pull-request.thread
-            outbox_entry: package-feed-entry.outbox_entry.data
-            draft_pull_request: package-pull-request.draft_pull_request.data
+            outbox_entry: package-feed-entry.outbox_entry
+            draft_pull_request: package-pull-request.draft_pull_request
           inputs:
             next_status: published
       policy:
         transitions:
           - to: write-fix
-            field: author-fix.fix_bundle.data.files
+            field: author-fix.fix_bundle.files
             not_equals: []
