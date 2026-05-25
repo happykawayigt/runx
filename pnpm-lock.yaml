@@ -70,6 +70,22 @@ importers:
         version: 0.34.49
 
   packages/cli:
+    optionalDependencies:
+      '@runxhq/cli-darwin-arm64':
+        specifier: 0.5.22
+        version: 0.5.22
+      '@runxhq/cli-darwin-x64':
+        specifier: 0.5.22
+        version: 0.5.22
+      '@runxhq/cli-linux-arm64':
+        specifier: 0.5.22
+        version: 0.5.22
+      '@runxhq/cli-linux-x64':
+        specifier: 0.5.22
+        version: 0.5.22
+      '@runxhq/cli-win32-x64':
+        specifier: 0.5.22
+        version: 0.5.22
     devDependencies:
       yaml:
         specifier: ^2.8.3
