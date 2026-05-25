@@ -588,6 +588,51 @@ fn native_graph_skill_run_executes_local_tool_step() -> Result<(), Box<dyn std::
 
 #[cfg(feature = "catalog")]
 #[test]
+fn native_graph_skill_run_omits_missing_optional_graph_input_references()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempdir()?;
+    let skill_dir = write_graph_optional_json_tool_skill(temp.path())?;
+    write_optional_json_tool(temp.path())?;
+    let receipt_dir = temp.path().join("receipts");
+    let tool_root = temp.path().join("tools");
+    let inputs = [(
+        "thread_title".to_owned(),
+        JsonValue::String("Graph optional JSON bug".to_owned()),
+    )]
+    .into_iter()
+    .collect::<BTreeMap<_, _>>();
+    let env = [(
+        "RUNX_TOOL_ROOTS".to_owned(),
+        tool_root.to_string_lossy().into_owned(),
+    )]
+    .into_iter()
+    .collect::<BTreeMap<_, _>>();
+
+    let result = run_skill(SkillRunRequest {
+        skill_path: skill_dir,
+        receipt_dir: Some(receipt_dir),
+        run_id: None,
+        answers_path: None,
+        inputs,
+        env,
+        cwd: temp.path().to_path_buf(),
+        local_credential: None,
+    })?;
+
+    let output = object(&result.output, "graph optional JSON tool result")?;
+    assert_eq!(string_field(output, "status"), Some("sealed"));
+    let payload = object_field(output, "payload").ok_or("missing payload")?;
+    let echo = object_field(payload, "echo").ok_or("missing echo")?;
+    assert_eq!(
+        string_field(echo, "message"),
+        Some("Graph optional JSON bug")
+    );
+
+    Ok(())
+}
+
+#[cfg(feature = "catalog")]
+#[test]
 fn native_graph_skill_run_prefers_built_cli_tool_root() -> Result<(), Box<dyn std::error::Error>> {
     let temp = tempdir()?;
     let skill_dir = write_graph_tool_skill_under_skills(temp.path())?;
@@ -907,6 +952,37 @@ runners:
 }
 
 #[cfg(feature = "catalog")]
+fn write_graph_optional_json_tool_skill(
+    root: &Path,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let skill_dir = root.join("graph-optional-json-tool");
+    fs::create_dir_all(&skill_dir)?;
+    fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: graph-optional-json-tool\n---\n# Graph Optional JSON Tool\n",
+    )?;
+    fs::write(
+        skill_dir.join("X.yaml"),
+        r#"
+skill: graph-optional-json-tool
+runners:
+  graph:
+    default: true
+    type: graph
+    graph:
+      name: graph-optional-json-tool
+      steps:
+        - id: echo
+          tool: test.optional-json
+          inputs:
+            message: $input.thread_title
+            harness: $input.harness
+"#,
+    )?;
+    Ok(skill_dir)
+}
+
+#[cfg(feature = "catalog")]
 fn write_echo_tool(root: &Path) -> Result<(), Box<dyn std::error::Error>> {
     write_echo_tool_at(&root.join("tools/test/echo"), "Graph tool bug")
 }
@@ -943,6 +1019,53 @@ esac
 "#,
             message
         ),
+    )?;
+    Ok(())
+}
+
+#[cfg(feature = "catalog")]
+fn write_optional_json_tool(root: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let tool_dir = root.join("tools/test/optional-json");
+    fs::create_dir_all(&tool_dir)?;
+    fs::write(
+        tool_dir.join("manifest.json"),
+        r#"{
+  "schema": "runx.tool.manifest.v1",
+  "name": "test.optional-json",
+  "source": {
+    "type": "cli-tool",
+    "command": "/bin/sh",
+    "args": ["./run.sh"],
+    "input_mode": "stdin"
+  },
+  "inputs": {
+    "message": { "type": "string", "required": true },
+    "harness": { "type": "json", "required": false }
+  },
+  "scopes": ["test.optional-json"]
+}
+"#,
+    )?;
+    fs::write(
+        tool_dir.join("run.sh"),
+        r#"raw="$(cat)"
+case "$raw" in
+  *'$input.harness'*)
+    printf '%s\n' '{"error":"unresolved harness reference reached tool input"}'
+    exit 2
+    ;;
+  *'"harness"'*)
+    printf '%s\n' '{"error":"optional harness should be omitted when absent"}'
+    exit 3
+    ;;
+  *"Graph optional JSON bug"*)
+    printf '%s\n' '{"echo":{"message":"Graph optional JSON bug"}}'
+    ;;
+  *)
+    printf '%s\n' '{"echo":{"message":"unexpected"}}'
+    ;;
+esac
+"#,
     )?;
     Ok(())
 }

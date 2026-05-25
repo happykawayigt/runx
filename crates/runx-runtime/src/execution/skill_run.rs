@@ -481,41 +481,44 @@ fn materialize_graph_inputs(
     for step in &mut graph.steps {
         let mut inputs = graph_inputs.clone();
         for (key, value) in &step.inputs {
-            inputs.insert(
-                key.clone(),
-                materialize_graph_input_value(value, &graph_inputs),
-            );
+            if let Some(value) = materialize_graph_input_value(value, &graph_inputs) {
+                inputs.insert(key.clone(), value);
+            } else {
+                inputs.remove(key);
+            }
         }
         step.inputs = inputs;
     }
     graph
 }
 
-fn materialize_graph_input_value(value: &JsonValue, graph_inputs: &JsonObject) -> JsonValue {
+fn materialize_graph_input_value(
+    value: &JsonValue,
+    graph_inputs: &JsonObject,
+) -> Option<JsonValue> {
     match value {
-        JsonValue::String(value) => value
-            .strip_prefix("$input.")
-            .and_then(|path| resolve_json_path(graph_inputs, path))
-            .cloned()
-            .unwrap_or_else(|| JsonValue::String(value.clone())),
-        JsonValue::Array(values) => JsonValue::Array(
+        JsonValue::String(value) => {
+            if let Some(path) = value.strip_prefix("$input.") {
+                return resolve_json_path(graph_inputs, path).cloned();
+            }
+            Some(JsonValue::String(value.clone()))
+        }
+        JsonValue::Array(values) => Some(JsonValue::Array(
             values
                 .iter()
-                .map(|value| materialize_graph_input_value(value, graph_inputs))
+                .filter_map(|value| materialize_graph_input_value(value, graph_inputs))
                 .collect(),
-        ),
-        JsonValue::Object(object) => JsonValue::Object(
+        )),
+        JsonValue::Object(object) => Some(JsonValue::Object(
             object
                 .iter()
-                .map(|(key, value)| {
-                    (
-                        key.clone(),
-                        materialize_graph_input_value(value, graph_inputs),
-                    )
+                .filter_map(|(key, value)| {
+                    materialize_graph_input_value(value, graph_inputs)
+                        .map(|value| (key.clone(), value))
                 })
                 .collect(),
-        ),
-        other => other.clone(),
+        )),
+        other => Some(other.clone()),
     }
 }
 
