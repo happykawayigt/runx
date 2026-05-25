@@ -3,6 +3,7 @@ import {
   JSON_SCHEMA_DRAFT_2020_12,
   RUNX_CONTROL_SCHEMA_REFS,
   type DeepReadonly,
+  generatedSchema,
   stringEnum,
   unknownRecordSchema,
   validateContractSchema,
@@ -11,7 +12,7 @@ import { agentContextEnvelopeSchema } from "./context.js";
 
 const agentActSourceTypes = ["agent", "agent-step"] as const;
 
-export const agentActInvocationSchema = Type.Object(
+const agentActInvocationTypeSchema = Type.Object(
   {
     id: Type.String({ minLength: 1 }),
     source_type: stringEnum(agentActSourceTypes),
@@ -26,9 +27,13 @@ export const agentActInvocationSchema = Type.Object(
   },
 );
 
-export type AgentActInvocationContract = DeepReadonly<Static<typeof agentActInvocationSchema>>;
+export type AgentActInvocationContract = DeepReadonly<Static<typeof agentActInvocationTypeSchema>>;
 
-export const questionSchema = Type.Object(
+export const agentActInvocationSchema = generatedSchema<AgentActInvocationContract>(
+  "agent-act-invocation.schema.json",
+);
+
+const questionTypeSchema = Type.Object(
   {
     id: Type.String({ minLength: 1 }),
     prompt: Type.String({ minLength: 1 }),
@@ -43,9 +48,11 @@ export const questionSchema = Type.Object(
   },
 );
 
-export type QuestionContract = DeepReadonly<Static<typeof questionSchema>>;
+export type QuestionContract = DeepReadonly<Static<typeof questionTypeSchema>>;
 
-export const approvalGateSchema = Type.Object(
+export const questionSchema = generatedSchema<QuestionContract>("question.schema.json");
+
+const approvalGateTypeSchema = Type.Object(
   {
     id: Type.String({ minLength: 1 }),
     reason: Type.String({ minLength: 1 }),
@@ -59,7 +66,9 @@ export const approvalGateSchema = Type.Object(
   },
 );
 
-export type ApprovalGateContract = DeepReadonly<Static<typeof approvalGateSchema>>;
+export type ApprovalGateContract = DeepReadonly<Static<typeof approvalGateTypeSchema>>;
+
+export const approvalGateSchema = generatedSchema<ApprovalGateContract>("approval-gate.schema.json");
 
 export function validateAgentActInvocationContract(
   value: unknown,

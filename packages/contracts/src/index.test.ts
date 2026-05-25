@@ -7,15 +7,21 @@ import {
   RUNX_LOGICAL_SCHEMAS,
   buildHostedOpenApiSchemas,
   agentContextEnvelopeSchema,
+  agentActInvocationSchema,
+  approvalGateSchema,
   actReceiptEnvelopeSchema,
   authorityProofSchema,
   outputSchema,
   credentialEnvelopeSchema,
+  questionSchema,
   registryBindingSchema,
   reviewReceiptOutputSchema,
+  resolutionRequestSchema,
+  resolutionResponseSchema,
   runxContractSchemas,
   runxAuxiliarySchemas,
   runxGeneratedSchemaArtifacts,
+  scopeAdmissionSchema,
   toolManifestV1Schema,
   actAssignmentV1Schema,
   contractSchemaMatches,
@@ -68,6 +74,20 @@ describe("@runxhq/contracts", () => {
     expect((toolManifestV1Schema.required as readonly string[])).not.toContain("version");
     const devProperties = runxContractSchemas.dev.properties as Record<string, unknown> | undefined;
     expect(devProperties?.doctor).toMatchObject({ $id: RUNX_CONTRACT_IDS.doctor });
+  });
+
+  it("exports Rust-generated artifacts for control schema facades", () => {
+    expect(outputSchema).toBe(runxContractSchemas.output);
+    expect(agentContextEnvelopeSchema).toBe(runxContractSchemas.agentContextEnvelope);
+    expect(agentActInvocationSchema).toBe(runxContractSchemas.agentActInvocation);
+    expect(questionSchema).toBe(runxContractSchemas.question);
+    expect(approvalGateSchema).toBe(runxContractSchemas.approvalGate);
+    expect(resolutionRequestSchema).toBe(runxContractSchemas.resolutionRequest);
+    expect(resolutionResponseSchema).toBe(runxContractSchemas.resolutionResponse);
+    expect(actReceiptEnvelopeSchema).toBe(runxContractSchemas.actReceiptEnvelope);
+    expect(credentialEnvelopeSchema).toBe(runxContractSchemas.credentialEnvelope);
+    expect(scopeAdmissionSchema).toBe(runxContractSchemas.scopeAdmission);
+    expect(authorityProofSchema).toBe(runxContractSchemas.authorityProof);
   });
 
   it("keeps fixture lanes aligned with authoring plan", () => {

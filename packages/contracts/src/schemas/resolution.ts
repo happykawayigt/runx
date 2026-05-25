@@ -3,7 +3,7 @@ import {
   JSON_SCHEMA_DRAFT_2020_12,
   RUNX_CONTROL_SCHEMA_REFS,
   type DeepReadonly,
-  asUnknownRecord,
+  generatedSchema,
   stringEnum,
   unknownRecordSchema,
   validateContractSchema,
@@ -85,7 +85,7 @@ export const agentActResolutionRequestSchema = Type.Object(
 
 export type AgentActResolutionRequestContract = DeepReadonly<Static<typeof agentActResolutionRequestSchema>>;
 
-export const resolutionRequestSchema = Type.Union(
+const resolutionRequestTypeSchema = Type.Union(
   [
     inputResolutionRequestSchema,
     approvalResolutionRequestSchema,
@@ -97,9 +97,13 @@ export const resolutionRequestSchema = Type.Union(
   },
 );
 
-export type ResolutionRequestContract = DeepReadonly<Static<typeof resolutionRequestSchema>>;
+export type ResolutionRequestContract = DeepReadonly<Static<typeof resolutionRequestTypeSchema>>;
 
-export const resolutionResponseSchema = Type.Object(
+export const resolutionRequestSchema = generatedSchema<ResolutionRequestContract>(
+  "resolution-request.schema.json",
+);
+
+const resolutionResponseTypeSchema = Type.Object(
   {
     actor: stringEnum(resolutionResponseActors),
     payload: Type.Unknown(),
@@ -111,7 +115,11 @@ export const resolutionResponseSchema = Type.Object(
   },
 );
 
-export type ResolutionResponseContract = DeepReadonly<Static<typeof resolutionResponseSchema>>;
+export type ResolutionResponseContract = DeepReadonly<Static<typeof resolutionResponseTypeSchema>>;
+
+export const resolutionResponseSchema = generatedSchema<ResolutionResponseContract>(
+  "resolution-response.schema.json",
+);
 
 export const actReceiptTerminalEnvelopeSchema = Type.Object(
   {
@@ -142,22 +150,7 @@ export const actReceiptNeedsAgentEnvelopeSchema = Type.Object(
   { additionalProperties: false },
 );
 
-const actReceiptNeedsAgentUnknownRequestSchema = Type.Object(
-  {
-    status: Type.Literal("needs_agent"),
-    stdout: Type.String(),
-    stderr: Type.String(),
-    exitCode: Type.Null(),
-    signal: Type.Null(),
-    durationMs: Type.Integer({ minimum: 0 }),
-    request: Type.Unknown(),
-    errorMessage: Type.Optional(Type.String()),
-    metadata: Type.Optional(unknownRecordSchema()),
-  },
-  { additionalProperties: false },
-);
-
-export const actReceiptEnvelopeSchema = Type.Union(
+const actReceiptEnvelopeTypeSchema = Type.Union(
   [
     actReceiptTerminalEnvelopeSchema,
     actReceiptNeedsAgentEnvelopeSchema,
@@ -168,22 +161,16 @@ export const actReceiptEnvelopeSchema = Type.Union(
   },
 );
 
-export type ActReceiptEnvelopeContract = DeepReadonly<Static<typeof actReceiptEnvelopeSchema>>;
+export type ActReceiptEnvelopeContract = DeepReadonly<Static<typeof actReceiptEnvelopeTypeSchema>>;
+
+export const actReceiptEnvelopeSchema = generatedSchema<ActReceiptEnvelopeContract>(
+  "act-receipt.schema.json",
+);
 
 export function validateResolutionRequestContract(
   value: unknown,
   label = "resolution_request",
 ): ResolutionRequestContract {
-  const record = asUnknownRecord(value);
-  if (record?.kind === "input") {
-    return validateContractSchema(inputResolutionRequestSchema, value, label) as ResolutionRequestContract;
-  }
-  if (record?.kind === "approval") {
-    return validateContractSchema(approvalResolutionRequestSchema, value, label) as ResolutionRequestContract;
-  }
-  if (record?.kind === "agent_act") {
-    return validateContractSchema(agentActResolutionRequestSchema, value, label) as ResolutionRequestContract;
-  }
   return validateContractSchema(resolutionRequestSchema, value, label);
 }
 
@@ -198,16 +185,5 @@ export function validateActReceiptEnvelopeContract(
   value: unknown,
   label = "act_receipt",
 ): ActReceiptEnvelopeContract {
-  const record = asUnknownRecord(value);
-  if (record?.status === "sealed" || record?.status === "failure") {
-    return validateContractSchema(actReceiptTerminalEnvelopeSchema, value, label) as ActReceiptEnvelopeContract;
-  }
-  if (record?.status === "needs_agent") {
-    const result = validateContractSchema(actReceiptNeedsAgentUnknownRequestSchema, value, label);
-    return {
-      ...result,
-      request: validateResolutionRequestContract(result.request, `${label}.request`),
-    } as ActReceiptEnvelopeContract;
-  }
   return validateContractSchema(actReceiptEnvelopeSchema, value, label);
 }

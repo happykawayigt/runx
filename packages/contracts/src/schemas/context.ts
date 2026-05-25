@@ -3,6 +3,7 @@ import {
   JSON_SCHEMA_DRAFT_2020_12,
   RUNX_CONTROL_SCHEMA_REFS,
   type DeepReadonly,
+  generatedSchema,
   unknownRecordSchema,
   validateContractSchema,
 } from "../internal.js";
@@ -65,7 +66,7 @@ export const executionLocationSchema = Type.Object(
 
 export type ExecutionLocationContract = DeepReadonly<Static<typeof executionLocationSchema>>;
 
-export const agentContextEnvelopeSchema = Type.Object(
+const agentContextEnvelopeTypeSchema = Type.Object(
   {
     run_id: Type.String({ minLength: 1 }),
     step_id: Type.Optional(Type.String({ minLength: 1 })),
@@ -90,7 +91,11 @@ export const agentContextEnvelopeSchema = Type.Object(
   },
 );
 
-export type AgentContextEnvelopeContract = DeepReadonly<Static<typeof agentContextEnvelopeSchema>>;
+export type AgentContextEnvelopeContract = DeepReadonly<Static<typeof agentContextEnvelopeTypeSchema>>;
+
+export const agentContextEnvelopeSchema = generatedSchema<AgentContextEnvelopeContract>(
+  "agent-context-envelope.schema.json",
+);
 
 export function validateAgentContextEnvelopeContract(
   value: unknown,

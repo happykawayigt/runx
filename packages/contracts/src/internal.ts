@@ -1,5 +1,8 @@
 import { Ajv2020, type ErrorObject } from "ajv/dist/2020.js";
-import { runxSchemaArtifacts } from "./schema-artifacts.js";
+import {
+  runxSchemaArtifacts,
+  type RunxSchemaArtifactName,
+} from "./schema-artifacts.js";
 
 export const JSON_SCHEMA_DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema" as const;
 
@@ -134,6 +137,10 @@ const optionalSchema = Symbol("runx.optional_schema");
 
 export type JsonSchema<TStatic = unknown> = Record<string, unknown> & { readonly __runxStatic?: TStatic };
 export type Static<TSchemaValue> = TSchemaValue extends JsonSchema<infer TValue> ? TValue : unknown;
+
+export function generatedSchema<TStatic>(fileName: RunxSchemaArtifactName): JsonSchema<TStatic> {
+  return runxSchemaArtifacts[fileName] as JsonSchema<TStatic>;
+}
 
 type AnySchema = JsonSchema<any>;
 type SchemaWithOptional<TStatic = unknown> = JsonSchema<TStatic> & { readonly [optionalSchema]: true };

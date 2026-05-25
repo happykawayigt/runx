@@ -2,6 +2,7 @@ import { Type, type Static } from "../internal.js";
 import {
   RUNX_CONTROL_SCHEMA_REFS,
   type DeepReadonly,
+  generatedSchema,
   stringEnum,
   validateContractSchema,
 } from "../internal.js";
@@ -25,7 +26,7 @@ export const credentialGrantReferenceSchema = Type.Object(
 
 export type CredentialGrantReferenceContract = DeepReadonly<Static<typeof credentialGrantReferenceSchema>>;
 
-export const credentialEnvelopeSchema = Type.Object(
+const credentialEnvelopeTypeSchema = Type.Object(
   {
     kind: Type.Literal("runx.credential-envelope.v1"),
     grant_id: Type.String({ minLength: 1 }),
@@ -43,9 +44,13 @@ export const credentialEnvelopeSchema = Type.Object(
   },
 );
 
-export type CredentialEnvelopeContract = DeepReadonly<Static<typeof credentialEnvelopeSchema>>;
+export type CredentialEnvelopeContract = DeepReadonly<Static<typeof credentialEnvelopeTypeSchema>>;
 
-export const scopeAdmissionSchema = Type.Object(
+export const credentialEnvelopeSchema = generatedSchema<CredentialEnvelopeContract>(
+  "credential-envelope.schema.json",
+);
+
+const scopeAdmissionTypeSchema = Type.Object(
   {
     status: stringEnum(scopeAdmissionStatuses),
     requested_scopes: Type.Array(Type.String({ minLength: 1 })),
@@ -60,7 +65,9 @@ export const scopeAdmissionSchema = Type.Object(
   },
 );
 
-export type ScopeAdmissionContract = DeepReadonly<Static<typeof scopeAdmissionSchema>>;
+export type ScopeAdmissionContract = DeepReadonly<Static<typeof scopeAdmissionTypeSchema>>;
+
+export const scopeAdmissionSchema = generatedSchema<ScopeAdmissionContract>("scope-admission.schema.json");
 
 const authorityProofRequestedSchema = Type.Object(
   {
@@ -154,7 +161,7 @@ const authorityProofRedactionSchema = Type.Object(
   { additionalProperties: false },
 );
 
-export const authorityProofSchema = Type.Object(
+const authorityProofTypeSchema = Type.Object(
   {
     schema_version: Type.Literal(authorityProofSchemaVersion),
     run_id: Type.Optional(Type.String({ minLength: 1 })),
@@ -173,7 +180,9 @@ export const authorityProofSchema = Type.Object(
   },
 );
 
-export type AuthorityProofContract = DeepReadonly<Static<typeof authorityProofSchema>>;
+export type AuthorityProofContract = DeepReadonly<Static<typeof authorityProofTypeSchema>>;
+
+export const authorityProofSchema = generatedSchema<AuthorityProofContract>("authority-proof.schema.json");
 
 export function validateCredentialEnvelopeContract(
   value: unknown,

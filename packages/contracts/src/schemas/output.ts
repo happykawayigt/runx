@@ -3,6 +3,7 @@ import {
   JSON_SCHEMA_DRAFT_2020_12,
   RUNX_CONTROL_SCHEMA_REFS,
   type DeepReadonly,
+  generatedSchema,
   stringEnum,
   validateContractSchema,
 } from "../internal.js";
@@ -44,7 +45,7 @@ export const outputEntrySchema = Type.Union([
 
 export type OutputEntryContract = DeepReadonly<Static<typeof outputEntrySchema>>;
 
-export const outputSchema = Type.Record(
+const outputTypeSchema = Type.Record(
   Type.String(),
   outputEntrySchema,
   {
@@ -53,7 +54,9 @@ export const outputSchema = Type.Record(
   },
 );
 
-export type OutputContract = DeepReadonly<Static<typeof outputSchema>>;
+export type OutputContract = DeepReadonly<Static<typeof outputTypeSchema>>;
+
+export const outputSchema = generatedSchema<OutputContract>("output.schema.json");
 
 export function validateOutputContract(
   value: unknown,
