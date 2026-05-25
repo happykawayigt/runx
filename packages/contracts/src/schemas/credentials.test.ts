@@ -24,7 +24,7 @@ const validCredentialEnvelope: CredentialEnvelopeContract = {
   grant_id: "grant_1",
   provider: "github",
   auth_mode: "oauth",
-  material_kind: "nango_connection",
+  material_kind: "opaque_connection",
   provider_reference: "conn_1",
   scopes: ["repo:read"],
   grant_reference: {
@@ -33,7 +33,7 @@ const validCredentialEnvelope: CredentialEnvelopeContract = {
     authority_kind: "constructive",
     target_repo: "runxhq/aster",
   },
-  material_ref: "nango:github:conn_1",
+  material_ref: "opaque:github:conn_1",
 };
 
 const validAuthorityProof: AuthorityProofContract = {
@@ -111,10 +111,10 @@ describe("credential and authority proof schemas", () => {
         grant_id: "grant_1",
         provider: "github",
         auth_mode: "oauth",
-        material_kind: "nango_connection",
+        material_kind: "opaque_connection",
         connection_id: "conn_1",
         scopes: ["repo:read"],
-        material_ref: "nango:github:conn_1",
+        material_ref: "opaque:github:conn_1",
       }),
     ).toBe(false);
     expect(

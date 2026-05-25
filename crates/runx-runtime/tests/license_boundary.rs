@@ -40,9 +40,9 @@ fn license_boundary_guard_rejects_private_identifier_fixture()
     let root = repo_root();
     let temp_dir = unique_temp_dir()?;
     fs::create_dir_all(&temp_dir)?;
-    let fixture =
-        root.join("crates/runx-runtime/tests/fixtures/license_boundary/nango_violation.rs");
-    fs::copy(fixture, temp_dir.join("nango_violation.rs"))?;
+    let fixture = root
+        .join("crates/runx-runtime/tests/fixtures/license_boundary/private_broker_violation.rs");
+    fs::copy(fixture, temp_dir.join("private_broker_violation.rs"))?;
 
     let output = Command::new("node")
         .arg(".scafld/scripts/check-license-edges.mjs")
@@ -58,7 +58,7 @@ fn license_boundary_guard_rejects_private_identifier_fixture()
         "private identifier fixture must fail identifier scan"
     );
     assert!(
-        String::from_utf8_lossy(&output.stderr).contains("NangoConnection"),
+        String::from_utf8_lossy(&output.stderr).contains("RunxPrivateConnectBroker"),
         "stderr should identify the banned private symbol"
     );
     Ok(())

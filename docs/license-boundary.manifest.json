@@ -70,27 +70,13 @@
     "HttpConnectReadyResponse",
     "HttpConnectRevokeResponse",
     "NangoHosted",
-    "connection_id"
+    "connection_id",
+    "RunxPrivateConnectBroker"
   ],
   "allowlist": [
     {
-      "path": "crates/runx-core/tests/policy_proptest.rs",
-      "identifier": "nango",
-      "rationale": "Legacy/negative fixture material; prefer provider-opaque replacement during Phase 2."
-    },
-    {
       "path": "crates/runx-runtime/tests/license_boundary.rs",
-      "identifier": "Nango",
-      "rationale": "Boundary guard negative-case assertion for a copied excluded fixture."
-    },
-    {
-      "path": "crates/runx-runtime/tests/license_boundary.rs",
-      "identifier": "nango",
-      "rationale": "Boundary guard negative-case fixture filename."
-    },
-    {
-      "path": "crates/runx-runtime/tests/license_boundary.rs",
-      "identifier": "NangoConnection",
+      "identifier": "RunxPrivateConnectBroker",
       "rationale": "Boundary guard negative-case assertion for a copied excluded fixture."
     }
   ],

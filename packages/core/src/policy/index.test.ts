@@ -125,7 +125,7 @@ describe("admitLocalSkill", () => {
     const decision = admitLocalSkill({
       name: "connected",
       source: { type: "cli-tool" },
-      auth: { type: "nango" },
+      auth: { type: "connected" },
     });
 
     expect(decision.status).toBe("deny");
@@ -136,7 +136,7 @@ describe("admitLocalSkill", () => {
       {
         name: "connected",
         source: { type: "cli-tool" },
-        auth: { type: "nango", provider: "github", scopes: ["repo:read"] },
+        auth: { type: "connected", provider: "github", scopes: ["repo:read"] },
       },
       {
         connectedGrants: [
@@ -157,7 +157,7 @@ describe("admitLocalSkill", () => {
     const skill = {
       name: "connected",
       source: { type: "cli-tool" },
-      auth: { type: "nango", provider: "github", scopes: ["repo:read"] },
+      auth: { type: "connected", provider: "github", scopes: ["repo:read"] },
     } as const;
     const grants = [
       {
@@ -185,10 +185,10 @@ describe("admitLocalSkill", () => {
         grant_id: "grant_wildcard",
         provider: "github",
         auth_mode: "oauth",
-        material_kind: "nango_connection",
+        material_kind: "opaque_connection",
         provider_reference: "conn_1",
         scopes: ["repo:*"],
-        material_ref: "nango:github:conn_1",
+        material_ref: "opaque:github:conn_1",
       },
     }).status).toBe("allow");
   });
@@ -198,7 +198,7 @@ describe("admitLocalSkill", () => {
       {
         name: "connected",
         source: { type: "cli-tool" },
-        auth: { type: "nango", provider: "github", scopes: ["repo:read"] },
+        auth: { type: "connected", provider: "github", scopes: ["repo:read"] },
       },
       {
         connectedGrants: [
@@ -223,7 +223,7 @@ describe("admitLocalSkill", () => {
       name: "targeted-connected",
       source: { type: "cli-tool" },
       auth: {
-        type: "nango",
+        type: "connected",
         provider: "github",
         scopes: ["repo:read"],
         scope_family: "github_repo",
@@ -272,7 +272,7 @@ describe("admitLocalSkill", () => {
       {
         name: "untargeted-connected",
         source: { type: "cli-tool" },
-        auth: { type: "nango", provider: "github", scopes: ["repo:read"] },
+        auth: { type: "connected", provider: "github", scopes: ["repo:read"] },
       },
       {
         connectedGrants: [
@@ -448,7 +448,7 @@ describe("authority proof", () => {
   it("summarizes matching grants and opaque credential material without raw secrets", () => {
     const scopeAdmission = buildLocalScopeAdmission(
       {
-        type: "nango",
+        type: "connected",
         provider: "github",
         scopes: ["repo:read"],
       },
@@ -475,7 +475,7 @@ describe("authority proof", () => {
       skillName: "connected-review",
       sourceType: "agent-step",
       auth: {
-        type: "nango",
+        type: "connected",
         provider: "github",
         scopes: ["repo:read"],
         scope_family: "github_repo",
@@ -489,10 +489,10 @@ describe("authority proof", () => {
         grant_id: "grant_1",
         provider: "github",
         auth_mode: "oauth",
-        material_kind: "nango_connection",
+        material_kind: "opaque_connection",
         provider_reference: "conn_1",
         scopes: ["repo:read"],
-        material_ref: "nango:github:conn_1",
+        material_ref: "opaque:github:conn_1",
       },
     });
 
@@ -520,7 +520,7 @@ describe("authority proof", () => {
     });
     expect(JSON.stringify(metadata)).not.toContain("super-secret-token");
     expect(JSON.stringify(metadata)).not.toContain("sk-contract-test");
-    expect(JSON.stringify(metadata)).not.toContain("nango:github:conn_1");
+    expect(JSON.stringify(metadata)).not.toContain("opaque:github:conn_1");
   });
 
   it("records denied connected auth without resolving credential material", () => {
@@ -528,7 +528,7 @@ describe("authority proof", () => {
       skillName: "connected-review",
       sourceType: "agent-step",
       auth: {
-        type: "nango",
+        type: "connected",
         provider: "github",
         scopes: ["repo:write"],
         scope_family: "github_repo",
@@ -618,7 +618,7 @@ describe("authority proof", () => {
 
   it("denies credential envelopes that do not bind to the admitted grant", () => {
     const auth = {
-      type: "nango",
+      type: "connected",
       provider: "github",
       scopes: ["repo:read"],
       scope_family: "github_repo",
@@ -649,7 +649,7 @@ describe("authority proof", () => {
         grant_id: "grant_other",
         provider: "github",
         auth_mode: "oauth",
-        material_kind: "nango_connection",
+        material_kind: "opaque_connection",
         provider_reference: "conn_1",
         scopes: ["repo:read"],
         grant_reference: {
@@ -659,7 +659,7 @@ describe("authority proof", () => {
           target_repo: "runxhq/aster",
           target_locator: "runxhq/aster#issue/4",
         },
-        material_ref: "nango:github:conn_1",
+        material_ref: "opaque:github:conn_1",
       },
     })).toEqual({
       status: "deny",
@@ -672,7 +672,7 @@ describe("authority proof", () => {
 
   it("denies admitted connected auth when credential material is missing", () => {
     const auth = {
-      type: "nango",
+      type: "connected",
       provider: "github",
       scopes: ["repo:read"],
     };

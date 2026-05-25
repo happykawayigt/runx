@@ -512,7 +512,7 @@ fn auth_requirement() -> impl Strategy<Value = JsonValue> {
                 "provider".to_owned(),
                 JsonValue::String("github".to_owned()),
             ),
-            ("type".to_owned(), JsonValue::String("nango".to_owned())),
+            ("type".to_owned(), JsonValue::String("connected".to_owned())),
             ("scopes".to_owned(), JsonValue::Array(scope_values)),
         ]))
     })

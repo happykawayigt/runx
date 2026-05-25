@@ -225,7 +225,7 @@ describe("Rust kernel CLI JSON bridge", () => {
 
   it("uses the Rust kernel for local scope admission", async () => {
     await expect(localScopeAdmissionViaKernel({
-      type: "nango",
+      type: "connected",
       provider: "github",
       scopes: ["repo:read", "repo:read"],
     }, [{
@@ -248,7 +248,7 @@ describe("Rust kernel CLI JSON bridge", () => {
   it("uses the Rust kernel for credential binding", async () => {
     await expect(credentialBindingViaKernel({
       auth: {
-        type: "nango",
+        type: "connected",
         provider: "github",
         scopes: ["repo:read"],
       },
@@ -270,10 +270,10 @@ describe("Rust kernel CLI JSON bridge", () => {
         grant_id: "grant_repo",
         provider: "github",
         auth_mode: "oauth",
-        material_kind: "nango_connection",
+        material_kind: "opaque_connection",
         provider_reference: "conn_1",
         scopes: ["repo:read"],
-        material_ref: "nango:github:conn_1",
+        material_ref: "opaque:github:conn_1",
       },
     }, { command: runxBinary, cwd: workspaceRoot })).resolves.toEqual({
       status: "allow",

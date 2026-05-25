@@ -313,7 +313,7 @@ describe("thread contract", () => {
       "Blockers: leaked bearer abc123",
     )).toBe("Blockers: leaked bearer [secret]");
     expect(sanitizePublicMarkdown(
-      "Status: material_ref=nango:github:conn_1",
+      "Status: material_ref=opaque:github:conn_1",
     )).toBe("Status: material_ref=[secret]");
   });
 
@@ -454,7 +454,7 @@ describe("thread contract", () => {
       "# Handoff: Fixture",
       "Status: super-secret-token",
       "Blockers: leaked bearer abc123",
-      "Next: material_ref=nango:github:conn_1",
+      "Next: material_ref=opaque:github:conn_1",
     ].join("\n"));
 
     expect(summary).toBe([
