@@ -2,12 +2,13 @@
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use runx_contracts::{JsonObject, JsonValue};
 use runx_parser::SkillSource;
 use runx_runtime::adapters::catalog::CatalogAdapter;
 use runx_runtime::{InvocationStatus, RuntimeError, SkillAdapter, SkillInvocation};
+use tempfile::tempdir;
 
 #[test]
 fn catalog_adapter_reports_missing_catalog_ref_as_user_failure() -> Result<(), RuntimeError> {
@@ -119,6 +120,90 @@ fn catalog_adapter_prefers_local_manifest_before_fixture_catalog()
     Ok(())
 }
 
+#[test]
+fn catalog_adapter_wraps_local_tool_outputs_for_graph_context_paths()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempdir()?;
+    write_catalog_tool(
+        &temp.path().join("tools/test/wrapped"),
+        r#"{
+  "schema": "runx.tool.manifest.v1",
+  "name": "test.wrapped",
+  "source": {
+    "type": "cli-tool",
+    "command": "/bin/sh",
+    "args": ["./run.sh"]
+  },
+  "runx": {
+    "artifacts": {
+      "wrap_as": "wrapped_packet"
+    }
+  },
+  "scopes": ["test.wrapped"]
+}
+"#,
+        r#"printf '%s\n' '{"schema":"test.packet.v1","data":{"message":"hello"}}'
+"#,
+    )?;
+    let output = CatalogAdapter::default().invoke(invocation_in_directory(
+        Some("test.wrapped"),
+        JsonObject::new(),
+        temp.path().to_path_buf(),
+        tool_root_env(temp.path()),
+    ))?;
+
+    assert_eq!(output.status, InvocationStatus::Success);
+    let payload: JsonValue = serde_json::from_str(&output.stdout)?;
+    assert_eq!(
+        json_path(&payload, &["wrapped_packet", "data", "data", "message"]),
+        Some("hello")
+    );
+    Ok(())
+}
+
+#[test]
+fn catalog_adapter_wraps_local_named_emits_for_graph_context_paths()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempdir()?;
+    write_catalog_tool(
+        &temp.path().join("tools/test/named"),
+        r#"{
+  "schema": "runx.tool.manifest.v1",
+  "name": "test.named",
+  "source": {
+    "type": "cli-tool",
+    "command": "/bin/sh",
+    "args": ["./run.sh"]
+  },
+  "runx": {
+    "artifacts": {
+      "named_emits": {
+        "draft_pull_request": "draft_pull_request_packet"
+      }
+    }
+  },
+  "scopes": ["test.named"]
+}
+"#,
+        r#"printf '%s\n' '{"draft_pull_request":{"title":"hello"}}'
+"#,
+    )?;
+    let output = CatalogAdapter::default().invoke(invocation_in_directory(
+        Some("test.named"),
+        JsonObject::new(),
+        temp.path().to_path_buf(),
+        tool_root_env(temp.path()),
+    ))?;
+
+    assert_eq!(output.status, InvocationStatus::Success);
+    let payload: JsonValue = serde_json::from_str(&output.stdout)?;
+    assert_eq!(
+        json_path(&payload, &["draft_pull_request", "data", "title"]),
+        Some("hello")
+    );
+    Ok(())
+}
+
 fn invocation(catalog_ref: Option<&str>, inputs: JsonObject) -> SkillInvocation {
     invocation_in_directory(catalog_ref, inputs, PathBuf::from("."), BTreeMap::new())
 }
@@ -189,6 +274,40 @@ fn oracle_text(case_name: &str, extension: &str) -> Result<String, Box<dyn std::
         "fixtures/runtime/adapters/catalog/oracles/{case_name}.{extension}"
     ));
     Ok(fs::read_to_string(path)?)
+}
+
+fn write_catalog_tool(
+    tool_dir: &Path,
+    manifest: &str,
+    runner: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    fs::create_dir_all(tool_dir)?;
+    fs::write(tool_dir.join("manifest.json"), manifest)?;
+    fs::write(tool_dir.join("run.sh"), runner)?;
+    Ok(())
+}
+
+fn tool_root_env(root: &Path) -> BTreeMap<String, String> {
+    let mut env = process_env();
+    env.insert(
+        "RUNX_TOOL_ROOTS".to_owned(),
+        root.join("tools").to_string_lossy().into_owned(),
+    );
+    env
+}
+
+fn json_path<'a>(value: &'a JsonValue, path: &[&str]) -> Option<&'a str> {
+    let mut current = value;
+    for segment in path {
+        let JsonValue::Object(object) = current else {
+            return None;
+        };
+        current = object.get(*segment)?;
+    }
+    match current {
+        JsonValue::String(value) => Some(value),
+        _ => None,
+    }
 }
 
 fn process_env() -> BTreeMap<String, String> {

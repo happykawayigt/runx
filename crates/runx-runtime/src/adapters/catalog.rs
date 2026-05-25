@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use runx_contracts::{JsonNumber, JsonObject, JsonValue, sha256_hex};
-use runx_parser::SkillSource;
+use runx_parser::{SkillArtifactContract, SkillSource};
 
 use crate::RuntimeError;
 use crate::adapter::{InvocationStatus, SkillAdapter, SkillInvocation, SkillOutput};
@@ -88,6 +88,7 @@ fn invoke_local_tool(
         )));
     }
 
+    let artifacts = resolution.tool.artifacts.clone();
     let mut source = resolution.tool.source;
     let skill_directory = manifest_directory(&resolution.manifest_path, &request.skill_directory);
     normalize_local_cli_source(&mut source, &skill_directory);
@@ -100,7 +101,51 @@ fn invoke_local_tool(
         env: request.env.clone(),
         credential_delivery: request.credential_delivery.clone(),
     };
-    Ok(Some(CliToolAdapter.invoke(invocation)?))
+    let mut output = CliToolAdapter.invoke(invocation)?;
+    apply_local_tool_artifact_wrappers(&mut output, artifacts.as_ref())?;
+    Ok(Some(output))
+}
+
+fn apply_local_tool_artifact_wrappers(
+    output: &mut SkillOutput,
+    artifacts: Option<&SkillArtifactContract>,
+) -> Result<(), RuntimeError> {
+    let Some(artifacts) = artifacts else {
+        return Ok(());
+    };
+    let Ok(JsonValue::Object(mut object)) = serde_json::from_str::<JsonValue>(&output.stdout)
+    else {
+        return Ok(());
+    };
+
+    let mut changed = false;
+    if let Some(wrap_as) = artifacts.wrap_as.as_deref()
+        && !object.contains_key(wrap_as)
+    {
+        let mut wrapper = JsonObject::new();
+        wrapper.insert("data".to_owned(), JsonValue::Object(object.clone()));
+        object.insert(wrap_as.to_owned(), JsonValue::Object(wrapper));
+        changed = true;
+    }
+
+    if let Some(named_emits) = &artifacts.named_emits {
+        for name in named_emits.keys() {
+            let Some(value) = object.get(name).cloned() else {
+                continue;
+            };
+            let mut wrapper = JsonObject::new();
+            wrapper.insert("data".to_owned(), value);
+            object.insert(name.clone(), JsonValue::Object(wrapper));
+            changed = true;
+        }
+    }
+
+    if changed {
+        output.stdout = serde_json::to_string(&JsonValue::Object(object)).map_err(|source| {
+            RuntimeError::json("serializing catalog artifact wrappers", source)
+        })?;
+    }
+    Ok(())
 }
 
 fn configured_tool_roots(env: &std::collections::BTreeMap<String, String>) -> Vec<PathBuf> {
