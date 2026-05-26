@@ -1,5 +1,3 @@
-// rust-style-allow: large-file - the public SDK client keeps command assembly
-// and response decoding in one file so wrapper parity stays reviewable.
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;

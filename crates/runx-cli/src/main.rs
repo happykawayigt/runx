@@ -1,6 +1,3 @@
-// rust-style-allow: large-file because the launcher binary currently owns
-// native command IO, delegation, and exit-code mapping in one audited cutover
-// surface.
 use std::env;
 use std::ffi::OsString;
 use std::io::{self, Write};
