@@ -85,23 +85,28 @@ proptest! {
     #[test]
     fn authority_item_subset_is_transitive(
         parent in prop::collection::vec(any::<u8>(), 0..24),
+        middle in prop::collection::vec(any::<u8>(), 0..24),
+        child in prop::collection::vec(any::<u8>(), 0..24),
     ) {
-        let middle = parent
-            .iter()
-            .copied()
-            .enumerate()
-            .filter_map(|(index, value)| (index % 2 == 0).then_some(value))
-            .collect::<Vec<_>>();
-        let child = middle
-            .iter()
-            .copied()
-            .enumerate()
-            .filter_map(|(index, value)| (index % 2 == 0).then_some(value))
-            .collect::<Vec<_>>();
+        let middle_subset_parent = items_subset(&middle, &parent);
+        let child_subset_middle = items_subset(&child, &middle);
 
-        prop_assert!(items_subset(&middle, &parent));
-        prop_assert!(items_subset(&child, &middle));
-        prop_assert!(items_subset(&child, &parent));
+        prop_assert!(
+            !middle_subset_parent || !child_subset_middle || items_subset(&child, &parent)
+        );
+    }
+
+    #[test]
+    fn authority_item_subset_denies_widening(
+        parent in prop::collection::vec(any::<u8>(), 0..24),
+        missing in any::<u8>(),
+    ) {
+        prop_assume!(!parent.contains(&missing));
+
+        let mut child = parent.clone();
+        child.push(missing);
+
+        prop_assert!(!items_subset(&child, &parent));
     }
 
     #[test]
@@ -110,6 +115,29 @@ proptest! {
     ) {
         prop_assert!(optional_bound_subset(Some(value), Some(value)));
         prop_assert!(optional_bound_subset::<u64>(None, None));
+    }
+
+    #[test]
+    fn authority_optional_bounds_allow_stricter_child_bounds(
+        parent in any::<u64>(),
+    ) {
+        let child = parent / 2;
+
+        prop_assert!(optional_bound_subset(Some(child), Some(parent)));
+    }
+
+    #[test]
+    fn authority_optional_bounds_deny_missing_child_bound(
+        parent in any::<u64>(),
+    ) {
+        prop_assert!(!optional_bound_subset::<u64>(None, Some(parent)));
+    }
+
+    #[test]
+    fn authority_optional_bounds_allow_parent_unbounded(
+        child in any::<u64>(),
+    ) {
+        prop_assert!(optional_bound_subset(Some(child), None));
     }
 
     #[test]
