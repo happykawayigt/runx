@@ -899,7 +899,7 @@ fn credential_envelope_corpus() -> Vec<(&'static str, Value)> {
         "provider": "github",
         "auth_mode": "api_key",
         "material_kind": "token",
-        "provider_reference": "conn_1",
+        "provider_reference": "provider-ref-1",
         "scopes": ["issues:write"],
         "material_ref": "ref:abc",
     });
@@ -1037,7 +1037,7 @@ fn authority_proof_corpus() -> Vec<(&'static str, Value)> {
                 "status": "resolved",
                 "grant_id": "grant_1",
                 "provider": "github",
-                "provider_reference": "conn_1",
+                "provider_reference": "provider-ref-1",
                 "scopes": ["issues:write"],
                 "authority_kind": "constructive",
                 "grant_reference": {
@@ -4173,7 +4173,7 @@ fn credential_envelope_rejects_legacy_provider_shaped_wire_key() {
         "provider": "github",
         "auth_mode": "api_key",
         "material_kind": "token",
-        "provider_reference": "conn_1",
+        "provider_reference": "provider-ref-1",
         "scopes": ["issues:write"],
         "material_ref": "ref:abc",
     });
@@ -4190,7 +4190,7 @@ fn credential_envelope_rejects_legacy_provider_shaped_wire_key() {
             "material_ref": "ref:abc",
         }),
         &legacy_provider_reference_key(),
-        json!("conn_1"),
+        json!("provider-ref-1"),
     );
     assert!(serde_json::from_value::<CredentialEnvelope>(legacy).is_err());
 }
@@ -4199,14 +4199,14 @@ fn credential_envelope_rejects_legacy_provider_shaped_wire_key() {
 fn authority_proof_credential_material_rejects_legacy_provider_shaped_wire_key() {
     assert!(
         serde_json::from_value::<AuthorityProofCredentialMaterial>(
-            json!({ "status": "resolved", "provider_reference": "conn_1" }),
+            json!({ "status": "resolved", "provider_reference": "provider-ref-1" }),
         )
         .is_ok()
     );
     let legacy = set_field(
         json!({ "status": "resolved" }),
         &legacy_provider_reference_key(),
-        json!("conn_1"),
+        json!("provider-ref-1"),
     );
     assert!(serde_json::from_value::<AuthorityProofCredentialMaterial>(legacy).is_err());
 }

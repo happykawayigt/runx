@@ -516,6 +516,77 @@ fn x402_paid_echo_replays_sealed_idempotency_without_second_rail()
 }
 
 #[test]
+fn x402_paid_echo_replay_with_mismatched_amount_denies_before_second_rail()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = PaidEchoFixture::new()?;
+    let state_dir = tempfile::tempdir()?;
+    let payment_state_path = state_dir.path().join("payment-state.json");
+    let mut env = BTreeMap::new();
+    env.insert(
+        RUNX_PAYMENT_STATE_PATH_ENV.to_owned(),
+        payment_state_path.to_string_lossy().into_owned(),
+    );
+    let adapter = PaidEchoAdapter::with_idempotency_keys_and_amounts(
+        PaidEchoRailProof::Present,
+        [PAID_ECHO_IDEMPOTENCY_KEY, PAID_ECHO_IDEMPOTENCY_KEY],
+        [125, 250],
+    );
+    let invocations = adapter.invocations();
+    let runtime = Runtime::new(
+        adapter,
+        RuntimeOptions {
+            env,
+            payment_supervisor: payment_supervisor(vec![paid_echo_supervisor_evidence(
+                PAID_ECHO_IDEMPOTENCY_KEY,
+            )]),
+            ..RuntimeOptions::default()
+        },
+    );
+
+    let mut first_host = ApprovalHost::approved(true);
+    let first = runtime.run_graph_file_with_host(fixture.graph_path(), &mut first_host)?;
+    assert_eq!(first.state.status, GraphStatus::Succeeded);
+
+    let mut second_host = ApprovalHost::approved(true);
+    let second = runtime.run_graph_file_with_host(fixture.graph_path(), &mut second_host);
+    match second {
+        Err(RuntimeError::AuthorityDenied {
+            verb,
+            step_id,
+            reason,
+        }) => {
+            assert_eq!(verb, AuthorityVerb::Spend);
+            assert_eq!(step_id, "fulfill");
+            assert!(
+                reason.contains("was sealed for 125 USD") && reason.contains("requested 250 USD"),
+                "mismatched replay denial should name the stored and requested spend facts, got: {reason}"
+            );
+        }
+        Ok(run) => {
+            return Err(std::io::Error::other(format!(
+                "mismatched idempotency replay should deny the second run, ran {:?}",
+                step_ids(&run.steps)
+            ))
+            .into());
+        }
+        Err(error) => {
+            return Err(std::io::Error::other(format!("unexpected runtime error: {error}")).into());
+        }
+    }
+
+    let fulfill_count = invocations
+        .borrow()
+        .iter()
+        .filter(|invocation| invocation.skill_name == "pay-fulfill-rail")
+        .count();
+    assert_eq!(
+        fulfill_count, 1,
+        "mismatched replay must deny before a second rail call"
+    );
+    Ok(())
+}
+
+#[test]
 fn x402_paid_echo_reused_spend_capability_with_new_idempotency_denied_from_persisted_state_before_second_rail()
 -> Result<(), Box<dyn std::error::Error>> {
     let fixture = PaidEchoFixture::new()?;
@@ -1016,6 +1087,8 @@ struct PaidEchoAdapter {
     rail_proof: PaidEchoRailProof,
     idempotency_keys: Rc<RefCell<VecDeque<String>>>,
     current_idempotency_key: Rc<RefCell<String>>,
+    amount_minor_by_run: Rc<RefCell<VecDeque<u64>>>,
+    current_amount_minor: Rc<RefCell<u64>>,
 }
 
 impl PaidEchoAdapter {
@@ -1027,6 +1100,14 @@ impl PaidEchoAdapter {
         rail_proof: PaidEchoRailProof,
         idempotency_keys: [&str; N],
     ) -> Self {
+        Self::with_idempotency_keys_and_amounts(rail_proof, idempotency_keys, [125])
+    }
+
+    fn with_idempotency_keys_and_amounts<const K: usize, const A: usize>(
+        rail_proof: PaidEchoRailProof,
+        idempotency_keys: [&str; K],
+        amount_minor_by_run: [u64; A],
+    ) -> Self {
         Self {
             invocations: Rc::new(RefCell::new(Vec::new())),
             rail_proof,
@@ -1034,6 +1115,8 @@ impl PaidEchoAdapter {
                 idempotency_keys.map(str::to_owned),
             ))),
             current_idempotency_key: Rc::new(RefCell::new(PAID_ECHO_IDEMPOTENCY_KEY.to_owned())),
+            amount_minor_by_run: Rc::new(RefCell::new(VecDeque::from(amount_minor_by_run))),
+            current_amount_minor: Rc::new(RefCell::new(125)),
         }
     }
 
@@ -1049,6 +1132,16 @@ impl PaidEchoAdapter {
             .unwrap_or_else(|| self.current_idempotency_key.borrow().clone());
         *self.current_idempotency_key.borrow_mut() = key.clone();
         key
+    }
+
+    fn reserve_amount_minor(&self) -> u64 {
+        let amount_minor = self
+            .amount_minor_by_run
+            .borrow_mut()
+            .pop_front()
+            .unwrap_or_else(|| *self.current_amount_minor.borrow());
+        *self.current_amount_minor.borrow_mut() = amount_minor;
+        amount_minor
     }
 }
 
@@ -1069,7 +1162,7 @@ impl SkillAdapter for PaidEchoAdapter {
                         "payment_signal": {
                             "signal_type": "payment_required",
                             "challenge_id": "ch_mock_paid_echo_001",
-                            "amount_minor": 125,
+                            "amount_minor": *self.current_amount_minor.borrow(),
                             "currency": "USD",
                             "rail": "mock",
                             "counterparty": "merchant:paid-echo",
@@ -1077,7 +1170,7 @@ impl SkillAdapter for PaidEchoAdapter {
                         },
                         "payment_quote": {
                             "quote_id": "quote_paid_echo_001",
-                            "amount_minor": 125,
+                            "amount_minor": *self.current_amount_minor.borrow(),
                             "currency": "USD",
                             "rails": ["mock"],
                             "counterparty": "merchant:paid-echo",
@@ -1088,11 +1181,15 @@ impl SkillAdapter for PaidEchoAdapter {
             })),
             "pay-reserve" => {
                 let idempotency_key = self.reserve_idempotency_key();
+                let amount_minor = self.reserve_amount_minor();
                 skill_success(json!({
                     "payment_reservation_packet": {
                         "data": {
                             "payment_decision": paid_echo_reservation_decision(),
-                            "reserved_payment_authority": paid_echo_reserved_payment_authority(&idempotency_key),
+                            "reserved_payment_authority": paid_echo_reserved_payment_authority(
+                                &idempotency_key,
+                                amount_minor
+                            ),
                             "spend_capability_ref": paid_echo_spend_capability_ref(),
                             "idempotency": { "key": idempotency_key }
                         }
@@ -1101,14 +1198,20 @@ impl SkillAdapter for PaidEchoAdapter {
             }
             "pay-fulfill-rail" if matches!(self.rail_proof, PaidEchoRailProof::Partial) => {
                 let idempotency_key = self.current_idempotency_key.borrow().clone();
+                let amount_minor = *self.current_amount_minor.borrow();
                 skill_failure_with_stdout(
-                    paid_echo_partial_rail_packet(&idempotency_key),
+                    paid_echo_partial_rail_packet(&idempotency_key, amount_minor),
                     "partial rail mutation recorded before terminal proof",
                 )
             }
             "pay-fulfill-rail" => {
                 let idempotency_key = self.current_idempotency_key.borrow().clone();
-                skill_success(paid_echo_rail_packet(self.rail_proof, &idempotency_key))
+                let amount_minor = *self.current_amount_minor.borrow();
+                skill_success(paid_echo_rail_packet(
+                    self.rail_proof,
+                    &idempotency_key,
+                    amount_minor,
+                ))
             }
             "paid-echo" => {
                 if request
@@ -1185,12 +1288,16 @@ fn skill_failure_with_stdout(value: Value, message: &str) -> SkillOutput {
     }
 }
 
-fn paid_echo_rail_packet(rail_proof: PaidEchoRailProof, idempotency_key: &str) -> Value {
+fn paid_echo_rail_packet(
+    rail_proof: PaidEchoRailProof,
+    idempotency_key: &str,
+    amount_minor: u64,
+) -> Value {
     let mut data = json!({
         "rail_result": {
             "status": "fulfilled",
             "rail": "mock",
-            "amount_minor": 125,
+            "amount_minor": amount_minor,
             "currency": "USD"
         },
         "credential_envelope": {
@@ -1210,14 +1317,14 @@ fn paid_echo_rail_packet(rail_proof: PaidEchoRailProof, idempotency_key: &str) -
     json!({ "payment_rail_packet": { "data": data } })
 }
 
-fn paid_echo_partial_rail_packet(idempotency_key: &str) -> Value {
+fn paid_echo_partial_rail_packet(idempotency_key: &str, amount_minor: u64) -> Value {
     json!({
         "payment_rail_packet": {
             "data": {
                 "rail_result": {
                     "status": "partial",
                     "rail": "mock",
-                    "amount_minor": 125,
+                    "amount_minor": amount_minor,
                     "currency": "USD",
                     "counterparty": "merchant:paid-echo"
                 },
@@ -1621,7 +1728,7 @@ fn reservation_decision() -> Value {
     })
 }
 
-fn paid_echo_reserved_payment_authority(idempotency_key: &str) -> Value {
+fn paid_echo_reserved_payment_authority(idempotency_key: &str, amount_minor: u64) -> Value {
     json!({
         "parent_authority": paid_echo_payment_term("paid-echo-parent", ["quote", "reserve", "spend", "verify"], 10_000),
         "child_authority": paid_echo_payment_term("paid-echo-child", ["reserve", "spend"], 2_500),
@@ -1633,7 +1740,7 @@ fn paid_echo_reserved_payment_authority(idempotency_key: &str) -> Value {
             "act_id": "act_fulfill",
             "reservation_decision_id": "decision_paid_echo_reservation",
             "idempotency_key": idempotency_key,
-            "amount_minor": 125,
+            "amount_minor": amount_minor,
             "currency": "USD",
             "counterparty": "merchant:paid-echo",
             "rail": "mock"

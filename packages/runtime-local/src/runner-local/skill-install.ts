@@ -3,7 +3,7 @@ import { access, mkdir, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { isMarketplaceRef, resolveMarketplaceSkill, type MarketplaceAdapter } from "@runxhq/core/marketplaces";
-import { asRecord, fetchWithTimeout, hashString, isNotFound, readOptionalFile } from "@runxhq/core/util";
+import { asRecord, fetchWithTimeout, hashString, isNotFound, readOptionalFile, stringValue } from "@runxhq/core/util";
 import type { SkillInstallOrigin } from "../parser-types.js";
 import {
   validateRunnerManifestYamlViaParser,
@@ -451,7 +451,7 @@ function validateRemoteRegistrySearchResult(value: unknown, query: string): Remo
   return {
     skill_id: skill.skill_id,
     name: skill.name,
-    version: coerceString(skill.version),
+    version: stringValue(skill.version),
   };
 }
 
@@ -532,8 +532,8 @@ function validateAcquiredRegistrySkillForInstall(value: unknown, skillId: string
     version: acquisition.version,
     digest: acquisition.digest,
     markdown: acquisition.markdown,
-    profile_document: coerceString(acquisition.profile_document),
-    profile_digest: coerceString(acquisition.profile_digest),
+    profile_document: stringValue(acquisition.profile_document),
+    profile_digest: stringValue(acquisition.profile_digest),
     runner_names: acquisition.runner_names,
     trust_tier: acquisition.trust_tier,
   };
@@ -611,10 +611,6 @@ function optionalNonEmptyString(value: unknown, label: string): string | undefin
     return undefined;
   }
   return requiredString(value, label);
-}
-
-function coerceString(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
 }
 
 function splitRegistrySkillId(skillId: string): readonly [string, string] {

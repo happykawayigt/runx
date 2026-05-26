@@ -3,7 +3,6 @@ use std::ffi::{OsStr, OsString};
 use std::path::PathBuf;
 
 use crate::config::ConfigPlan;
-use crate::connect::ConnectPlan;
 use crate::kernel::{KernelInputSource, KernelPlan};
 use crate::mcp::McpPlan;
 use crate::parser::{ParserInputSource, ParserPlan};
@@ -24,7 +23,6 @@ pub enum LauncherAction {
     RunHistory(HistoryPlan),
     RunHarness(HarnessPlan),
     RunKernel(KernelPlan),
-    RunConnect(ConnectPlan),
     RunConfig(ConfigPlan),
     RunPolicy(PolicyPlan),
     RunRegistry(RegistryPlan),
@@ -128,11 +126,6 @@ pub fn plan_launcher(args: Vec<OsString>) -> LauncherAction {
         return native_harness_plan(&args);
     }
 
-    if first_arg_is(&args, "connect") {
-        return crate::connect::parse_connect_plan(&args)
-            .map_or_else(LauncherAction::Error, LauncherAction::RunConnect);
-    }
-
     if first_arg_is(&args, "config") {
         return crate::config::parse_config_plan(&args)
             .map_or_else(LauncherAction::Error, LauncherAction::RunConfig);
@@ -224,7 +217,6 @@ Commands:
   runx init [-g|--global] [--prefetch official] [--json]
   runx history [query] [--skill s] [--status s] [--source s] [--actor a] [--artifact-type t] [--since iso] [--until iso] [--receipt-dir dir] [--json]
   runx list [tools|skills|graphs|packets|overlays] [--ok-only|--invalid-only] [--json]
-  runx connect [--json]  # unavailable in the MIT OSS CLI
   runx config set|get|list [agent.provider|agent.model|agent.api_key] [value] [--json]
   runx policy inspect|lint <policy.json> [--json]
   runx kernel eval --input <file|-> --json

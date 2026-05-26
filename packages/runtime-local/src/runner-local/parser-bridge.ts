@@ -578,8 +578,8 @@ function resolveParserCommand(options: ParserBridgeOptions): string {
 
 function parseValidatedSkill(value: unknown): ParserBridgeValidatedSkill {
   const record = requireRecord(value, "validated skill");
-  requireString(record.name, "validated skill name");
-  requireString(record.body, "validated skill body");
+  requireAnyString(record.name, "validated skill name");
+  requireAnyString(record.body, "validated skill body");
   requireRecord(record.source, "validated skill source");
   requireRecord(record.inputs, "validated skill inputs");
   requireRecord(record.raw, "validated skill raw");
@@ -595,7 +595,7 @@ function parseRunnerManifest(value: unknown): ParserBridgeSkillRunnerManifest {
 
 function parseExecutionGraph(value: unknown): ParserBridgeExecutionGraph {
   const record = requireRecord(value, "execution graph");
-  requireString(record.name, "execution graph name");
+  requireAnyString(record.name, "execution graph name");
   requireArray(record.steps, "execution graph steps");
   requireRecord(record.fanoutGroups, "execution graph fanout groups");
   requireRecord(record.raw, "execution graph raw");
@@ -604,7 +604,7 @@ function parseExecutionGraph(value: unknown): ParserBridgeExecutionGraph {
 
 function parseValidatedTool(value: unknown): ParserBridgeValidatedTool {
   const record = requireRecord(value, "validated tool");
-  requireString(record.name, "validated tool name");
+  requireAnyString(record.name, "validated tool name");
   requireRecord(record.source, "validated tool source");
   requireRecord(record.inputs, "validated tool inputs");
   requireArray(record.scopes, "validated tool scopes");
@@ -614,7 +614,7 @@ function parseValidatedTool(value: unknown): ParserBridgeValidatedTool {
 
 function parseSkillSource(value: unknown): ParserBridgeSkillSource {
   const record = requireRecord(value, "skill source");
-  requireString(record.type, "skill source type");
+  requireAnyString(record.type, "skill source type");
   requireArray(record.args, "skill source args");
   requireRecord(record.raw, "skill source raw");
   return record as unknown as ParserBridgeSkillSource;
@@ -629,7 +629,7 @@ function parseSkillQualityProfile(value: unknown): ParserBridgeSkillQualityProfi
   if (record.heading !== "Quality Profile") {
     throw new Error("Rust parser eval returned an invalid skill quality profile heading.");
   }
-  requireString(record.content, "skill quality profile content");
+  requireAnyString(record.content, "skill quality profile content");
   return record as unknown as ParserBridgeSkillQualityProfile;
 }
 
@@ -637,7 +637,7 @@ function parseValidatedSkillInstall(value: unknown): ValidatedSkillInstall {
   const record = requireRecord(value, "validated skill install");
   const skill = parseValidatedSkill(record.skill);
   requireRecord(record.origin, "validated skill install origin");
-  const markdown = requireString(record.markdown, "validated skill install markdown");
+  const markdown = requireAnyString(record.markdown, "validated skill install markdown");
   return {
     skill,
     origin: record.origin as unknown as ParserBridgeSkillInstallOrigin,
@@ -660,7 +660,7 @@ function requireRecord(value: unknown, label: string): Record<string, unknown> {
   return value;
 }
 
-function requireString(value: unknown, label: string): string {
+function requireAnyString(value: unknown, label: string): string {
   if (typeof value !== "string") {
     throw new Error(`Rust parser eval returned invalid ${label}.`);
   }

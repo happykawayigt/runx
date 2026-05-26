@@ -4,8 +4,8 @@
   "crate_classes": {
     "runx-cli": {
       "class": "mit-oss",
-      "phase1_state": "requires-phase2-connect-stub-or-removal",
-      "decision": "Keep MIT after deleting or stubbing the hosted connect brokerage command."
+      "phase1_state": "keep",
+      "decision": "Keep MIT. The OSS CLI does not perform hosted connect brokerage."
     },
     "runx-contracts": {
       "class": "mit-oss",
@@ -34,13 +34,13 @@
     },
     "runx-runtime": {
       "class": "mit-oss",
-      "phase1_state": "requires-phase2-connect-brokerage-move",
-      "decision": "Keep MIT after hosted connect brokerage is moved or abstracted; retain credential consumption, enforcement, and redaction."
+      "phase1_state": "keep",
+      "decision": "Keep MIT. Runtime owns local credential consumption, enforcement, sandbox delivery, and redaction only."
     },
     "runx-sdk": {
       "class": "mit-oss",
-      "phase1_state": "requires-phase2-connect-surface-abstracted",
-      "decision": "Keep MIT after hosted connect-list and connection_id surfaces are removed or abstracted."
+      "phase1_state": "keep",
+      "decision": "Keep MIT. Hosted connect-list APIs are not exposed from the OSS SDK."
     }
   },
   "private_crate_names": [],
@@ -66,12 +66,12 @@
     "HttpConnectReadyResponse",
     "HttpConnectRevokeResponse",
     "connection_id",
-    "RunxPrivateConnectBroker"
+    "RunxPrivateBoundarySentinel"
   ],
   "allowlist": [
     {
       "path": "crates/runx-runtime/tests/license_boundary.rs",
-      "identifier": "RunxPrivateConnectBroker",
+      "identifier": "RunxPrivateBoundarySentinel",
       "rationale": "Boundary guard negative-case assertion for a copied excluded fixture."
     }
   ],
@@ -116,6 +116,7 @@
     {
       "path": "crates/runx-cli/src/connect.rs",
       "decision": "delete-or-stub",
+      "removed": true,
       "rationale": "Native runx connect brokerage command does not belong in OSS."
     },
     {

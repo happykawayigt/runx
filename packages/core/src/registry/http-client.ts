@@ -2,6 +2,8 @@ import { parseRegistrySkillRef } from "./resolve.js";
 import { normalizeRegistrySearchResult, type RegistrySearchResult } from "./search.js";
 import type { RemoteToolCatalogSearchResult, RemoteToolInspectResult } from "./tool-catalog-types.js";
 import { fetchWithTimeout } from "../util/http.js";
+import { stringValue } from "../util/types.js";
+import { requireAnyString } from "../util/validators.js";
 import {
   validateRegistryAttestations,
   validateRegistryPublisher,
@@ -466,17 +468,17 @@ function splitRegistrySkillId(skillId: string): readonly [string, string] {
 function validateRemoteToolSearchResult(value: unknown): RemoteToolCatalogSearchResult {
   const record = requireRecord(value, "remote_tools.tools[]");
   return {
-    tool_id: requireString(record.tool_id, "remote_tools.tools[].tool_id"),
-    name: requireString(record.name, "remote_tools.tools[].name"),
-    summary: coerceString(record.summary, "remote_tools.tools[].summary"),
-    source: requireString(record.source, "remote_tools.tools[].source"),
-    source_label: requireString(record.source_label, "remote_tools.tools[].source_label"),
-    source_type: requireString(record.source_type, "remote_tools.tools[].source_type"),
-    namespace: requireString(record.namespace, "remote_tools.tools[].namespace"),
-    external_name: requireString(record.external_name, "remote_tools.tools[].external_name"),
+    tool_id: requireAnyString(record.tool_id, "remote_tools.tools[].tool_id"),
+    name: requireAnyString(record.name, "remote_tools.tools[].name"),
+    summary: stringValue(record.summary),
+    source: requireAnyString(record.source, "remote_tools.tools[].source"),
+    source_label: requireAnyString(record.source_label, "remote_tools.tools[].source_label"),
+    source_type: requireAnyString(record.source_type, "remote_tools.tools[].source_type"),
+    namespace: requireAnyString(record.namespace, "remote_tools.tools[].namespace"),
+    external_name: requireAnyString(record.external_name, "remote_tools.tools[].external_name"),
     required_scopes: requireStringArray(record.required_scopes, "remote_tools.tools[].required_scopes"),
     tags: requireStringArray(record.tags, "remote_tools.tools[].tags"),
-    catalog_ref: requireString(record.catalog_ref, "remote_tools.tools[].catalog_ref"),
+    catalog_ref: requireAnyString(record.catalog_ref, "remote_tools.tools[].catalog_ref"),
   };
 }
 
@@ -487,34 +489,34 @@ function validateRemoteToolInspectResult(value: unknown): RemoteToolInspectResul
   for (const [name, entry] of Object.entries(inputsRecord)) {
     const input = requireRecord(entry, `remote_tools.tool.inputs.${name}`);
     inputs[name] = {
-      type: requireString(input.type, `remote_tools.tool.inputs.${name}.type`),
+      type: requireAnyString(input.type, `remote_tools.tool.inputs.${name}.type`),
       required: requireBoolean(input.required, `remote_tools.tool.inputs.${name}.required`),
-      description: coerceString(input.description, `remote_tools.tool.inputs.${name}.description`),
+      description: stringValue(input.description),
     };
   }
   const provenanceRecord = requireRecord(record.provenance, "remote_tools.tool.provenance");
   return {
-    ref: requireString(record.ref, "remote_tools.tool.ref"),
-    name: requireString(record.name, "remote_tools.tool.name"),
-    description: coerceString(record.description, "remote_tools.tool.description"),
-    execution_source_type: requireString(record.execution_source_type, "remote_tools.tool.execution_source_type"),
+    ref: requireAnyString(record.ref, "remote_tools.tool.ref"),
+    name: requireAnyString(record.name, "remote_tools.tool.name"),
+    description: stringValue(record.description),
+    execution_source_type: requireAnyString(record.execution_source_type, "remote_tools.tool.execution_source_type"),
     inputs,
     scopes: requireStringArray(record.scopes, "remote_tools.tool.scopes"),
     mutating: optionalBoolean(record.mutating, "remote_tools.tool.mutating"),
     runtime: optionalRecord(record.runtime, "remote_tools.tool.runtime"),
     risk: optionalRecord(record.risk, "remote_tools.tool.risk"),
     runx: optionalRecord(record.runx, "remote_tools.tool.runx"),
-    reference_path: requireString(record.reference_path, "remote_tools.tool.reference_path"),
-    skill_directory: requireString(record.skill_directory, "remote_tools.tool.skill_directory"),
+    reference_path: requireAnyString(record.reference_path, "remote_tools.tool.reference_path"),
+    skill_directory: requireAnyString(record.skill_directory, "remote_tools.tool.skill_directory"),
     provenance: {
       origin: requireEnum(provenanceRecord.origin, "remote_tools.tool.provenance.origin", ["local", "imported"]) as "local" | "imported",
-      source: coerceString(provenanceRecord.source, "remote_tools.tool.provenance.source"),
-      source_label: coerceString(provenanceRecord.source_label, "remote_tools.tool.provenance.source_label"),
-      source_type: coerceString(provenanceRecord.source_type, "remote_tools.tool.provenance.source_type"),
-      namespace: coerceString(provenanceRecord.namespace, "remote_tools.tool.provenance.namespace"),
-      external_name: coerceString(provenanceRecord.external_name, "remote_tools.tool.provenance.external_name"),
-      catalog_ref: coerceString(provenanceRecord.catalog_ref, "remote_tools.tool.provenance.catalog_ref"),
-      tool_id: coerceString(provenanceRecord.tool_id, "remote_tools.tool.provenance.tool_id"),
+      source: stringValue(provenanceRecord.source),
+      source_label: stringValue(provenanceRecord.source_label),
+      source_type: stringValue(provenanceRecord.source_type),
+      namespace: stringValue(provenanceRecord.namespace),
+      external_name: stringValue(provenanceRecord.external_name),
+      catalog_ref: stringValue(provenanceRecord.catalog_ref),
+      tool_id: stringValue(provenanceRecord.tool_id),
       tags: optionalStringArray(provenanceRecord.tags, "remote_tools.tool.provenance.tags"),
     },
   };
@@ -525,17 +527,6 @@ function requireRecord(value: unknown, label: string): Record<string, unknown> {
     throw new Error(`${label} must be an object.`);
   }
   return value as Record<string, unknown>;
-}
-
-function requireString(value: unknown, label: string): string {
-  if (typeof value !== "string") {
-    throw new Error(`${label} must be a string.`);
-  }
-  return value;
-}
-
-function coerceString(value: unknown, _label: string): string | undefined {
-  return typeof value === "string" ? value : undefined;
 }
 
 function requireStringArray(value: unknown, label: string): readonly string[] {

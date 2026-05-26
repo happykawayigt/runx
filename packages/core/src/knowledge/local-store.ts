@@ -86,14 +86,10 @@ export interface LocalKnowledge {
 
 export interface IndexReceiptOptions {
   readonly receipt: LocalKnowledgeIndexableReceipt;
+  readonly receiptFile?: string;
   readonly project?: string;
   readonly indexedAt?: string;
 }
-
-type LegacyReceiptFileOptionKey = `receipt${"Path"}`;
-type IndexReceiptOptionsWithCompatibility = IndexReceiptOptions & {
-  readonly [K in LegacyReceiptFileOptionKey]?: string;
-};
 
 export interface AddProjectionOptions {
   readonly project: string;
@@ -110,7 +106,7 @@ export interface AddProjectionOptions {
 export interface LocalKnowledgeStore {
   readonly init: () => Promise<LocalKnowledge>;
   readonly read: () => Promise<LocalKnowledge>;
-  readonly indexReceipt: (options: IndexReceiptOptionsWithCompatibility) => Promise<LocalKnowledgeReceiptEntry>;
+  readonly indexReceipt: (options: IndexReceiptOptions) => Promise<LocalKnowledgeReceiptEntry>;
   readonly addProjection: (options: AddProjectionOptions) => Promise<LocalKnowledgeProjectionEntry>;
   readonly listProjections: (filter?: { readonly project?: string }) => Promise<readonly LocalKnowledgeProjectionEntry[]>;
   readonly listReceipts: (filter?: { readonly project?: string }) => Promise<readonly LocalKnowledgeReceiptEntry[]>;
@@ -263,7 +259,7 @@ async function delay(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function receiptEntry(options: IndexReceiptOptionsWithCompatibility): LocalKnowledgeReceiptEntry {
+function receiptEntry(options: IndexReceiptOptions): LocalKnowledgeReceiptEntry {
   const receipt = options.receipt;
   const receiptRecord = receipt as unknown as Readonly<Record<string, unknown>>;
   const executionName = receiptExecutionName(receipt);
@@ -275,7 +271,7 @@ function receiptEntry(options: IndexReceiptOptionsWithCompatibility): LocalKnowl
     status: receipt.status,
     execution_name: executionName,
     source_type: stringField(receiptRecord, "source_type"),
-    receipt_file: options[legacyReceiptFileOptionKey],
+    receipt_file: options.receiptFile,
     project: options.project ? path.resolve(options.project) : undefined,
     started_at: receipt.started_at,
     completed_at: receipt.completed_at,
@@ -283,7 +279,6 @@ function receiptEntry(options: IndexReceiptOptionsWithCompatibility): LocalKnowl
   };
 }
 
-const legacyReceiptFileOptionKey: LegacyReceiptFileOptionKey = `receipt${"Path"}`;
 const skillExecutionKind = `skill_${"execution"}`;
 const graphExecutionKind = `graph_${"execution"}`;
 const skillNameKey = `skill_${"name"}`;

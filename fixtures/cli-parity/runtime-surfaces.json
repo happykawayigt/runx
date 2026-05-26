@@ -3,7 +3,7 @@
   "surfaces": [
     {
       "id": "cli-presentation",
-      "owner": "packages/cli",
+      "owner": "runx-cli",
       "parityClass": "semantic",
       "coveredBy": [
         "cli.help",
@@ -17,7 +17,7 @@
       "parityClass": "fixture-backed",
       "coveredBy": [
         "skill.run",
-        "skill.add"
+        "registry"
       ],
       "notes": "Covers local paths, registry refs, and official skill resolution."
     },
@@ -53,16 +53,6 @@
       "notes": "Append-only run state and continuation history must survive cutover."
     },
     {
-      "id": "artifacts",
-      "owner": "packages/core",
-      "parityClass": "schema-exact",
-      "coveredBy": [
-        "evolve",
-        "dev"
-      ],
-      "notes": "Large outputs are referenced by artifact metadata instead of copied into receipts."
-    },
-    {
       "id": "sandbox",
       "owner": "runx-core/policy + runx-runtime",
       "parityClass": "schema-exact",
@@ -92,38 +82,25 @@
       "notes": "Search/filter behavior is command-level parity with normalized output."
     },
     {
-      "id": "continuation-replay",
-      "owner": "packages/runtime-local compatibility",
+      "id": "registry",
+      "owner": "runx-cli + runx-runtime registry",
       "parityClass": "fixture-backed",
       "coveredBy": [
-        "replay",
-        "diff"
-      ],
-      "notes": "Continuation runs and replay/diff inputs must resolve to the same receipt graph semantics until the native replay lane is promoted."
-    },
-    {
-      "id": "registry",
-      "owner": "packages/core/registry",
-      "parityClass": "stubbed",
-      "coveredBy": [
-        "skill.search",
-        "skill.add",
-        "skill.publish",
         "registry"
       ],
-      "notes": "Live registries are replaced by deterministic registry fixtures."
+      "notes": "Local and hosted registry envelopes are exercised through native registry commands."
     },
     {
       "id": "tool-catalog",
-      "owner": "runx-runtime adapters + packages/runtime-local compatibility",
-      "parityClass": "stubbed",
+      "owner": "runx-runtime adapters",
+      "parityClass": "fixture-backed",
       "coveredBy": [
         "tool.search",
         "tool.inspect",
         "tool.build",
         "list"
       ],
-      "notes": "Catalog discovery and local tool builds use fixtures or local files."
+      "notes": "Catalog discovery and local tool builds use native fixtures or local files."
     },
     {
       "id": "mcp",
@@ -136,7 +113,7 @@
     },
     {
       "id": "adapter-cli-tool",
-      "owner": "packages/adapters/cli-tool",
+      "owner": "runx-runtime cli-tool adapter",
       "parityClass": "fixture-backed",
       "coveredBy": [
         "skill.run"
@@ -145,7 +122,7 @@
     },
     {
       "id": "adapter-mcp",
-      "owner": "packages/adapters/mcp",
+      "owner": "runx-runtime MCP adapter",
       "parityClass": "stubbed",
       "coveredBy": [
         "mcp.serve"
@@ -154,7 +131,7 @@
     },
     {
       "id": "adapter-a2a",
-      "owner": "packages/adapters/a2a",
+      "owner": "runx-runtime A2A adapter",
       "parityClass": "stubbed",
       "coveredBy": [
         "skill.run"
@@ -163,7 +140,7 @@
     },
     {
       "id": "adapter-catalog",
-      "owner": "packages/adapters/catalog",
+      "owner": "runx-runtime catalog adapter",
       "parityClass": "stubbed",
       "coveredBy": [
         "tool.search",
@@ -173,7 +150,7 @@
     },
     {
       "id": "adapter-agent",
-      "owner": "packages/adapters/agent",
+      "owner": "runx-runtime external agent adapter",
       "parityClass": "stubbed",
       "coveredBy": [
         "skill.run",
@@ -183,7 +160,7 @@
     },
     {
       "id": "config",
-      "owner": "packages/cli",
+      "owner": "runx-cli",
       "parityClass": "schema-exact",
       "coveredBy": [
         "config.set",
@@ -194,7 +171,7 @@
     },
     {
       "id": "doctor",
-      "owner": "packages/cli",
+      "owner": "runx-cli + runx-runtime doctor",
       "parityClass": "semantic",
       "coveredBy": [
         "doctor"
@@ -203,7 +180,7 @@
     },
     {
       "id": "dev",
-      "owner": "packages/cli",
+      "owner": "runx-cli",
       "parityClass": "fixture-backed",
       "coveredBy": [
         "dev"
@@ -211,17 +188,17 @@
       "notes": "Development lanes run deterministic or recorded harness fixtures."
     },
     {
-      "id": "knowledge",
-      "owner": "packages/core/knowledge",
+      "id": "parser",
+      "owner": "runx-parser via runx-cli",
       "parityClass": "schema-exact",
       "coveredBy": [
-        "knowledge.show"
+        "parser"
       ],
-      "notes": "Public projection output stays schema-exact."
+      "notes": "Native parser evaluation output stays schema-exact."
     },
     {
       "id": "authority",
-      "owner": "packages/core/policy",
+      "owner": "runx-core/policy",
       "parityClass": "schema-exact",
       "coveredBy": [
         "skill.run"
@@ -230,7 +207,7 @@
     },
     {
       "id": "policy",
-      "owner": "packages/core/policy",
+      "owner": "runx-core/policy",
       "parityClass": "schema-exact",
       "coveredBy": [
         "policy.inspect",
@@ -249,7 +226,7 @@
     },
     {
       "id": "scaffold",
-      "owner": "packages/cli",
+      "owner": "runx-cli",
       "parityClass": "semantic",
       "coveredBy": [
         "new",
@@ -259,16 +236,16 @@
     },
     {
       "id": "official-skills",
-      "owner": "packages/cli",
+      "owner": "runx-cli",
       "parityClass": "schema-exact",
       "coveredBy": [
         "init"
       ],
-      "notes": "Prefetch and lockfile behavior stays fixture-backed before Rust cutover."
+      "notes": "Prefetch and lockfile behavior stays fixture-backed."
     },
     {
       "id": "list",
-      "owner": "packages/cli",
+      "owner": "runx-cli",
       "parityClass": "semantic",
       "coveredBy": [
         "list"
@@ -283,15 +260,6 @@
         "tool.build"
       ],
       "notes": "Tool build output and manifest validation remain schema-exact."
-    },
-    {
-      "id": "trainable-export",
-      "owner": "packages/cli compatibility",
-      "parityClass": "schema-exact",
-      "coveredBy": [
-        "export-receipts.trainable"
-      ],
-      "notes": "Redacted trainable receipt export remains a TypeScript compatibility contract until a native export exists."
     }
   ]
 }

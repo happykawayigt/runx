@@ -8,21 +8,21 @@ use super::types::{
 };
 
 pub use crate::runtime_http::{
-    HostedHttpError, HostedHttpHeader, HostedHttpRequest as HttpRequest,
-    HostedHttpResponse as HttpResponse, HostedTransport as Transport, HttpMethod,
-    ReqwestHttpTransport as DefaultHostedTransport,
+    HttpMethod, ReqwestHttpTransport as DefaultRuntimeHttpTransport, RuntimeHttpError,
+    RuntimeHttpHeader, RuntimeHttpRequest as HttpRequest, RuntimeHttpResponse as HttpResponse,
+    RuntimeHttpTransport as Transport,
 };
 
 #[derive(Clone, Debug)]
-pub struct RegistryClient<T = DefaultHostedTransport> {
+pub struct RegistryClient<T = DefaultRuntimeHttpTransport> {
     base_url: String,
     transport: T,
 }
 
 #[cfg(feature = "async-http")]
-impl RegistryClient<DefaultHostedTransport> {
+impl RegistryClient<DefaultRuntimeHttpTransport> {
     pub fn new(base_url: impl AsRef<str>) -> Result<Self, RegistryClientError> {
-        Self::with_transport(base_url, DefaultHostedTransport::new()?)
+        Self::with_transport(base_url, DefaultRuntimeHttpTransport::new()?)
     }
 }
 
@@ -32,11 +32,12 @@ impl<T: Transport> RegistryClient<T> {
         transport: T,
     ) -> Result<Self, RegistryClientError> {
         let base_url = strip_one_trailing_slash(base_url.as_ref());
-        let url = Url::parse(&base_url)
-            .map_err(|error| RegistryClientError::HostedHttp(HostedHttpError::InvalidUrl(error)))?;
+        let url = Url::parse(&base_url).map_err(|error| {
+            RegistryClientError::RuntimeHttp(RuntimeHttpError::InvalidUrl(error))
+        })?;
         if !matches!(url.scheme(), "http" | "https") {
-            return Err(RegistryClientError::HostedHttp(
-                HostedHttpError::UnsupportedUrlScheme {
+            return Err(RegistryClientError::RuntimeHttp(
+                RuntimeHttpError::UnsupportedUrlScheme {
                     scheme: url.scheme().to_owned(),
                 },
             ));
@@ -56,8 +57,9 @@ impl<T: Transport> RegistryClient<T> {
         query: &str,
         limit: usize,
     ) -> Result<Vec<RegistrySearchResult>, RegistryClientError> {
-        let mut url = Url::parse(&format!("{}/v1/skills", self.base_url))
-            .map_err(|error| RegistryClientError::HostedHttp(HostedHttpError::InvalidUrl(error)))?;
+        let mut url = Url::parse(&format!("{}/v1/skills", self.base_url)).map_err(|error| {
+            RegistryClientError::RuntimeHttp(RuntimeHttpError::InvalidUrl(error))
+        })?;
         {
             let mut pairs = url.query_pairs_mut();
             let trimmed = query.trim();
@@ -130,7 +132,7 @@ impl<T: Transport> RegistryClient<T> {
         let response = self.transport.send(HttpRequest {
             method: HttpMethod::Post,
             url: format!("{}{}", self.base_url, route),
-            headers: vec![HostedHttpHeader::new("content-type", "application/json")],
+            headers: vec![RuntimeHttpHeader::new("content-type", "application/json")],
             body: Some(body),
         })?;
         ensure_success(&route, response.status)?;
@@ -157,7 +159,7 @@ pub struct AcquireOptions<'a> {
 #[derive(Debug, thiserror::Error)]
 pub enum RegistryClientError {
     #[error(transparent)]
-    HostedHttp(#[from] HostedHttpError),
+    RuntimeHttp(#[from] RuntimeHttpError),
     #[error("invalid registry skill id '{0}'. Expected '<owner>/<name>'.")]
     InvalidSkillId(String),
     #[error("registry route {route} failed with HTTP {status}")]

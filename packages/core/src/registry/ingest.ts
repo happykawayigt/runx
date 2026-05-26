@@ -8,7 +8,7 @@ import {
   type SkillRunnerManifest,
   type ValidatedSkill,
 } from "../parser/index.js";
-import { isRecord } from "../util/types.js";
+import { isRecord, readField } from "../util/types.js";
 import { unique } from "../util/array.js";
 
 import { buildSkillId, type MaturityTier, type RegistrySkillVersion, type RegistrySourceMetadata, type RegistryStore } from "./store.js";
@@ -217,8 +217,3 @@ function recordArrayField(value: unknown, field: string): readonly string[] {
   }
   return arrayValue.filter((item): item is string => typeof item === "string" && item.length > 0);
 }
-
-function readField(value: unknown, field: string): unknown {
-  return isRecord(value) ? value[field] : undefined;
-}
-

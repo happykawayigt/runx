@@ -49,6 +49,7 @@ const literalPattern = (...parts) => new RegExp(literalName(...parts));
 const privateProviderGatewayUpstreamPattern = new RegExp("nan" + "go", "i");
 const legacyRunxConnectPrivateUpstreamEnvPattern = new RegExp(`RUNX_CONNECT_${"NAN"}${"GO"}`);
 const hostedOAuthAuthModePattern = /["']?auth_mode["']?\s*[:=]\s*["']oauth(?:_bearer)?["']/;
+const legacyProviderReferenceValuePattern = new RegExp("\\bco" + "nn_[A-Za-z0-9_:-]+");
 const forbiddenHostedConnectBrokerageTerms = [
   { name: "private provider gateway upstream", pattern: privateProviderGatewayUpstreamPattern },
   { name: literalName("oauth", "_required"), pattern: literalPattern("oauth", "_required") },
@@ -65,7 +66,9 @@ const forbiddenHostedConnectBrokerageTerms = [
 ];
 const forbiddenHostedCredentialContractTerms = [
   { name: "hosted OAuth auth_mode", pattern: hostedOAuthAuthModePattern },
+  { name: "legacy conn_ provider reference value", pattern: legacyProviderReferenceValuePattern },
   { name: literalName("opaque", "_connection"), pattern: literalPattern("opaque", "_connection") },
+  { name: literalName("redact", "_connect", "_text"), pattern: literalPattern("redact", "_connect", "_text") },
   { name: literalName("credential_delivery", ".broker", "_response"), pattern: literalPattern("credential_delivery", "\\.broker", "_response") },
   { name: literalName("credential_delivery", "_broker", "_response"), pattern: literalPattern("credential_delivery", "_broker", "_response") },
   { name: literalName("credential-delivery", "-broker", "-response"), pattern: literalPattern("credential-delivery", "-broker", "-response") },

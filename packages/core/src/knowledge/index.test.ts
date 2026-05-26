@@ -313,7 +313,7 @@ describe("thread contract", () => {
       "Blockers: leaked bearer abc123",
     )).toBe("Blockers: leaked bearer [secret]");
     expect(sanitizePublicMarkdown(
-      "Status: material_ref=opaque:github:conn_1",
+      "Status: material_ref=opaque:github:provider-ref-1",
     )).toBe("Status: material_ref=[secret]");
   });
 
@@ -465,7 +465,7 @@ describe("thread contract", () => {
       "# Handoff: Fixture",
       "Status: super-secret-token",
       "Blockers: leaked bearer abc123",
-      "Next: material_ref=opaque:github:conn_1",
+      "Next: material_ref=opaque:github:provider-ref-1",
     ].join("\n"));
 
     expect(summary).toBe([
@@ -760,7 +760,7 @@ describe("file local knowledge store", () => {
       const project = path.join(tempDir, "project");
       await store.indexReceipt({
         receipt,
-        [`receipt${"Path"}`]: path.join(tempDir, "receipts", `${receipt.id}.json`),
+        receiptFile: path.join(tempDir, "receipts", `${receipt.id}.json`),
         project,
         indexedAt: "2026-04-10T00:00:02Z",
       });

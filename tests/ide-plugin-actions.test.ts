@@ -5,7 +5,6 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { createIdeActionCore } from "../plugins/ide-core/src/index.js";
-import { registerRunxCommands } from "../plugins/antigravity/src/extension.js";
 import { createFileRegistryStore, seedRegistrySkill } from "./registry-fixtures.js";
 
 describe("ide plugin actions", () => {
@@ -42,7 +41,7 @@ describe("ide plugin actions", () => {
     }
   });
 
-  it("wraps receipt inspection, registry, harness, and Antigravity command registration", async () => {
+  it("wraps receipt inspection, registry, and harness actions", async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-ide-actions-registry-"));
     try {
       const registryStore = createFileRegistryStore(path.join(tempDir, "registry"));
@@ -109,19 +108,6 @@ expect:
       expect(acts).toHaveLength(1);
       expect(acts[0]?.id).toMatch(/^act_/);
 
-      const registered: string[] = [];
-      const disposables = registerRunxCommands(
-        {
-          registerCommand: (command) => {
-            registered.push(command);
-            return {};
-          },
-        },
-        core,
-      );
-      expect(disposables.length).toBeGreaterThan(5);
-      expect(registered).toContain("runx.skill.run");
-      expect(registered).toContain("runx.harness.run");
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }

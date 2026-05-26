@@ -73,17 +73,17 @@ describe("skill-add", () => {
     }
   });
 
-  it("uses native registry install only when explicitly requested", async () => {
+  it("uses native registry install for registry installs", async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-skill-add-rust-"));
-    const registryBin = path.join(tempDir, "registry-install.mjs");
+    const registryBin = path.join(tempDir, "registry-install");
     const skillsDir = path.join(tempDir, "skills");
     const stdout = createMemoryStream();
     const stderr = createMemoryStream();
 
     try {
-      await writeFile(
+      await writeNodeCommand(
         registryBin,
-        `#!/usr/bin/env node
+        `
 const args = process.argv.slice(2);
 process.stdout.write(JSON.stringify({
   status: "success",
@@ -110,7 +110,6 @@ process.stdout.write(JSON.stringify({
 }, null, 2) + "\\n");
 `,
       );
-      await chmod(registryBin, 0o755);
 
       const exitCode = await runCli(
         ["skill", "add", "acme/sourcey@1.0.0", "--to", skillsDir, "--digest", "sha256:abcd", "--json"],
@@ -119,8 +118,6 @@ process.stdout.write(JSON.stringify({
           ...process.env,
           RUNX_CWD: process.cwd(),
           RUNX_RUST_CLI_BIN: registryBin,
-          RUNX_RUST_REGISTRY_INSTALL: "1",
-          RUNX_RUST_REGISTRY_BIN: registryBin,
           RUNX_REGISTRY_DIR: path.join(tempDir, "unused-registry"),
         },
       );
@@ -167,19 +164,18 @@ process.stdout.write(JSON.stringify({
 
   it("routes marketplace installs through the native registry boundary", async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-skill-add-marketplace-rust-"));
-    const registryBin = path.join(tempDir, "registry-install.mjs");
+    const registryBin = path.join(tempDir, "registry-install");
     const stdout = createMemoryStream();
     const stderr = createMemoryStream();
 
     try {
-      await writeFile(
+      await writeNodeCommand(
         registryBin,
-        `#!/usr/bin/env node
+        `
 process.stderr.write("native registry install should not run for fixture marketplace\\n");
 process.exit(2);
 `,
       );
-      await chmod(registryBin, 0o755);
 
       const exitCode = await runCli(
         ["skill", "add", "fixture-marketplace:sourcey-docs", "--to", path.join(tempDir, "skills"), "--json"],
@@ -190,8 +186,6 @@ process.exit(2);
           RUNX_REGISTRY_DIR: path.join(tempDir, "registry"),
           RUNX_ENABLE_FIXTURE_MARKETPLACE: "1",
           RUNX_RUST_CLI_BIN: registryBin,
-          RUNX_RUST_REGISTRY_INSTALL: "1",
-          RUNX_RUST_REGISTRY_BIN: registryBin,
         },
       );
 
@@ -351,6 +345,13 @@ function createMemoryStream(): NodeJS.WriteStream & { contents: () => string } {
     },
     contents: () => buffer,
   } as NodeJS.WriteStream & { contents: () => string };
+}
+
+async function writeNodeCommand(commandPath: string, source: string): Promise<void> {
+  const scriptPath = `${commandPath}.mjs`;
+  await writeFile(scriptPath, source, "utf8");
+  await writeFile(commandPath, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(scriptPath)} "$@"\n`, "utf8");
+  await chmod(commandPath, 0o755);
 }
 
 function nativeEnv(): NodeJS.ProcessEnv {

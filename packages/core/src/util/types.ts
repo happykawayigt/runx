@@ -10,9 +10,14 @@ export function asRecord(value: unknown): Record<string, unknown> | undefined {
   return isRecord(value) ? value : undefined;
 }
 
+/** Read `value[key]` when `value` is a record, returning undefined otherwise. */
+export function readField(value: unknown, key: string): unknown {
+  return asRecord(value)?.[key];
+}
+
 /** Read `value[key]` and return it only when it is itself a record. */
 export function recordField(value: unknown, key: string): Readonly<Record<string, unknown>> | undefined {
-  return asRecord(asRecord(value)?.[key]);
+  return asRecord(readField(value, key));
 }
 
 /** Narrow an unknown to a string, returning undefined otherwise (no throw). */

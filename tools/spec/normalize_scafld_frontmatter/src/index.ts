@@ -38,12 +38,12 @@ function runNormalizeScafldFrontmatter({ inputs }: { readonly inputs: NormalizeS
   const existing = parsed.frontmatter;
   const repairs: string[] = [];
 
-  const taskId = firstNonEmpty(inputs.task_id, existing.task_id) ?? "issue-to-pr";
-  const title = firstNonEmpty(existing.title, inputs.thread_title, taskId) ?? taskId;
-  const size = normalizeSize(firstNonEmpty(inputs.size, existing.size));
-  const risk = normalizeRisk(firstNonEmpty(inputs.risk, existing.risk_level));
-  const created = firstNonEmpty(existing.created, new Date(0).toISOString());
-  const updated = firstNonEmpty(existing.updated, created);
+  const taskId = firstNonEmptyOrUndefined(inputs.task_id, existing.task_id) ?? "issue-to-pr";
+  const title = firstNonEmptyOrUndefined(existing.title, inputs.thread_title, taskId) ?? taskId;
+  const size = normalizeSize(firstNonEmptyOrUndefined(inputs.size, existing.size));
+  const risk = normalizeRisk(firstNonEmptyOrUndefined(inputs.risk, existing.risk_level));
+  const created = firstNonEmptyOrUndefined(existing.created, new Date(0).toISOString());
+  const updated = firstNonEmptyOrUndefined(existing.updated, created);
 
   const required = {
     spec_version: "'2.0'",
@@ -126,7 +126,7 @@ function normalizeRisk(value: string | undefined): string {
   return "low";
 }
 
-function firstNonEmpty(...values: unknown[]): string | undefined {
+function firstNonEmptyOrUndefined(...values: unknown[]): string | undefined {
   for (const value of values) {
     if (typeof value === "string" && value.trim()) {
       return value.trim();

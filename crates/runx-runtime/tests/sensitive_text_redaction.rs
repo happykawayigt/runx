@@ -1,6 +1,6 @@
 #[test]
 fn redaction_removes_secret_prefixes_bearers_and_urls() {
-    let display = runx_runtime::connect::redact_connect_text(
+    let display = runx_runtime::redact_sensitive_text(
         "failed SECRET_CREDENTIAL_BODY_DO_NOT_LEAK bearer Bearer abc.def https://auth.example/authorize?code=SECRET_AUTHORIZE_QUERY_DO_NOT_LEAK",
     );
 
@@ -14,12 +14,12 @@ fn redaction_removes_secret_prefixes_bearers_and_urls() {
 
 #[test]
 fn redaction_keeps_non_secret_text_readable() {
-    let display = runx_runtime::connect::redact_connect_text(
-        "connect provider requires a credential; retry after setting GITHUB_TOKEN",
+    let display = runx_runtime::redact_sensitive_text(
+        "provider requires a credential; retry after setting GITHUB_TOKEN",
     );
 
     assert_eq!(
         display,
-        "connect provider requires a credential; retry after setting GITHUB_TOKEN"
+        "provider requires a credential; retry after setting GITHUB_TOKEN"
     );
 }

@@ -10,6 +10,7 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use runx_contracts::JsonValue;
+use wait_timeout::ChildExt;
 
 use crate::RuntimeError;
 use crate::adapter::{InvocationStatus, SkillAdapter, SkillInvocation, SkillOutput};
@@ -17,7 +18,6 @@ use crate::credentials::CredentialDelivery;
 use crate::sandbox::{SandboxPlan, prepare_process_sandbox};
 
 const OUTPUT_LIMIT_BYTES: usize = 1024 * 1024;
-const POLL_INTERVAL: Duration = Duration::from_millis(10);
 const FORCE_KILL_GRACE: Duration = Duration::from_millis(100);
 
 #[derive(Default)]
@@ -48,10 +48,7 @@ impl SkillAdapter for CliToolAdapter {
         let stdout = capture_pipe(child.stdout.take(), "opening cli-tool stdout pipe")?;
         let stderr = capture_pipe(child.stderr.take(), "opening cli-tool stderr pipe")?;
         write_stdin(&mut child, &request)?;
-        let timed_out = wait_for_exit(&mut child, request.source.timeout_seconds)?;
-        let status = child
-            .wait()
-            .map_err(|source| RuntimeError::io("waiting for cli-tool process", source))?;
+        let (status, timed_out) = wait_for_exit(&mut child, request.source.timeout_seconds)?;
         let stdout =
             collect_redacted_output(stdout, &credential_delivery, "collecting cli-tool stdout")?;
         let stderr =
@@ -217,24 +214,28 @@ struct CapturedText {
 fn wait_for_exit(
     child: &mut std::process::Child,
     timeout_seconds: Option<u64>,
-) -> Result<bool, RuntimeError> {
-    let timeout = timeout_seconds.map(Duration::from_secs);
-    let started = Instant::now();
-    loop {
-        if child
-            .try_wait()
-            .map_err(|source| RuntimeError::io("polling cli-tool process", source))?
-            .is_some()
-        {
-            return Ok(false);
-        }
-        if timeout.is_some_and(|timeout| started.elapsed() >= timeout) {
+) -> Result<(ExitStatus, bool), RuntimeError> {
+    let Some(timeout_seconds) = timeout_seconds else {
+        let status = child
+            .wait()
+            .map_err(|source| RuntimeError::io("waiting for cli-tool process", source))?;
+        return Ok((status, false));
+    };
+
+    match child
+        .wait_timeout(Duration::from_secs(timeout_seconds))
+        .map_err(|source| RuntimeError::io("waiting for cli-tool process with timeout", source))?
+    {
+        Some(status) => Ok((status, false)),
+        None => {
             kill_timed_out_process(child, KillSignal::Terminate)?;
             thread::sleep(FORCE_KILL_GRACE);
             kill_timed_out_process(child, KillSignal::Force)?;
-            return Ok(true);
+            let status = child.wait().map_err(|source| {
+                RuntimeError::io("waiting for timed out cli-tool process", source)
+            })?;
+            Ok((status, true))
         }
-        thread::sleep(POLL_INTERVAL);
     }
 }
 

@@ -1,4 +1,4 @@
-pub fn redact_connect_text(input: &str) -> String {
+pub fn redact_sensitive_text(input: &str) -> String {
     redact_urls(&redact_bearer_tokens(&redact_prefixed_secret(
         input, "SECRET_",
     )))
@@ -76,15 +76,15 @@ fn find_next_url(input: &str) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
-    use super::redact_connect_text;
+    use super::redact_sensitive_text;
 
     #[test]
     fn redacts_sentinel_and_bearer_values() {
-        let redacted = redact_connect_text(
-            "failed SECRET_CONNECT_ACCESS_TOKEN_DO_NOT_LEAK Bearer abc.def SECRET_AUTHORIZE_QUERY_DO_NOT_LEAK https://auth.example/authorize?code=abc",
+        let redacted = redact_sensitive_text(
+            "failed SECRET_PROVIDER_ACCESS_TOKEN_DO_NOT_LEAK Bearer abc.def SECRET_AUTHORIZE_QUERY_DO_NOT_LEAK https://auth.example/authorize?code=abc",
         );
 
-        assert!(!redacted.contains("SECRET_CONNECT_ACCESS_TOKEN_DO_NOT_LEAK"));
+        assert!(!redacted.contains("SECRET_PROVIDER_ACCESS_TOKEN_DO_NOT_LEAK"));
         assert!(!redacted.contains("abc.def"));
         assert!(!redacted.contains("SECRET_AUTHORIZE_QUERY_DO_NOT_LEAK"));
         assert!(!redacted.contains("auth.example"));

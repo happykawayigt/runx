@@ -32,11 +32,10 @@ license = "MIT"
 repository = "https://github.com/runxhq/runx"
 homepage = "https://runx.ai"
 
-# Release binaries ship as per-platform npm packages, so size and load time
-# matter more than build time. Fat-trimmed defaults keep the distributed
-# binary small while staying fully optimized.
+# Release binaries are the hot local runtime path. Favor throughput first; npm
+# platform packages can absorb the binary size tradeoff.
 [profile.release]
-opt-level = "z"
+opt-level = 3
 lto = "fat"
 codegen-units = 1
 strip = "symbols"

@@ -30,7 +30,6 @@ fn main() -> ExitCode {
         LauncherAction::RunHarness(plan) => run_native_harness(plan.fixture_paths),
         LauncherAction::RunKernel(plan) => runx_cli::kernel::run_native_kernel(plan),
         LauncherAction::RunParser(plan) => runx_cli::parser::run_native_parser(plan),
-        LauncherAction::RunConnect(plan) => run_native_connect(plan),
         LauncherAction::RunConfig(plan) => run_native_config(plan),
         LauncherAction::RunPolicy(plan) => runx_cli::policy::run_native_policy(plan),
         LauncherAction::RunRegistry(plan) => runx_cli::registry::run_native_registry(plan),
@@ -39,22 +38,6 @@ fn main() -> ExitCode {
         LauncherAction::RunDev(plan) => runx_cli::dev::run_native_dev(plan),
         LauncherAction::RunTool(plan) => runx_cli::tool::run_native_tool(plan),
     }
-}
-
-fn run_native_connect(plan: runx_cli::connect::ConnectPlan) -> ExitCode {
-    let message = "runx connect is not available in the MIT OSS CLI; use the hosted/private CLI distribution for OAuth brokerage";
-    if plan.json {
-        let _ignored = write_stdout_line(
-            &serde_json::json!({
-                "status": "error",
-                "error": message,
-            })
-            .to_string(),
-        );
-        return ExitCode::from(1);
-    }
-    let _ignored = write_stderr_line(&format!("runx: {message}"));
-    ExitCode::from(1)
 }
 
 fn run_native_history(args: Vec<OsString>) -> ExitCode {

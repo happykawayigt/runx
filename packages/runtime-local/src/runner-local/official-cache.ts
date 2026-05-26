@@ -8,6 +8,7 @@ import {
   fetchWithTimeout,
   hashString,
   readOptionalFile,
+  optionalString,
   requireArray,
   requireEnum,
   requireRecord,
@@ -337,13 +338,6 @@ function validateOfficialRegistryAttestations(value: unknown, label: string): re
       metadata: optionalRecord(record.metadata, `${label}[${index}].metadata`),
     };
   });
-}
-
-function optionalString(value: unknown, label: string): string | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  return requireString(value, label);
 }
 
 function optionalRecord(value: unknown, label: string): Readonly<Record<string, unknown>> | undefined {

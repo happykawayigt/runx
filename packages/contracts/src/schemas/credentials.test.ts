@@ -112,7 +112,7 @@ describe("credential and authority proof schemas", () => {
         provider: "github",
         auth_mode: "api_key",
         material_kind: "api_key",
-        connection_id: "conn_1",
+        connection_id: "legacy-provider-ref-1",
         scopes: ["repo:read"],
         material_ref: "local:github:grant_1",
       }),
@@ -122,7 +122,7 @@ describe("credential and authority proof schemas", () => {
         ...validAuthorityProof,
         credential_material: {
           status: "resolved",
-          connection_id: "conn_1",
+          connection_id: "legacy-provider-ref-1",
         },
       }),
     ).toBe(false);

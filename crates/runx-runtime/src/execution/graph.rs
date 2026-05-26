@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -153,18 +154,33 @@ pub(crate) fn resolve_inputs(
     prior_runs: &[StepRun],
 ) -> Result<JsonObject, RuntimeError> {
     let mut inputs = step.inputs.clone();
-    for edge in &step.context_edges {
+    if step.context_edges.is_empty() {
+        return Ok(inputs);
+    }
+    if step.context_edges.len() == 1 {
+        let edge = &step.context_edges[0];
         let value = context_output(prior_runs, &edge.from_step, &edge.output)?;
+        inputs.insert(edge.input.clone(), value);
+        return Ok(inputs);
+    }
+    let prior_run_index = prior_run_index(prior_runs);
+    for edge in &step.context_edges {
+        let value = context_output_from_index(&prior_run_index, &edge.from_step, &edge.output)?;
         inputs.insert(edge.input.clone(), value);
     }
     Ok(inputs)
 }
 
 pub(crate) fn output_object(output: &SkillOutput) -> JsonObject {
+    output_object_with_claim(output).0
+}
+
+pub(crate) fn output_object_with_claim(output: &SkillOutput) -> (JsonObject, JsonObject) {
     let mut object = JsonObject::new();
-    if let Ok(parsed) = serde_json::from_str::<JsonValue>(&output.stdout) {
+    let parsed_stdout = serde_json::from_str::<JsonValue>(&output.stdout).ok();
+    if let Some(parsed) = parsed_stdout.as_ref() {
         object.insert("raw".to_owned(), JsonValue::String(output.stdout.clone()));
-        object.insert("skill_claim".to_owned(), parsed);
+        object.insert("skill_claim".to_owned(), parsed.clone());
     }
     object.insert(
         "stdout".to_owned(),
@@ -182,14 +198,11 @@ pub(crate) fn output_object(output: &SkillOutput) -> JsonObject {
             "failure".to_owned()
         }),
     );
-    object
-}
-
-pub(crate) fn skill_claim_object(output: &SkillOutput) -> JsonObject {
-    match serde_json::from_str::<JsonValue>(&output.stdout) {
-        Ok(JsonValue::Object(object)) => object,
+    let claim = match parsed_stdout {
+        Some(JsonValue::Object(object)) => object,
         _ => JsonObject::new(),
-    }
+    };
+    (object, claim)
 }
 
 fn context_from(step: &GraphStep) -> Option<Vec<String>> {
@@ -211,6 +224,28 @@ fn context_output(
     output: &str,
 ) -> Result<JsonValue, RuntimeError> {
     let Some(run) = prior_runs.iter().find(|run| run.step_id == from_step) else {
+        return Err(RuntimeError::GraphBlocked {
+            step_id: from_step.to_owned(),
+            reason: "context source step has not run".to_owned(),
+        });
+    };
+    Ok(resolve_output_path(&run.outputs, output).unwrap_or(JsonValue::Null))
+}
+
+fn prior_run_index<'a>(prior_runs: &'a [StepRun]) -> BTreeMap<&'a str, &'a StepRun> {
+    let mut index = BTreeMap::new();
+    for run in prior_runs {
+        index.entry(run.step_id.as_str()).or_insert(run);
+    }
+    index
+}
+
+fn context_output_from_index(
+    prior_runs: &BTreeMap<&str, &StepRun>,
+    from_step: &str,
+    output: &str,
+) -> Result<JsonValue, RuntimeError> {
+    let Some(run) = prior_runs.get(from_step) else {
         return Err(RuntimeError::GraphBlocked {
             step_id: from_step.to_owned(),
             reason: "context source step has not run".to_owned(),

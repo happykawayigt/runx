@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import { buildReceiptViewModel } from "../plugins/ide-core/src/index.js";
-import { receiptTreeItems } from "../plugins/antigravity/src/views.js";
 
 describe("ide receipt view", () => {
   it("renders receipt metadata without raw output bodies", () => {
@@ -65,8 +64,5 @@ describe("ide receipt view", () => {
     expect(JSON.stringify(model)).toContain("quorum_met");
     expect(JSON.stringify(model)).toContain("hash-output");
     expect(JSON.stringify(model)).not.toContain("secret full output body");
-
-    expect(receiptTreeItems(receipt).map((item) => item.label)).toContain("sync research");
-    expect(receiptTreeItems(receipt).map((item) => item.label)).toContain("child runx:receipt:hrn_rcpt_fanout-docs_research-a");
   });
 });

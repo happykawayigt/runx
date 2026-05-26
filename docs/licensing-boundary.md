@@ -1,227 +1,46 @@
 # Connect/Auth Licensing Boundary
 
-Status: Phase 1 classification snapshot for
-`connect-auth-mit-boundary-v1`.
+Status: current boundary.
 
-## Governing Principle
+## Rule
 
-Runx OSS crates may consume credential material and enforce declared authority.
-They must not broker OAuth, custody secrets, mint verified grants, or couple to a
-provider-specific credential broker.
+OSS crates may consume local credential material, enforce declared authority,
+redact credential references, and write receipt-safe observations. OSS crates
+must not broker third-party OAuth, custody hosted secrets, issue verified hosted
+grants, or expose hosted provider connection APIs.
 
-The durable crossing is the existing opaque credential channel:
-`material_ref` is resolved through `MaterialResolver` into scoped material for a
-single execution. Offline declared grants, local env/config material, redaction
-hygiene, and connected-auth requirement policy stay MIT. Hosted connect,
-browser/polling OAuth, `RUNX_CONNECT_ACCESS_TOKEN` broker access, private provider-broker types,
-connection session state, and verified-grant issuance move private or are
-abstracted away from MIT crates.
+The local credential path is intentionally small: a run may receive an API key
+or personal token through a per-run local descriptor, resolve it through
+`MaterialResolver`, and inject it only into the child process boundary for that
+execution. The hosted/cloud layer owns OAuth brokerage and credential custody.
 
-## Phase 1 Inventory
+## Current OSS Surface
 
-Inventory command:
+- `runx-contracts` keeps provider-neutral credential envelope and credential
+  delivery contracts.
+- `runx-core` keeps policy and authority admission. It does not call providers
+  or issue grants.
+- `runx-runtime` keeps local credential consumption, sandbox delivery, and
+  redaction.
+- `runx-cli` keeps the native OSS CLI shape and does not perform hosted connect
+  brokerage.
+- `runx-sdk` does not expose hosted connect-list APIs.
 
-```sh
-rg -n 'oauth|RUNX_CONNECT|connection_id|material_ref|credential|auth' crates --glob '*.rs'
-```
+## Denied OSS Surface
 
-The command matched 99 Rust files. The classification below is intentionally
-source-tree based; Phase 2 may rewrite or delete private surfaces, but this
-snapshot records the current boundary.
+The manifest at `docs/license-boundary.manifest.json` is the machine-readable
+guard input. It blocks hosted connect client identifiers, legacy connection
+keys, and private provider implementation names in MIT Rust crates, with the
+single negative fixture allowlist required by the guard tests.
 
-## Private Or Move/Abstract
-
-These files currently expose brokerage, hosted connect, private provider-broker OAuth,
-`RUNX_CONNECT_*`, `connection_id`, or public surfaces built around those
-concepts.
-
-- `crates/runx-runtime/src/connect/client.rs` - removed from OSS in Phase 2; move private. It owns hosted
-  HTTP connect polling, bearer auth, `RUNX_CONNECT_BASE_URL`, and
-  `RUNX_CONNECT_ACCESS_TOKEN`.
-- `crates/runx-runtime/src/connect/types.rs` - removed from OSS in Phase 2; abstract or move. It exposes
-  private provider-broker OAuth state, `connection_id`, and hosted grant material.
-- `crates/runx-runtime/src/connect/opener.rs` - removed from OSS in Phase 2; move private with the browser
-  connect flow.
-- `crates/runx-runtime/src/connect.rs` - rewrite in Phase 2 so MIT exports only
-  retained redaction/opaque conversion helpers, or remove the module export.
-- `crates/runx-runtime/src/lib.rs` - remove hosted connect brokerage re-exports
-  in lockstep with `connect.rs`.
-- `crates/runx-cli/src/connect.rs` - delete from OSS or replace with an
-  unavailable-in-OSS stub.
-- `crates/runx-cli/src/main.rs` - remove or stub the native `runx connect`
-  brokerage arm.
-- `crates/runx-cli/tests/connect.rs` - rewrite to prove the retained CLI shape
-  or delete with the subcommand.
-- `crates/runx-cli/tests/launcher.rs` - update routing coverage after the
-  connect command is removed or stubbed.
-- `crates/runx-runtime/tests/connect_client.rs` - move private with the hosted
-  client tests.
-- `crates/runx-runtime/tests/connect_support.rs` - move private unless Phase 2
-  extracts a pure MIT fixture helper.
-- `crates/runx-runtime/tests/connect_policy_integration.rs` - keep only if it
-  can test a pure MIT grant-to-local-admission conversion without hosted provider broker or
-  hosted client fixtures.
-- `crates/runx-runtime/tests/connect_secret_redaction.rs` - rewrite to exercise
-  `redact_connect_text()` directly; redaction stays MIT, the hosted client does
-  not.
-- `crates/runx-sdk/src/client.rs` - remove or abstract the connect-list /
-  `connection_id` hosted API from the MIT SDK surface.
-- `crates/runx-sdk/tests/client_cli.rs` - rewrite after SDK connect surface is
-  removed or abstracted.
-
-## Phase 2 API Transition
-
-The MIT runtime no longer exports `ConnectClient`, `ConnectError`,
-`ConnectOpener`, `HttpConnectGrant`, `HttpConnectListResponse`,
-`HttpConnectPreprovisionRequest`, `HttpConnectReadyResponse`,
-`HttpConnectRevokeResponse`, or `load_connect_options_from_env`. The retained
-MIT runtime surface is credential consumption/enforcement plus
-`redact_connect_text()` for non-leakage hygiene.
-
-The OSS CLI keeps an explicit `runx connect [--json]` unavailable stub. It does
-not read `RUNX_CONNECT_*`, perform network brokerage, or render grant material.
-The hosted/private CLI distribution owns real connect flows.
-
-The Rust SDK removed `RunxClient::connect_list()` and `ConnectionSummary`. SDK
-consumers should use generated provider-neutral credential contracts or the
-private hosted client where connect brokerage is required.
-
-## MIT Keep
-
-These matched because they use generic credential, auth, authority, policy,
-receipt, adapter, or fixture terminology. They do not broker OAuth or custody
-secrets.
-
-- `crates/runx-cli/src/launcher.rs`
-- `crates/runx-cli/src/list.rs`
-- `crates/runx-cli/src/scaffold.rs`
-- `crates/runx-cli/tests/x402_native_dogfood.rs`
-- `crates/runx-contracts/src/aster.rs`
-- `crates/runx-contracts/src/authority.rs`
-- `crates/runx-contracts/src/credential_delivery.rs`
-- `crates/runx-contracts/src/external_adapter.rs`
-- `crates/runx-contracts/src/harness.rs`
-- `crates/runx-contracts/src/host_protocol.rs`
-- `crates/runx-contracts/src/lib.rs`
-- `crates/runx-contracts/src/maturity.rs`
-- `crates/runx-contracts/src/post_merge_observer.rs`
-- `crates/runx-contracts/src/post_merge_observer/plan.rs`
-- `crates/runx-contracts/src/signal.rs`
-- `crates/runx-contracts/src/verification.rs`
-- `crates/runx-contracts/tests/credential_delivery_fixtures.rs`
-- `crates/runx-contracts/tests/external_adapter_fixtures.rs`
-- `crates/runx-contracts/tests/harness_spine_fixtures.rs`
-- `crates/runx-contracts/tests/host_protocol_fixtures.rs`
-- `crates/runx-contracts/tests/post_merge_observer.rs`
-- `crates/runx-contracts/tests/schema_validation.rs`
-- `crates/runx-core/src/kernel_eval.rs`
-- `crates/runx-core/src/lib.rs`
-- `crates/runx-core/src/policy.rs`
-- `crates/runx-core/src/policy/authority_proof.rs`
-- `crates/runx-core/src/policy/connected_auth.rs`
-- `crates/runx-core/src/policy/local.rs`
-- `crates/runx-core/src/policy/payment_authority.rs`
-- `crates/runx-core/src/policy/public_work.rs`
-- `crates/runx-core/src/policy/types.rs`
-- `crates/runx-core/tests/policy_fixtures.rs`
-- `crates/runx-core/tests/policy_proptest.rs`
-- `crates/runx-parser/src/skill.rs`
-- `crates/runx-receipts/src/tree.rs`
-- `crates/runx-receipts/src/verify.rs`
-- `crates/runx-receipts/src/verify/proof.rs`
-- `crates/runx-receipts/tests/receipt_contracts.rs`
-- `crates/runx-runtime/src/adapter.rs`
-- `crates/runx-runtime/src/adapters/catalog.rs`
-- `crates/runx-runtime/src/adapters/cli_tool.rs`
-- `crates/runx-runtime/src/adapters/external_adapter.rs`
-- `crates/runx-runtime/src/adapters/mcp/adapter.rs`
-- `crates/runx-runtime/src/adapters/mcp/server_skill.rs`
-- `crates/runx-runtime/src/adapters/mcp/transport.rs`
-- `crates/runx-runtime/src/adapters/mcp/types.rs`
-- `crates/runx-runtime/src/config.rs`
-- `crates/runx-runtime/src/connect/redaction.rs`
-- `crates/runx-runtime/src/credentials.rs`
-- `crates/runx-runtime/src/error.rs`
-- `crates/runx-runtime/src/execution/harness/runner.rs`
-- `crates/runx-runtime/src/execution/runner.rs`
-- `crates/runx-runtime/src/execution/runner/authority.rs`
-- `crates/runx-runtime/src/execution/runner/inputs.rs`
-- `crates/runx-runtime/src/execution/runner/steps.rs`
-- `crates/runx-runtime/src/execution/skill_run.rs`
-- `crates/runx-runtime/src/execution/target_runner.rs`
-- `crates/runx-runtime/src/list.rs`
-- `crates/runx-runtime/src/payment/packets.rs`
-- `crates/runx-runtime/src/payment/state.rs`
-- `crates/runx-runtime/src/post_merge_observer.rs`
-- `crates/runx-runtime/src/receipts/seal.rs`
-- `crates/runx-runtime/src/registry/local/build.rs`
-- `crates/runx-runtime/src/registry/types.rs`
-- `crates/runx-runtime/src/runtime_http.rs`
-- `crates/runx-runtime/src/scaffold/new.rs`
-- `crates/runx-runtime/src/scaffold/templates.rs`
-- `crates/runx-runtime/tests/a2a_parity.rs`
-- `crates/runx-runtime/tests/agent_parity.rs`
-- `crates/runx-runtime/tests/catalog_adapter.rs`
-- `crates/runx-runtime/tests/cli_tool_contract.rs`
-- `crates/runx-runtime/tests/credential_delivery.rs`
-- `crates/runx-runtime/tests/external_adapter.rs`
-- `crates/runx-runtime/tests/harness_fixtures.rs`
-- `crates/runx-runtime/tests/mcp_adapter.rs`
-- `crates/runx-runtime/tests/payment/execution.rs`
-- `crates/runx-runtime/tests/payment/ledger_projection.rs`
-- `crates/runx-runtime/tests/payment/receipts.rs`
-- `crates/runx-runtime/tests/payment/state.rs`
-- `crates/runx-runtime/tests/scaffold.rs`
-- `crates/runx-runtime/tests/skill_author_runtime_fixtures.rs`
-- `crates/runx-runtime/tests/skill_issue_to_pr.rs`
-- `crates/runx-runtime/tests/payment/stripe_spt.rs`
-- `crates/runx-runtime/tests/target_runner.rs`
-- `crates/runx-sdk/src/lib.rs`
-
-## Crate Decisions
-
-- `runx-contracts` - keep MIT. It owns provider-neutral wire contracts, including
-  the credential-delivery envelope.
-- `runx-contracts-derive` - keep MIT. It owns provider-neutral schema
-  derivation and has no brokerage or provider calls.
-- `runx-core` - keep MIT. It enforces authority and policy requirements; it must
-  not issue grants or call providers.
-- `runx-parser` - keep MIT. Skill parsing is unrelated to brokerage.
-- `runx-receipts` - keep MIT. Receipt verification is provider-neutral.
-- `runx-runtime` - keep MIT after Phase 2 removes hosted connect brokerage and
-  retains only credential consumption, grant enforcement, redaction, and opaque
-  resolver seams.
-- `runx-cli` - keep MIT after Phase 2 deletes or stubs the hosted `runx connect`
-  brokerage command.
-- `runx-sdk` - keep MIT after Phase 2 abstracts or removes the hosted
-  connect-list / `connection_id` API surface.
-
-## Credential Envelope References
-
-`CredentialEnvelope` and the matching authority-proof credential material use
-`provider_reference` for provider-opaque metadata. The legacy `connection_id`
-wire key is not accepted by the credential envelope contract; remaining
-`connection_id` mentions are hosted connect-list surfaces or boundary guard
-terms, not credential envelope authority proof material.
+For TypeScript/JavaScript, `scripts/check-boundaries.mjs` additionally blocks
+hosted OAuth credential contract shapes in active OSS code, fixtures, and
+generated schemas.
 
 ## Private Home
 
-The private implementation home is `../cloud/packages/auth`. That package owns
-hosted provider-broker OAuth, connect HTTP routes, BYO credential custody,
-grant issuance, and grant revocation. Read-only context from Phase 1 also
-identified hosted wiring in `../cloud/packages/api` and run-auth resolver
-context in `../cloud/packages/worker`.
-
-Follow-up cloud work must move or re-home the brokerage implementation there;
-this OSS spec records the boundary and remediates only the OSS repository.
-
-## Guard Inputs
-
-The machine-readable guard input is `docs/license-boundary.manifest.json`.
-Phase 1 validates that the manifest is structurally complete and covers every
-Rust workspace crate. Phase 3 extends the same checker with identifier and
-dependency-edge scans.
-
-`crates/deny.toml` may continue to allow Apache-2.0 for transitive third-party
-dependencies. That is distinct from the OSS Rust workspace crate metadata,
-which Phase 3 aligns to MIT.
+Hosted OAuth, provider gateway routing, credential custody, grant issuance, and
+grant revocation live in `../cloud/packages/auth` and the cloud/API wiring that
+depends on it. Public OSS documentation should describe only the boundary and
+the local credential-consumption contract, not private provider implementation
+details.

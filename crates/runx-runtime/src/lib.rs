@@ -8,7 +8,6 @@ pub mod adapter;
 mod agent_invocation;
 pub mod approval;
 pub mod config;
-pub mod connect;
 pub mod credentials;
 pub mod dev;
 pub mod doctor;
@@ -22,6 +21,7 @@ pub mod parser_eval;
 pub mod payment;
 pub mod post_merge_observer;
 pub mod receipts;
+pub mod redaction;
 pub mod registry;
 mod runtime_http;
 pub mod sandbox;
@@ -54,7 +54,6 @@ pub use config::{
     resolve_local_skill_profile, resolve_path_from_user_input, resolve_runx_global_home_dir,
     resolve_runx_home_dir, update_runx_config_value, write_runx_config_file,
 };
-pub use connect::redact_connect_text;
 pub use credentials::{
     CredentialDelivery, CredentialDeliveryError, CredentialDeliveryProfile, CredentialMaterialRole,
     InMemoryMaterialResolver, MaterialResolver, ResolvedCredentialMaterial, SecretEnv,
@@ -105,6 +104,7 @@ pub use receipts::{
     RuntimeReceiptSignatureConfig, RuntimeReceiptSignaturePolicy, RuntimeReceiptSigner,
     RuntimeReceiptSigningError,
 };
+pub use redaction::redact_sensitive_text;
 pub use registry::{RegistryInstallMetadataInput, registry_install_receipt_metadata};
 #[cfg(feature = "cli-tool")]
 pub use runner::run_graph_file;

@@ -14,11 +14,19 @@ export function requireArray(value: unknown, label: string): readonly unknown[] 
   return value;
 }
 
-export function requireString(value: unknown, label: string): string {
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`${label} must be a non-empty string.`);
+export function requireAnyString(value: unknown, label: string): string {
+  if (typeof value !== "string") {
+    throw new Error(`${label} must be a string.`);
   }
   return value;
+}
+
+export function requireString(value: unknown, label: string): string {
+  const stringValue = requireAnyString(value, label);
+  if (stringValue.length === 0) {
+    throw new Error(`${label} must be a non-empty string.`);
+  }
+  return stringValue;
 }
 
 export function requireBoolean(value: unknown, label: string): boolean {

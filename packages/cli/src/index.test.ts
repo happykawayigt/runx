@@ -910,7 +910,7 @@ Answer the prompt directly.
 
     expect(exitCode).toBe(1);
     expect(stdout.contents()).toBe("");
-    expect(stderr.contents()).toContain("hosted HTTP transport failed");
+    expect(stderr.contents()).toContain("runtime HTTP transport failed");
     expect(stderr.contents()).toContain("https://runx.example.test/v1/skills/acme/sourcey%401%2E0%2E0/acquire");
     expect(globalThis.fetch).not.toHaveBeenCalled();
     await expect(readFile(path.join(installDir, "acme", "sourcey", "SKILL.md"), "utf8")).rejects.toThrow();

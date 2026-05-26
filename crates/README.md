@@ -44,10 +44,10 @@ crates) require an explicit spec before they may be added to `deny.toml`.
 - `runx-receipts`: pure receipt model, canonical hashing, and tree
   verification with an adversarial unit matrix.
 - `runx-runtime`: impure runtime. Owns filesystem, subprocess, sandbox
-  enforcement, journals, registry/connect clients, harness replay, doctor,
+  enforcement, journals, registry clients, harness replay, doctor,
   dev loop, scaffold, payment authority gating, and the adapter set. Adapter
   families are opt-in features: `cli-tool`, `mcp`, `a2a`, `agent`, `catalog`.
-  The `async-http` feature owns hosted HTTP with reqwest over rustls, disables
+  The `async-http` feature owns runtime HTTP with reqwest over rustls, disables
   redirect following, and uses bounded request/connect timeouts. `cli-tool`
   enables `async-http`; defaults keep the runtime dependency-light.
 - `runx-sdk`: blocking CLI-backed Rust SDK v0. Depends on `runx-contracts`

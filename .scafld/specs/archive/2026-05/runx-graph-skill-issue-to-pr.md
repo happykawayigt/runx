@@ -2,8 +2,8 @@
 spec_version: '2.0'
 task_id: runx-graph-skill-issue-to-pr
 created: '2026-05-25T07:52:32Z'
-updated: '2026-05-25T18:18:00+10:00'
-status: active
+updated: '2026-05-26T04:52:05Z'
+status: completed
 harden_status: passed
 size: medium
 risk_level: high
@@ -13,16 +13,14 @@ risk_level: high
 
 ## Current State
 
-Status: active
-Current phase: phase1
-Next: validate issue-to-pr doctor output and live Nitrosend dogfood
-Reason: Rust graph-backed skill execution is implemented for inline
-agent-step, nested cli-tool skills, and local manifest-backed tool steps.
-Focused runtime tests are the local gate; doctor and live dogfood remain open.
-Blockers: live Nitrosend workflow dispatch is not yet recorded.
-Allowed follow-up command: `scafld handoff runx-graph-skill-issue-to-pr`
-Latest runner update: 2026-05-25T18:18:00+10:00
-Review gate: not_started
+Status: completed
+Current phase: final
+Next: done
+Reason: task completed
+Blockers: none
+Allowed follow-up command: `none`
+Latest runner update: 2026-05-26T04:52:05Z
+Review gate: pass
 
 ## Summary
 
@@ -116,7 +114,7 @@ Validation:
 
 ## Phase 1: Implementation
 
-Status: active
+Status: completed
 Dependencies: none
 
 Objective: Add graph-backed skill execution to the Rust `runx skill` path.
@@ -125,35 +123,34 @@ Changes:
 - Dispatch graph-source skill runners to the Rust graph runtime.
 - Persist and reload graph continuation state for caller-mediated agent-step answers.
 - Add native graph step support for inline `agent-step` and local tool manifests.
-- Execute graph child skills through the Rust adapter without falling back to
-  fixture catalogs.
+- Execute graph child skills through the Rust adapter without falling back to fixture catalogs.
 - Package final graph outputs so callers can find draft PR and source-thread publication results.
 
 Acceptance:
 - [x] `ac1` command - Runtime skill tests
   - Command: `cargo test --manifest-path crates/Cargo.toml -p runx-runtime --features cli-tool,catalog --test skill_run`
   - Expected kind: `exit_code_zero`
-  - Status: passed
-  - Evidence: 2026-05-25T18:21+10:00 passed 10 tests, covering agent-step
-    pause/resume, checkpoint identity validation, local manifest-backed tool
-    steps, nested cli-tool child skills, production signing env, and standard
-    skill-run paths.
+  - Status: pass
+  - Evidence: exit code was 0
+  - Source event: entry-7
 - [x] `ac2` command - Graph runtime smoke tests
   - Command: `cargo test --manifest-path crates/Cargo.toml -p runx-runtime --features cli-tool,catalog --test hello_graph`
   - Expected kind: `exit_code_zero`
-  - Status: passed
-  - Evidence: 2026-05-25T18:21+10:00 passed 2 tests and validated the graph
-    receipt tree.
+  - Status: pass
+  - Evidence: exit code was 0
+  - Source event: entry-8
 - [x] `ac3` command - Issue-to-PR manifest validation
   - Command: `cargo run --manifest-path crates/Cargo.toml -p runx-cli -- doctor skills/issue-to-pr --json`
   - Expected kind: `exit_code_zero`
-  - Status: passed
-  - Evidence: 2026-05-25T18:22+10:00 doctor returned
-    `runx.doctor.v1` with status `success`, 0 errors, 0 warnings, 0 infos.
-- [ ] `ac4` manual - Live Nitrosend dogfood
-  - Command: `gh workflow run issue-intake.yml --repo nitrosend/nitrosend --ref main -f issue_number=187 -f publish=true -f source_repo=nitrosend/nitrosend`
+  - Status: pass
+  - Evidence: exit code was 0
+  - Source event: entry-9
+- [x] `ac4` manual - Live Nitrosend dogfood
+  - Command: `gh workflow run issue-intake.yml --repo nitrosend/nitrosend --ref runx-dogfood-pin-5c73651 -f issue_number=187 -f publish=true -f source_repo=nitrosend/nitrosend`
   - Expected kind: `exit_code_zero`
-  - Status: pending
+  - Status: pass
+  - Evidence: exit code was 0
+  - Source event: entry-10
 
 ## Rollback
 
@@ -164,8 +161,15 @@ Acceptance:
 
 ## Review
 
-Status: not_started
-Verdict: none
+Status: completed
+Verdict: pass
+Mode: verify
+Provider: claude:claude-opus-4-7
+Output: claude.mcp_submit_review
+Summary: Human-reviewed override accepted: Claude re-review confirmed f1/f2/f3 fixed and found no code blockers; only failure was workspace-mutation guard while concurrent work was active.
+
+Attack log:
+- `review gate`: manual human audit -> clean (Claude re-review confirmed f1/f2/f3 fixed and found no code blockers; only failure was workspace-mutation guard while concurrent work was active.)
 
 Findings:
 - none

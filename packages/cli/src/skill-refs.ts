@@ -18,8 +18,7 @@ import { acquireRegistrySkill, type AcquiredRegistrySkill, type SkillSearchResul
 
 import { asRecord, errorMessage, hashString, readOptionalFile } from "@runxhq/core/util";
 
-import { nativeRegistrySearchRequested, searchRegistryViaRustCli } from "./native-registry.js";
-import { searchRegistryFallback } from "./registry-fallback.js";
+import { searchRegistryViaRustCli } from "./native-registry.js";
 import { ensureRunxInstallState } from "./runx-state.js";
 
 let cachedBundledSkillsDir: string | undefined | null = null;
@@ -58,11 +57,7 @@ export async function runSkillSearch(
   const normalizedSource = sourceFilter?.trim().toLowerCase();
 
   if (!normalizedSource || normalizedSource === "registry" || normalizedSource === "runx-registry") {
-    if (nativeRegistrySearchRequested(env)) {
-      results.push(...(await searchRegistryViaRustCli(query, { env, registryOverride })));
-    } else {
-      results.push(...(await searchRegistryFallback(query, env, registryOverride)));
-    }
+    results.push(...(await searchRegistryViaRustCli(query, { env, registryOverride })));
   }
 
   const marketplaceAdapters =

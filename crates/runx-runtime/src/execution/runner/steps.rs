@@ -10,7 +10,9 @@ use runx_contracts::{
 use runx_core::state_machine::StepAdmissionWitness;
 use runx_parser::{GraphStep, SkillSource, SourceKind};
 
-use super::super::graph::{load_step_skill, output_object, resolve_inputs, skill_claim_object};
+use super::super::graph::{
+    load_step_skill, output_object, output_object_with_claim, resolve_inputs,
+};
 use super::authority::{
     StepPaymentReplay, attach_payment_supervisor_evidence_before_gate, authority_denied,
     enforce_step_authority_admission, enforce_step_authority_receipt_before_success,
@@ -112,9 +114,7 @@ where
 
     let mut output = runtime.adapter.invoke(invocation)?;
     route_external_adapter_host_resolution(step, host, &mut output)?;
-    let mut outputs = step_output_object(step, &output);
-    expose_skill_claim_fields(step, &output, &mut outputs);
-    let skill_claim = skill_claim_object(&output);
+    let (outputs, skill_claim) = step_output_object_and_claim(step, &output)?;
     attach_payment_supervisor_evidence_before_gate(
         step,
         authority.as_ref(),
@@ -334,7 +334,7 @@ fn run_replayed_payment_step(
         ));
     }
     validate_replayed_payment_supervisor_proof(step, &replay)?;
-    let outputs = step_output_object(step, &output);
+    let outputs = step_output_object(step, &output)?;
     let admission_witness = StepAdmissionWitness::local_runtime(&step.id, &replay.receipt_ref);
     Ok(StepRun {
         step_id: step.id.clone(),
@@ -413,60 +413,83 @@ fn replay_stdout_payload(outputs: &JsonObject) -> JsonObject {
     payload
 }
 
-fn step_output_object(step: &GraphStep, output: &SkillOutput) -> JsonObject {
-    let mut outputs = output_object(output);
-    expose_declared_run_outputs(step, output, &mut outputs);
-    expose_declared_artifacts(step, output, &mut outputs);
-    outputs
+fn step_output_object(step: &GraphStep, output: &SkillOutput) -> Result<JsonObject, RuntimeError> {
+    step_output_object_and_claim(step, output).map(|(outputs, _claim)| outputs)
 }
 
-fn expose_declared_run_outputs(step: &GraphStep, output: &SkillOutput, outputs: &mut JsonObject) {
+fn agent_step_output_object(
+    step: &GraphStep,
+    output: &SkillOutput,
+) -> Result<JsonObject, RuntimeError> {
+    build_step_output_object(step, output, ClaimContextExposure::DeclaredOnly)
+        .map(|(outputs, _claim)| outputs)
+}
+
+fn step_output_object_and_claim(
+    step: &GraphStep,
+    output: &SkillOutput,
+) -> Result<(JsonObject, JsonObject), RuntimeError> {
+    build_step_output_object(step, output, ClaimContextExposure::DeclaredAndContext)
+}
+
+fn build_step_output_object(
+    step: &GraphStep,
+    output: &SkillOutput,
+    exposure: ClaimContextExposure,
+) -> Result<(JsonObject, JsonObject), RuntimeError> {
+    let (mut outputs, claim) = output_object_with_claim(output);
+    expose_declared_run_outputs(step, &claim, &mut outputs)?;
+    expose_declared_artifacts(step, &claim, &mut outputs)?;
+    if matches!(exposure, ClaimContextExposure::DeclaredAndContext) {
+        expose_skill_claim_context_fields(&claim, &mut outputs);
+    }
+    Ok((outputs, claim))
+}
+
+enum ClaimContextExposure {
+    DeclaredOnly,
+    DeclaredAndContext,
+}
+
+fn expose_declared_run_outputs(
+    step: &GraphStep,
+    claim: &JsonObject,
+    outputs: &mut JsonObject,
+) -> Result<(), RuntimeError> {
     let Some(run) = &step.run else {
-        return;
+        return Ok(());
     };
     let Some(JsonValue::Object(declared_outputs)) = run.get("outputs") else {
-        return;
+        return Ok(());
     };
-    let claim = skill_claim_object(output);
     if claim.is_empty() {
-        return;
+        return Ok(());
     }
 
     for name in declared_outputs.keys() {
-        if is_reserved_output_field(name) {
-            continue;
-        }
+        reject_reserved_step_output_name(step, name, "declared run output")?;
         let Some(value) = claim.get(name).cloned() else {
             continue;
         };
         outputs.insert(name.clone(), value);
     }
+    Ok(())
 }
 
-fn expose_skill_claim_fields(_step: &GraphStep, output: &SkillOutput, outputs: &mut JsonObject) {
-    let claim = skill_claim_object(output);
-    if claim.is_empty() {
-        return;
-    }
-
-    for (name, value) in claim {
-        if is_reserved_output_field(&name) || outputs.contains_key(&name) {
-            continue;
-        }
-        outputs.insert(name, value);
-    }
-}
-
-fn expose_declared_artifacts(step: &GraphStep, output: &SkillOutput, outputs: &mut JsonObject) {
+fn expose_declared_artifacts(
+    step: &GraphStep,
+    claim: &JsonObject,
+    outputs: &mut JsonObject,
+) -> Result<(), RuntimeError> {
     let Some(artifacts) = &step.artifacts else {
-        return;
+        return Ok(());
     };
-    let claim = skill_claim_object(output);
     if claim.is_empty() {
-        return;
+        return Ok(());
     }
 
     if let Some(wrap_as) = artifacts.get("wrap_as").and_then(json_string) {
+        reject_reserved_step_output_name(step, wrap_as, "artifact output")?;
         let value = claim.get(wrap_as).cloned().unwrap_or_else(|| {
             let mut wrapper = JsonObject::new();
             wrapper.insert("data".to_owned(), JsonValue::Object(claim.clone()));
@@ -477,16 +500,39 @@ fn expose_declared_artifacts(step: &GraphStep, output: &SkillOutput, outputs: &m
 
     if let Some(JsonValue::Object(named_emits)) = artifacts.get("named_emits") {
         for name in named_emits.keys() {
+            reject_reserved_step_output_name(step, name, "artifact output")?;
             let Some(value) = claim.get(name).cloned() else {
                 continue;
             };
             outputs.insert(name.clone(), artifact_data_wrapper(value));
         }
     }
+    Ok(())
 }
 
-fn is_reserved_output_field(name: &str) -> bool {
-    matches!(name, "raw" | "skill_claim" | "stdout" | "stderr" | "status")
+fn expose_skill_claim_context_fields(claim: &JsonObject, outputs: &mut JsonObject) {
+    const RESERVED_OUTPUT_FIELDS: &[&str] = &["raw", "skill_claim", "stdout", "stderr", "status"];
+    for (name, value) in claim {
+        if RESERVED_OUTPUT_FIELDS.contains(&name.as_str()) || outputs.contains_key(name) {
+            continue;
+        }
+        outputs.insert(name.clone(), value.clone());
+    }
+}
+
+fn reject_reserved_step_output_name(
+    step: &GraphStep,
+    name: &str,
+    output_kind: &str,
+) -> Result<(), RuntimeError> {
+    const RESERVED_OUTPUT_FIELDS: &[&str] = &["raw", "skill_claim", "stdout", "stderr", "status"];
+    if RESERVED_OUTPUT_FIELDS.contains(&name) {
+        return Err(RuntimeError::InvalidRunStep {
+            step_id: step.id.clone(),
+            reason: format!("{output_kind} name {name:?} is reserved"),
+        });
+    }
+    Ok(())
 }
 
 fn artifact_data_wrapper(value: JsonValue) -> JsonValue {
@@ -573,9 +619,8 @@ where
         });
     };
     let disposition = agent_answer_disposition_value(&response.payload);
-    let mut output = agent_step_output(response)?;
-    apply_graph_step_artifact_wrappers(&mut output, step)?;
-    let outputs = step_output_object(step, &output);
+    let output = agent_step_output(response)?;
+    let outputs = agent_step_output_object(step, &output)?;
     let disposition_label = closure_disposition_label(&disposition);
     let receipt = step_receipt_with_disposition_and_policy(
         StepReceiptWithDisposition {
@@ -622,23 +667,19 @@ where
     } = agent_step;
     let request_id = agent_act_invocation_id(&invocation, source_type);
     let request = agent_act_resolution_request(&invocation, source_type)?;
-    host.report(ExecutionEvent::ResolutionRequested {
-        message: format!(
+    let response = resolve_agent_act(
+        step,
+        host,
+        request_id,
+        request,
+        format!(
             "agent skill step '{}' requested resolution for {}",
             step.id, skill_name
         ),
-        data: Some(resolution_event_data(step, &request)?),
-    })?;
-    let Some(response) = host.resolve(request)? else {
-        return Err(RuntimeError::GraphBlocked {
-            step_id: step.id.clone(),
-            reason: format!("agent act {request_id} requires resolution"),
-        });
-    };
+    )?;
     let disposition = agent_answer_disposition_value(&response.payload);
-    let mut output = agent_step_output(response)?;
-    apply_graph_step_artifact_wrappers(&mut output, step)?;
-    let outputs = step_output_object(step, &output);
+    let output = agent_step_output(response)?;
+    let outputs = agent_step_output_object(step, &output)?;
     let disposition_label = closure_disposition_label(&disposition);
     let receipt = step_receipt_with_disposition_and_policy(
         StepReceiptWithDisposition {
@@ -665,6 +706,24 @@ where
         receipt,
         admission_witness,
     })
+}
+
+fn resolve_agent_act(
+    step: &GraphStep,
+    host: &mut dyn Host,
+    request_id: String,
+    request: ResolutionRequest,
+    message: String,
+) -> Result<ResolutionResponse, RuntimeError> {
+    host.report(ExecutionEvent::ResolutionRequested {
+        message,
+        data: Some(resolution_event_data(step, &request)?),
+    })?;
+    host.resolve(request)?
+        .ok_or_else(|| RuntimeError::GraphBlocked {
+            step_id: step.id.clone(),
+            reason: format!("agent act {request_id} requires resolution"),
+        })
 }
 
 fn agent_skill_source_type(source_type: SourceKind) -> Option<AgentActInvocationSourceType> {
@@ -740,9 +799,9 @@ where
     #[cfg(not(feature = "catalog"))]
     {
         let _ = (runtime, graph_dir, graph_name, step, attempt, inputs);
-        return Err(RuntimeError::UnsupportedAdapter {
+        Err(RuntimeError::UnsupportedAdapter {
             adapter_type: "catalog".to_owned(),
-        });
+        })
     }
 
     #[cfg(feature = "catalog")]
@@ -763,10 +822,8 @@ where
             env: runtime.options.env.clone(),
             credential_delivery: crate::credentials::CredentialDelivery::none(),
         };
-        let mut output = CatalogAdapter::default().invoke(invocation)?;
-        apply_graph_step_artifact_wrappers(&mut output, step)?;
-        let mut outputs = step_output_object(step, &output);
-        expose_skill_claim_fields(step, &output, &mut outputs);
+        let output = CatalogAdapter::default().invoke(invocation)?;
+        let outputs = step_output_object(step, &output)?;
         let receipt = step_receipt_with_signature_policy(
             graph_name,
             &step.id,
@@ -790,7 +847,6 @@ where
     }
 }
 
-#[cfg(feature = "catalog")]
 #[cfg(feature = "catalog")]
 fn catalog_source(tool_ref: &str) -> SkillSource {
     let mut raw = JsonObject::new();
@@ -820,48 +876,6 @@ fn catalog_source(tool_ref: &str) -> SkillSource {
         graph: None,
         raw,
     }
-}
-
-fn apply_graph_step_artifact_wrappers(
-    output: &mut SkillOutput,
-    step: &GraphStep,
-) -> Result<(), RuntimeError> {
-    let Some(artifacts) = &step.artifacts else {
-        return Ok(());
-    };
-    let Ok(JsonValue::Object(mut object)) = serde_json::from_str::<JsonValue>(&output.stdout)
-    else {
-        return Ok(());
-    };
-
-    let mut changed = false;
-    if let Some(wrap_as) = artifacts.get("wrap_as").and_then(json_string)
-        && !object.contains_key(wrap_as)
-    {
-        let mut wrapper = JsonObject::new();
-        wrapper.insert("data".to_owned(), JsonValue::Object(object.clone()));
-        object.insert(wrap_as.to_owned(), JsonValue::Object(wrapper));
-        changed = true;
-    }
-
-    if let Some(JsonValue::Object(named_emits)) = artifacts.get("named_emits") {
-        for name in named_emits.keys() {
-            let Some(value) = object.get(name).cloned() else {
-                continue;
-            };
-            let mut wrapper = JsonObject::new();
-            wrapper.insert("data".to_owned(), value);
-            object.insert(name.clone(), JsonValue::Object(wrapper));
-            changed = true;
-        }
-    }
-
-    if changed {
-        output.stdout = serde_json::to_string(&JsonValue::Object(object)).map_err(|source| {
-            RuntimeError::json("serializing graph step artifact wrappers", source)
-        })?;
-    }
-    Ok(())
 }
 
 fn agent_step_output(response: ResolutionResponse) -> Result<SkillOutput, RuntimeError> {

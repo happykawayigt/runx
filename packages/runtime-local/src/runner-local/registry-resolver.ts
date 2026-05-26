@@ -5,7 +5,7 @@ import path from "node:path";
 import process from "node:process";
 import { spawn } from "node:child_process";
 
-import { asRecord, errorMessage, firstNonEmpty, isNotFound, readOptionalFile } from "@runxhq/core/util";
+import { asRecord, errorMessage, firstNonEmpty, isNotFound, readOptionalFile, stringValue } from "@runxhq/core/util";
 
 export type RegistryTrustTier = "first_party" | "verified" | "community";
 
@@ -355,8 +355,8 @@ function parseRustRegistrySkillResolution(value: Record<string, unknown>): Regis
   }
   return {
     markdown: requiredString(value, "markdown"),
-    profile_document: coerceString(value.profile_document),
-    profile_digest: coerceString(value.profile_digest),
+    profile_document: stringValue(value.profile_document),
+    profile_digest: stringValue(value.profile_digest),
     runner_names: requiredStringArray(value, "runner_names"),
     skill_id: requiredString(value, "skill_id"),
     name: requiredString(value, "name"),
@@ -366,7 +366,7 @@ function parseRustRegistrySkillResolution(value: Record<string, unknown>): Regis
     source_label: sourceLabel,
     source_type: requiredString(value, "source_type"),
     trust_tier: requiredTrustTier(value, "trust_tier"),
-    registry_url: coerceString(value.registry_url),
+    registry_url: stringValue(value.registry_url),
     add_command: requiredString(value, "add_command"),
     run_command: requiredString(value, "run_command"),
   };
@@ -394,10 +394,6 @@ function requiredTrustTier(record: Record<string, unknown>, field: string): Regi
     throw new Error(`Rust registry resolve returned invalid ${field}.`);
   }
   return value;
-}
-
-function coerceString(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
 }
 
 function parsePositiveInt(value: string | undefined): number | undefined {

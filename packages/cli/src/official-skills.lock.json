@@ -121,8 +121,8 @@
   },
   {
     "skill_id": "runx/pay-fulfill-rail",
-    "version": "sha-ac2d067c4aa2",
-    "digest": "621fb20ead3b098852385abf630a6040beb471a5bebc91bbeb05abcf377d3f4f"
+    "version": "sha-a1e62833546b",
+    "digest": "030ae8751a1361a446b698c22fdd47e1e64c32ec2242fb824ac75b82b6a7b986"
   },
   {
     "skill_id": "runx/pay-quote",
@@ -211,7 +211,7 @@
   },
   {
     "skill_id": "runx/skill-testing",
-    "version": "sha-ab9e308acfbc",
+    "version": "sha-5a6dd77a84e9",
     "digest": "7fc86c62bd493cb374850d7e9fc4faad94adb318fc3b20947aa2d411a741cc75"
   },
   {

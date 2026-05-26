@@ -16,7 +16,6 @@ import type { CliIo, CliServices } from "./index.js";
 import type {
   CliRuntimeReceipt,
   CliSkillRunResult,
-  RegistryStore,
 } from "./cli-runtime-contracts.js";
 import {
   renderCliError,
@@ -52,9 +51,6 @@ import { handleInitCommand } from "./commands/init.js";
 import { handleListCommand } from "./commands/list.js";
 import { handleMcpServeCommand } from "./commands/mcp.js";
 import { handleNewCommand } from "./commands/new.js";
-import {
-  resolveCliRegistryStoreForGraphs,
-} from "./registry-fallback.js";
 import {
   handleToolBuildCommand,
   renderToolCommandResult,
@@ -131,10 +127,7 @@ export async function dispatchCli(
   }
 
   if (parsed.command === "mcp" && parsed.mcpAction === "serve") {
-    await handleMcpServeCommand(parsed, io, env, {
-      resolveRegistryStoreForGraphs,
-      resolveDefaultReceiptDir,
-    });
+    await handleMcpServeCommand(parsed, io, env, { resolveDefaultReceiptDir });
     return 0;
   }
 
@@ -346,10 +339,6 @@ export async function dispatchCli(
 export function writeCliError(io: CliIo, message: string): number {
   io.stderr.write(renderCliError(message));
   return 1;
-}
-
-async function resolveRegistryStoreForGraphs(env: NodeJS.ProcessEnv): Promise<RegistryStore | undefined> {
-  return await resolveCliRegistryStoreForGraphs(env);
 }
 
 async function executeLocalSkillCommand(options: {

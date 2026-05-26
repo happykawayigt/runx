@@ -13,9 +13,9 @@
             "target_locator": "runxhq/aster#issue/4",
             "target_repo": "runxhq/aster"
           },
-          "material_ref_hash": "63afcc02586587126735214771a8e00bd5a05ca64ea962fbc1d5791dec41ebed",
+          "material_ref_hash": "6ea8bcec5251bd7ca445945696574d89d2c8845277d7e4d21798f6aa184fdeaa",
           "provider": "github",
-          "provider_reference": "conn_1",
+          "provider_reference": "local_per_run",
           "scopes": [
             "repo:read"
           ],
@@ -91,7 +91,7 @@
       },
       "connectedAuthCheckedAt": "2026-05-22T00:00:00Z",
       "credential": {
-        "auth_mode": "oauth",
+        "auth_mode": "api_key",
         "grant_id": "grant_expected",
         "grant_reference": {
           "authority_kind": "read_only",
@@ -101,10 +101,10 @@
           "target_repo": "runxhq/aster"
         },
         "kind": "runx.credential-envelope.v1",
-        "material_kind": "provider_credential",
-        "material_ref": "opaque:github:conn_1",
+        "material_kind": "api_key",
+        "material_ref": "local:github:grant_1",
         "provider": "github",
-        "provider_reference": "conn_1",
+        "provider_reference": "local_per_run",
         "scopes": [
           "repo:read"
         ]

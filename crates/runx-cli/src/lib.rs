@@ -1,5 +1,4 @@
 pub mod config;
-pub mod connect;
 pub mod dev;
 pub mod doctor;
 pub mod history;

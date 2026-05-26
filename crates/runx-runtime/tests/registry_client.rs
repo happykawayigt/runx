@@ -3,11 +3,12 @@ use std::path::Path;
 
 use runx_contracts::sha256_prefixed;
 use runx_runtime::registry::{
-    AcquireOptions, HostedHttpError, HttpMethod, HttpRequest, HttpResponse, InstallCandidate,
-    InstallError, InstallLocalSkillOptions, InstallStatus, RegistryClient, RegistryClientError,
+    AcquireOptions, HttpMethod, HttpRequest, HttpResponse, InstallCandidate, InstallError,
+    InstallLocalSkillOptions, InstallStatus, RegistryClient, RegistryClientError,
     RegistryManifestSignature, RegistryManifestSigner, RegistryResolveError,
-    RegistrySignedManifest, Transport, TrustTier, TrustedRegistryManifestKey, install_local_skill,
-    materialization_cache_path, materialization_digest_marker, parse_registry_ref,
+    RegistrySignedManifest, RuntimeHttpError, Transport, TrustTier, TrustedRegistryManifestKey,
+    install_local_skill, materialization_cache_path, materialization_digest_marker,
+    parse_registry_ref,
 };
 use serde_json::json;
 use tempfile::tempdir;
@@ -63,7 +64,7 @@ impl MockTransport {
 }
 
 impl Transport for &MockTransport {
-    fn send(&self, request: HttpRequest) -> Result<HttpResponse, HostedHttpError> {
+    fn send(&self, request: HttpRequest) -> Result<HttpResponse, RuntimeHttpError> {
         self.requests.borrow_mut().push(request);
         Ok(self.responses.borrow_mut().remove(0))
     }
@@ -136,8 +137,8 @@ fn client_rejects_unsupported_registry_base_scheme() {
 
     assert!(matches!(
         error,
-        Some(RegistryClientError::HostedHttp(
-            HostedHttpError::UnsupportedUrlScheme { .. }
+        Some(RegistryClientError::RuntimeHttp(
+            RuntimeHttpError::UnsupportedUrlScheme { .. }
         ))
     ));
 }

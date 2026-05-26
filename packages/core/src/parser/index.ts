@@ -3,7 +3,7 @@ import { parseDocument } from "yaml";
 import { validateGraphDocument, type ExecutionGraph } from "./graph.js";
 import { normalizeSandboxDeclaration } from "../policy/sandbox.js";
 import { GOVERNED_DISPOSITIONS, type ExecutionSemantics } from "../execution-semantics.js";
-import { errorMessage, isRecord } from "../util/types.js";
+import { errorMessage, isRecord, readField } from "../util/types.js";
 
 export const parserPackage = "@runxhq/core/parser";
 
@@ -966,10 +966,6 @@ function optionalNonEmptyString(value: unknown, field: string): string | undefin
     throw new SkillValidationError(`${field} must not be empty.`);
   }
   return stringValue;
-}
-
-function readField(value: unknown, field: string): unknown {
-  return isRecord(value) ? value[field] : undefined;
 }
 
 function requiredNullableRecord(value: unknown, field: string): Record<string, unknown> {

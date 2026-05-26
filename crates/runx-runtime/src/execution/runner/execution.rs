@@ -33,6 +33,7 @@ pub(super) enum StepFailureMode {
 
 pub(super) struct GraphExecution {
     definitions: Vec<SequentialGraphStepDefinition>,
+    step_indexes: BTreeMap<String, usize>,
     state: SequentialGraphState,
     pub(super) runs: Vec<StepRun>,
     pub(super) sync_points: Vec<FanoutReceiptSyncPoint>,
@@ -56,6 +57,7 @@ impl GraphExecution {
         let definitions = super::super::graph::step_definitions(graph);
         Self {
             state: create_sequential_graph_state(graph.name.clone(), &definitions),
+            step_indexes: step_indexes(graph),
             definitions,
             runs: Vec::new(),
             sync_points: Vec::new(),
@@ -75,6 +77,7 @@ impl GraphExecution {
         }
         Ok(Self {
             definitions: super::super::graph::step_definitions(graph),
+            step_indexes: step_indexes(graph),
             state: checkpoint.state,
             runs: checkpoint.steps,
             sync_points: checkpoint.sync_points,
@@ -350,7 +353,7 @@ impl GraphExecution {
     where
         A: SkillAdapter,
     {
-        let step = find_step(graph, plan.step_id)?;
+        let step = self.find_step(graph, plan.step_id)?;
         enforce_transition_gates(graph, step, &self.runs)?;
         self.record(host, started_event(plan.step_id))?;
         self.start_step(runtime, plan.step_id);
@@ -478,7 +481,11 @@ impl GraphExecution {
         let Some(policy) = fanout_policies.get(group_id) else {
             return Ok(());
         };
-        let decision = evaluate_fanout_sync(policy, &self.branch_results(graph, group_id), None);
+        let decision = evaluate_fanout_sync(
+            policy,
+            &self.branch_results(graph, group_id, fanout_policy_requires_outputs(policy)),
+            None,
+        );
         if decision.decision == FanoutSyncOutcome::Proceed {
             self.push_sync_point(graph, &decision)?;
         }
@@ -509,6 +516,7 @@ impl GraphExecution {
         &self,
         graph: &ExecutionGraph,
         group_id: &str,
+        include_outputs: bool,
     ) -> Vec<FanoutBranchResult> {
         graph
             .steps
@@ -523,11 +531,51 @@ impl GraphExecution {
                 FanoutBranchResult {
                     step_id: step.id.clone(),
                     status: state.map_or(GraphStepStatus::Failed, |state| state.status.clone()),
-                    outputs: state.and_then(|state| state.outputs.clone()),
+                    outputs: if include_outputs {
+                        state.and_then(|state| state.outputs.clone())
+                    } else {
+                        None
+                    },
                 }
             })
             .collect()
     }
+
+    fn find_step<'a>(
+        &self,
+        graph: &'a ExecutionGraph,
+        step_id: &str,
+    ) -> Result<&'a GraphStep, RuntimeError> {
+        if let Some(step) = self
+            .step_indexes
+            .get(step_id)
+            .and_then(|index| graph.steps.get(*index))
+            .filter(|step| step.id == step_id)
+        {
+            return Ok(step);
+        }
+        find_step(graph, step_id)
+    }
+}
+
+fn step_indexes(graph: &ExecutionGraph) -> BTreeMap<String, usize> {
+    graph
+        .steps
+        .iter()
+        .enumerate()
+        .map(|(index, step)| (step.id.clone(), index))
+        .collect()
+}
+
+fn fanout_policy_requires_outputs(policy: &FanoutGroupPolicy) -> bool {
+    policy
+        .threshold_gates
+        .as_ref()
+        .is_some_and(|gates| !gates.is_empty())
+        || policy
+            .conflict_gates
+            .as_ref()
+            .is_some_and(|gates| !gates.is_empty())
 }
 
 pub(super) fn reached_step_limit(

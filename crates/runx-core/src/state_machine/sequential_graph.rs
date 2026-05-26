@@ -41,6 +41,8 @@ pub fn plan_sequential_graph_transition(
     fanout_policies: &BTreeMap<String, FanoutGroupPolicy>,
     resolved_fanout_gate_keys: Option<&BTreeSet<String>>,
 ) -> SequentialGraphPlan {
+    let step_states = step_state_index(state);
+
     if let Some(running_step) = state
         .steps
         .iter()
@@ -57,10 +59,10 @@ pub fn plan_sequential_graph_transition(
     while index < steps.len() {
         let step_definition = &steps[index];
         if let Some(group_id) = fanout_group_id(step_definition) {
-            let group_steps = collect_contiguous_fanout_group(steps, index, group_id);
+            let group_steps = contiguous_fanout_group(steps, index, group_id);
             match plan_fanout_group(
-                state,
-                &group_steps,
+                &step_states,
+                group_steps,
                 fanout_policies.get(group_id),
                 resolved_fanout_gate_keys,
             ) {
@@ -72,7 +74,7 @@ pub fn plan_sequential_graph_transition(
             }
         }
 
-        if let Some(plan) = plan_step(state, step_definition) {
+        if let Some(plan) = plan_step(&step_states, step_definition) {
             return plan;
         }
         index += 1;
@@ -148,10 +150,10 @@ enum NonProceedFanoutDecision {
 }
 
 fn plan_step(
-    state: &SequentialGraphState,
+    step_states: &StepStateIndex<'_>,
     step_definition: &SequentialGraphStepDefinition,
 ) -> Option<SequentialGraphPlan> {
-    let Some(step_state) = find_step_state(state, &step_definition.id) else {
+    let Some(step_state) = find_step_state(step_states, &step_definition.id) else {
         return Some(SequentialGraphPlan::Failed {
             step_id: step_definition.id.clone(),
             reason: "step state is missing".to_owned(),
@@ -169,7 +171,7 @@ fn plan_step(
             sync_decision: None,
         });
     }
-    if let Some(missing_context) = missing_context(state, step_definition) {
+    if let Some(missing_context) = missing_context(step_states, step_definition) {
         return Some(SequentialGraphPlan::Blocked {
             step_id: step_definition.id.clone(),
             reason: format!("waiting for context from {missing_context}"),
@@ -185,7 +187,7 @@ fn plan_step(
 }
 
 fn plan_fanout_group(
-    state: &SequentialGraphState,
+    step_states: &StepStateIndex<'_>,
     group_steps: &[SequentialGraphStepDefinition],
     policy: Option<&FanoutGroupPolicy>,
     resolved_fanout_gate_keys: Option<&BTreeSet<String>>,
@@ -205,7 +207,7 @@ fn plan_fanout_group(
         }));
     };
 
-    match plan_fanout_candidates(state, group_steps, group_id) {
+    match plan_fanout_candidates(step_states, group_steps, group_id) {
         FanoutCandidatePlan::Plan(plan) => return FanoutGroupPlan::Plan(plan),
         FanoutCandidatePlan::ProceedToSync => {}
     }
@@ -213,11 +215,12 @@ fn plan_fanout_group(
     let fanout_policy = policy
         .cloned()
         .unwrap_or_else(|| default_fanout_policy(group_id));
-    let decision = evaluate_fanout_sync(
-        &fanout_policy,
-        &fanout_results(state, group_steps),
-        resolved_fanout_gate_keys,
+    let results = fanout_results(
+        step_states,
+        group_steps,
+        fanout_policy_requires_outputs(&fanout_policy),
     );
+    let decision = evaluate_fanout_sync(&fanout_policy, &results, resolved_fanout_gate_keys);
     let Some(non_proceed_decision) = non_proceed_fanout_decision(decision) else {
         return FanoutGroupPlan::Proceed;
     };
@@ -229,7 +232,7 @@ fn plan_fanout_group(
 }
 
 fn plan_fanout_candidates(
-    state: &SequentialGraphState,
+    step_states: &StepStateIndex<'_>,
     group_steps: &[SequentialGraphStepDefinition],
     group_id: &str,
 ) -> FanoutCandidatePlan {
@@ -238,7 +241,7 @@ fn plan_fanout_candidates(
     let mut context_from = BTreeMap::new();
 
     for step_definition in group_steps {
-        let Some(step_state) = find_step_state(state, &step_definition.id) else {
+        let Some(step_state) = find_step_state(step_states, &step_definition.id) else {
             return FanoutCandidatePlan::Plan(Box::new(SequentialGraphPlan::Failed {
                 step_id: step_definition.id.clone(),
                 reason: "step state is missing".to_owned(),
@@ -250,7 +253,7 @@ fn plan_fanout_candidates(
         {
             continue;
         }
-        if let Some(missing_context) = missing_context(state, step_definition) {
+        if let Some(missing_context) = missing_context(step_states, step_definition) {
             return FanoutCandidatePlan::Plan(Box::new(SequentialGraphPlan::Blocked {
                 step_id: step_definition.id.clone(),
                 reason: format!("waiting for context from {missing_context}"),
@@ -309,17 +312,16 @@ fn non_proceed_fanout_decision(decision: FanoutSyncDecision) -> Option<NonProcee
     }
 }
 
-fn collect_contiguous_fanout_group(
-    steps: &[SequentialGraphStepDefinition],
+fn contiguous_fanout_group<'a>(
+    steps: &'a [SequentialGraphStepDefinition],
     start_index: usize,
     group_id: &str,
-) -> Vec<SequentialGraphStepDefinition> {
-    steps
-        .iter()
-        .skip(start_index)
-        .take_while(|step| fanout_group_id(step) == Some(group_id))
-        .cloned()
-        .collect()
+) -> &'a [SequentialGraphStepDefinition] {
+    let mut end_index = start_index;
+    while end_index < steps.len() && fanout_group_id(&steps[end_index]) == Some(group_id) {
+        end_index += 1;
+    }
+    &steps[start_index..end_index]
 }
 
 fn fanout_group_id(step: &SequentialGraphStepDefinition) -> Option<&str> {
@@ -329,20 +331,36 @@ fn fanout_group_id(step: &SequentialGraphStepDefinition) -> Option<&str> {
 }
 
 fn fanout_results(
-    state: &SequentialGraphState,
+    step_states: &StepStateIndex<'_>,
     group_steps: &[SequentialGraphStepDefinition],
+    include_outputs: bool,
 ) -> Vec<FanoutBranchResult> {
     group_steps
         .iter()
         .map(|step| {
-            let step_state = find_step_state(state, &step.id);
+            let step_state = find_step_state(step_states, &step.id);
             FanoutBranchResult {
                 step_id: step.id.clone(),
                 status: step_state.map_or(GraphStepStatus::Failed, |state| state.status.clone()),
-                outputs: step_state.and_then(|state| state.outputs.clone()),
+                outputs: if include_outputs {
+                    step_state.and_then(|state| state.outputs.clone())
+                } else {
+                    None
+                },
             }
         })
         .collect()
+}
+
+fn fanout_policy_requires_outputs(policy: &FanoutGroupPolicy) -> bool {
+    policy
+        .threshold_gates
+        .as_ref()
+        .is_some_and(|gates| !gates.is_empty())
+        || policy
+            .conflict_gates
+            .as_ref()
+            .is_some_and(|gates| !gates.is_empty())
 }
 
 fn start_step(step: &SequentialGraphStepState, at: &str) -> SequentialGraphStepState {
@@ -446,7 +464,7 @@ fn retry_budget_exhausted(
 }
 
 fn missing_context(
-    state: &SequentialGraphState,
+    step_states: &StepStateIndex<'_>,
     step_definition: &SequentialGraphStepDefinition,
 ) -> Option<String> {
     step_definition
@@ -455,7 +473,7 @@ fn missing_context(
         .unwrap_or(&[])
         .iter()
         .find(|step_id| {
-            find_step_state(state, step_id)
+            find_step_state(step_states, step_id)
                 .is_none_or(|step| step.status != GraphStepStatus::Succeeded)
         })
         .cloned()
@@ -470,9 +488,19 @@ fn is_graph_complete(state: &SequentialGraphState) -> bool {
     })
 }
 
+type StepStateIndex<'a> = BTreeMap<&'a str, &'a SequentialGraphStepState>;
+
+fn step_state_index(state: &SequentialGraphState) -> StepStateIndex<'_> {
+    state
+        .steps
+        .iter()
+        .map(|step| (step.step_id.as_str(), step))
+        .collect()
+}
+
 fn find_step_state<'a>(
-    state: &'a SequentialGraphState,
+    step_states: &StepStateIndex<'a>,
     step_id: &str,
 ) -> Option<&'a SequentialGraphStepState> {
-    state.steps.iter().find(|step| step.step_id == step_id)
+    step_states.get(step_id).copied()
 }

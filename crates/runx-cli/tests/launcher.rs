@@ -1,5 +1,4 @@
 use runx_cli::config::{ConfigAction, ConfigPlan};
-use runx_cli::connect::ConnectPlan;
 use runx_cli::kernel::{KernelInputSource, KernelPlan};
 use runx_cli::launcher::{
     DevPlan, DoctorPlan, FilterMode, HarnessPlan, HistoryPlan, InitPlan, LauncherAction, ListKind,
@@ -30,6 +29,10 @@ fn top_level_help_and_version_are_native() {
     );
     assert_help_line(&help, "runx parser eval --input <file|-> --json");
     assert_help_line(&help, "runx harness <fixture.yaml...> [--json]");
+    assert!(
+        !help.contains("runx connect"),
+        "native OSS help must not advertise the removed connect brokerage surface"
+    );
     assert!(
         !help.contains("runx harness <fixture.yaml|skill-dir|SKILL.md>"),
         "native help must not advertise harness target forms that only the old TypeScript path handled"
@@ -169,29 +172,10 @@ fn skill_rejects_partial_continuation_shape() {
 }
 
 #[test]
-fn routes_connect_to_oss_unavailable_stub() {
+fn connect_surface_is_removed_from_oss_launcher() {
     assert_eq!(
         plan(&["connect", "--json"]),
-        LauncherAction::RunConnect(ConnectPlan { json: true })
-    );
-
-    assert_eq!(
-        plan(&[
-            "connect",
-            "github",
-            "--scope",
-            "repo:read,checks:read",
-            "--scope-family",
-            "github_repo",
-            "--authority-kind",
-            "read_only",
-            "--target-repo",
-            "runxhq/aster",
-            "--json",
-        ]),
-        LauncherAction::Error(
-            "unknown runx connect argument: github; expected only --json".to_owned()
-        )
+        LauncherAction::Error("unknown command connect".to_owned())
     );
 }
 

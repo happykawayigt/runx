@@ -290,7 +290,7 @@ Invariants:
 - The cloud `agent-runner` package does not have a settled Rust runtime boundary
   in this draft and is not settled by `rust-aster-runtime-cutover`. Before
   deletion can depend on it, a cloud-tree binding pass must classify the
-  boundary as hosted HTTP, CLI JSON, service/FFI, external execution-adapter
+  boundary as runtime HTTP, CLI JSON, service/FFI, external execution-adapter
   protocol, another reviewed stable boundary, or out of scope for this OSS
   sunset.
 - No compatibility package, shim, alias, or v2 surface remains for

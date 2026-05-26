@@ -31,7 +31,7 @@
       "expectJson": false,
       "stdoutIncludes": [],
       "stderrIncludes": [
-        "Usage:"
+        "unknown command not-a-command"
       ],
       "proves": [
         "cli-presentation"
@@ -123,110 +123,21 @@
       ]
     },
     {
-      "id": "skill.run.validate",
-      "commandId": "skill.run",
+      "id": "new.validate",
+      "commandId": "new",
       "mode": "validate",
       "proves": [
-        "skill-resolution",
-        "graph-runtime",
-        "receipts",
-        "sandbox",
-        "caller-mediated-resolution",
-        "adapter-cli-tool",
-        "adapter-a2a",
-        "adapter-agent"
-      ]
-    },
-    {
-      "id": "skill.search.validate",
-      "commandId": "skill.search",
-      "mode": "validate",
-      "proves": [
-        "registry",
+        "scaffold",
         "cli-presentation"
       ]
     },
     {
-      "id": "skill.add.validate",
-      "commandId": "skill.add",
+      "id": "init.validate",
+      "commandId": "init",
       "mode": "validate",
       "proves": [
-        "registry",
-        "skill-resolution"
-      ]
-    },
-    {
-      "id": "skill.publish.validate",
-      "commandId": "skill.publish",
-      "mode": "validate",
-      "proves": [
-        "registry",
-        "receipts"
-      ]
-    },
-    {
-      "id": "skill.inspect.validate",
-      "commandId": "skill.inspect",
-      "mode": "validate",
-      "proves": [
-        "receipts",
-        "cli-presentation"
-      ]
-    },
-    {
-      "id": "evolve.validate",
-      "commandId": "evolve",
-      "mode": "validate",
-      "proves": [
-        "graph-runtime",
-        "receipts",
-        "artifacts"
-      ]
-    },
-    {
-      "id": "replay.validate",
-      "commandId": "replay",
-      "mode": "validate",
-      "proves": [
-        "continuation-replay",
-        "ledger",
-        "receipts"
-      ]
-    },
-    {
-      "id": "diff.validate",
-      "commandId": "diff",
-      "mode": "validate",
-      "proves": [
-        "receipts",
-        "cli-presentation"
-      ]
-    },
-    {
-      "id": "history.validate",
-      "commandId": "history",
-      "mode": "validate",
-      "proves": [
-        "history",
-        "receipts"
-      ]
-    },
-    {
-      "id": "export-receipts.trainable.validate",
-      "commandId": "export-receipts.trainable",
-      "mode": "validate",
-      "proves": [
-        "trainable-export",
-        "receipts"
-      ]
-    },
-    {
-      "id": "knowledge.show.validate",
-      "commandId": "knowledge.show",
-      "mode": "validate",
-      "proves": [
-        "knowledge",
-        "cli-presentation"
+        "scaffold",
+        "official-skills"
       ]
     },
     {
@@ -266,21 +177,21 @@
       ]
     },
     {
-      "id": "new.validate",
-      "commandId": "new",
+      "id": "kernel.validate",
+      "commandId": "kernel",
       "mode": "validate",
       "proves": [
-        "scaffold",
+        "graph-runtime",
         "cli-presentation"
       ]
     },
     {
-      "id": "init.validate",
-      "commandId": "init",
+      "id": "parser.validate",
+      "commandId": "parser",
       "mode": "validate",
       "proves": [
-        "scaffold",
-        "official-skills"
+        "parser",
+        "cli-presentation"
       ]
     },
     {
@@ -303,30 +214,37 @@
       ]
     },
     {
-      "id": "kernel.validate",
-      "commandId": "kernel",
-      "mode": "validate",
-      "proves": [
-        "graph-runtime",
-        "cli-presentation"
-      ]
-    },
-    {
-      "id": "registry.validate",
-      "commandId": "registry",
-      "mode": "validate",
-      "proves": [
-        "registry",
-        "cli-presentation"
-      ]
-    },
-    {
       "id": "mcp.serve.validate",
       "commandId": "mcp.serve",
       "mode": "validate",
       "proves": [
         "mcp",
         "adapter-mcp"
+      ]
+    },
+    {
+      "id": "skill.run.validate",
+      "commandId": "skill.run",
+      "mode": "validate",
+      "proves": [
+        "skill-resolution",
+        "graph-runtime",
+        "receipts",
+        "sandbox",
+        "authority",
+        "caller-mediated-resolution",
+        "adapter-cli-tool",
+        "adapter-a2a",
+        "adapter-agent"
+      ]
+    },
+    {
+      "id": "tool.build.validate",
+      "commandId": "tool.build",
+      "mode": "validate",
+      "proves": [
+        "tool-catalog",
+        "authoring"
       ]
     },
     {
@@ -348,12 +266,12 @@
       ]
     },
     {
-      "id": "tool.build.validate",
-      "commandId": "tool.build",
+      "id": "registry.validate",
+      "commandId": "registry",
       "mode": "validate",
       "proves": [
-        "tool-catalog",
-        "authoring"
+        "registry",
+        "cli-presentation"
       ]
     }
   ]

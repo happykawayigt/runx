@@ -9,8 +9,8 @@ mod types;
 use runx_contracts::{JsonNumber, JsonObject, JsonValue};
 
 pub use http::{
-    AcquireOptions, HostedHttpError, HostedHttpHeader, HttpMethod, HttpRequest, HttpResponse,
-    RegistryClient, RegistryClientError, Transport,
+    AcquireOptions, HttpMethod, HttpRequest, HttpResponse, RegistryClient, RegistryClientError,
+    RuntimeHttpError, RuntimeHttpHeader, Transport,
 };
 pub use install::{
     InstallCandidate, InstallError, InstallLocalSkillOptions, InstallLocalSkillResult,

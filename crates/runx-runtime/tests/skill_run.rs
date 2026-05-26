@@ -806,6 +806,66 @@ fn native_graph_skill_run_resolves_agent_step_named_emit_context()
 
 #[cfg(feature = "catalog")]
 #[test]
+fn native_graph_skill_run_rejects_reserved_artifact_output_names()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempdir()?;
+    let skill_dir = write_graph_reserved_artifact_output_skill(temp.path())?;
+    let receipt_dir = temp.path().join("receipts");
+    let answers_path = temp.path().join("answers.json");
+    fs::write(
+        &answers_path,
+        serde_json::json!({
+            "answers": {
+                "agent_step.graph-author.output": {
+                    "result": "claimed",
+                    "closure": {
+                        "disposition": "closed"
+                    }
+                }
+            }
+        })
+        .to_string(),
+    )?;
+    let pending = run_skill(SkillRunRequest {
+        skill_path: skill_dir.clone(),
+        receipt_dir: Some(receipt_dir.clone()),
+        run_id: None,
+        answers_path: None,
+        inputs: BTreeMap::new(),
+        env: BTreeMap::new(),
+        cwd: temp.path().to_path_buf(),
+        local_credential: None,
+    })?;
+    let pending_output = object(&pending.output, "pending reserved artifact result")?;
+    let run_id = string_field(pending_output, "run_id")
+        .ok_or("pending reserved artifact result missing run_id")?
+        .to_owned();
+
+    let error = match run_skill(SkillRunRequest {
+        skill_path: skill_dir,
+        receipt_dir: Some(receipt_dir),
+        run_id: Some(run_id),
+        answers_path: Some(answers_path),
+        inputs: BTreeMap::new(),
+        env: BTreeMap::new(),
+        cwd: temp.path().to_path_buf(),
+        local_credential: None,
+    }) {
+        Ok(_) => return Err("reserved artifact output name unexpectedly succeeded".into()),
+        Err(error) => error,
+    };
+    assert!(
+        error
+            .to_string()
+            .contains("artifact output name \"status\" is reserved"),
+        "unexpected error: {error}"
+    );
+
+    Ok(())
+}
+
+#[cfg(feature = "catalog")]
+#[test]
 fn native_graph_skill_run_omits_missing_optional_graph_input_references()
 -> Result<(), Box<dyn std::error::Error>> {
     let temp = tempdir()?;
@@ -922,7 +982,8 @@ fn native_graph_skill_run_executes_nested_cli_tool_skill() -> Result<(), Box<dyn
     assert_eq!(string_field(nested, "message"), Some("Nested graph bug"));
     let step_outputs = object_field(payload, "step_outputs").ok_or("missing step outputs")?;
     let nested_step = object_field(step_outputs, "nested").ok_or("missing nested step output")?;
-    let declared_nested = object_field(nested_step, "nested").ok_or("missing exposed nested output")?;
+    let declared_nested =
+        object_field(nested_step, "nested").ok_or("missing exposed nested output")?;
     assert_eq!(
         string_field(declared_nested, "message"),
         Some("Nested graph bug")
@@ -1257,6 +1318,42 @@ runners:
           tool: test.echo
           context:
             message: author.fix_bundle.data.message
+"#,
+    )?;
+    Ok(skill_dir)
+}
+
+#[cfg(feature = "catalog")]
+fn write_graph_reserved_artifact_output_skill(
+    root: &Path,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let skill_dir = root.join("graph-reserved-artifact-output");
+    fs::create_dir_all(&skill_dir)?;
+    fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: graph-reserved-artifact-output\n---\n# Graph Reserved Artifact Output\n",
+    )?;
+    fs::write(
+        skill_dir.join("X.yaml"),
+        r#"
+skill: graph-reserved-artifact-output
+runners:
+  graph:
+    default: true
+    type: graph
+    graph:
+      name: graph-reserved-artifact-output
+      steps:
+        - id: author
+          run:
+            type: agent-step
+            agent: builder
+            task: graph-author
+            outputs:
+              result: string
+          artifacts:
+            named_emits:
+              status: result
 "#,
     )?;
     Ok(skill_dir)

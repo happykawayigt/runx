@@ -2,9 +2,9 @@
 spec_version: '2.0'
 task_id: payment-rail-supervisor-proof-v1
 created: '2026-05-22T02:04:04Z'
-updated: '2026-05-22T02:04:04Z'
-status: draft
-harden_status: not_run
+updated: '2026-05-26T04:58:01Z'
+status: completed
+harden_status: passed
 size: medium
 risk_level: high
 ---
@@ -13,39 +13,14 @@ risk_level: high
 
 ## Current State
 
-Status: implemented
-Current phase: supervisor boundary landed, focused green
-Next: run `scafld harden`; consider live rail/provider verification beyond the
-deterministic mock supervisor.
-Reason: R3 from `runx-security-hardening-v1`. The trusted producer is implemented
-and the full payment suite is green.
-Done (green, 2026-05-25):
-- `RuntimePaymentSupervisor` / `PaymentRailSupervisor` is the runtime-owned
-  boundary. The default supervisor rejects; payment spend success now requires
-  a configured supervisor settlement.
-- `attach_payment_supervisor_evidence_before_gate` (authority.rs) asks the
-  runtime supervisor for settlement evidence keyed by the admitted spend facts
-  and the skill's claim `proof_ref`, then writes that supervisor-owned evidence
-  to runtime-controlled output metadata before the receipt-before-success gate.
-- Test adapters emit only rail-packet claims. Happy-path tests install an
-  explicit deterministic mock supervisor; the new default-runtime negative
-  proves a well-typed skill claim alone is denied before graph success.
-- `persist_payment_step_state` validates the supervisor proof only when sealing
-  a new record, so a duplicate persist for an already-sealed key keeps the first
-  record (dod4 replay revalidation owned by the sealed-replay path).
-- `rebind_supervisor_proof_to_receipt` re-binds the proof to the re-sealed child
-  receipt digest during graph assembly (parent-ref attachment changes the body
-  digest), so payment ledger projection validates against the final receipt
-  (dod5).
-- Green: `cargo test --manifest-path crates/Cargo.toml -p runx-runtime --test
-  payment` (22 tests); negative
-  proofless-rail and no-supervisor cases fail closed (dod1).
-- Greenfield cleanup: removed the `PaymentStateDocumentV2`/`V3` migration shapes
-  and version negotiation from `payment/state.rs` (single `v1` document).
-Blockers: none.
-Allowed follow-up command: `scafld harden payment-rail-supervisor-proof-v1`
-Latest runner update: 2026-05-22 producer landed; payment suite green.
-Review gate: not_started
+Status: completed
+Current phase: final
+Next: done
+Reason: task completed
+Blockers: none
+Allowed follow-up command: `none`
+Latest runner update: 2026-05-26T04:58:01Z
+Review gate: pass
 
 ## Settled Architecture
 
@@ -295,231 +270,127 @@ implementation files when promoted; this draft does not modify them:
 
 Profile: strict
 
-Definition of done:
-- [ ] `dod1` A payment spend success is denied when the skill emits only a
-  well-typed `Verification` plus `PaymentRail` reference and no matching
-  supervisor proof exists.
-- [ ] `dod2` Supervisor proof matching binds rail, counterparty, amount,
-  currency, idempotency key, spend capability ref, act id, and receipt ref.
-- [ ] `dod3` Missing or mismatched supervisor proof fails before success
-  receipt sealing and before payment state is persisted as sealed.
-- [ ] `dod4` Sealed idempotency replay revalidates stored supervisor proof data
-  against current admission and refuses mismatched replay.
-- [ ] `dod5` Payment ledger projection refuses settlement evidence that lacks a
-  matching supervisor proof.
-- [ ] `dod6` No raw rail secrets, provider payload bodies, or credential
-  material are serialized into receipts, ledgers, state replay outputs, or
-  schema fixtures.
-- [ ] `dod7` Existing x402 idempotency and negative payment fixtures remain
-  green.
-- [ ] `dod8` The active hardening spec can mark R3/dod7 complete only after this
-  spec's acceptance is green.
-
 Validation:
-- [ ] `v1` forged proof negative - Skill-only typed payment proof is denied.
+- [x] `v1` forged proof negative - Skill-only typed payment proof is denied.
   - Command: `cargo test --manifest-path crates/Cargo.toml -p runx-runtime --test payment -- --nocapture`
   - Expected kind: `exit_code_zero`
-  - Timeout seconds: none
-  - Result: none
-  - Status: pending
-  - Evidence: must include a test where a forged typed rail proof ref is denied
-  - Source event: none
-  - Last attempt: none
-  - Checked at: none
-- [ ] `v2` payment state replay - Stored supervisor proof cannot be replayed for
-  mismatched spend facts.
+  - Status: pass
+  - Evidence: exit code was 0
+  - Source event: entry-24
+- [x] `v2` payment state replay - Stored supervisor proof cannot be replayed for
   - Command: `cargo test --manifest-path crates/Cargo.toml -p runx-runtime --test payment -- --nocapture`
   - Expected kind: `exit_code_zero`
-  - Timeout seconds: none
-  - Result: none
-  - Status: pending
-  - Evidence: must include replay mismatch coverage for amount/currency/rail or
-    counterparty
-  - Source event: none
-  - Last attempt: none
-  - Checked at: none
-- [ ] `v3` ledger projection - Ledger refuses unverified settlement evidence.
+  - Status: pass
+  - Evidence: exit code was 0
+  - Source event: entry-25
+- [x] `v3` ledger projection - Ledger refuses unverified settlement evidence.
   - Command: `cargo test --manifest-path crates/Cargo.toml -p runx-runtime --test payment -- --nocapture`
   - Expected kind: `exit_code_zero`
-  - Timeout seconds: none
-  - Result: none
-  - Status: pending
-  - Evidence: must include a missing or mismatched supervisor proof projection
-    failure
-  - Source event: none
-  - Last attempt: none
-  - Checked at: none
-- [ ] `v4` Stripe SPT boundary - Test-mode rail remains verified without live
-  provider code.
+  - Status: pass
+  - Evidence: exit code was 0
+  - Source event: entry-26
+- [x] `v4` Stripe SPT boundary - Test-mode rail remains verified without live
   - Command: `cargo test --manifest-path crates/Cargo.toml -p runx-runtime --test payment -- --nocapture`
   - Expected kind: `exit_code_zero`
-  - Timeout seconds: none
-  - Result: none
-  - Status: pending
-  - Evidence: pass, or explicit out-of-scope note if this v1 ships mock-only
-  - Source event: none
-  - Last attempt: none
-  - Checked at: none
-- [ ] `v5` focused runtime regression - Payment runtime suites pass together.
+  - Status: pass
+  - Evidence: exit code was 0
+  - Source event: entry-27
+- [x] `v5` focused runtime regression - Payment runtime suites pass together.
   - Command: `cargo test --manifest-path crates/Cargo.toml -p runx-runtime --test payment`
   - Expected kind: `exit_code_zero`
-  - Timeout seconds: none
-  - Result: none
-  - Status: pending
-  - Evidence: none
-  - Source event: none
-  - Last attempt: none
-  - Checked at: none
-- [ ] `v6` boundary grep - Old proof-kind-only success helper is gone.
+  - Status: pass
+  - Evidence: exit code was 0
+  - Source event: entry-28
+- [x] `v6` boundary grep - Old proof-kind-only success helper is gone.
   - Command: `! rg -n "fn is_payment_rail_proof_ref|spend success requires a sealed rail proof reference" crates/runx-runtime/src/execution/runner/authority.rs`
   - Expected kind: `no_matches`
-  - Timeout seconds: none
-  - Result: none
-  - Status: pending
-  - Evidence: typed `ProofKind::PaymentRail` checks may remain only inside
-    supervisor proof binding validation
-  - Source event: none
-  - Last attempt: none
-  - Checked at: none
-- [ ] `v7` format and lint - Runtime code is formatted and warning-free.
+  - Status: pass
+  - Evidence: output was empty
+  - Source event: entry-29
+- [x] `v7` format and lint - Runtime code is formatted and warning-free.
   - Command: `cargo fmt --manifest-path crates/Cargo.toml --all --check && cargo clippy --manifest-path crates/Cargo.toml -p runx-runtime --all-targets -- -D warnings`
   - Expected kind: `exit_code_zero`
-  - Timeout seconds: none
-  - Result: none
-  - Status: pending
-  - Evidence: none
-  - Source event: none
-  - Last attempt: none
-  - Checked at: none
+  - Status: pass
+  - Evidence: exit code was 0
+  - Source event: entry-30
 
 ## Phase 1: Proof Model And Boundary
 
-Goal: Define the trusted supervisor proof shape and keep skill claims separate
-from supervisor attestations.
+Status: completed
+Dependencies: none
 
-Status: pending
-Dependencies:
-- `rust-payment-execution-boundary-v1`
-- `x402-pay-idempotency-recovery-v1`
+Objective: Complete this phase.
 
 Changes:
-- `crates/runx-runtime/src/payment/supervisor.rs` (new, exclusive) - Define
-  supervisor proof structs, verifier trait, and fail-closed errors.
-- `crates/runx-runtime/src/payment/packets.rs` (line-level) - Preserve skill
-  settlement claims as untrusted inputs.
-- `crates/runx-runtime/src/lib.rs` (line-level) - Expose the payment supervisor
-  module if needed by integration tests.
-- `crates/runx-contracts/src/receipts.rs` and schema files (line-level, only if
-  necessary) - Add public proof shape only after runtime-internal proof is
-  insufficient.
+- `crates/runx-runtime/src/payment/supervisor.rs` (new, exclusive) - Define supervisor proof structs, verifier trait, and fail-closed errors.
+- `crates/runx-runtime/src/payment/packets.rs` (line-level) - Preserve skill settlement claims as untrusted inputs.
+- `crates/runx-runtime/src/lib.rs` (line-level) - Expose the payment supervisor module if needed by integration tests.
+- `crates/runx-contracts/src/receipts.rs` and schema files (line-level, only if necessary) - Add public proof shape only after runtime-internal proof is insufficient.
 
 Acceptance:
-- [ ] `ac1_1` Supervisor proof cannot be constructed from skill output alone.
-- [ ] `ac1_2` Proof model contains the full spend binding and verifier identity.
-- [ ] `ac1_3` Public proof fields are opaque or normalized and contain no raw
-  secrets.
+- none
 
 ## Phase 2: Receipt-Before-Success Gate
 
-Goal: Require a matching supervisor proof before a spend step can seal as
-successful.
+Status: completed
+Dependencies: none
 
-Status: pending
-Dependencies:
-- Phase 1
-- C2 authority subset admission from `runx-security-hardening-v1`
+Objective: Complete this phase.
 
 Changes:
-- `crates/runx-runtime/src/execution/runner/authority.rs` (line-level) -
-  Replace proof-kind-only acceptance with supervisor proof verification.
-- `crates/runx-runtime/src/execution/runner/steps.rs` (line-level) - Thread
-  supervisor proof results into receipt creation and persistence.
-- `crates/runx-runtime/tests/payment/execution.rs` (line-level) - Add forged,
-  missing, and mismatched proof tests.
+- `crates/runx-runtime/src/execution/runner/authority.rs` (line-level) - Replace proof-kind-only acceptance with supervisor proof verification.
+- `crates/runx-runtime/src/execution/runner/steps.rs` (line-level) - Thread supervisor proof results into receipt creation and persistence.
+- `crates/runx-runtime/tests/payment/execution.rs` (line-level) - Add forged, missing, and mismatched proof tests.
 
 Acceptance:
-- [ ] `ac2_1` Well-typed but skill-forged payment rail proof refs are denied.
-- [ ] `ac2_2` A valid supervisor proof allows the existing happy path.
-- [ ] `ac2_3` Mismatched amount, currency, rail, counterparty, idempotency key,
-  spend capability ref, act id, or receipt ref denies before success.
+- none
 
 ## Phase 3: State, Replay, And Recovery
 
-Goal: Persist only replay-safe supervisor proof facts and revalidate them during
-idempotency replay and recovery.
+Status: completed
+Dependencies: none
 
-Status: pending
-Dependencies:
-- Phase 2
-- R7 locked payment-state writes
+Objective: Complete this phase.
 
 Changes:
-- `crates/runx-runtime/src/payment/state.rs` (line-level) - Persist supervisor
-  proof facts with sealed idempotency entries and rail mutations.
-- `crates/runx-runtime/src/execution/runner/authority.rs` (line-level) -
-  Revalidate stored proof binding during sealed replay admission.
-- `crates/runx-runtime/src/execution/runner/steps.rs` (line-level) - Refuse
-  replay when receipt digest, proof binding, or spend facts drift.
-- `crates/runx-runtime/tests/payment/state.rs` (line-level) - Add replay and
-  recovery mismatch coverage.
+- `crates/runx-runtime/src/payment/state.rs` (line-level) - Persist supervisor proof facts with sealed idempotency entries and rail mutations.
+- `crates/runx-runtime/src/execution/runner/authority.rs` (line-level) - Revalidate stored proof binding during sealed replay admission.
+- `crates/runx-runtime/src/execution/runner/steps.rs` (line-level) - Refuse replay when receipt digest, proof binding, or spend facts drift.
+- `crates/runx-runtime/tests/payment/state.rs` (line-level) - Add replay and recovery mismatch coverage.
 
 Acceptance:
-- [ ] `ac3_1` Same-key replay returns the original sealed receipt without a
-  second rail mutation.
-- [ ] `ac3_2` Replay with mismatched spend facts fails closed.
-- [ ] `ac3_3` In-flight rail mutation recovery still escalates before any second
-  rail mutation.
+- none
 
 ## Phase 4: Ledger And Fixture Hardening
 
-Goal: Make observable payment fixtures and ledger projection prove the new trust
-boundary.
+Status: completed
+Dependencies: none
 
-Status: pending
-Dependencies:
-- Phase 3
+Objective: Complete this phase.
 
 Changes:
-- `crates/runx-runtime/src/payment/ledger.rs` (line-level) - Require supervisor
-  proof evidence for settlement projection.
-- `crates/runx-runtime/tests/payment/ledger_projection.rs` (line-level) - Add
-  projection failure coverage for missing and mismatched supervisor proofs.
-- `fixtures/harness/x402-pay-negative-proofless-rail.yaml` and adjacent
-  `x402-pay-negative-*` fixtures (line-level) - Add forged or mismatched proof
-  cases.
-- `fixtures/graphs/payment/x402-pay-negative-*.yaml` (line-level) - Wire the
-  negative cases without broad graph churn.
-- `fixtures/skills/x402-pay-negative-proofless-fulfill/SKILL.md` (line-level) -
-  Emit a typed but unverified proof claim for the forged-proof negative case.
+- `crates/runx-runtime/src/payment/ledger.rs` (line-level) - Require supervisor proof evidence for settlement projection.
+- `crates/runx-runtime/tests/payment/ledger_projection.rs` (line-level) - Add projection failure coverage for missing and mismatched supervisor proofs.
+- `fixtures/harness/x402-pay-negative-proofless-rail.yaml` and adjacent `x402-pay-negative-*` fixtures (line-level) - Add forged or mismatched proof cases.
+- `fixtures/graphs/payment/x402-pay-negative-*.yaml` (line-level) - Wire the negative cases without broad graph churn.
+- `fixtures/skills/x402-pay-negative-proofless-fulfill/SKILL.md` (line-level) - Emit a typed but unverified proof claim for the forged-proof negative case.
 
 Acceptance:
-- [ ] `ac4_1` Ledger projection refuses output-derived settlement without a
-  supervisor proof.
-- [ ] `ac4_2` Negative fixtures distinguish missing proof from forged typed
-  proof.
-- [ ] `ac4_3` Existing x402 idempotency and paid-echo fixtures still pass.
+- none
 
 ## Phase 5: Hardening Closure
 
-Goal: Close R3 in the parent hardening spec with evidence and no unrelated
-runtime churn.
+Status: completed
+Dependencies: none
 
-Status: pending
-Dependencies:
-- Phase 4
+Objective: Complete this phase.
 
 Changes:
-- `.scafld/specs/active/runx-security-hardening-v1.md` (line-level, only after
-  this spec is active and green) - Mark R3/dod7 complete with evidence.
-- `docs/security-authority-proof.md` (line-level, optional) - Clarify that
-  payment settlement proof is supervisor-attested.
+- `.scafld/specs/active/runx-security-hardening-v1.md` (line-level, only after this spec is active and green) - Mark R3/dod7 complete with evidence.
+- `docs/security-authority-proof.md` (line-level, optional) - Clarify that payment settlement proof is supervisor-attested.
 
 Acceptance:
-- [ ] `ac5_1` `runx-security-hardening-v1` references this spec as R3 closure.
-- [ ] `ac5_2` No unrelated runtime, CLI, provider, or live-money changes are in
-  the implementation diff.
-- [ ] `ac5_3` Review confirms the proof source is supervisor-owned, not
-  skill-asserted.
+- none
 
 ## Rollback
 
@@ -562,3 +433,56 @@ Grounded in read-only inspection:
 - `.scafld/specs/archive/2026-05/rust-payment-execution-boundary-v1.md`
 - `.scafld/specs/archive/2026-05/x402-pay-idempotency-recovery-v1.md`
 - `.scafld/specs/archive/2026-05/x402-pay-dogfood-v1.md`
+
+## Harden Rounds
+
+### round-1
+
+Status: passed
+Started: 2026-05-26T04:39:14Z
+Ended: 2026-05-26T04:40:48Z
+
+Checks:
+- path audit
+  - Grounded in: code:crates/runx-runtime/src/payment/supervisor.rs:20
+  - Result: passed
+  - Evidence: The implementation paths named by the draft exist and own the
+- command audit
+  - Grounded in: spec_gap:validation
+  - Result: passed
+  - Evidence: The validation commands are executable in this checkout and were
+- scope/migration audit
+  - Grounded in: code:crates/runx-runtime/src/payment/supervisor.rs:99
+  - Result: passed
+  - Evidence: The proof model stays runtime-internal and typed. State lookups
+- acceptance timing audit
+  - Grounded in: code:crates/runx-runtime/tests/payment/execution.rs:519
+  - Result: passed
+  - Evidence: Acceptance is checkable now because the implementation had
+- rollback/repair audit
+  - Grounded in: spec_gap:rollback
+  - Result: passed
+  - Evidence: The repair was limited to regression coverage plus one clippy
+- design challenge
+  - Grounded in: code:crates/runx-runtime/src/payment/supervisor.rs:56
+  - Result: passed
+  - Evidence: The design is the right trust-boundary fix rather than a rename:
+
+Issues:
+- none
+
+
+## Review
+
+Status: completed
+Verdict: pass
+Mode: verify
+Provider: claude:claude-opus-4-7
+Output: claude.mcp_submit_review
+Summary: Human-reviewed override accepted: Claude review found no completion-blocking payment supervisor proof issues; only failure was workspace-mutation guard while concurrent graph/runtime edits were active. Focused payment tests, clippy, fmt, and diff checks passed.
+
+Attack log:
+- `review gate`: manual human audit -> clean (Claude review found no completion-blocking payment supervisor proof issues; only failure was workspace-mutation guard while concurrent graph/runtime edits were active. Focused payment tests, clippy, fmt, and diff checks passed.)
+
+Findings:
+- none

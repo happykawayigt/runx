@@ -23,11 +23,13 @@ use thiserror::Error;
 use url::Url;
 
 pub use crate::runtime_http::{
-    HostedHttpError as PostMergeObserverHttpError, HostedHttpHeader as PostMergeObserverHttpHeader,
-    HostedHttpRequest as PostMergeObserverHttpRequest,
-    HostedHttpResponse as PostMergeObserverHttpResponse,
-    HostedTransport as PostMergeObserverHttpTransport, HttpMethod as PostMergeObserverHttpMethod,
+    HttpMethod as PostMergeObserverHttpMethod,
     ReqwestHttpTransport as PostMergeObserverDefaultHttpTransport,
+    RuntimeHttpError as PostMergeObserverHttpError,
+    RuntimeHttpHeader as PostMergeObserverHttpHeader,
+    RuntimeHttpRequest as PostMergeObserverHttpRequest,
+    RuntimeHttpResponse as PostMergeObserverHttpResponse,
+    RuntimeHttpTransport as PostMergeObserverHttpTransport,
 };
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]

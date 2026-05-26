@@ -255,29 +255,31 @@ function parseMcpToolsList(value: unknown): readonly McpToolDescriptor[] {
 
 class StdioJsonRpcClient {
   private nextId = 1;
-  private stdout = Buffer.alloc(0);
-  private stderr = Buffer.alloc(0);
+  private readonly stdout = new BoundedByteQueue(maxMcpMessageBytes);
+  private readonly stderrChunks: Buffer[] = [];
+  private stderrBytes = 0;
   private readonly pending = new Map<number, PendingRequest>();
 
   constructor(private readonly child: ChildProcessWithoutNullStreams) {
     this.child.stdout.on("data", (chunk: Buffer) => {
-      this.stdout = Buffer.concat([this.stdout, chunk]);
-      if (this.stdout.length > maxMcpMessageBytes) {
+      if (!this.stdout.append(chunk)) {
         this.rejectAll(new Error("MCP server response exceeded size limit."));
         return;
       }
       this.parseAvailableMessages();
     });
     this.child.stderr.on("data", (chunk: Buffer) => {
-      const remaining = maxMcpMessageBytes - this.stderr.length;
+      const remaining = maxMcpMessageBytes - this.stderrBytes;
       if (remaining <= 0) return;
-      this.stderr = Buffer.concat([this.stderr, chunk.length > remaining ? chunk.subarray(0, remaining) : chunk]);
+      const stored = chunk.length > remaining ? chunk.subarray(0, remaining) : chunk;
+      this.stderrChunks.push(stored);
+      this.stderrBytes += stored.length;
     });
     this.child.on("error", (error) => {
       this.rejectAll(error);
     });
     this.child.on("close", (exitCode, exitSignal) => {
-      const stderrText = this.stderr.toString("utf8").trim();
+      const stderrText = Buffer.concat(this.stderrChunks, this.stderrBytes).toString("utf8").trim();
       const detail = [
         `exit code ${exitCode ?? "null"}`,
         exitSignal ? `signal ${exitSignal}` : undefined,
@@ -331,12 +333,12 @@ class StdioJsonRpcClient {
       }
 
       const body = this.stdout.subarray(bodyStart, bodyEnd).toString("utf8");
-      this.stdout = this.stdout.subarray(bodyEnd);
+      this.stdout.consume(bodyEnd);
       let message: JsonRpcResponse;
       try {
         message = JSON.parse(body) as JsonRpcResponse;
       } catch (error) {
-        this.stdout = Buffer.alloc(0);
+        this.stdout.clear();
         this.rejectAll(new Error("MCP server sent invalid JSON.", { cause: error }));
         return;
       }
@@ -363,6 +365,78 @@ class StdioJsonRpcClient {
       pending.reject(error);
     }
     this.pending.clear();
+  }
+}
+
+class BoundedByteQueue {
+  private buffer = Buffer.alloc(8192);
+  private start = 0;
+  private end = 0;
+
+  constructor(private readonly maxBytes: number) {}
+
+  get length(): number {
+    return this.end - this.start;
+  }
+
+  append(chunk: Buffer): boolean {
+    if (this.length + chunk.length > this.maxBytes) {
+      return false;
+    }
+    this.ensureCapacity(chunk.length);
+    chunk.copy(this.buffer, this.end);
+    this.end += chunk.length;
+    return true;
+  }
+
+  indexOf(value: string): number {
+    return this.buffer.subarray(this.start, this.end).indexOf(value);
+  }
+
+  subarray(start: number, end: number): Buffer {
+    return this.buffer.subarray(this.start + start, this.start + end);
+  }
+
+  consume(bytes: number): void {
+    this.start += bytes;
+    if (this.start >= this.end) {
+      this.clear();
+    } else if (this.start > this.buffer.length / 2) {
+      this.compact();
+    }
+  }
+
+  clear(): void {
+    this.start = 0;
+    this.end = 0;
+  }
+
+  private ensureCapacity(additional: number): void {
+    if (this.end + additional <= this.buffer.length) {
+      return;
+    }
+    this.compact();
+    if (this.end + additional <= this.buffer.length) {
+      return;
+    }
+    let nextLength = this.buffer.length;
+    while (nextLength < this.end + additional) {
+      nextLength *= 2;
+    }
+    const next = Buffer.alloc(nextLength);
+    this.buffer.copy(next, 0, this.start, this.end);
+    this.end = this.length;
+    this.start = 0;
+    this.buffer = next;
+  }
+
+  private compact(): void {
+    if (this.start === 0) {
+      return;
+    }
+    this.buffer.copy(this.buffer, 0, this.start, this.end);
+    this.end = this.length;
+    this.start = 0;
   }
 }
 

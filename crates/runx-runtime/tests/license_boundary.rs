@@ -58,7 +58,7 @@ fn license_boundary_guard_rejects_private_identifier_fixture()
         "private identifier fixture must fail identifier scan"
     );
     assert!(
-        String::from_utf8_lossy(&output.stderr).contains("RunxPrivateConnectBroker"),
+        String::from_utf8_lossy(&output.stderr).contains("RunxPrivateBoundarySentinel"),
         "stderr should identify the banned private symbol"
     );
     Ok(())

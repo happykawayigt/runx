@@ -33,11 +33,12 @@ use runx_receipts::{
 };
 
 pub use crate::runtime_http::{
-    HostedHttpError as TargetRepoRunnerHttpError, HostedHttpHeader as TargetRepoRunnerHttpHeader,
-    HostedHttpRequest as TargetRepoRunnerHttpRequest,
-    HostedHttpResponse as TargetRepoRunnerHttpResponse,
-    HostedTransport as TargetRepoRunnerHttpTransport, HttpMethod as TargetRepoRunnerHttpMethod,
+    HttpMethod as TargetRepoRunnerHttpMethod,
     ReqwestHttpTransport as TargetRepoRunnerDefaultHttpTransport,
+    RuntimeHttpError as TargetRepoRunnerHttpError, RuntimeHttpHeader as TargetRepoRunnerHttpHeader,
+    RuntimeHttpRequest as TargetRepoRunnerHttpRequest,
+    RuntimeHttpResponse as TargetRepoRunnerHttpResponse,
+    RuntimeHttpTransport as TargetRepoRunnerHttpTransport,
 };
 
 #[derive(Clone, Debug, PartialEq)]

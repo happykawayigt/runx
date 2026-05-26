@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -5,8 +6,7 @@ import path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { appendLedgerEntries, createRunEventEntry } from "../packages/core/src/artifacts/index.js";
-import { runCli, type CliIo } from "../packages/cli/src/index.js";
-import { ensureRunxBinary, kernelTestEnv } from "./host-protocol-test-utils.js";
+import { ensureRunxBinary, kernelTestEnv, runxBinary } from "./host-protocol-test-utils.js";
 
 interface CommandMatrix {
   readonly exitCodes: readonly number[];
@@ -92,14 +92,11 @@ describe("CLI feature parity matrix", () => {
     }
   });
 
-  it("executes deterministic oracle cases against the compatibility CLI wrapper", async () => {
+  it("executes deterministic oracle cases against the native CLI", async () => {
     const executableCases = (await readOracleCases()).filter((testCase) => testCase.mode === "execute");
 
     for (const testCase of executableCases) {
       const tempDir = await mkdtemp(path.join(os.tmpdir(), `runx-cli-parity-${testCase.id}-`));
-      const stdout = createMemoryStream();
-      const stderr = createMemoryStream();
-      const io: CliIo = { stdin: process.stdin, stdout, stderr };
 
       try {
         const receiptDir = path.join(tempDir, "receipts");
@@ -107,23 +104,33 @@ describe("CLI feature parity matrix", () => {
         const argv = (testCase.argv ?? []).map((arg) =>
           arg === "$FIXTURE_RECEIPTS" ? receiptDir : arg,
         );
-        const exitCode = await runCli(argv, io, {
-          ...kernelTestEnv(process.env),
-          RUNX_CWD: process.cwd(),
-          RUNX_HOME: path.join(tempDir, "home"),
-          RUNX_RECEIPT_DIR: receiptDir,
-          RUNX_BANNER: "0",
+        const result = spawnSync(runxBinary, argv, {
+          cwd: process.cwd(),
+          encoding: "utf8",
+          env: {
+            ...kernelTestEnv(process.env),
+            RUNX_CWD: process.cwd(),
+            RUNX_HOME: path.join(tempDir, "home"),
+            RUNX_RECEIPT_DIR: receiptDir,
+            RUNX_BANNER: "0",
+          },
         });
+        if (result.error) {
+          throw result.error;
+        }
+        const stdout = result.stdout ?? "";
+        const stderr = result.stderr ?? "";
+        const exitCode = result.status ?? 1;
 
         expect(exitCode, testCase.id).toBe(testCase.expectedExitCode);
         for (const expected of testCase.stdoutIncludes ?? []) {
-          expect(stdout.contents(), testCase.id).toContain(expected);
+          expect(stdout, testCase.id).toContain(expected);
         }
         for (const expected of testCase.stderrIncludes ?? []) {
-          expect(stderr.contents(), testCase.id).toContain(expected);
+          expect(stderr, testCase.id).toContain(expected);
         }
         if (testCase.expectJson) {
-          expect(() => JSON.parse(stdout.contents()), testCase.id).not.toThrow();
+          expect(() => JSON.parse(stdout), testCase.id).not.toThrow();
         }
       } finally {
         await rm(tempDir, { recursive: true, force: true });
@@ -178,15 +185,4 @@ async function readOracleCases(): Promise<readonly OracleCase[]> {
 
 async function readJson<T>(filePath: string): Promise<T> {
   return JSON.parse(await readFile(filePath, "utf8")) as T;
-}
-
-function createMemoryStream(): NodeJS.WriteStream & { contents: () => string } {
-  let buffer = "";
-  return {
-    write: (chunk: string | Uint8Array) => {
-      buffer += chunk.toString();
-      return true;
-    },
-    contents: () => buffer,
-  } as NodeJS.WriteStream & { contents: () => string };
 }

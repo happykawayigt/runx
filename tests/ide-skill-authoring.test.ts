@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import { buildSkillPreview, skillSnippets, validateSkillMarkdown } from "../plugins/ide-core/src/index.js";
-import { buildSkillPreview as antigravityPreview } from "../plugins/antigravity/src/skill-authoring.js";
 
 describe("ide skill authoring", () => {
   it("validates portable skills, exposes snippets, and previews execution profile mode", () => {
@@ -32,6 +31,5 @@ Use the provided context to generate documentation.
       summary: "Generate deep project docs.",
       runnerMode: "profiled",
     });
-    expect(antigravityPreview({ markdown }).runnerMode).toBe("portable");
   });
 });

@@ -6,10 +6,10 @@ use runx_contracts::{ClosureDisposition, JsonObject, Receipt};
 use runx_core::state_machine::StepAdmissionWitness;
 use runx_runtime::payment::ledger::{
     PaidToolEvidence, PaymentLedgerEvidence, PaymentLedgerEvidencePacket,
-    PaymentLedgerProjectedEventPayload, PaymentLedgerProjection, PaymentLedgerProjectionInput,
-    PaymentRailSettlementEvidence, PaymentRefusalEvidence, PaymentReservationEvidence,
-    build_payment_ledger_projection, persist_x402_payment_ledger_projection_event,
-    write_payment_ledger_projection_artifact,
+    PaymentLedgerProjectedEventPayload, PaymentLedgerProjection, PaymentLedgerProjectionError,
+    PaymentLedgerProjectionInput, PaymentRailSettlementEvidence, PaymentRefusalEvidence,
+    PaymentReservationEvidence, build_payment_ledger_projection,
+    persist_x402_payment_ledger_projection_event, write_payment_ledger_projection_artifact,
 };
 use runx_runtime::payment::supervisor::{
     PAYMENT_RAIL_SUPERVISOR_EVIDENCE_METADATA, PAYMENT_RAIL_SUPERVISOR_VERIFIER_ID,
@@ -83,6 +83,121 @@ fn x402_happy_settlement_projection_matches_golden_fixture()
         &serde_json::to_value(projection)?,
         "fixtures/ledger-projections/x402-pay-ledger-happy-settlement.json",
     )?;
+    Ok(())
+}
+
+#[test]
+fn x402_settlement_projection_requires_supervisor_proof() -> Result<(), Box<dyn std::error::Error>>
+{
+    let reserve = step_run("x402-pay-paid-echo", "reserve", "{}")?;
+    let fulfill = step_run(
+        "x402-pay-paid-echo",
+        "fulfill",
+        r#"{"payment_rail_packet":{"data":{"rail_result":{"status":"fulfilled","rail":"mock","amount_minor":125,"currency":"USD"},"rail_proof":{"proof_ref":"receipt-proof:mock:paid-echo-001","idempotency_key":"payment:paid-echo-001"}}}}"#,
+    )?;
+    let graph = graph(
+        "x402-pay-paid-echo_graph",
+        &[reserve.clone(), fulfill.clone()],
+    )?;
+
+    let error = build_payment_ledger_projection(PaymentLedgerProjectionInput {
+        graph_receipt: &graph,
+        scenario_id: "P1.5",
+        evidence: vec![
+            PaymentLedgerEvidence {
+                receipt: &reserve.receipt,
+                packet: PaymentLedgerEvidencePacket::Reservation(paid_echo_reservation(
+                    "payment:paid-echo-001",
+                    "runx:payment-capability:paid-echo-spend-1",
+                    125,
+                )),
+            },
+            PaymentLedgerEvidence {
+                receipt: &fulfill.receipt,
+                packet: PaymentLedgerEvidencePacket::RailSettlement(Box::new(
+                    PaymentRailSettlementEvidence {
+                        amount_minor: 125,
+                        currency: "USD".to_owned(),
+                        rail: "mock".to_owned(),
+                        proof_ref: "receipt-proof:mock:paid-echo-001".to_owned(),
+                        idempotency_key: "payment:paid-echo-001".to_owned(),
+                        supervisor_proof: None,
+                    },
+                )),
+            },
+        ],
+    })
+    .err()
+    .ok_or("settlement projection without supervisor proof should fail")?;
+
+    assert_eq!(
+        error,
+        PaymentLedgerProjectionError::MissingSupervisorProof {
+            proof_ref: "receipt-proof:mock:paid-echo-001".to_owned()
+        }
+    );
+    Ok(())
+}
+
+#[test]
+fn x402_settlement_projection_rejects_mismatched_supervisor_proof()
+-> Result<(), Box<dyn std::error::Error>> {
+    let reserve = step_run("x402-pay-paid-echo", "reserve", "{}")?;
+    let fulfill = step_run(
+        "x402-pay-paid-echo",
+        "fulfill",
+        r#"{"payment_rail_packet":{"data":{"rail_result":{"status":"fulfilled","rail":"mock","amount_minor":125,"currency":"USD"},"rail_proof":{"proof_ref":"receipt-proof:mock:paid-echo-001","idempotency_key":"payment:paid-echo-001"}}}}"#,
+    )?;
+    let graph = graph(
+        "x402-pay-paid-echo_graph",
+        &[reserve.clone(), fulfill.clone()],
+    )?;
+    let mut supervisor_proof = paid_echo_supervisor_proof(&fulfill.receipt);
+    supervisor_proof.amount_minor = 250;
+
+    let error = build_payment_ledger_projection(PaymentLedgerProjectionInput {
+        graph_receipt: &graph,
+        scenario_id: "P1.5",
+        evidence: vec![
+            PaymentLedgerEvidence {
+                receipt: &reserve.receipt,
+                packet: PaymentLedgerEvidencePacket::Reservation(paid_echo_reservation(
+                    "payment:paid-echo-001",
+                    "runx:payment-capability:paid-echo-spend-1",
+                    125,
+                )),
+            },
+            PaymentLedgerEvidence {
+                receipt: &fulfill.receipt,
+                packet: PaymentLedgerEvidencePacket::RailSettlement(Box::new(
+                    PaymentRailSettlementEvidence {
+                        amount_minor: 125,
+                        currency: "USD".to_owned(),
+                        rail: "mock".to_owned(),
+                        proof_ref: "receipt-proof:mock:paid-echo-001".to_owned(),
+                        idempotency_key: "payment:paid-echo-001".to_owned(),
+                        supervisor_proof: Some(supervisor_proof),
+                    },
+                )),
+            },
+        ],
+    })
+    .err()
+    .ok_or("settlement projection with mismatched supervisor proof should fail")?;
+
+    match error {
+        PaymentLedgerProjectionError::SupervisorProofMismatch { message } => {
+            assert!(
+                message.contains("amount_minor mismatch"),
+                "expected amount mismatch, got: {message}"
+            );
+        }
+        other => {
+            return Err(
+                std::io::Error::other(format!("unexpected projection error: {other}")).into(),
+            );
+        }
+    }
     Ok(())
 }
 

@@ -55,67 +55,56 @@ const exitCodes = [0, 1, 2, 64] as const;
 
 const commands: readonly CommandMatrixEntry[] = [
   command("cli.help", "runx --help", [], ["--help", "-h"], "none", ["cli-presentation"], ["help.top-level"]),
-  command("skill.run", "runx skill <skill-ref|skill-dir|SKILL.md>", [], ["--runner", "--input", "--non-interactive", "--json", "--answers"], "local-runtime", ["skill-resolution", "graph-runtime", "receipts", "sandbox", "caller-mediated-resolution", "adapter-cli-tool", "adapter-a2a", "adapter-agent"], ["skill.run.validate"]),
-  command("skill.search", "runx skill search <query>", [], ["--source", "--registry", "--json"], "external-stub", ["registry", "cli-presentation"], ["skill.search.validate"]),
-  command("skill.add", "runx skill add <ref>", [], ["--version", "--to", "--registry", "--digest", "--json"], "filesystem", ["registry", "skill-resolution"], ["skill.add.validate"]),
-  command("skill.publish", "runx skill publish <skill-dir|SKILL.md>", [], ["--owner", "--version", "--registry", "--json"], "external-stub", ["registry", "receipts"], ["skill.publish.validate"]),
-  command("skill.inspect", "runx skill inspect <receipt-id>", [], ["--receipt-dir", "--json"], "none", ["receipts", "cli-presentation"], ["skill.inspect.validate"]),
-  command("evolve", "runx evolve [objective]", [], ["--receipt", "--non-interactive", "--json", "--answers"], "local-runtime", ["graph-runtime", "receipts", "artifacts"], ["evolve.validate"]),
-  command("replay", "runx replay <run-id|receipt-id>", [], ["--receipt-dir", "--non-interactive", "--json", "--answers"], "local-runtime", ["continuation-replay", "ledger", "receipts"], ["replay.validate"]),
-  command("diff", "runx diff <left-run-or-receipt> <right-run-or-receipt>", [], ["--receipt-dir", "--json"], "none", ["receipts", "cli-presentation"], ["diff.validate"]),
-  command("history", "runx history [query]", [], ["--skill", "--status", "--source", "--actor", "--artifact-type", "--since", "--until", "--receipt-dir", "--json"], "none", ["history", "receipts"], ["history.validate"]),
-  command("export-receipts.trainable", "runx export-receipts --trainable", [], ["--receipt-dir", "--since", "--until", "--status", "--source"], "none", ["trainable-export", "receipts"], ["export-receipts.validate"]),
-  command("knowledge.show", "runx knowledge show --project .", [], ["--project", "--json"], "none", ["knowledge", "cli-presentation"], ["knowledge.show.validate"]),
+  command("new", "runx new <name>", [], ["--directory", "--json"], "filesystem", ["scaffold", "cli-presentation"], ["new.validate"]),
+  command("init", "runx init", [], ["-g", "--global", "--prefetch", "--json"], "filesystem", ["scaffold", "official-skills"], ["init.validate"]),
+  command("history", "runx history [query]", [], ["--skill", "--status", "--source", "--actor", "--artifact-type", "--since", "--until", "--receipt-dir", "--json"], "none", ["history", "receipts"], ["history.execute"]),
+  command("list", "runx list [tools|skills|graphs|packets|overlays]", [], ["--ok-only", "--invalid-only", "--json"], "none", ["list", "tool-catalog"], ["list.tools.execute"]),
   command("config.set", "runx config set <key> <value>", [], ["--json"], "filesystem", ["config", "cli-presentation"], ["config.set.validate"]),
   command("config.get", "runx config get <key>", [], ["--json"], "filesystem", ["config", "cli-presentation"], ["config.get.validate"]),
   command("config.list", "runx config list", [], ["--json"], "filesystem", ["config", "cli-presentation"], ["config.list.execute"]),
   command("policy.inspect", "runx policy inspect <policy.json>", [], ["--json"], "none", ["policy", "cli-presentation"], ["policy.inspect.validate"]),
   command("policy.lint", "runx policy lint <policy.json>", [], ["--json"], "none", ["policy", "cli-presentation"], ["policy.lint.validate"]),
-  command("new", "runx new <name>", [], ["--directory", "--json"], "filesystem", ["scaffold", "cli-presentation"], ["new.validate"]),
-  command("init", "runx init", [], ["-g", "--global", "--prefetch", "--json"], "filesystem", ["scaffold", "official-skills"], ["init.validate"]),
-  command("harness", "runx harness <fixture.yaml>", [], ["--json"], "local-runtime", ["harness", "receipts", "sandbox"], ["harness.execute"]),
-  command("list", "runx list [tools|skills|graphs|packets|overlays]", [], ["--ok-only", "--invalid-only", "--json"], "none", ["list", "tool-catalog"], ["list.tools.execute"]),
-  command("doctor", "runx doctor [path]", [], ["--fix", "--explain", "--list-diagnostics", "--json"], "filesystem", ["doctor", "cli-presentation"], ["doctor.validate"]),
-  command("dev", "runx dev [path]", [], ["--lane", "--record", "--real-agents", "--watch", "--json"], "local-runtime", ["dev", "harness", "receipts"], ["dev.validate"]),
   command("kernel", "runx kernel eval --input <file|-> --json", [], ["--input", "--json"], "local-runtime", ["graph-runtime", "cli-presentation"], ["kernel.validate"]),
-  command("registry", "runx registry search|read|resolve|install|publish ... --json", [], ["--json"], "external-stub", ["registry", "cli-presentation"], ["registry.validate"]),
-  command("mcp.serve", "runx mcp serve <skill-ref>", [], [], "adapter", ["mcp", "adapter-mcp"], ["mcp.serve.validate"]),
+  command("parser", "runx parser eval --input <file|-> --json", [], ["--input", "--json"], "local-runtime", ["parser", "cli-presentation"], ["parser.validate"]),
+  command("doctor", "runx doctor [path]", [], ["--json"], "filesystem", ["doctor", "cli-presentation"], ["doctor.validate"]),
+  command("dev", "runx dev [root]", [], ["--lane", "--json"], "local-runtime", ["dev", "harness", "receipts"], ["dev.validate"]),
+  command("mcp.serve", "runx mcp serve <skill-ref...>", [], ["--receipt-dir"], "adapter", ["mcp", "adapter-mcp"], ["mcp.serve.validate"]),
+  command("skill.run", "runx skill <skill-ref|skill-dir|SKILL.md>", [], ["--input", "--receipt-dir", "--run-id", "--answers", "--credential", "--secret-env", "--non-interactive", "--json"], "local-runtime", ["skill-resolution", "graph-runtime", "receipts", "sandbox", "authority", "caller-mediated-resolution", "adapter-cli-tool", "adapter-a2a", "adapter-agent"], ["skill.run.validate"]),
+  command("harness", "runx harness <fixture.yaml...>", [], ["--json"], "local-runtime", ["harness", "receipts", "sandbox"], ["harness.execute"]),
+  command("tool.build", "runx tool build <tool-dir>|--all", [], ["--all", "--json"], "filesystem", ["tool-catalog", "authoring"], ["tool.build.validate"], { conditionalPositionals: ["<tool-dir>"] }),
   command("tool.search", "runx tool search <query>", [], ["--source", "--json"], "external-stub", ["tool-catalog", "adapter-catalog"], ["tool.search.validate"]),
   command("tool.inspect", "runx tool inspect <ref>", [], ["--source", "--json"], "external-stub", ["tool-catalog", "adapter-catalog"], ["tool.inspect.validate"]),
-  command("tool.build", "runx tool build <tool-dir>|--all", [], ["--all", "--json"], "filesystem", ["tool-catalog", "authoring"], ["tool.build.validate"], { conditionalPositionals: ["<tool-dir>"] }),
+  command("registry", "runx registry search|read|resolve|install|publish ... --json", [], ["--registry", "--registry-dir", "--version", "--digest", "--to", "--owner", "--profile", "--limit", "--upsert", "--json"], "external-stub", ["registry", "cli-presentation"], ["registry.validate"]),
 ];
 
 const surfaces: readonly RuntimeSurface[] = [
-  surface("cli-presentation", "packages/cli", "semantic", ["cli.help", "config.list"], "Human output is normalized semantically; JSON output stays schema-exact."),
-  surface("skill-resolution", "runx-cli + runx-runtime + runx-core", "fixture-backed", ["skill.run", "skill.add"], "Covers local paths, registry refs, and official skill resolution."),
+  surface("cli-presentation", "runx-cli", "semantic", ["cli.help", "config.list"], "Human output is normalized semantically; JSON output stays schema-exact."),
+  surface("skill-resolution", "runx-cli + runx-runtime + runx-core", "fixture-backed", ["skill.run", "registry"], "Covers local paths, registry refs, and official skill resolution."),
   surface("graph-runtime", "runx-runtime", "fixture-backed", ["skill.run", "harness", "kernel"], "Covers graph execution, branching, caller handoffs, receipts, and the deterministic decision kernel."),
   surface("receipts", "runx-receipts + runx-runtime + runx-cli", "schema-exact", ["skill.run", "harness", "history"], "Receipt JSON and signature metadata are schema-exact parity surfaces."),
   surface("ledger", "runx-runtime", "schema-exact", ["history"], "Append-only run state and continuation history must survive cutover."),
-  surface("artifacts", "packages/core", "schema-exact", ["evolve", "dev"], "Large outputs are referenced by artifact metadata instead of copied into receipts."),
   surface("sandbox", "runx-core/policy + runx-runtime", "schema-exact", ["skill.run", "harness"], "Declared and enforced sandbox metadata must remain distinct."),
   surface("harness", "runx-runtime harness via runx-cli", "fixture-backed", ["harness", "dev"], "Harness replay mode proves deterministic fixture execution and sealed receipt checks."),
   surface("history", "runx-cli + runx-runtime", "semantic", ["history"], "Search/filter behavior is command-level parity with normalized output."),
-  surface("continuation-replay", "packages/runtime-local compatibility", "fixture-backed", ["replay", "diff"], "Continuation runs and replay/diff inputs must resolve to the same receipt graph semantics until the native replay lane is promoted."),
-  surface("registry", "packages/core/registry", "stubbed", ["skill.search", "skill.add", "skill.publish", "registry"], "Live registries are replaced by deterministic registry fixtures."),
-  surface("tool-catalog", "runx-runtime adapters + packages/runtime-local compatibility", "stubbed", ["tool.search", "tool.inspect", "tool.build", "list"], "Catalog discovery and local tool builds use fixtures or local files."),
+  surface("registry", "runx-cli + runx-runtime registry", "fixture-backed", ["registry"], "Local and hosted registry envelopes are exercised through native registry commands."),
+  surface("tool-catalog", "runx-runtime adapters", "fixture-backed", ["tool.search", "tool.inspect", "tool.build", "list"], "Catalog discovery and local tool builds use native fixtures or local files."),
   surface("mcp", "runx-runtime adapters/mcp", "stubbed", ["mcp.serve"], "Protocol behavior uses local servers and deterministic clients."),
-  surface("adapter-cli-tool", "packages/adapters/cli-tool", "fixture-backed", ["skill.run"], "Process invocation, env, cwd, and sandbox metadata are parity-critical."),
-  surface("adapter-mcp", "packages/adapters/mcp", "stubbed", ["mcp.serve"], "MCP transport and tool results use local protocol fixtures."),
-  surface("adapter-a2a", "packages/adapters/a2a", "stubbed", ["skill.run"], "A2A remains a deterministic adapter path until live provider cutover."),
-  surface("adapter-catalog", "packages/adapters/catalog", "stubbed", ["tool.search", "tool.inspect"], "Catalog adapter inputs and normalized outputs are preserved."),
-  surface("adapter-agent", "packages/adapters/agent", "stubbed", ["skill.run", "dev"], "Managed agent calls are represented by local stubs, not live providers."),
-  surface("config", "packages/cli", "schema-exact", ["config.set", "config.get", "config.list"], "RUNX_HOME and local config file behavior are part of CLI parity."),
-  surface("doctor", "packages/cli", "semantic", ["doctor"], "Diagnostics can add ids, but the documented command surface must not disappear."),
-  surface("dev", "packages/cli", "fixture-backed", ["dev"], "Development lanes run deterministic or recorded harness fixtures."),
-  surface("knowledge", "packages/core/knowledge", "schema-exact", ["knowledge.show"], "Public projection output stays schema-exact."),
-  surface("authority", "packages/core/policy", "schema-exact", ["skill.run"], "Grant, scope, and authority-kind policy remains machine-checkable without OSS brokerage."),
-  surface("policy", "packages/core/policy", "schema-exact", ["policy.inspect", "policy.lint"], "Policy inspection and linting stay machine-checkable before mutation gates run."),
+  surface("adapter-cli-tool", "runx-runtime cli-tool adapter", "fixture-backed", ["skill.run"], "Process invocation, env, cwd, and sandbox metadata are parity-critical."),
+  surface("adapter-mcp", "runx-runtime MCP adapter", "stubbed", ["mcp.serve"], "MCP transport and tool results use local protocol fixtures."),
+  surface("adapter-a2a", "runx-runtime A2A adapter", "stubbed", ["skill.run"], "A2A remains a deterministic adapter path until live provider cutover."),
+  surface("adapter-catalog", "runx-runtime catalog adapter", "stubbed", ["tool.search", "tool.inspect"], "Catalog adapter inputs and normalized outputs are preserved."),
+  surface("adapter-agent", "runx-runtime external agent adapter", "stubbed", ["skill.run", "dev"], "Managed agent calls are represented by local stubs, not live providers."),
+  surface("config", "runx-cli", "schema-exact", ["config.set", "config.get", "config.list"], "RUNX_HOME and local config file behavior are part of CLI parity."),
+  surface("doctor", "runx-cli + runx-runtime doctor", "semantic", ["doctor"], "Diagnostics can add ids, but the documented command surface must not disappear."),
+  surface("dev", "runx-cli", "fixture-backed", ["dev"], "Development lanes run deterministic or recorded harness fixtures."),
+  surface("parser", "runx-parser via runx-cli", "schema-exact", ["parser"], "Native parser evaluation output stays schema-exact."),
+  surface("authority", "runx-core/policy", "schema-exact", ["skill.run"], "Grant, scope, and authority-kind policy remains machine-checkable without OSS brokerage."),
+  surface("policy", "runx-core/policy", "schema-exact", ["policy.inspect", "policy.lint"], "Policy inspection and linting stay machine-checkable before mutation gates run."),
   surface("caller-mediated-resolution", "runx-runtime", "fixture-backed", ["skill.run"], "Required input, approvals, and agent work keep the same continuation contract."),
-  surface("scaffold", "packages/cli", "semantic", ["new", "init"], "Project and standalone package scaffolds preserve command shape and generated-file intent."),
-  surface("official-skills", "packages/cli", "schema-exact", ["init"], "Prefetch and lockfile behavior stays fixture-backed before Rust cutover."),
-  surface("list", "packages/cli", "semantic", ["list"], "Inventory output for tools, skills, graphs, packets, and overlays stays represented."),
+  surface("scaffold", "runx-cli", "semantic", ["new", "init"], "Project and standalone package scaffolds preserve command shape and generated-file intent."),
+  surface("official-skills", "runx-cli", "schema-exact", ["init"], "Prefetch and lockfile behavior stays fixture-backed."),
+  surface("list", "runx-cli", "semantic", ["list"], "Inventory output for tools, skills, graphs, packets, and overlays stays represented."),
   surface("authoring", "packages/authoring", "schema-exact", ["tool.build"], "Tool build output and manifest validation remain schema-exact."),
-  surface("trainable-export", "packages/cli compatibility", "schema-exact", ["export-receipts.trainable"], "Redacted trainable receipt export remains a TypeScript compatibility contract until a native export exists."),
 ];
 
 const casesExecutedById = new Set([
@@ -128,7 +117,7 @@ const casesExecutedById = new Set([
 
 const cases: readonly OracleCase[] = [
   execute("help.top-level", "cli.help", ["--help"], 0, false, ["Usage:", "runx skill", "runx harness"], []),
-  execute("usage.unsupported", "cli.help", ["not-a-command"], 64, false, [], ["Usage:"]),
+  execute("usage.unsupported", "cli.help", ["not-a-command"], 64, false, [], ["unknown command not-a-command"]),
   execute("config.list.execute", "config.list", ["config", "list", "--json"], 0, true, [], []),
   execute("harness.execute", "harness", ["harness", "fixtures/harness/echo-skill.yaml", "--json"], 0, true, [], []),
   {
@@ -155,7 +144,7 @@ const cases: readonly OracleCase[] = [
 
 const files = new Map<string, string>([
   [join(fixturesDir, "README.md"), readme()],
-  [join(fixturesDir, "commands.json"), stableJson({ schema: "runx.cli_feature_parity_matrix.v1", sourceOfTruth: "@runxhq/cli TypeScript implementation", exitCodes, commands })],
+  [join(fixturesDir, "commands.json"), stableJson({ schema: "runx.cli_feature_parity_matrix.v1", sourceOfTruth: "crates/runx-cli Rust implementation", exitCodes, commands })],
   [join(fixturesDir, "runtime-surfaces.json"), stableJson({ schema: "runx.cli_runtime_surfaces.v1", surfaces })],
   [join(casesDir, "oracle.json"), stableJson({ schema: "runx.cli_parity_oracle_cases.v1", cases })],
 ]);
@@ -245,9 +234,9 @@ function validate(id: string, commandId: string, proves: readonly string[]): Ora
 function readme(): string {
   return `# CLI Feature Parity Matrix
 
-This directory is the TypeScript oracle for future native Rust CLI/runtime
-cutovers. The matrix is generated from \`scripts/generate-cli-feature-parity.ts\`
-and checked against the current help surface.
+This directory captures the canonical native Rust CLI/runtime surface. The
+matrix is generated from \`scripts/generate-cli-feature-parity.ts\` and checked
+against \`crates/runx-cli/src/launcher.rs\`.
 
 Required exit-code coverage: \`"exitCodes": [0, 1, 2, 64]\`.
 
@@ -266,12 +255,12 @@ Required exit-code coverage: \`"exitCodes": [0, 1, 2, 64]\`.
   receipt ids, and platform-specific wording.
 - Live providers are replaced by deterministic mocks, fixtures, or local
   protocol servers.
-- Rust candidates must pass this matrix before any npm-to-Rust CLI cutover.
+- Native CLI candidates must pass this matrix before packaging.
 `;
 }
 
 function checkUsageCoverage(): void {
-  const usageCommands = extractUsageCommands(readFileSync(join(root, "packages/cli/src/help.ts"), "utf8"));
+  const usageCommands = extractUsageCommands(readFileSync(join(root, "crates/runx-cli/src/launcher.rs"), "utf8"));
   const commandIds = new Set(commands.map((entry) => entry.id));
   const missing = usageCommands.flatMap((usage) =>
     helpUsageCommandIds(usage)
@@ -282,21 +271,27 @@ function checkUsageCoverage(): void {
   }
 }
 
-function extractUsageCommands(helpSource: string): readonly string[] {
-  const quoted = [...helpSource.matchAll(/"([^"]*)"/g)].map((match) => match[1] ?? "");
-  // The Usage block holds generic invocation syntax (`runx <command>`, flags);
-  // the concrete command surface lives under Commands.
-  return extractQuotedHelpBlock(quoted, "Commands:");
+function extractUsageCommands(launcherSource: string): readonly string[] {
+  return extractHelpBlock(extractRustHelpText(launcherSource), "Commands:");
 }
 
-function extractQuotedHelpBlock(quoted: readonly string[], label: string): readonly string[] {
-  const start = quoted.indexOf(label);
+function extractRustHelpText(launcherSource: string): string {
+  const match = launcherSource.match(/pub fn help_text\(\) -> String \{\s*"\\\n([\s\S]*?)"\s*\.to_owned\(\)\s*\}/u);
+  if (!match?.[1]) {
+    throw new Error("Could not find help_text() string in crates/runx-cli/src/launcher.rs");
+  }
+  return match[1];
+}
+
+function extractHelpBlock(helpText: string, label: string): readonly string[] {
+  const lines = helpText.split("\n");
+  const start = lines.findIndex((line) => line.trim() === label);
   if (start === -1) {
-    throw new Error(`Could not find ${label} block in packages/cli/src/help.ts`);
+    throw new Error(`Could not find ${label} block in crates/runx-cli/src/launcher.rs`);
   }
   const entries: string[] = [];
-  for (const line of quoted.slice(start + 1)) {
-    if (line === "") {
+  for (const line of lines.slice(start + 1)) {
+    if (line.trim() === "") {
       break;
     }
     const trimmed = line.trim();
@@ -310,24 +305,6 @@ function extractQuotedHelpBlock(quoted: readonly string[], label: string): reado
 function helpUsageCommandIds(usage: string): readonly string[] {
   if (usage.startsWith("runx skill <")) {
     return ["skill.run"];
-  }
-  if (usage.startsWith("runx skill search")) {
-    return ["skill.search"];
-  }
-  if (usage.startsWith("runx skill add")) {
-    return ["skill.add"];
-  }
-  if (usage.startsWith("runx skill publish")) {
-    return ["skill.publish"];
-  }
-  if (usage.startsWith("runx skill inspect")) {
-    return ["skill.inspect"];
-  }
-  if (usage.startsWith("runx export-receipts")) {
-    return ["export-receipts.trainable"];
-  }
-  if (usage.startsWith("runx knowledge show")) {
-    return ["knowledge.show"];
   }
   if (usage.startsWith("runx config ")) {
     return ["config.set", "config.get", "config.list"];

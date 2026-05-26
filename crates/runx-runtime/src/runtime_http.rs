@@ -28,12 +28,12 @@ impl HttpMethod {
 }
 
 #[derive(Clone, Eq, PartialEq)]
-pub struct HostedHttpHeader {
+pub struct RuntimeHttpHeader {
     pub name: String,
     pub value: String,
 }
 
-impl HostedHttpHeader {
+impl RuntimeHttpHeader {
     pub fn new(name: impl Into<String>, value: impl Into<String>) -> Self {
         Self {
             name: name.into(),
@@ -42,10 +42,10 @@ impl HostedHttpHeader {
     }
 }
 
-impl fmt::Debug for HostedHttpHeader {
+impl fmt::Debug for RuntimeHttpHeader {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
-            .debug_struct("HostedHttpHeader")
+            .debug_struct("RuntimeHttpHeader")
             .field("name", &self.name)
             .field(
                 "value",
@@ -60,17 +60,17 @@ impl fmt::Debug for HostedHttpHeader {
 }
 
 #[derive(Clone, Eq, PartialEq)]
-pub struct HostedHttpRequest {
+pub struct RuntimeHttpRequest {
     pub method: HttpMethod,
     pub url: String,
-    pub headers: Vec<HostedHttpHeader>,
+    pub headers: Vec<RuntimeHttpHeader>,
     pub body: Option<String>,
 }
 
-impl fmt::Debug for HostedHttpRequest {
+impl fmt::Debug for RuntimeHttpRequest {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
-            .debug_struct("HostedHttpRequest")
+            .debug_struct("RuntimeHttpRequest")
             .field("method", &self.method)
             .field("url", &self.url)
             .field("headers", &self.headers)
@@ -83,23 +83,23 @@ impl fmt::Debug for HostedHttpRequest {
 }
 
 #[derive(Clone, Eq, PartialEq)]
-pub struct HostedHttpResponse {
+pub struct RuntimeHttpResponse {
     pub status: u16,
     pub body: String,
 }
 
-impl fmt::Debug for HostedHttpResponse {
+impl fmt::Debug for RuntimeHttpResponse {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
-            .debug_struct("HostedHttpResponse")
+            .debug_struct("RuntimeHttpResponse")
             .field("status", &self.status)
             .field("body", &format_args!("{} bytes", self.body.len()))
             .finish()
     }
 }
 
-pub trait HostedTransport {
-    fn send(&self, request: HostedHttpRequest) -> Result<HostedHttpResponse, HostedHttpError>;
+pub trait RuntimeHttpTransport {
+    fn send(&self, request: RuntimeHttpRequest) -> Result<RuntimeHttpResponse, RuntimeHttpError>;
 }
 
 #[derive(Clone, Debug)]
@@ -112,14 +112,14 @@ pub struct ReqwestHttpTransport {
 
 #[cfg(feature = "async-http")]
 impl ReqwestHttpTransport {
-    pub fn new() -> Result<Self, HostedHttpError> {
+    pub fn new() -> Result<Self, RuntimeHttpError> {
         Self::with_timeouts(Duration::from_secs(30), Duration::from_secs(10))
     }
 
     fn with_timeouts(
         request_timeout: Duration,
         connect_timeout: Duration,
-    ) -> Result<Self, HostedHttpError> {
+    ) -> Result<Self, RuntimeHttpError> {
         // reqwest is built with `rustls-no-provider`, so the process needs a
         // default crypto provider before a TLS client can be constructed.
         // Install ring once; an Err means another transport already set it.
@@ -129,7 +129,7 @@ impl ReqwestHttpTransport {
             .timeout(request_timeout)
             .connect_timeout(connect_timeout)
             .build()
-            .map_err(|error| HostedHttpError::Transport {
+            .map_err(|error| RuntimeHttpError::Transport {
                 message: error.to_string(),
             })?;
         Ok(Self {
@@ -139,7 +139,7 @@ impl ReqwestHttpTransport {
     }
 
     #[cfg(test)]
-    fn with_private_network_access_for_tests() -> Result<Self, HostedHttpError> {
+    fn with_private_network_access_for_tests() -> Result<Self, RuntimeHttpError> {
         let mut transport = Self::with_timeouts(Duration::from_secs(30), Duration::from_secs(10))?;
         transport.allow_private_networks = true;
         Ok(transport)
@@ -149,7 +149,7 @@ impl ReqwestHttpTransport {
     fn with_private_network_timeouts_for_tests(
         request_timeout: Duration,
         connect_timeout: Duration,
-    ) -> Result<Self, HostedHttpError> {
+    ) -> Result<Self, RuntimeHttpError> {
         let mut transport = Self::with_timeouts(request_timeout, connect_timeout)?;
         transport.allow_private_networks = true;
         Ok(transport)
@@ -157,8 +157,8 @@ impl ReqwestHttpTransport {
 }
 
 #[cfg(feature = "async-http")]
-impl HostedTransport for ReqwestHttpTransport {
-    fn send(&self, request: HostedHttpRequest) -> Result<HostedHttpResponse, HostedHttpError> {
+impl RuntimeHttpTransport for ReqwestHttpTransport {
+    fn send(&self, request: RuntimeHttpRequest) -> Result<RuntimeHttpResponse, RuntimeHttpError> {
         validate_http_url(&request.url, self.allow_private_networks)?;
         let client = self.client.clone();
         block_on_http(async move {
@@ -167,13 +167,13 @@ impl HostedTransport for ReqwestHttpTransport {
             for header in request.headers {
                 validate_header(&header)?;
                 let name = reqwest::header::HeaderName::from_bytes(header.name.trim().as_bytes())
-                    .map_err(|error| HostedHttpError::InvalidHeaderName {
+                    .map_err(|error| RuntimeHttpError::InvalidHeaderName {
                     name: header.name.clone(),
                     message: error.to_string(),
                 })?;
                 let value =
                     reqwest::header::HeaderValue::from_str(&header.value).map_err(|error| {
-                        HostedHttpError::InvalidHeaderValue {
+                        RuntimeHttpError::InvalidHeaderValue {
                             name: header.name.clone(),
                             message: error.to_string(),
                         }
@@ -186,17 +186,18 @@ impl HostedTransport for ReqwestHttpTransport {
             let response = builder
                 .send()
                 .await
-                .map_err(|error| HostedHttpError::Transport {
+                .map_err(|error| RuntimeHttpError::Transport {
                     message: error.to_string(),
                 })?;
             let status = response.status().as_u16();
-            let body = response
-                .text()
-                .await
-                .map_err(|error| HostedHttpError::TransportDecode {
-                    message: error.to_string(),
-                })?;
-            Ok(HostedHttpResponse { status, body })
+            let body =
+                response
+                    .text()
+                    .await
+                    .map_err(|error| RuntimeHttpError::TransportDecode {
+                        message: error.to_string(),
+                    })?;
+            Ok(RuntimeHttpResponse { status, body })
         })
     }
 }
@@ -204,18 +205,18 @@ impl HostedTransport for ReqwestHttpTransport {
 #[derive(Clone, Debug)]
 #[cfg(any(feature = "async-http", test))]
 #[allow(dead_code)]
-pub struct HostedHttpClient<T = ReqwestHttpTransport> {
+pub struct RuntimeHttpClient<T = ReqwestHttpTransport> {
     base_url: String,
     transport: T,
 }
 
 #[cfg(any(feature = "async-http", test))]
 #[allow(dead_code)]
-impl<T: HostedTransport> HostedHttpClient<T> {
+impl<T: RuntimeHttpTransport> RuntimeHttpClient<T> {
     pub fn with_transport(
         base_url: impl AsRef<str>,
         transport: T,
-    ) -> Result<Self, HostedHttpError> {
+    ) -> Result<Self, RuntimeHttpError> {
         let base_url = strip_one_trailing_slash(base_url.as_ref());
         validate_http_url(&base_url, false)?;
         Ok(Self {
@@ -224,7 +225,7 @@ impl<T: HostedTransport> HostedHttpClient<T> {
         })
     }
 
-    pub fn route_url(&self, route: &str) -> Result<String, HostedHttpError> {
+    pub fn route_url(&self, route: &str) -> Result<String, RuntimeHttpError> {
         let normalized_route = route.trim_start_matches('/');
         let url = format!("{}/{}", self.base_url, normalized_route);
         validate_http_url(&url, false)?;
@@ -235,8 +236,8 @@ impl<T: HostedTransport> HostedHttpClient<T> {
         &self,
         method: HttpMethod,
         route: &str,
-    ) -> Result<HostedHttpRequest, HostedHttpError> {
-        Ok(HostedHttpRequest {
+    ) -> Result<RuntimeHttpRequest, RuntimeHttpError> {
+        Ok(RuntimeHttpRequest {
             method,
             url: self.route_url(route)?,
             headers: Vec::new(),
@@ -244,30 +245,33 @@ impl<T: HostedTransport> HostedHttpClient<T> {
         })
     }
 
-    pub fn send(&self, request: HostedHttpRequest) -> Result<HostedHttpResponse, HostedHttpError> {
+    pub fn send(
+        &self,
+        request: RuntimeHttpRequest,
+    ) -> Result<RuntimeHttpResponse, RuntimeHttpError> {
         self.transport.send(request)
     }
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum HostedHttpError {
-    #[error("invalid hosted HTTP url: {0}")]
+pub enum RuntimeHttpError {
+    #[error("invalid runtime HTTP url: {0}")]
     InvalidUrl(#[from] url::ParseError),
-    #[error("hosted HTTP transport failed: {message}")]
+    #[error("runtime HTTP transport failed: {message}")]
     Transport { message: String },
-    #[error("hosted HTTP transport cannot block inside an active async runtime")]
+    #[error("runtime HTTP transport cannot block inside an active async runtime")]
     BlockingHttpInsideAsyncRuntime,
-    #[error("hosted HTTP async runtime is unavailable: {message}")]
+    #[error("runtime HTTP async runtime is unavailable: {message}")]
     AsyncRuntimeUnavailable { message: String },
-    #[error("hosted HTTP transport returned invalid output: {message}")]
+    #[error("runtime HTTP transport returned invalid output: {message}")]
     TransportDecode { message: String },
-    #[error("unsupported hosted HTTP url scheme '{scheme}': only http and https are allowed")]
+    #[error("unsupported runtime HTTP url scheme '{scheme}': only http and https are allowed")]
     UnsupportedUrlScheme { scheme: String },
-    #[error("hosted HTTP url host '{host}' is not publicly routable")]
+    #[error("runtime HTTP url host '{host}' is not publicly routable")]
     PrivateNetworkUrl { host: String },
-    #[error("invalid hosted HTTP header name '{name}': {message}")]
+    #[error("invalid runtime HTTP header name '{name}': {message}")]
     InvalidHeaderName { name: String, message: String },
-    #[error("invalid hosted HTTP header value for '{name}': {message}")]
+    #[error("invalid runtime HTTP header value for '{name}': {message}")]
     InvalidHeaderValue { name: String, message: String },
 }
 
@@ -287,16 +291,16 @@ fn sensitive_header_name(name: &str) -> bool {
 }
 
 #[cfg(feature = "async-http")]
-fn validate_header(header: &HostedHttpHeader) -> Result<(), HostedHttpError> {
+fn validate_header(header: &RuntimeHttpHeader) -> Result<(), RuntimeHttpError> {
     let name = header.name.trim();
     if name.is_empty() || !name.bytes().all(is_header_token_byte) {
-        return Err(HostedHttpError::InvalidHeaderName {
+        return Err(RuntimeHttpError::InvalidHeaderName {
             name: header.name.clone(),
             message: "header names must be HTTP token characters".to_owned(),
         });
     }
     if header.value.contains('\r') || header.value.contains('\n') {
-        return Err(HostedHttpError::InvalidHeaderValue {
+        return Err(RuntimeHttpError::InvalidHeaderValue {
             name: header.name.clone(),
             message: "header values must not contain line breaks".to_owned(),
         });
@@ -306,23 +310,23 @@ fn validate_header(header: &HostedHttpHeader) -> Result<(), HostedHttpError> {
 
 #[cfg(any(feature = "async-http", test))]
 #[allow(dead_code)]
-fn validate_http_url(value: &str, allow_private_networks: bool) -> Result<(), HostedHttpError> {
+fn validate_http_url(value: &str, allow_private_networks: bool) -> Result<(), RuntimeHttpError> {
     let url = Url::parse(value)?;
     match url.scheme() {
         "http" | "https" => validate_public_host(&url, allow_private_networks),
-        scheme => Err(HostedHttpError::UnsupportedUrlScheme {
+        scheme => Err(RuntimeHttpError::UnsupportedUrlScheme {
             scheme: scheme.to_owned(),
         }),
     }
 }
 
 #[cfg(any(feature = "async-http", test))]
-fn validate_public_host(url: &Url, allow_private_networks: bool) -> Result<(), HostedHttpError> {
+fn validate_public_host(url: &Url, allow_private_networks: bool) -> Result<(), RuntimeHttpError> {
     if allow_private_networks {
         return Ok(());
     }
     let Some(host) = url.host_str() else {
-        return Err(HostedHttpError::PrivateNetworkUrl {
+        return Err(RuntimeHttpError::PrivateNetworkUrl {
             host: "<missing>".to_owned(),
         });
     };
@@ -331,7 +335,7 @@ fn validate_public_host(url: &Url, allow_private_networks: bool) -> Result<(), H
         || normalized.ends_with(".localhost")
         || normalized == "metadata.google.internal"
     {
-        return Err(HostedHttpError::PrivateNetworkUrl {
+        return Err(RuntimeHttpError::PrivateNetworkUrl {
             host: host.to_owned(),
         });
     }
@@ -341,7 +345,7 @@ fn validate_public_host(url: &Url, allow_private_networks: bool) -> Result<(), H
         .unwrap_or(&normalized);
     if let Ok(ip) = ip_host.parse::<IpAddr>() {
         if is_private_network_ip(ip) {
-            return Err(HostedHttpError::PrivateNetworkUrl {
+            return Err(RuntimeHttpError::PrivateNetworkUrl {
                 host: host.to_owned(),
             });
         }
@@ -405,17 +409,17 @@ fn reqwest_method(method: HttpMethod) -> reqwest::Method {
 }
 
 #[cfg(feature = "async-http")]
-fn block_on_http<F, T>(future: F) -> Result<T, HostedHttpError>
+fn block_on_http<F, T>(future: F) -> Result<T, RuntimeHttpError>
 where
-    F: std::future::Future<Output = Result<T, HostedHttpError>>,
+    F: std::future::Future<Output = Result<T, RuntimeHttpError>>,
 {
     if tokio::runtime::Handle::try_current().is_ok() {
-        return Err(HostedHttpError::BlockingHttpInsideAsyncRuntime);
+        return Err(RuntimeHttpError::BlockingHttpInsideAsyncRuntime);
     }
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
-        .map_err(|error| HostedHttpError::AsyncRuntimeUnavailable {
+        .map_err(|error| RuntimeHttpError::AsyncRuntimeUnavailable {
             message: error.to_string(),
         })?;
     runtime.block_on(future)
@@ -457,19 +461,22 @@ mod tests {
     #[cfg(feature = "async-http")]
     use super::ReqwestHttpTransport;
     use super::{
-        HostedHttpClient, HostedHttpError, HostedHttpHeader, HostedHttpRequest, HostedHttpResponse,
-        HostedTransport, HttpMethod,
+        HttpMethod, RuntimeHttpClient, RuntimeHttpError, RuntimeHttpHeader, RuntimeHttpRequest,
+        RuntimeHttpResponse, RuntimeHttpTransport,
     };
 
     #[derive(Default)]
     struct MockTransport {
-        requests: RefCell<Vec<HostedHttpRequest>>,
+        requests: RefCell<Vec<RuntimeHttpRequest>>,
     }
 
-    impl HostedTransport for &MockTransport {
-        fn send(&self, request: HostedHttpRequest) -> Result<HostedHttpResponse, HostedHttpError> {
+    impl RuntimeHttpTransport for &MockTransport {
+        fn send(
+            &self,
+            request: RuntimeHttpRequest,
+        ) -> Result<RuntimeHttpResponse, RuntimeHttpError> {
             self.requests.borrow_mut().push(request);
-            Ok(HostedHttpResponse {
+            Ok(RuntimeHttpResponse {
                 status: 204,
                 body: String::new(),
             })
@@ -477,9 +484,9 @@ mod tests {
     }
 
     #[derive(Debug, thiserror::Error)]
-    enum HostedHttpTestError {
+    enum RuntimeHttpTestError {
         #[error(transparent)]
-        HostedHttp(#[from] HostedHttpError),
+        RuntimeHttp(#[from] RuntimeHttpError),
         #[error(transparent)]
         Io(#[from] io::Error),
         #[cfg(feature = "async-http")]
@@ -488,14 +495,14 @@ mod tests {
     }
 
     #[test]
-    fn client_normalizes_base_url_and_routes_requests() -> Result<(), HostedHttpTestError> {
+    fn client_normalizes_base_url_and_routes_requests() -> Result<(), RuntimeHttpTestError> {
         let transport = MockTransport::default();
-        let client = HostedHttpClient::with_transport("https://api.example/", &transport)?;
+        let client = RuntimeHttpClient::with_transport("https://api.example/", &transport)?;
 
         let mut request = client.request(HttpMethod::Delete, "/v1/grants/grant_1")?;
         request
             .headers
-            .push(HostedHttpHeader::new("accept", "application/json"));
+            .push(RuntimeHttpHeader::new("accept", "application/json"));
         request.body = Some("{\"ok\":true}".to_owned());
         let response = client.send(request)?;
 
@@ -510,19 +517,19 @@ mod tests {
 
     #[test]
     fn debug_output_redacts_sensitive_header_values() {
-        let request = HostedHttpRequest {
+        let request = RuntimeHttpRequest {
             method: HttpMethod::Get,
             url: "https://api.example/v1/grants".to_owned(),
             headers: vec![
-                HostedHttpHeader::new("authorization", "Bearer SECRET_CONNECT_TOKEN"),
-                HostedHttpHeader::new("x-runx-token", "SECRET_HEADER_TOKEN"),
-                HostedHttpHeader::new("accept", "application/json"),
+                RuntimeHttpHeader::new("authorization", "Bearer SECRET_RUNTIME_TOKEN"),
+                RuntimeHttpHeader::new("x-runx-token", "SECRET_HEADER_TOKEN"),
+                RuntimeHttpHeader::new("accept", "application/json"),
             ],
             body: Some("SECRET_BODY".to_owned()),
         };
 
         let debug = format!("{request:?}");
-        assert!(!debug.contains("SECRET_CONNECT_TOKEN"));
+        assert!(!debug.contains("SECRET_RUNTIME_TOKEN"));
         assert!(!debug.contains("SECRET_HEADER_TOKEN"));
         assert!(!debug.contains("SECRET_BODY"));
         assert!(debug.contains("[redacted]"));
@@ -531,10 +538,10 @@ mod tests {
 
     #[test]
     fn invalid_base_urls_fail_closed() {
-        assert!(HostedHttpClient::with_transport("not a url", &MockTransport::default()).is_err());
+        assert!(RuntimeHttpClient::with_transport("not a url", &MockTransport::default()).is_err());
         assert!(matches!(
-            HostedHttpClient::with_transport("file:///tmp/runx.sock", &MockTransport::default()),
-            Err(HostedHttpError::UnsupportedUrlScheme { .. })
+            RuntimeHttpClient::with_transport("file:///tmp/runx.sock", &MockTransport::default()),
+            Err(RuntimeHttpError::UnsupportedUrlScheme { .. })
         ));
     }
 
@@ -556,8 +563,8 @@ mod tests {
         ] {
             assert!(
                 matches!(
-                    HostedHttpClient::with_transport(value, &MockTransport::default()),
-                    Err(HostedHttpError::PrivateNetworkUrl { .. })
+                    RuntimeHttpClient::with_transport(value, &MockTransport::default()),
+                    Err(RuntimeHttpError::PrivateNetworkUrl { .. })
                 ),
                 "{value} should be rejected as private"
             );
@@ -565,15 +572,15 @@ mod tests {
     }
 
     #[test]
-    fn public_base_urls_are_allowed() -> Result<(), HostedHttpTestError> {
-        HostedHttpClient::with_transport("https://api.example", &MockTransport::default())?;
-        HostedHttpClient::with_transport("http://8.8.8.8", &MockTransport::default())?;
+    fn public_base_urls_are_allowed() -> Result<(), RuntimeHttpTestError> {
+        RuntimeHttpClient::with_transport("https://api.example", &MockTransport::default())?;
+        RuntimeHttpClient::with_transport("http://8.8.8.8", &MockTransport::default())?;
         Ok(())
     }
 
     #[test]
     #[cfg(feature = "async-http")]
-    fn reqwest_transport_does_not_follow_redirects() -> Result<(), HostedHttpTestError> {
+    fn reqwest_transport_does_not_follow_redirects() -> Result<(), RuntimeHttpTestError> {
         let listener = TcpListener::bind("127.0.0.1:0")?;
         let address = listener.local_addr()?;
         let server = std::thread::spawn(move || -> Result<String, std::io::Error> {
@@ -587,7 +594,7 @@ mod tests {
         });
 
         let transport = ReqwestHttpTransport::with_private_network_access_for_tests()?;
-        let response = transport.send(HostedHttpRequest {
+        let response = transport.send(RuntimeHttpRequest {
             method: HttpMethod::Get,
             url: format!("http://{address}/start"),
             headers: Vec::new(),
@@ -595,7 +602,7 @@ mod tests {
         })?;
         let request = server
             .join()
-            .map_err(|_| HostedHttpTestError::ServerThread)??;
+            .map_err(|_| RuntimeHttpTestError::ServerThread)??;
 
         assert_eq!(response.status, 302);
         assert!(request.starts_with("GET /start "));
@@ -604,29 +611,30 @@ mod tests {
 
     #[test]
     #[cfg(feature = "async-http")]
-    fn reqwest_transport_rejects_header_injection() -> Result<(), HostedHttpTestError> {
+    fn reqwest_transport_rejects_header_injection() -> Result<(), RuntimeHttpTestError> {
         let transport = ReqwestHttpTransport::new()?;
         let error = transport
-            .send(HostedHttpRequest {
+            .send(RuntimeHttpRequest {
                 method: HttpMethod::Get,
                 url: "https://api.example/v1".to_owned(),
-                headers: vec![HostedHttpHeader::new("x-runx", "good\nbad")],
+                headers: vec![RuntimeHttpHeader::new("x-runx", "good\nbad")],
                 body: None,
             })
             .err();
         assert!(matches!(
             error,
-            Some(HostedHttpError::InvalidHeaderValue { .. })
+            Some(RuntimeHttpError::InvalidHeaderValue { .. })
         ));
         Ok(())
     }
 
     #[cfg(feature = "async-http")]
     #[test]
-    fn reqwest_transport_rejects_non_http_urls_before_sending() -> Result<(), HostedHttpTestError> {
+    fn reqwest_transport_rejects_non_http_urls_before_sending() -> Result<(), RuntimeHttpTestError>
+    {
         let transport = ReqwestHttpTransport::new()?;
         let error = transport
-            .send(HostedHttpRequest {
+            .send(RuntimeHttpRequest {
                 method: HttpMethod::Get,
                 url: "file:///etc/passwd".to_owned(),
                 headers: Vec::new(),
@@ -636,14 +644,14 @@ mod tests {
 
         assert!(matches!(
             error,
-            Some(HostedHttpError::UnsupportedUrlScheme { .. })
+            Some(RuntimeHttpError::UnsupportedUrlScheme { .. })
         ));
         Ok(())
     }
 
     #[cfg(feature = "async-http")]
     #[test]
-    fn reqwest_transport_times_out_stalled_response() -> Result<(), HostedHttpTestError> {
+    fn reqwest_transport_times_out_stalled_response() -> Result<(), RuntimeHttpTestError> {
         let listener = TcpListener::bind("127.0.0.1:0")?;
         let address = listener.local_addr()?;
         let server = std::thread::spawn(move || -> Result<(), std::io::Error> {
@@ -657,7 +665,7 @@ mod tests {
             Duration::from_millis(100),
         )?;
         let error = transport
-            .send(HostedHttpRequest {
+            .send(RuntimeHttpRequest {
                 method: HttpMethod::Get,
                 url: format!("http://{address}/stall"),
                 headers: Vec::new(),
@@ -666,9 +674,9 @@ mod tests {
             .err();
         server
             .join()
-            .map_err(|_| HostedHttpTestError::ServerThread)??;
+            .map_err(|_| RuntimeHttpTestError::ServerThread)??;
 
-        assert!(matches!(error, Some(HostedHttpError::Transport { .. })));
+        assert!(matches!(error, Some(RuntimeHttpError::Transport { .. })));
         Ok(())
     }
 }

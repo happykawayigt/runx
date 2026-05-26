@@ -45,7 +45,7 @@ export async function indexReceiptIfEnabled(
       };
   await createFileKnowledgeStore(knowledgeDir).indexReceipt({
     receipt: indexableReceipt,
-    receiptPath: path.join(receiptDir, `${indexableReceipt.id}.json`),
+    receiptFile: path.join(receiptDir, `${indexableReceipt.id}.json`),
     project: resolveKnowledgeProject(options.env),
   });
 }

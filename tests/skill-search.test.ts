@@ -122,16 +122,16 @@ describe("skill-search CLI", () => {
     }
   });
 
-  it("uses native registry search only when explicitly requested", async () => {
+  it("uses native registry search for registry source results", async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-skill-search-rust-"));
-    const registryBin = path.join(tempDir, "registry-search.mjs");
+    const registryBin = path.join(tempDir, "registry-search");
     const stdout = createMemoryStream();
     const stderr = createMemoryStream();
 
     try {
-      await writeFile(
+      await writeNodeCommand(
         registryBin,
-        `#!/usr/bin/env node
+        `
 if (process.argv.slice(2).join(" ") !== "registry search sourcey --json") {
   process.stderr.write("unexpected args: " + process.argv.slice(2).join(" ") + "\\n");
   process.exit(2);
@@ -154,7 +154,7 @@ process.stdout.write(JSON.stringify({
       tags: [],
       profile_mode: "portable",
       runner_names: [],
-      add_command: "runx skill add rust/sourcey@1.0.0",
+      install_command: "runx skill add rust/sourcey@1.0.0",
       run_command: "runx skill sourcey",
       version: "1.0.0"
     }]
@@ -162,7 +162,6 @@ process.stdout.write(JSON.stringify({
 }, null, 2) + "\\n");
 `,
       );
-      await chmod(registryBin, 0o755);
 
       const exitCode = await runCli(
         ["skill", "search", "sourcey", "--source", "registry", "--json"],
@@ -170,8 +169,7 @@ process.stdout.write(JSON.stringify({
         {
           ...process.env,
           RUNX_CWD: process.cwd(),
-          RUNX_RUST_REGISTRY_SEARCH: "1",
-          RUNX_RUST_REGISTRY_BIN: registryBin,
+          RUNX_RUST_CLI_BIN: registryBin,
           RUNX_REGISTRY_DIR: path.join(tempDir, "unused-registry"),
         },
       );
@@ -197,19 +195,18 @@ process.stdout.write(JSON.stringify({
 
   it("does not route fixture marketplace search through native registry search", async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-skill-search-marketplace-rust-"));
-    const registryBin = path.join(tempDir, "registry-search.mjs");
+    const registryBin = path.join(tempDir, "registry-search");
     const stdout = createMemoryStream();
     const stderr = createMemoryStream();
 
     try {
-      await writeFile(
+      await writeNodeCommand(
         registryBin,
-        `#!/usr/bin/env node
+        `
 process.stderr.write("native registry search should not run for fixture marketplace\\n");
 process.exit(2);
 `,
       );
-      await chmod(registryBin, 0o755);
 
       const exitCode = await runCli(
         ["skill", "search", "sourcey", "--source", "fixture-marketplace", "--json"],
@@ -219,8 +216,7 @@ process.exit(2);
           RUNX_CWD: process.cwd(),
           RUNX_REGISTRY_DIR: path.join(tempDir, "registry"),
           RUNX_ENABLE_FIXTURE_MARKETPLACE: "1",
-          RUNX_RUST_REGISTRY_SEARCH: "1",
-          RUNX_RUST_REGISTRY_BIN: registryBin,
+          RUNX_RUST_CLI_BIN: registryBin,
         },
       );
 
@@ -253,4 +249,11 @@ function createMemoryStream(): NodeJS.WriteStream & { contents: () => string } {
     },
     contents: () => buffer,
   } as NodeJS.WriteStream & { contents: () => string };
+}
+
+async function writeNodeCommand(commandPath: string, source: string): Promise<void> {
+  const scriptPath = `${commandPath}.mjs`;
+  await writeFile(scriptPath, source, "utf8");
+  await writeFile(commandPath, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(scriptPath)} "$@"\n`, "utf8");
+  await chmod(commandPath, 0o755);
 }

@@ -1,6 +1,6 @@
 {
   "schema": "runx.cli_feature_parity_matrix.v1",
-  "sourceOfTruth": "@runxhq/cli TypeScript implementation",
+  "sourceOfTruth": "crates/runx-cli Rust implementation",
   "exitCodes": [
     0,
     1,
@@ -37,89 +37,14 @@
       ]
     },
     {
-      "id": "skill.run",
-      "usage": "runx skill <skill-ref|skill-dir|SKILL.md>",
+      "id": "new",
+      "usage": "runx new <name>",
       "aliases": [],
       "requiredPositionals": [
-        "<skill-ref|skill-dir|SKILL.md>"
+        "<name>"
       ],
       "flags": [
-        "--runner",
-        "--input",
-        "--non-interactive",
-        "--json",
-        "--answers"
-      ],
-      "exitCodes": [
-        0,
-        1,
-        2,
-        64
-      ],
-      "parity": {
-        "humanOutput": "semantic",
-        "jsonOutput": "schema-exact",
-        "receipt": "schema-exact",
-        "sideEffect": "local-runtime",
-        "surfaces": [
-          "skill-resolution",
-          "graph-runtime",
-          "receipts",
-          "sandbox",
-          "caller-mediated-resolution",
-          "adapter-cli-tool",
-          "adapter-a2a",
-          "adapter-agent"
-        ]
-      },
-      "cases": [
-        "skill.run.validate"
-      ]
-    },
-    {
-      "id": "skill.search",
-      "usage": "runx skill search <query>",
-      "aliases": [],
-      "requiredPositionals": [
-        "<query>"
-      ],
-      "flags": [
-        "--source",
-        "--registry",
-        "--json"
-      ],
-      "exitCodes": [
-        0,
-        1,
-        2,
-        64
-      ],
-      "parity": {
-        "humanOutput": "semantic",
-        "jsonOutput": "schema-exact",
-        "receipt": "none",
-        "sideEffect": "external-stub",
-        "surfaces": [
-          "registry",
-          "cli-presentation"
-        ]
-      },
-      "cases": [
-        "skill.search.validate"
-      ]
-    },
-    {
-      "id": "skill.add",
-      "usage": "runx skill add <ref>",
-      "aliases": [],
-      "requiredPositionals": [
-        "<ref>"
-      ],
-      "flags": [
-        "--version",
-        "--to",
-        "--registry",
-        "--digest",
+        "--directory",
         "--json"
       ],
       "exitCodes": [
@@ -134,154 +59,23 @@
         "receipt": "none",
         "sideEffect": "filesystem",
         "surfaces": [
-          "registry",
-          "skill-resolution"
-        ]
-      },
-      "cases": [
-        "skill.add.validate"
-      ]
-    },
-    {
-      "id": "skill.publish",
-      "usage": "runx skill publish <skill-dir|SKILL.md>",
-      "aliases": [],
-      "requiredPositionals": [
-        "<skill-dir|SKILL.md>"
-      ],
-      "flags": [
-        "--owner",
-        "--version",
-        "--registry",
-        "--json"
-      ],
-      "exitCodes": [
-        0,
-        1,
-        2,
-        64
-      ],
-      "parity": {
-        "humanOutput": "semantic",
-        "jsonOutput": "schema-exact",
-        "receipt": "schema-exact",
-        "sideEffect": "external-stub",
-        "surfaces": [
-          "registry",
-          "receipts"
-        ]
-      },
-      "cases": [
-        "skill.publish.validate"
-      ]
-    },
-    {
-      "id": "skill.inspect",
-      "usage": "runx skill inspect <receipt-id>",
-      "aliases": [],
-      "requiredPositionals": [
-        "<receipt-id>"
-      ],
-      "flags": [
-        "--receipt-dir",
-        "--json"
-      ],
-      "exitCodes": [
-        0,
-        1,
-        2,
-        64
-      ],
-      "parity": {
-        "humanOutput": "semantic",
-        "jsonOutput": "schema-exact",
-        "receipt": "schema-exact",
-        "sideEffect": "none",
-        "surfaces": [
-          "receipts",
+          "scaffold",
           "cli-presentation"
         ]
       },
       "cases": [
-        "skill.inspect.validate"
+        "new.validate"
       ]
     },
     {
-      "id": "evolve",
-      "usage": "runx evolve [objective]",
+      "id": "init",
+      "usage": "runx init",
       "aliases": [],
       "requiredPositionals": [],
       "flags": [
-        "--receipt",
-        "--non-interactive",
-        "--json",
-        "--answers"
-      ],
-      "exitCodes": [
-        0,
-        1,
-        2,
-        64
-      ],
-      "parity": {
-        "humanOutput": "semantic",
-        "jsonOutput": "schema-exact",
-        "receipt": "schema-exact",
-        "sideEffect": "local-runtime",
-        "surfaces": [
-          "graph-runtime",
-          "receipts",
-          "artifacts"
-        ]
-      },
-      "cases": [
-        "evolve.validate"
-      ]
-    },
-    {
-      "id": "replay",
-      "usage": "runx replay <run-id|receipt-id>",
-      "aliases": [],
-      "requiredPositionals": [
-        "<run-id|receipt-id>"
-      ],
-      "flags": [
-        "--receipt-dir",
-        "--non-interactive",
-        "--json",
-        "--answers"
-      ],
-      "exitCodes": [
-        0,
-        1,
-        2,
-        64
-      ],
-      "parity": {
-        "humanOutput": "semantic",
-        "jsonOutput": "schema-exact",
-        "receipt": "schema-exact",
-        "sideEffect": "local-runtime",
-        "surfaces": [
-          "continuation-replay",
-          "ledger",
-          "receipts"
-        ]
-      },
-      "cases": [
-        "replay.validate"
-      ]
-    },
-    {
-      "id": "diff",
-      "usage": "runx diff <left-run-or-receipt> <right-run-or-receipt>",
-      "aliases": [],
-      "requiredPositionals": [
-        "<left-run-or-receipt>",
-        "<right-run-or-receipt>"
-      ],
-      "flags": [
-        "--receipt-dir",
+        "-g",
+        "--global",
+        "--prefetch",
         "--json"
       ],
       "exitCodes": [
@@ -293,15 +87,15 @@
       "parity": {
         "humanOutput": "semantic",
         "jsonOutput": "schema-exact",
-        "receipt": "schema-exact",
-        "sideEffect": "none",
+        "receipt": "none",
+        "sideEffect": "filesystem",
         "surfaces": [
-          "receipts",
-          "cli-presentation"
+          "scaffold",
+          "official-skills"
         ]
       },
       "cases": [
-        "diff.validate"
+        "init.validate"
       ]
     },
     {
@@ -337,48 +131,17 @@
         ]
       },
       "cases": [
-        "history.validate"
+        "history.execute"
       ]
     },
     {
-      "id": "export-receipts.trainable",
-      "usage": "runx export-receipts --trainable",
+      "id": "list",
+      "usage": "runx list [tools|skills|graphs|packets|overlays]",
       "aliases": [],
       "requiredPositionals": [],
       "flags": [
-        "--receipt-dir",
-        "--since",
-        "--until",
-        "--status",
-        "--source"
-      ],
-      "exitCodes": [
-        0,
-        1,
-        2,
-        64
-      ],
-      "parity": {
-        "humanOutput": "semantic",
-        "jsonOutput": "none",
-        "receipt": "schema-exact",
-        "sideEffect": "none",
-        "surfaces": [
-          "trainable-export",
-          "receipts"
-        ]
-      },
-      "cases": [
-        "export-receipts.validate"
-      ]
-    },
-    {
-      "id": "knowledge.show",
-      "usage": "runx knowledge show --project .",
-      "aliases": [],
-      "requiredPositionals": [],
-      "flags": [
-        "--project",
+        "--ok-only",
+        "--invalid-only",
         "--json"
       ],
       "exitCodes": [
@@ -393,12 +156,12 @@
         "receipt": "none",
         "sideEffect": "none",
         "surfaces": [
-          "knowledge",
-          "cli-presentation"
+          "list",
+          "tool-catalog"
         ]
       },
       "cases": [
-        "knowledge.show.validate"
+        "list.tools.execute"
       ]
     },
     {
@@ -551,193 +314,6 @@
       ]
     },
     {
-      "id": "new",
-      "usage": "runx new <name>",
-      "aliases": [],
-      "requiredPositionals": [
-        "<name>"
-      ],
-      "flags": [
-        "--directory",
-        "--json"
-      ],
-      "exitCodes": [
-        0,
-        1,
-        2,
-        64
-      ],
-      "parity": {
-        "humanOutput": "semantic",
-        "jsonOutput": "schema-exact",
-        "receipt": "none",
-        "sideEffect": "filesystem",
-        "surfaces": [
-          "scaffold",
-          "cli-presentation"
-        ]
-      },
-      "cases": [
-        "new.validate"
-      ]
-    },
-    {
-      "id": "init",
-      "usage": "runx init",
-      "aliases": [],
-      "requiredPositionals": [],
-      "flags": [
-        "-g",
-        "--global",
-        "--prefetch",
-        "--json"
-      ],
-      "exitCodes": [
-        0,
-        1,
-        2,
-        64
-      ],
-      "parity": {
-        "humanOutput": "semantic",
-        "jsonOutput": "schema-exact",
-        "receipt": "none",
-        "sideEffect": "filesystem",
-        "surfaces": [
-          "scaffold",
-          "official-skills"
-        ]
-      },
-      "cases": [
-        "init.validate"
-      ]
-    },
-    {
-      "id": "harness",
-      "usage": "runx harness <fixture.yaml>",
-      "aliases": [],
-      "requiredPositionals": [
-        "<fixture.yaml>"
-      ],
-      "flags": [
-        "--json"
-      ],
-      "exitCodes": [
-        0,
-        1,
-        2,
-        64
-      ],
-      "parity": {
-        "humanOutput": "semantic",
-        "jsonOutput": "schema-exact",
-        "receipt": "schema-exact",
-        "sideEffect": "local-runtime",
-        "surfaces": [
-          "harness",
-          "receipts",
-          "sandbox"
-        ]
-      },
-      "cases": [
-        "harness.execute"
-      ]
-    },
-    {
-      "id": "list",
-      "usage": "runx list [tools|skills|graphs|packets|overlays]",
-      "aliases": [],
-      "requiredPositionals": [],
-      "flags": [
-        "--ok-only",
-        "--invalid-only",
-        "--json"
-      ],
-      "exitCodes": [
-        0,
-        1,
-        2,
-        64
-      ],
-      "parity": {
-        "humanOutput": "semantic",
-        "jsonOutput": "schema-exact",
-        "receipt": "none",
-        "sideEffect": "none",
-        "surfaces": [
-          "list",
-          "tool-catalog"
-        ]
-      },
-      "cases": [
-        "list.tools.execute"
-      ]
-    },
-    {
-      "id": "doctor",
-      "usage": "runx doctor [path]",
-      "aliases": [],
-      "requiredPositionals": [],
-      "flags": [
-        "--fix",
-        "--explain",
-        "--list-diagnostics",
-        "--json"
-      ],
-      "exitCodes": [
-        0,
-        1,
-        2,
-        64
-      ],
-      "parity": {
-        "humanOutput": "semantic",
-        "jsonOutput": "schema-exact",
-        "receipt": "none",
-        "sideEffect": "filesystem",
-        "surfaces": [
-          "doctor",
-          "cli-presentation"
-        ]
-      },
-      "cases": [
-        "doctor.validate"
-      ]
-    },
-    {
-      "id": "dev",
-      "usage": "runx dev [path]",
-      "aliases": [],
-      "requiredPositionals": [],
-      "flags": [
-        "--lane",
-        "--record",
-        "--real-agents",
-        "--watch",
-        "--json"
-      ],
-      "exitCodes": [
-        0,
-        1,
-        2,
-        64
-      ],
-      "parity": {
-        "humanOutput": "semantic",
-        "jsonOutput": "schema-exact",
-        "receipt": "schema-exact",
-        "sideEffect": "local-runtime",
-        "surfaces": [
-          "dev",
-          "harness",
-          "receipts"
-        ]
-      },
-      "cases": [
-        "dev.validate"
-      ]
-    },
-    {
       "id": "kernel",
       "usage": "runx kernel eval --input <file|-> --json",
       "aliases": [],
@@ -769,8 +345,39 @@
       ]
     },
     {
-      "id": "registry",
-      "usage": "runx registry search|read|resolve|install|publish ... --json",
+      "id": "parser",
+      "usage": "runx parser eval --input <file|-> --json",
+      "aliases": [],
+      "requiredPositionals": [
+        "<file|->"
+      ],
+      "flags": [
+        "--input",
+        "--json"
+      ],
+      "exitCodes": [
+        0,
+        1,
+        2,
+        64
+      ],
+      "parity": {
+        "humanOutput": "semantic",
+        "jsonOutput": "schema-exact",
+        "receipt": "none",
+        "sideEffect": "local-runtime",
+        "surfaces": [
+          "parser",
+          "cli-presentation"
+        ]
+      },
+      "cases": [
+        "parser.validate"
+      ]
+    },
+    {
+      "id": "doctor",
+      "usage": "runx doctor [path]",
       "aliases": [],
       "requiredPositionals": [],
       "flags": [
@@ -786,24 +393,56 @@
         "humanOutput": "semantic",
         "jsonOutput": "schema-exact",
         "receipt": "none",
-        "sideEffect": "external-stub",
+        "sideEffect": "filesystem",
         "surfaces": [
-          "registry",
+          "doctor",
           "cli-presentation"
         ]
       },
       "cases": [
-        "registry.validate"
+        "doctor.validate"
+      ]
+    },
+    {
+      "id": "dev",
+      "usage": "runx dev [root]",
+      "aliases": [],
+      "requiredPositionals": [],
+      "flags": [
+        "--lane",
+        "--json"
+      ],
+      "exitCodes": [
+        0,
+        1,
+        2,
+        64
+      ],
+      "parity": {
+        "humanOutput": "semantic",
+        "jsonOutput": "schema-exact",
+        "receipt": "schema-exact",
+        "sideEffect": "local-runtime",
+        "surfaces": [
+          "dev",
+          "harness",
+          "receipts"
+        ]
+      },
+      "cases": [
+        "dev.validate"
       ]
     },
     {
       "id": "mcp.serve",
-      "usage": "runx mcp serve <skill-ref>",
+      "usage": "runx mcp serve <skill-ref...>",
       "aliases": [],
       "requiredPositionals": [
-        "<skill-ref>"
+        "<skill-ref...>"
       ],
-      "flags": [],
+      "flags": [
+        "--receipt-dir"
+      ],
       "exitCodes": [
         0,
         1,
@@ -822,6 +461,113 @@
       },
       "cases": [
         "mcp.serve.validate"
+      ]
+    },
+    {
+      "id": "skill.run",
+      "usage": "runx skill <skill-ref|skill-dir|SKILL.md>",
+      "aliases": [],
+      "requiredPositionals": [
+        "<skill-ref|skill-dir|SKILL.md>"
+      ],
+      "flags": [
+        "--input",
+        "--receipt-dir",
+        "--run-id",
+        "--answers",
+        "--credential",
+        "--secret-env",
+        "--non-interactive",
+        "--json"
+      ],
+      "exitCodes": [
+        0,
+        1,
+        2,
+        64
+      ],
+      "parity": {
+        "humanOutput": "semantic",
+        "jsonOutput": "schema-exact",
+        "receipt": "schema-exact",
+        "sideEffect": "local-runtime",
+        "surfaces": [
+          "skill-resolution",
+          "graph-runtime",
+          "receipts",
+          "sandbox",
+          "authority",
+          "caller-mediated-resolution",
+          "adapter-cli-tool",
+          "adapter-a2a",
+          "adapter-agent"
+        ]
+      },
+      "cases": [
+        "skill.run.validate"
+      ]
+    },
+    {
+      "id": "harness",
+      "usage": "runx harness <fixture.yaml...>",
+      "aliases": [],
+      "requiredPositionals": [
+        "<fixture.yaml...>"
+      ],
+      "flags": [
+        "--json"
+      ],
+      "exitCodes": [
+        0,
+        1,
+        2,
+        64
+      ],
+      "parity": {
+        "humanOutput": "semantic",
+        "jsonOutput": "schema-exact",
+        "receipt": "schema-exact",
+        "sideEffect": "local-runtime",
+        "surfaces": [
+          "harness",
+          "receipts",
+          "sandbox"
+        ]
+      },
+      "cases": [
+        "harness.execute"
+      ]
+    },
+    {
+      "id": "tool.build",
+      "usage": "runx tool build <tool-dir>|--all",
+      "aliases": [],
+      "requiredPositionals": [],
+      "conditionalPositionals": [
+        "<tool-dir>"
+      ],
+      "flags": [
+        "--all",
+        "--json"
+      ],
+      "exitCodes": [
+        0,
+        1,
+        2,
+        64
+      ],
+      "parity": {
+        "humanOutput": "semantic",
+        "jsonOutput": "schema-exact",
+        "receipt": "none",
+        "sideEffect": "filesystem",
+        "surfaces": [
+          "tool-catalog",
+          "authoring"
+        ]
+      },
+      "cases": [
+        "tool.build.validate"
       ]
     },
     {
@@ -887,15 +633,20 @@
       ]
     },
     {
-      "id": "tool.build",
-      "usage": "runx tool build <tool-dir>|--all",
+      "id": "registry",
+      "usage": "runx registry search|read|resolve|install|publish ... --json",
       "aliases": [],
       "requiredPositionals": [],
-      "conditionalPositionals": [
-        "<tool-dir>"
-      ],
       "flags": [
-        "--all",
+        "--registry",
+        "--registry-dir",
+        "--version",
+        "--digest",
+        "--to",
+        "--owner",
+        "--profile",
+        "--limit",
+        "--upsert",
         "--json"
       ],
       "exitCodes": [
@@ -908,14 +659,14 @@
         "humanOutput": "semantic",
         "jsonOutput": "schema-exact",
         "receipt": "none",
-        "sideEffect": "filesystem",
+        "sideEffect": "external-stub",
         "surfaces": [
-          "tool-catalog",
-          "authoring"
+          "registry",
+          "cli-presentation"
         ]
       },
       "cases": [
-        "tool.build.validate"
+        "registry.validate"
       ]
     }
   ]

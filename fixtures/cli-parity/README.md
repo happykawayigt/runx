@@ -1,8 +1,8 @@
 # CLI Feature Parity Matrix
 
-This directory is the TypeScript oracle for future native Rust CLI/runtime
-cutovers. The matrix is generated from `scripts/generate-cli-feature-parity.ts`
-and checked against the current help surface.
+This directory captures the canonical native Rust CLI/runtime surface. The
+matrix is generated from `scripts/generate-cli-feature-parity.ts` and checked
+against `crates/runx-cli/src/launcher.rs`.
 
 Required exit-code coverage: `"exitCodes": [0, 1, 2, 64]`.
 
@@ -21,4 +21,4 @@ Required exit-code coverage: `"exitCodes": [0, 1, 2, 64]`.
   receipt ids, and platform-specific wording.
 - Live providers are replaced by deterministic mocks, fixtures, or local
   protocol servers.
-- Rust candidates must pass this matrix before any npm-to-Rust CLI cutover.
+- Native CLI candidates must pass this matrix before packaging.
