@@ -355,7 +355,10 @@ fn live_publication_adapter_requires_provider_readback_before_publication_dedupe
     )?;
 
     assert_eq!(adapter.events, vec!["pull_request", "verification"]);
-    assert_eq!(publisher.events, vec!["source_publication"]);
+    assert_eq!(
+        publisher.events,
+        vec!["source_publication_observe", "source_publication"]
+    );
     assert_eq!(
         live.publication.decision,
         PostMergeObserverPublicationRuntimeDecision::Publish
@@ -393,6 +396,67 @@ fn live_publication_adapter_requires_provider_readback_before_publication_dedupe
 }
 
 #[test]
+fn restart_after_publish_does_not_duplicate_source_commands()
+-> Result<(), Box<dyn std::error::Error>> {
+    let policy: runx_contracts::OperationalPolicy = serde_json::from_str(NITROSEND_LIKE)?;
+    let receipt = post_merge_observer_receipt()?;
+    let mut adapter = FakePostMergeObserverAdapter { events: Vec::new() };
+    let mut publisher = FakePostMergeObserverPublisher::default();
+    let mut ledger = PostMergeObserverPublicationLedger::new();
+
+    let live = execute_post_merge_observer_with_publication_adapter(
+        &policy,
+        &live_publication_request(),
+        &receipt,
+        &mut adapter,
+        &mut publisher,
+        &mut ledger,
+    )?;
+    let observed_publication = publisher
+        .published_observation
+        .clone()
+        .ok_or("expected first publish observation")?;
+
+    assert_eq!(
+        live.publication.decision,
+        PostMergeObserverPublicationRuntimeDecision::Publish
+    );
+    assert_eq!(
+        publisher.events,
+        vec!["source_publication_observe", "source_publication"]
+    );
+
+    let mut restarted_adapter = FakePostMergeObserverAdapter { events: Vec::new() };
+    let mut restarted_publisher = FakePostMergeObserverPublisher {
+        observed_publication: Some(observed_publication),
+        fail_on_publish: true,
+        ..FakePostMergeObserverPublisher::default()
+    };
+    let mut restarted_ledger = PostMergeObserverPublicationLedger::new();
+
+    let restarted = execute_post_merge_observer_with_publication_adapter(
+        &policy,
+        &live_publication_request(),
+        &receipt,
+        &mut restarted_adapter,
+        &mut restarted_publisher,
+        &mut restarted_ledger,
+    )?;
+
+    assert_eq!(
+        restarted.publication.decision,
+        PostMergeObserverPublicationRuntimeDecision::AlreadyPublished
+    );
+    assert!(restarted.publication.commands.is_empty());
+    assert_eq!(
+        restarted_publisher.events,
+        vec!["source_publication_observe"]
+    );
+    assert!(restarted_ledger.contains(&restarted.dedupe.publication_key));
+    Ok(())
+}
+
+#[test]
 fn live_publication_readback_mismatch_fails_without_marking_publication_dedupe()
 -> Result<(), Box<dyn std::error::Error>> {
     let policy: runx_contracts::OperationalPolicy = serde_json::from_str(NITROSEND_LIKE)?;
@@ -424,7 +488,10 @@ fn live_publication_readback_mismatch_fails_without_marking_publication_dedupe()
             if message == "publication readback did not return a proof ref for every source command"
     ));
     assert_eq!(adapter.events, vec!["pull_request", "verification"]);
-    assert_eq!(publisher.events, vec!["source_publication"]);
+    assert_eq!(
+        publisher.events,
+        vec!["source_publication_observe", "source_publication"]
+    );
     assert!(!ledger.contains(&expected_publication_key));
     Ok(())
 }
@@ -891,17 +958,36 @@ impl PostMergeObserverAdapter for FakePostMergeObserverAdapter {
 #[derive(Default)]
 struct FakePostMergeObserverPublisher {
     events: Vec<&'static str>,
+    observed_publication: Option<PostMergeObserverSourcePublicationObservation>,
+    published_observation: Option<PostMergeObserverSourcePublicationObservation>,
+    fail_on_publish: bool,
     omit_issue_comment_readback: bool,
     omit_thread_reply_readback: bool,
     omit_close_readback: bool,
 }
 
 impl PostMergeObserverPublicationAdapter for FakePostMergeObserverPublisher {
+    fn observe_source_publication(
+        &mut self,
+        request: &PostMergeObserverSourcePublicationRequest,
+    ) -> Result<Option<PostMergeObserverSourcePublicationObservation>, PostMergeObserverAdapterError>
+    {
+        self.events.push("source_publication_observe");
+        assert_post_merge_source_publication_request(request);
+        Ok(self.observed_publication.clone())
+    }
+
     fn publish_source_update(
         &mut self,
         request: &PostMergeObserverSourcePublicationRequest,
     ) -> Result<PostMergeObserverSourcePublicationObservation, PostMergeObserverAdapterError> {
         self.events.push("source_publication");
+        if self.fail_on_publish {
+            return Err(PostMergeObserverAdapterError::new(
+                "publish_source_update",
+                "publish should not be called after restart readback",
+            ));
+        }
         assert_post_merge_source_publication_request(request);
         let mut published_refs = Vec::new();
         if !self.omit_issue_comment_readback {
@@ -931,14 +1017,16 @@ impl PostMergeObserverPublicationAdapter for FakePostMergeObserverPublisher {
             });
         }
 
-        Ok(PostMergeObserverSourcePublicationObservation {
+        let observation = PostMergeObserverSourcePublicationObservation {
             source_issue_ref: request.source_issue_ref.clone(),
             source_thread_ref: request.source_thread_ref.clone(),
             pull_request_ref: request.pull_request_ref.clone(),
             receipt_ref: request.receipt_ref.clone(),
             published_refs,
             closed_ref: (!self.omit_close_readback).then(|| request.source_issue_ref.clone()),
-        })
+        };
+        self.published_observation = Some(observation.clone());
+        Ok(observation)
     }
 }
 

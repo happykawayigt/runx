@@ -1,0 +1,291 @@
+use std::collections::BTreeMap;
+use std::fs;
+use std::path::{Component, Path, PathBuf};
+
+use runx_contracts::JsonObject;
+use runx_core::policy::{CwdPolicy, SandboxProfile};
+use runx_parser::{SkillSandbox, SkillSource};
+
+use crate::RuntimeError;
+use crate::receipts::paths::{INIT_CWD_ENV, RUNX_CWD_ENV};
+
+use super::template::{has_unresolved_template, resolve_template};
+
+pub(super) fn resolve_cwd(
+    source: &SkillSource,
+    sandbox: Option<&SkillSandbox>,
+    skill_directory: &Path,
+    workspace_cwd: Option<&Path>,
+) -> Result<PathBuf, RuntimeError> {
+    resolve_cwd_value(
+        source.cwd.as_deref(),
+        sandbox,
+        skill_directory,
+        workspace_cwd,
+    )
+}
+
+pub(super) fn resolve_cwd_value(
+    source_cwd: Option<&str>,
+    sandbox: Option<&SkillSandbox>,
+    skill_directory: &Path,
+    workspace_cwd: Option<&Path>,
+) -> Result<PathBuf, RuntimeError> {
+    let policy = sandbox
+        .and_then(|sandbox| sandbox.cwd_policy.as_ref().map(CwdPolicy::as_str))
+        .unwrap_or("skill-directory");
+    let profile = sandbox
+        .map(|sandbox| sandbox.profile.as_str())
+        .unwrap_or("readonly");
+    let cwd = match (policy, source_cwd) {
+        ("custom", Some(cwd)) => Ok(resolve_path(skill_directory, cwd)),
+        ("workspace", Some(cwd)) => Ok(resolve_path(skill_directory, cwd)),
+        ("workspace", None) => workspace_cwd.map(Path::to_path_buf).map_or_else(
+            || {
+                std::env::current_dir()
+                    .map_err(|source| RuntimeError::io("resolving workspace cwd", source))
+            },
+            Ok,
+        ),
+        (_, Some(cwd)) => Ok(resolve_path(skill_directory, cwd)),
+        _ => Ok(skill_directory.to_path_buf()),
+    }?;
+    validate_cwd_policy(policy, profile, &cwd, skill_directory, workspace_cwd)?;
+    Ok(normalize_path(&cwd))
+}
+
+pub(super) fn workspace_cwd(
+    env: &BTreeMap<String, String>,
+) -> Result<Option<PathBuf>, RuntimeError> {
+    let Some(path) = env.get(RUNX_CWD_ENV).or_else(|| env.get(INIT_CWD_ENV)) else {
+        return Ok(None);
+    };
+    let path = PathBuf::from(path);
+    if path.is_absolute() {
+        Ok(Some(path))
+    } else {
+        std::env::current_dir()
+            .map(|cwd| Some(cwd.join(path)))
+            .map_err(|source| RuntimeError::io("resolving relative workspace cwd", source))
+    }
+}
+
+pub(super) fn resolve_path(base: &Path, path: &str) -> PathBuf {
+    let candidate = PathBuf::from(path);
+    if candidate.is_absolute() {
+        candidate
+    } else {
+        base.join(candidate)
+    }
+}
+
+fn validate_cwd_policy(
+    policy: &str,
+    profile: &str,
+    cwd: &Path,
+    skill_directory: &Path,
+    workspace_cwd: Option<&Path>,
+) -> Result<(), RuntimeError> {
+    if profile == "unrestricted-local-dev" {
+        return Ok(());
+    }
+    let cwd = containment_path(cwd, "resolving sandbox cwd")?;
+    let skill_directory = containment_path(skill_directory, "resolving sandbox skill directory")?;
+    let workspace_root = match workspace_cwd {
+        Some(workspace_cwd) => containment_path(workspace_cwd, "resolving sandbox workspace")?,
+        None => containment_path(
+            &std::env::current_dir().map_err(|source| {
+                RuntimeError::io("resolving workspace cwd for sandbox policy", source)
+            })?,
+            "resolving sandbox workspace",
+        )?,
+    };
+    match policy {
+        "unrestricted-local-dev" => Ok(()),
+        "custom"
+            if is_within_path(&cwd, &skill_directory) || is_within_path(&cwd, &workspace_root) =>
+        {
+            Ok(())
+        }
+        "custom" => Err(sandbox_violation(format!(
+            "sandbox custom cwd '{}' is outside skill directory '{}' and workspace '{}'",
+            cwd.display(),
+            skill_directory.display(),
+            workspace_root.display()
+        ))),
+        "skill-directory" if is_within_path(&cwd, &skill_directory) => Ok(()),
+        "skill-directory" => Err(sandbox_violation(format!(
+            "sandbox cwd '{}' is outside skill directory '{}'",
+            cwd.display(),
+            skill_directory.display()
+        ))),
+        "workspace" if is_within_path(&cwd, &workspace_root) => Ok(()),
+        "workspace" => Err(sandbox_violation(format!(
+            "sandbox cwd '{}' is outside workspace '{}'",
+            cwd.display(),
+            workspace_root.display()
+        ))),
+        _ => Ok(()),
+    }
+}
+
+fn is_within_path(candidate: &Path, root: &Path) -> bool {
+    candidate == root || candidate.starts_with(root)
+}
+
+pub(super) fn normalize_path(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
+            Component::RootDir => normalized.push(component.as_os_str()),
+            Component::CurDir => {}
+            Component::Normal(part) => normalized.push(part),
+            Component::ParentDir => {
+                if normalized.as_os_str().is_empty()
+                    || normalized
+                        .components()
+                        .next_back()
+                        .is_some_and(|component| component == Component::ParentDir)
+                {
+                    normalized.push("..");
+                } else {
+                    normalized.pop();
+                }
+            }
+        }
+    }
+    normalized
+}
+
+pub(super) fn validate_sandbox(sandbox: Option<&SkillSandbox>) -> Result<(), RuntimeError> {
+    let Some(sandbox) = sandbox else {
+        return Ok(());
+    };
+    match sandbox.profile.as_str() {
+        "readonly" => validate_readonly_sandbox(sandbox),
+        "workspace-write" | "network" => Ok(()),
+        "unrestricted-local-dev" => validate_unrestricted_sandbox(sandbox),
+        profile => Err(sandbox_violation(format!(
+            "unsupported sandbox profile '{profile}'"
+        ))),
+    }
+}
+
+pub(super) fn resolved_writable_paths(
+    sandbox: Option<&SkillSandbox>,
+    inputs: &JsonObject,
+    base_env: &BTreeMap<String, String>,
+) -> Vec<String> {
+    sandbox.map_or_else(Vec::new, |sandbox| {
+        sandbox
+            .writable_paths
+            .iter()
+            .map(|path| resolve_template(path, inputs, base_env))
+            .filter(|path| !path.trim().is_empty() && !has_unresolved_template(path))
+            .collect()
+    })
+}
+
+pub(super) fn validate_writable_paths(
+    sandbox: Option<&SkillSandbox>,
+    writable_paths: &[String],
+    cwd: &Path,
+    workspace_cwd: Option<&Path>,
+) -> Result<(), RuntimeError> {
+    let Some(sandbox) = sandbox else {
+        return Ok(());
+    };
+    if sandbox.profile != SandboxProfile::WorkspaceWrite {
+        return Ok(());
+    }
+    let workspace_root = match workspace_cwd {
+        Some(workspace_cwd) => {
+            containment_path(workspace_cwd, "resolving sandbox writable workspace")?
+        }
+        None => containment_path(
+            &std::env::current_dir().map_err(|source| {
+                RuntimeError::io("resolving workspace cwd for sandbox writable paths", source)
+            })?,
+            "resolving sandbox writable workspace",
+        )?,
+    };
+    let escaped = writable_paths
+        .iter()
+        .map(|path| validate_writable_path_literal(path).map(|()| path))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .map(|path| containment_path(&resolve_path(cwd, path), "resolving sandbox writable path"))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .filter(|path| !is_within_path(path, &workspace_root))
+        .collect::<Vec<_>>();
+    if escaped.is_empty() {
+        return Ok(());
+    }
+    Err(sandbox_violation(format!(
+        "workspace-write sandbox has writable path(s) outside workspace: {}",
+        escaped
+            .iter()
+            .map(|path| path.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    )))
+}
+
+fn validate_writable_path_literal(path: &str) -> Result<(), RuntimeError> {
+    if path.chars().any(|character| {
+        character.is_control() || matches!(character, '(' | ')' | '"' | '\\' | ';')
+    }) {
+        return Err(sandbox_violation(
+            "workspace-write sandbox writable path contains unsupported profile metacharacters",
+        ));
+    }
+    Ok(())
+}
+
+fn containment_path(path: &Path, operation: &'static str) -> Result<PathBuf, RuntimeError> {
+    if path.exists() {
+        return fs::canonicalize(path).map_err(|source| RuntimeError::io(operation, source));
+    }
+    let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    else {
+        return Ok(normalize_path(path));
+    };
+    let canonical_parent =
+        fs::canonicalize(parent).map_err(|source| RuntimeError::io(operation, source))?;
+    Ok(path
+        .file_name()
+        .map(|file_name| canonical_parent.join(file_name))
+        .unwrap_or(canonical_parent))
+}
+
+fn validate_readonly_sandbox(sandbox: &SkillSandbox) -> Result<(), RuntimeError> {
+    if sandbox.network == Some(true) {
+        return Err(sandbox_violation("readonly sandbox cannot request network"));
+    }
+    if !sandbox.writable_paths.is_empty() {
+        return Err(sandbox_violation(
+            "readonly sandbox cannot declare writable paths",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_unrestricted_sandbox(sandbox: &SkillSandbox) -> Result<(), RuntimeError> {
+    if sandbox.approved_escalation == Some(true) {
+        Ok(())
+    } else {
+        Err(sandbox_violation(
+            "unrestricted-local-dev requires approved escalation",
+        ))
+    }
+}
+
+pub(super) fn sandbox_violation(message: impl Into<String>) -> RuntimeError {
+    RuntimeError::SandboxViolation {
+        message: message.into(),
+    }
+}

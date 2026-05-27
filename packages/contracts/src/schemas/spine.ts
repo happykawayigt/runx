@@ -1,1142 +1,546 @@
-import { Type, type Static } from "../internal.js";
 import {
-  JSON_SCHEMA_DRAFT_2020_12,
-  RUNX_CONTRACT_IDS,
-  RUNX_LOGICAL_SCHEMAS,
   type DeepReadonly,
-  dateTimeStringSchema,
-  stringEnum,
-  unknownRecordSchema,
+  type JsonSchema,
+  type UnknownRecord,
+  generatedSchema,
+  generatedSchemaAt,
   validateContractSchema,
 } from "../internal.js";
-import { outputSchema } from "./output.js";
 
-export const referenceTypes = [
-  "github_issue",
-  "github_pull_request",
-  "github_repo",
-  "slack_thread",
-  "sentry_event",
-  "signal",
-  "act",
-  "receipt",
-  "graph_receipt",
-  "artifact",
-  "verification",
-  "harness",
-  "host",
-  "deployment",
-  "surface",
-  "target",
-  "opportunity",
-  "thesis_assessment",
-  "selection",
-  "skill_binding",
-  "target_transition_entry",
-  "selection_cycle",
-  "decision",
-  "reflection_entry",
-  "feed_entry",
-  "principal",
-  "authority_proof",
-  "scope_admission",
-  "grant",
-  "mandate",
-  "credential",
-  "webhook_delivery",
-  "redaction_policy",
-  "external_url",
-] as const;
+type ContractObject = DeepReadonly<Record<string, unknown>>;
 
-export const signalTypes = [
-  "issue_opened",
-  "issue_comment",
-  "pull_request_event",
-  "review_event",
-  "chat_message",
-  "alert",
-  "deployment_event",
-  "payment_required",
-  "schedule_tick",
-  "operator_note",
-  "system_event",
-] as const;
+function schemaAt<TStatic>(
+  schema: JsonSchema,
+  path: readonly (string | number)[],
+  label: string,
+): JsonSchema<TStatic> {
+  return generatedSchemaAt<TStatic>(schema, path, label);
+}
 
-export const signalTrustLevels = [
-  "unverified",
-  "observed",
-  "verified_delivery",
-  "verified_signature",
-  "operator_attested",
-] as const;
+function enumValues(schema: JsonSchema, label: string): readonly string[] {
+  const anyOf = schema.anyOf;
+  if (!Array.isArray(anyOf)) {
+    throw new Error(`generated enum fragment is not anyOf: ${label}`);
+  }
+  return anyOf.map((entry, index) => {
+    if (!entry || typeof entry !== "object" || typeof (entry as { const?: unknown }).const !== "string") {
+      throw new Error(`generated enum fragment has no string const: ${label}[${index}]`);
+    }
+    return (entry as { const: string }).const;
+  });
+}
 
-export const closureDispositions = [
-  "closed",
-  "deferred",
-  "superseded",
-  "declined",
-  "blocked",
-  "failed",
-  "killed",
-  "timed_out",
-] as const;
+export type ReferenceTypeContract = string;
+export type SignalTypeContract = string;
+export type SignalTrustLevelContract = string;
+export type ClosureDispositionContract = string;
+export type DecisionChoiceContract = string;
+export type ActFormContract = string;
+export type TargetLifecycleStateContract = string;
+export type ThesisProofStrengthContract = string;
+export type AuthorityCostLevelContract = string;
+export type SelectionCycleStateContract = string;
+export type CriterionStatusContract = string;
+export type VerificationStatusContract = string;
+export type AuthorityResourceFamilyContract = string;
+export type AuthorityVerbContract = string;
+export type AuthorityCapabilityContract = string;
+export type AuthorityConditionPredicateContract = string;
+export type PaymentCredentialFormContract = string;
+export type ProofKindContract = string;
 
-export const decisionChoices = [
-  "open",
-  "continue",
-  "spawn_child",
-  "escalate",
-  "defer",
-  "close",
-  "decline",
-  "monitor",
-] as const;
+export type ReferenceContract = DeepReadonly<{
+  schema?: string;
+  type: ReferenceTypeContract;
+  uri: string;
+  provider?: string;
+  locator?: string;
+  label?: string;
+  observed_at?: string;
+  proof_kind?: ProofKindContract;
+}>;
+export type ActReferenceContract = DeepReadonly<{
+  receipt_ref: ReferenceContract;
+  act_id: string;
+}>;
+export type HashCommitmentContract = ContractObject;
+export type RedactionContract = ContractObject;
+export type FingerprintContract = ContractObject;
+export type LinksContract = ContractObject;
+export type SignalAuthenticityContract = ContractObject;
+export type SignalContract = ContractObject;
+export type PaymentAuthorityBoundsContract = ContractObject;
+export type AuthorityBoundsContract = ContractObject;
+export type AuthorityConditionContract = ContractObject;
+export type AuthorityApprovalContract = ContractObject;
+export type AuthorityTermContract = ContractObject;
+export type AuthoritySubsetProofContract = ContractObject;
+export type AuthorityContract = ContractObject;
+export type SuccessCriterionContract = DeepReadonly<{
+  criterion_id: string;
+  statement: string;
+  required: boolean;
+}>;
+export type IntentContract = DeepReadonly<{
+  purpose: string;
+  legitimacy: string;
+  output?: unknown;
+  success_criteria: readonly SuccessCriterionContract[];
+  constraints: readonly string[];
+  derived_from: readonly ReferenceContract[];
+}>;
+export type VerificationCheckContract = ContractObject;
+export type VerificationContract = ContractObject;
+export type TargetSurfaceContract = ContractObject;
+export type ChangeRequestContract = ContractObject;
+export type ChangePlanContract = ContractObject;
+export type RevisionDetailsContract = ContractObject;
+export type VerificationDetailsContract = ContractObject;
+export type CriterionBindingContract = DeepReadonly<{
+  criterion_id: string;
+  status: CriterionStatusContract;
+  evidence_refs: readonly ReferenceContract[];
+  verification_refs: readonly ReferenceContract[];
+  summary?: string;
+}>;
+export type ClosureRecordContract = DeepReadonly<{
+  disposition: ClosureDispositionContract;
+  reason_code: string;
+  summary: string;
+  closed_at: string;
+}>;
+export type ActContract = ContractObject & DeepReadonly<{
+  id?: string;
+  act_id?: string;
+  form: ActFormContract;
+  intent: IntentContract;
+  criterion_bindings: readonly CriterionBindingContract[];
+  context_ref?: ReferenceContract;
+  artifact_refs: readonly ReferenceContract[];
+  revision?: unknown;
+  verification?: unknown;
+}>;
+export type DecisionInputsContract = ContractObject;
+export type DecisionJustificationContract = DeepReadonly<{
+  summary: string;
+  evidence_refs?: readonly ReferenceContract[];
+}>;
+export type DecisionContract = ContractObject & DeepReadonly<{
+  decision_id: string;
+  choice: DecisionChoiceContract;
+  proposed_intent: IntentContract;
+  selected_act_id: string | null;
+  justification: DecisionJustificationContract;
+}>;
+export type ReceiptVerificationSummaryContract = ContractObject;
+export type ArtifactContract = ContractObject;
+export type ReceiptIssuerContract = DeepReadonly<{
+  type: string;
+  kid: string;
+  public_key_sha256: string;
+}>;
+export type ReceiptSignatureContract = DeepReadonly<{
+  alg: "Ed25519";
+  value: string;
+}>;
+export type FanoutReceiptSyncPointContract = ContractObject;
+export type TargetCooldownContract = ContractObject;
+export type TargetContract = ContractObject;
+export type OpportunityContract = ContractObject;
+export type ThesisAssessmentContract = ContractObject;
+export type SelectionContract = ContractObject;
+export type SkillBindingContract = ContractObject;
+export type TargetTransitionEntryContract = ContractObject;
+export type SelectionCycleContract = ContractObject;
+export type ReflectionEntryContract = ContractObject;
+export type FeedEntryContract = ContractObject;
 
-export const actForms = [
-  "revision",
-  "reply",
-  "review",
-  "observation",
-  "verification",
-] as const;
+export const referenceSchema = generatedSchema<ReferenceContract>("reference.schema.json");
+export const redactionSchema = generatedSchema<RedactionContract>("redaction.schema.json");
+export const signalSchema = generatedSchema<SignalContract>("signal.schema.json");
+export const authoritySubsetProofSchema = generatedSchema<AuthoritySubsetProofContract>(
+  "authority-subset-proof.schema.json",
+);
+export const authoritySchema = generatedSchema<AuthorityContract>("authority.schema.json");
+export const verificationSchema = generatedSchema<VerificationContract>("verification.schema.json");
+export const actSchema = generatedSchema<ActContract>("act.schema.json");
+export const decisionSchema = generatedSchema<DecisionContract>("decision.schema.json");
+export const artifactSchema = generatedSchema<ArtifactContract>("artifact.schema.json");
+export const targetSchema = generatedSchema<TargetContract>("target.schema.json");
+export const opportunitySchema = generatedSchema<OpportunityContract>("opportunity.schema.json");
+export const thesisAssessmentSchema = generatedSchema<ThesisAssessmentContract>(
+  "thesis-assessment.schema.json",
+);
+export const selectionSchema = generatedSchema<SelectionContract>("selection.schema.json");
+export const skillBindingSchema = generatedSchema<SkillBindingContract>(
+  "skill-binding.schema.json",
+);
+export const targetTransitionEntrySchema = generatedSchema<TargetTransitionEntryContract>(
+  "target-transition-entry.schema.json",
+);
+export const selectionCycleSchema = generatedSchema<SelectionCycleContract>(
+  "selection-cycle.schema.json",
+);
+export const reflectionEntrySchema = generatedSchema<ReflectionEntryContract>(
+  "reflection-entry.schema.json",
+);
+export const feedEntrySchema = generatedSchema<FeedEntryContract>("feed-entry.schema.json");
 
-export const targetLifecycleStates = [
-  "candidate",
-  "eligible",
-  "active",
-  "cooling_down",
-  "blocked",
-  "retired",
-] as const;
+const receiptRootSchema = generatedSchema<ContractObject>("receipt.schema.json");
 
-export const thesisProofStrengths = [
-  "weak",
-  "moderate",
-  "strong",
-] as const;
-
-export const authorityCostLevels = [
-  "none",
-  "low",
-  "medium",
-  "high",
-] as const;
-
-export const selectionCycleStates = [
-  "open",
-  "closed",
-  "deferred",
-  "no_action",
-] as const;
-
-export const criterionStatuses = [
-  "verified",
-  "failed",
-  "pending",
-  "not_applicable",
-  "unknown",
-] as const;
-
-export const verificationStatuses = [
-  "passed",
-  "failed",
-  "pending",
-  "not_applicable",
-  "missing",
-] as const;
-
-export const authorityResourceFamilies = [
-  "github_repo",
-  "workspace",
-  "filesystem",
-  "network",
-  "deployment",
-  "credential",
-  "payment",
-  "artifact",
-  "harness",
-  "publication",
-] as const;
-
-export const authorityVerbs = [
-  "read",
-  "write",
-  "comment",
-  "review",
-  "approve",
-  "merge",
-  "create",
-  "update",
-  "delete",
-  "execute",
-  "verify",
-  "quote",
-  "reserve",
-  "spend",
-  "refund",
-  "publish",
-  "spawn_child",
-] as const;
-
-export const authorityCapabilities = [
-  "filesystem_read",
-  "filesystem_write",
-  "network_egress",
-  "secret_read",
-  "process_spawn",
-  "provider_mutation",
-  "public_publication",
-  "child_harness_spawn",
-  "payment_single_use_spend",
-] as const;
-
-export const authorityConditionPredicates = [
-  "signal_verified",
-  "decision_selected",
-  "host_posture_valid",
-  "approval_present",
-  "within_time_window",
-  "within_budget",
-  "sandbox_enforced",
-  "payment_receipt_present",
-  "payment_recovery_available",
-] as const;
-
-export const paymentCredentialForms = [
-  "single_use_spend_capability",
-] as const;
-
-export const proofKinds = [
-  "payment_rail",
-] as const;
-
-export const redactionCommitmentAlgorithms = [
-  "sha256",
-] as const;
-
-export const referenceTypeSchema = stringEnum(referenceTypes);
-export const signalTypeSchema = stringEnum(signalTypes);
-export const signalTrustLevelSchema = stringEnum(signalTrustLevels);
-export const closureDispositionSchema = stringEnum(closureDispositions);
-export const decisionChoiceSchema = stringEnum(decisionChoices);
-export const actFormSchema = stringEnum(actForms);
-export const targetLifecycleStateSchema = stringEnum(targetLifecycleStates);
-export const thesisProofStrengthSchema = stringEnum(thesisProofStrengths);
-export const authorityCostLevelSchema = stringEnum(authorityCostLevels);
-export const selectionCycleStateSchema = stringEnum(selectionCycleStates);
-export const criterionStatusSchema = stringEnum(criterionStatuses);
-export const verificationStatusSchema = stringEnum(verificationStatuses);
-export const authorityResourceFamilySchema = stringEnum(authorityResourceFamilies);
-export const authorityVerbSchema = stringEnum(authorityVerbs);
-export const authorityCapabilitySchema = stringEnum(authorityCapabilities);
-export const authorityConditionPredicateSchema = stringEnum(authorityConditionPredicates);
-export const paymentCredentialFormSchema = stringEnum(paymentCredentialForms);
-export const proofKindSchema = stringEnum(proofKinds);
-export const redactionCommitmentAlgorithmSchema = stringEnum(redactionCommitmentAlgorithms);
-
-export const referenceSchema = Type.Object(
-  {
-    schema: Type.Optional(Type.Literal(RUNX_LOGICAL_SCHEMAS.reference)),
-    type: referenceTypeSchema,
-    uri: Type.String({ minLength: 1 }),
-    provider: Type.Optional(Type.String({ minLength: 1 })),
-    locator: Type.Optional(Type.String({ minLength: 1 })),
-    label: Type.Optional(Type.String({ minLength: 1 })),
-    observed_at: Type.Optional(dateTimeStringSchema()),
-    proof_kind: Type.Optional(proofKindSchema),
-  },
-  {
-    $schema: JSON_SCHEMA_DRAFT_2020_12,
-    $id: RUNX_CONTRACT_IDS.reference,
-    "x-runx-schema": RUNX_LOGICAL_SCHEMAS.reference,
-    additionalProperties: false,
-  },
+export const referenceTypeSchema = schemaAt<ReferenceTypeContract>(
+  referenceSchema,
+  ["properties", "type"],
+  "reference.type",
+);
+export const actReferenceSchema = schemaAt<ActReferenceContract>(
+  artifactSchema,
+  ["properties", "produced_by", "properties", "act_ref"],
+  "artifact.produced_by.act_ref",
+);
+export const proofKindSchema = schemaAt<ProofKindContract>(
+  referenceSchema,
+  ["properties", "proof_kind"],
+  "reference.proof_kind",
+);
+export const redactionCommitmentAlgorithmSchema = schemaAt<string>(
+  redactionSchema,
+  ["properties", "hash_commitments", "items", "properties", "algorithm"],
+  "redaction.hash_commitments[].algorithm",
+);
+export const hashCommitmentSchema = schemaAt<HashCommitmentContract>(
+  redactionSchema,
+  ["properties", "hash_commitments", "items"],
+  "redaction.hash_commitments[]",
+);
+export const signalTypeSchema = schemaAt<SignalTypeContract>(
+  signalSchema,
+  ["properties", "signal_type"],
+  "signal.signal_type",
+);
+export const signalAuthenticitySchema = schemaAt<SignalAuthenticityContract>(
+  signalSchema,
+  ["properties", "authenticity"],
+  "signal.authenticity",
+);
+export const signalTrustLevelSchema = schemaAt<SignalTrustLevelContract>(
+  signalAuthenticitySchema,
+  ["properties", "trust_level"],
+  "signal.authenticity.trust_level",
+);
+export const fingerprintSchema = schemaAt<FingerprintContract>(
+  targetSchema,
+  ["properties", "fingerprint"],
+  "target.fingerprint",
+);
+export const linksSchema = schemaAt<LinksContract>(
+  signalSchema,
+  ["properties", "links"],
+  "signal.links",
+);
+export const nullableReferenceSchema = schemaAt<ReferenceContract | null>(
+  linksSchema,
+  ["properties", "duplicate_of"],
+  "links.duplicate_of",
+);
+export const duplicateCandidateSchema = schemaAt<ContractObject>(
+  linksSchema,
+  ["properties", "duplicate_candidates", "items"],
+  "links.duplicate_candidates[]",
 );
 
-export const nullableReferenceSchema = Type.Union([referenceSchema, Type.Null()]);
-
-export const actReferenceSchema = Type.Object(
-  {
-    receipt_ref: referenceSchema,
-    act_id: Type.String({ minLength: 1 }),
-  },
-  { additionalProperties: false },
+export const authorityTermSchema = schemaAt<AuthorityTermContract>(
+  authoritySchema,
+  ["properties", "terms", "items"],
+  "authority.terms[]",
+);
+export const authorityBoundsSchema = schemaAt<AuthorityBoundsContract>(
+  authorityTermSchema,
+  ["properties", "bounds"],
+  "authority.terms[].bounds",
+);
+export const paymentAuthorityBoundsSchema = schemaAt<PaymentAuthorityBoundsContract>(
+  authorityBoundsSchema,
+  ["properties", "payment"],
+  "authority.terms[].bounds.payment",
+);
+export const authorityResourceFamilySchema = schemaAt<AuthorityResourceFamilyContract>(
+  authorityTermSchema,
+  ["properties", "resource_family"],
+  "authority.terms[].resource_family",
+);
+export const authorityVerbSchema = schemaAt<AuthorityVerbContract>(
+  authorityTermSchema,
+  ["properties", "verbs", "items"],
+  "authority.terms[].verbs[]",
+);
+export const authorityCapabilitySchema = schemaAt<AuthorityCapabilityContract>(
+  authorityTermSchema,
+  ["properties", "capabilities", "items"],
+  "authority.terms[].capabilities[]",
+);
+export const authorityConditionSchema = schemaAt<AuthorityConditionContract>(
+  authorityTermSchema,
+  ["properties", "conditions", "items"],
+  "authority.terms[].conditions[]",
+);
+export const authorityConditionPredicateSchema = schemaAt<AuthorityConditionPredicateContract>(
+  authorityConditionSchema,
+  ["properties", "predicate"],
+  "authority.terms[].conditions[].predicate",
+);
+export const authorityApprovalSchema = schemaAt<AuthorityApprovalContract>(
+  authorityTermSchema,
+  ["properties", "approvals", "items"],
+  "authority.terms[].approvals[]",
+);
+export const authoritySubsetComparisonSchema = schemaAt<ContractObject>(
+  authoritySubsetProofSchema,
+  ["properties", "compared_terms", "items"],
+  "authority_subset_proof.compared_terms[]",
+);
+export const paymentCredentialFormSchema = schemaAt<PaymentCredentialFormContract>(
+  paymentAuthorityBoundsSchema,
+  ["properties", "credential_form"],
+  "authority.terms[].bounds.payment.credential_form",
+);
+export const authorityAttenuationSchema = schemaAt<ContractObject>(
+  authoritySchema,
+  ["properties", "attenuation"],
+  "authority.attenuation",
 );
 
-export const hashCommitmentSchema = Type.Object(
-  {
-    algorithm: redactionCommitmentAlgorithmSchema,
-    value: Type.String({ minLength: 1 }),
-    canonicalization: Type.String({ minLength: 1 }),
-  },
-  { additionalProperties: false },
+export const intentSchema = schemaAt<IntentContract>(actSchema, ["properties", "intent"], "act.intent");
+export const successCriterionSchema = schemaAt<SuccessCriterionContract>(
+  intentSchema,
+  ["properties", "success_criteria", "items"],
+  "act.intent.success_criteria[]",
+);
+export const targetSurfaceSchema = schemaAt<TargetSurfaceContract>(
+  actSchema,
+  ["properties", "revision", "properties", "change_request", "properties", "target_surfaces", "items"],
+  "act.revision.change_request.target_surfaces[]",
+);
+export const changeRequestSchema = schemaAt<ChangeRequestContract>(
+  actSchema,
+  ["properties", "revision", "properties", "change_request"],
+  "act.revision.change_request",
+);
+export const changePlanSchema = schemaAt<ChangePlanContract>(
+  actSchema,
+  ["properties", "revision", "properties", "change_plan"],
+  "act.revision.change_plan",
+);
+export const revisionDetailsSchema = schemaAt<RevisionDetailsContract>(
+  actSchema,
+  ["properties", "revision"],
+  "act.revision",
+);
+export const verificationDetailsSchema = schemaAt<VerificationDetailsContract>(
+  actSchema,
+  ["properties", "verification"],
+  "act.verification",
+);
+export const criterionBindingSchema = schemaAt<CriterionBindingContract>(
+  actSchema,
+  ["properties", "criterion_bindings", "items"],
+  "act.criterion_bindings[]",
+);
+export const criterionStatusSchema = schemaAt<CriterionStatusContract>(
+  criterionBindingSchema,
+  ["properties", "status"],
+  "act.criterion_bindings[].status",
+);
+export const closureSchema = schemaAt<ClosureRecordContract>(
+  actSchema,
+  ["properties", "closure"],
+  "act.closure",
+);
+export const closureDispositionSchema = schemaAt<ClosureDispositionContract>(
+  closureSchema,
+  ["properties", "disposition"],
+  "act.closure.disposition",
+);
+export const actFormSchema = schemaAt<ActFormContract>(
+  actSchema,
+  ["properties", "form"],
+  "act.form",
+);
+export const verificationCheckSchema = schemaAt<VerificationCheckContract>(
+  verificationSchema,
+  ["properties", "checks", "items"],
+  "verification.checks[]",
+);
+export const verificationStatusSchema = schemaAt<VerificationStatusContract>(
+  verificationSchema,
+  ["properties", "status"],
+  "verification.status",
+);
+export const decisionChoiceSchema = schemaAt<DecisionChoiceContract>(
+  decisionSchema,
+  ["properties", "choice"],
+  "decision.choice",
+);
+export const decisionInputsSchema = schemaAt<DecisionInputsContract>(
+  decisionSchema,
+  ["properties", "inputs"],
+  "decision.inputs",
+);
+export const decisionJustificationSchema = schemaAt<DecisionJustificationContract>(
+  decisionSchema,
+  ["properties", "justification"],
+  "decision.justification",
 );
 
-export const redactionSchema = Type.Object(
-  {
-    schema: Type.Literal(RUNX_LOGICAL_SCHEMAS.redaction),
-    redaction_id: Type.String({ minLength: 1 }),
-    policy_ref: referenceSchema,
-    redacted_fields: Type.Array(Type.String({ minLength: 1 })),
-    hash_commitments: Type.Array(hashCommitmentSchema),
-    canonicalization: Type.String({ minLength: 1 }),
-    performed_by_ref: referenceSchema,
-    performed_at: dateTimeStringSchema(),
-  },
-  {
-    $schema: JSON_SCHEMA_DRAFT_2020_12,
-    $id: RUNX_CONTRACT_IDS.redaction,
-    "x-runx-schema": RUNX_LOGICAL_SCHEMAS.redaction,
-    additionalProperties: false,
-  },
+export const receiptIssuerSchema = schemaAt<ReceiptIssuerContract>(
+  receiptRootSchema,
+  ["properties", "issuer"],
+  "receipt.issuer",
+);
+export const receiptSignatureSchema = schemaAt<ReceiptSignatureContract>(
+  receiptRootSchema,
+  ["properties", "signature"],
+  "receipt.signature",
+);
+export const fanoutReceiptSyncPointSchema = schemaAt<FanoutReceiptSyncPointContract>(
+  receiptRootSchema,
+  ["properties", "lineage", "properties", "sync", "items"],
+  "receipt.lineage.sync[]",
 );
 
-export const fingerprintSchema = Type.Object(
-  {
-    algorithm: Type.Literal("sha256"),
-    canonicalization: Type.String({ minLength: 1 }),
-    value: Type.String({ minLength: 1 }),
-    derived_from: Type.Array(referenceSchema, { minItems: 1 }),
-  },
-  { additionalProperties: false },
+export const targetCooldownSchema = schemaAt<TargetCooldownContract>(
+  targetSchema,
+  ["properties", "cooldown"],
+  "target.cooldown",
+);
+export const targetLifecycleStateSchema = schemaAt<TargetLifecycleStateContract>(
+  targetSchema,
+  ["properties", "lifecycle_state"],
+  "target.lifecycle_state",
+);
+export const thesisProofStrengthSchema = schemaAt<ThesisProofStrengthContract>(
+  thesisAssessmentSchema,
+  ["properties", "proof_strength"],
+  "thesis_assessment.proof_strength",
+);
+export const authorityCostLevelSchema = schemaAt<AuthorityCostLevelContract>(
+  thesisAssessmentSchema,
+  ["properties", "authority_cost"],
+  "thesis_assessment.authority_cost",
+);
+export const selectionCycleStateSchema = schemaAt<SelectionCycleStateContract>(
+  selectionCycleSchema,
+  ["properties", "state"],
+  "selection_cycle.state",
 );
 
-export const duplicateCandidateSchema = Type.Object(
-  {
-    candidate_ref: referenceSchema,
-    confidence: Type.Number({ minimum: 0, maximum: 1 }),
-    observed_at: dateTimeStringSchema(),
-    evidence_refs: Type.Array(referenceSchema),
-    reviewer_refs: Type.Optional(Type.Array(referenceSchema)),
-  },
-  { additionalProperties: false },
-);
-
-export const linksSchema = Type.Object(
-  {
-    duplicate_of: Type.Optional(nullableReferenceSchema),
-    duplicate_candidates: Type.Optional(Type.Array(duplicateCandidateSchema)),
-    supersedes: Type.Optional(Type.Array(referenceSchema)),
-    superseded_by: Type.Optional(Type.Array(referenceSchema)),
-    related: Type.Optional(Type.Array(referenceSchema)),
-  },
-  { additionalProperties: false },
-);
-
-export const signalAuthenticitySchema = Type.Object(
-  {
-    host_ref: referenceSchema,
-    principal_ref: Type.Optional(referenceSchema),
-    verified_by_ref: Type.Optional(referenceSchema),
-    trust_level: signalTrustLevelSchema,
-    verified_at: Type.Optional(dateTimeStringSchema()),
-    signature_refs: Type.Optional(Type.Array(referenceSchema)),
-    evidence_refs: Type.Optional(Type.Array(referenceSchema)),
-  },
-  { additionalProperties: false },
-);
-
-export const signalSchema = Type.Object(
-  {
-    schema: Type.Literal(RUNX_LOGICAL_SCHEMAS.signal),
-    signal_id: Type.String({ minLength: 1 }),
-    source_ref: referenceSchema,
-    authenticity: Type.Optional(signalAuthenticitySchema),
-    signal_type: signalTypeSchema,
-    title: Type.String({ minLength: 1 }),
-    body_preview: Type.Optional(Type.String({ minLength: 1, maxLength: 2000 })),
-    observed_at: dateTimeStringSchema(),
-    evidence_refs: Type.Optional(Type.Array(referenceSchema)),
-    fingerprint: Type.Optional(fingerprintSchema),
-    links: Type.Optional(linksSchema),
-    extensions: Type.Optional(unknownRecordSchema()),
-  },
-  {
-    $schema: JSON_SCHEMA_DRAFT_2020_12,
-    $id: RUNX_CONTRACT_IDS.signal,
-    "x-runx-schema": RUNX_LOGICAL_SCHEMAS.signal,
-    additionalProperties: false,
-  },
-);
-
-export const paymentAuthorityBoundsSchema = Type.Object(
-  {
-    currency: Type.String({ minLength: 1 }),
-    max_per_call_minor: Type.Optional(Type.Integer({ minimum: 0 })),
-    max_per_run_minor: Type.Optional(Type.Integer({ minimum: 0 })),
-    max_per_period_minor: Type.Optional(Type.Integer({ minimum: 0 })),
-    period: Type.Optional(Type.String({ minLength: 1 })),
-    rails: Type.Array(Type.String({ minLength: 1 }), { minItems: 1 }),
-    realm: Type.Optional(Type.String({ minLength: 1 })),
-    counterparty: Type.Optional(Type.String({ minLength: 1 })),
-    operation: Type.Optional(Type.String({ minLength: 1 })),
-    quote_ttl_ms: Type.Optional(Type.Integer({ minimum: 0 })),
-    approval_threshold_minor: Type.Optional(Type.Integer({ minimum: 0 })),
-    credential_form: Type.Optional(paymentCredentialFormSchema),
-    quote_required: Type.Optional(Type.Boolean()),
-    reservation_required: Type.Optional(Type.Boolean()),
-    idempotency_required: Type.Optional(Type.Boolean()),
-    recovery_required: Type.Optional(Type.Boolean()),
-    receipt_before_success: Type.Optional(Type.Boolean()),
-    single_use_spend: Type.Optional(Type.Boolean()),
-  },
-  { additionalProperties: false },
-);
-
-export const authorityBoundsSchema = Type.Object(
-  {
-    repo_path_globs: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
-    branch_patterns: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
-    filesystem_roots: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
-    network_destinations: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
-    deployment_environments: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
-    token_audiences: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
-    max_spend_usd: Type.Optional(Type.Number({ minimum: 0 })),
-    payment: Type.Optional(paymentAuthorityBoundsSchema),
-    max_runtime_ms: Type.Optional(Type.Integer({ minimum: 0 })),
-    max_fanout: Type.Optional(Type.Integer({ minimum: 0 })),
-    max_child_depth: Type.Optional(Type.Integer({ minimum: 0 })),
-  },
-  { additionalProperties: false },
-);
-
-export const authorityConditionSchema = Type.Object(
-  {
-    condition_id: Type.String({ minLength: 1 }),
-    predicate: authorityConditionPredicateSchema,
-    refs: Type.Optional(Type.Array(referenceSchema)),
-    parameters: Type.Optional(unknownRecordSchema()),
-  },
-  { additionalProperties: false },
-);
-
-export const authorityApprovalSchema = Type.Object(
-  {
-    approval_ref: referenceSchema,
-    approved_by_ref: Type.Optional(referenceSchema),
-    approved_at: Type.Optional(dateTimeStringSchema()),
-    criterion_ids: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
-  },
-  { additionalProperties: false },
-);
-
-export const authorityTermSchema = Type.Object(
-  {
-    term_id: Type.String({ minLength: 1 }),
-    principal_ref: referenceSchema,
-    resource_ref: referenceSchema,
-    resource_family: authorityResourceFamilySchema,
-    verbs: Type.Array(authorityVerbSchema, { minItems: 1 }),
-    bounds: authorityBoundsSchema,
-    conditions: Type.Array(authorityConditionSchema),
-    approvals: Type.Array(authorityApprovalSchema),
-    capabilities: Type.Array(authorityCapabilitySchema),
-    expires_at: Type.Optional(dateTimeStringSchema()),
-    issued_by_ref: referenceSchema,
-    credential_ref: Type.Optional(referenceSchema),
-  },
-  { additionalProperties: false },
-);
-
-export const authoritySubsetComparisonSchema = Type.Object(
-  {
-    child_term_id: Type.String({ minLength: 1 }),
-    parent_term_id: Type.String({ minLength: 1 }),
-    relation: stringEnum(["equal", "subset"] as const),
-  },
-  { additionalProperties: false },
-);
-
-export const authoritySubsetProofSchema = Type.Object(
-  {
-    parent_authority_ref: referenceSchema,
-    comparison_algorithm: Type.String({ minLength: 1 }),
-    result: Type.Literal("subset"),
-    compared_terms: Type.Array(authoritySubsetComparisonSchema, { minItems: 1 }),
-    proof_ref: Type.Optional(referenceSchema),
-    checked_at: dateTimeStringSchema(),
-  },
-  {
-    $schema: JSON_SCHEMA_DRAFT_2020_12,
-    $id: RUNX_CONTRACT_IDS.authoritySubsetProof,
-    "x-runx-schema": RUNX_LOGICAL_SCHEMAS.authoritySubsetProof,
-    additionalProperties: false,
-  },
-);
-
-export const authorityAttenuationSchema = Type.Object(
-  {
-    parent_authority_ref: nullableReferenceSchema,
-    subset_proof: Type.Union([authoritySubsetProofSchema, Type.Null()]),
-  },
-  { additionalProperties: false },
-);
-
-export const authoritySchema = Type.Object(
-  {
-    schema: Type.Optional(Type.Literal(RUNX_LOGICAL_SCHEMAS.authority)),
-    actor_ref: referenceSchema,
-    authority_proof_refs: Type.Array(referenceSchema),
-    grant_refs: Type.Array(referenceSchema),
-    scope_refs: Type.Array(referenceSchema),
-    policy_refs: Type.Array(referenceSchema),
-    terms: Type.Array(authorityTermSchema),
-    attenuation: authorityAttenuationSchema,
-    mandate_ref: Type.Optional(referenceSchema),
-  },
-  {
-    $schema: JSON_SCHEMA_DRAFT_2020_12,
-    $id: RUNX_CONTRACT_IDS.authority,
-    "x-runx-schema": RUNX_LOGICAL_SCHEMAS.authority,
-    additionalProperties: false,
-  },
-);
-
-export const successCriterionSchema = Type.Object(
-  {
-    criterion_id: Type.String({ minLength: 1 }),
-    statement: Type.String({ minLength: 1 }),
-    required: Type.Boolean(),
-  },
-  { additionalProperties: false },
-);
-
-export const intentSchema = Type.Object(
-  {
-    purpose: Type.String({ minLength: 1 }),
-    legitimacy: Type.String({ minLength: 1 }),
-    output: Type.Optional(outputSchema),
-    success_criteria: Type.Array(successCriterionSchema),
-    constraints: Type.Array(Type.String({ minLength: 1 })),
-    derived_from: Type.Array(referenceSchema),
-  },
-  { additionalProperties: false },
-);
-
-export const verificationCheckSchema = Type.Object(
-  {
-    check_id: Type.String({ minLength: 1 }),
-    criterion_ids: Type.Array(Type.String({ minLength: 1 }), { minItems: 1 }),
-    status: verificationStatusSchema,
-    summary: Type.Optional(Type.String({ minLength: 1 })),
-    checked_refs: Type.Optional(Type.Array(referenceSchema)),
-    evidence_refs: Type.Array(referenceSchema),
-    verified_at: Type.Optional(dateTimeStringSchema()),
-  },
-  { additionalProperties: false },
-);
-
-export const verificationSchema = Type.Object(
-  {
-    schema: Type.Optional(Type.Literal(RUNX_LOGICAL_SCHEMAS.verification)),
-    verification_id: Type.Optional(Type.String({ minLength: 1 })),
-    status: verificationStatusSchema,
-    checks: Type.Array(verificationCheckSchema),
-    verified_at: Type.Optional(dateTimeStringSchema()),
-    evidence_refs: Type.Array(referenceSchema),
-  },
-  {
-    $schema: JSON_SCHEMA_DRAFT_2020_12,
-    $id: RUNX_CONTRACT_IDS.verification,
-    "x-runx-schema": RUNX_LOGICAL_SCHEMAS.verification,
-    additionalProperties: false,
-  },
-);
-
-export const targetSurfaceSchema = Type.Object(
-  {
-    surface_ref: referenceSchema,
-    mutating: Type.Boolean(),
-    rationale: Type.Optional(Type.String({ minLength: 1 })),
-  },
-  { additionalProperties: false },
-);
-
-export const changeRequestSchema = Type.Object(
-  {
-    request_id: Type.String({ minLength: 1 }),
-    summary: Type.String({ minLength: 1 }),
-    target_surfaces: Type.Array(targetSurfaceSchema),
-    success_criteria: Type.Array(successCriterionSchema),
-  },
-  { additionalProperties: false },
-);
-
-export const changePlanSchema = Type.Object(
-  {
-    plan_id: Type.String({ minLength: 1 }),
-    summary: Type.String({ minLength: 1 }),
-    steps: Type.Array(Type.String({ minLength: 1 })),
-    risks: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
-  },
-  { additionalProperties: false },
-);
-
-export const revisionDetailsSchema = Type.Object(
-  {
-    change_request: changeRequestSchema,
-    change_plan: changePlanSchema,
-    target_surfaces: Type.Array(targetSurfaceSchema),
-    invariants: Type.Array(Type.String({ minLength: 1 })),
-    verification: Type.Optional(verificationSchema),
-    handoff_refs: Type.Array(referenceSchema),
-    revision_refs: Type.Optional(Type.Array(referenceSchema)),
-  },
-  { additionalProperties: false },
-);
-
-export const verificationDetailsSchema = Type.Object(
-  {
-    criterion_ids: Type.Array(Type.String({ minLength: 1 }), { minItems: 1 }),
-    verification: verificationSchema,
-    deployment_ref: Type.Optional(referenceSchema),
-  },
-  { additionalProperties: false },
-);
-
-export const criterionBindingSchema = Type.Object(
-  {
-    criterion_id: Type.String({ minLength: 1 }),
-    status: criterionStatusSchema,
-    evidence_refs: Type.Array(referenceSchema),
-    verification_refs: Type.Array(referenceSchema),
-    summary: Type.Optional(Type.String({ minLength: 1 })),
-  },
-  { additionalProperties: false },
-);
-
-export const closureSchema = Type.Object(
-  {
-    disposition: closureDispositionSchema,
-    reason_code: Type.String({ minLength: 1 }),
-    summary: Type.String({ minLength: 1 }),
-    closed_at: dateTimeStringSchema(),
-  },
-  { additionalProperties: false },
-);
-
-export const actSchema = Type.Object(
-  {
-    schema: Type.Optional(Type.Literal(RUNX_LOGICAL_SCHEMAS.act)),
-    act_id: Type.String({ minLength: 1 }),
-    form: actFormSchema,
-    intent: intentSchema,
-    summary: Type.String({ minLength: 1 }),
-    closure: closureSchema,
-    criterion_bindings: Type.Array(criterionBindingSchema),
-    source_refs: Type.Array(referenceSchema),
-    target_refs: Type.Array(referenceSchema),
-    surface_refs: Type.Array(referenceSchema),
-    artifact_refs: Type.Array(referenceSchema),
-    verification_refs: Type.Array(referenceSchema),
-    harness_refs: Type.Array(referenceSchema),
-    revision: Type.Optional(revisionDetailsSchema),
-    verification: Type.Optional(verificationDetailsSchema),
-    performed_at: dateTimeStringSchema(),
-  },
-  {
-    $schema: JSON_SCHEMA_DRAFT_2020_12,
-    $id: RUNX_CONTRACT_IDS.act,
-    "x-runx-schema": RUNX_LOGICAL_SCHEMAS.act,
-    additionalProperties: false,
-  },
-);
-
-export const decisionInputsSchema = Type.Object(
-  {
-    signal_refs: Type.Array(referenceSchema),
-    target_ref: nullableReferenceSchema,
-    opportunity_refs: Type.Array(referenceSchema),
-    selection_ref: nullableReferenceSchema,
-  },
-  { additionalProperties: false },
-);
-
-export const decisionJustificationSchema = Type.Object(
-  {
-    summary: Type.String({ minLength: 1 }),
-    evidence_refs: Type.Array(referenceSchema),
-  },
-  { additionalProperties: false },
-);
-
-export const decisionSchema = Type.Object(
-  {
-    schema: Type.Optional(Type.Literal(RUNX_LOGICAL_SCHEMAS.decision)),
-    decision_id: Type.String({ minLength: 1 }),
-    choice: decisionChoiceSchema,
-    inputs: decisionInputsSchema,
-    proposed_intent: intentSchema,
-    selected_act_id: Type.Union([Type.String({ minLength: 1 }), Type.Null()]),
-    selected_harness_ref: nullableReferenceSchema,
-    justification: decisionJustificationSchema,
-    closure: Type.Union([closureSchema, Type.Null()]),
-    artifact_refs: Type.Array(referenceSchema),
-  },
-  {
-    $schema: JSON_SCHEMA_DRAFT_2020_12,
-    $id: RUNX_CONTRACT_IDS.decision,
-    "x-runx-schema": RUNX_LOGICAL_SCHEMAS.decision,
-    additionalProperties: false,
-  },
-);
-
-export const receiptVerificationSummarySchema = Type.Object(
-  {
-    signature_valid: Type.Boolean(),
-    content_address_valid: Type.Boolean(),
-    hash_commitments_valid: Type.Boolean(),
-    authority_attenuation_valid: Type.Boolean(),
-    criteria_bound: Type.Boolean(),
-    redaction_valid: Type.Boolean(),
-    external_attestations_present: Type.Boolean(),
-  },
-  { additionalProperties: false },
-);
-
-export const artifactSchema = Type.Object(
-  {
-    schema: Type.Literal(RUNX_LOGICAL_SCHEMAS.artifact),
-    artifact_id: Type.String({ minLength: 1 }),
-    artifact_ref: referenceSchema,
-    produced_by: Type.Object(
-      {
-        receipt_ref: Type.Optional(referenceSchema),
-        harness_ref: Type.Optional(referenceSchema),
-        act_ref: Type.Optional(actReferenceSchema),
-        decision_ref: Type.Optional(referenceSchema),
-        signal_ref: Type.Optional(referenceSchema),
-      },
-      { additionalProperties: false },
-    ),
-    media_type: Type.String({ minLength: 1 }),
-    created_at: dateTimeStringSchema(),
-    size_bytes: Type.Integer({ minimum: 0 }),
-    hash: hashCommitmentSchema,
-    redaction_refs: Type.Array(referenceSchema),
-    source_refs: Type.Array(referenceSchema),
-    data_ref: Type.Optional(referenceSchema),
-    summary: Type.Optional(Type.String({ minLength: 1 })),
-    extensions: Type.Optional(unknownRecordSchema()),
-  },
-  {
-    $schema: JSON_SCHEMA_DRAFT_2020_12,
-    $id: RUNX_CONTRACT_IDS.artifact,
-    "x-runx-schema": RUNX_LOGICAL_SCHEMAS.artifact,
-    additionalProperties: false,
-  },
-);
-
-export const receiptIssuerSchema = Type.Object(
-  {
-    type: stringEnum(["local", "hosted", "ci", "verifier"] as const),
-    kid: Type.String({ minLength: 1 }),
-    public_key_sha256: Type.String({ minLength: 1 }),
-  },
-  { additionalProperties: false },
-);
-
-export const receiptSignatureSchema = Type.Object(
-  {
-    alg: Type.Literal("Ed25519"),
-    value: Type.String({ minLength: 1 }),
-  },
-  { additionalProperties: false },
-);
-
-export const fanoutReceiptSyncPointSchema = Type.Object(
-  {
-    group_id: Type.String({ minLength: 1 }),
-    strategy: stringEnum(["all", "any", "quorum"] as const),
-    decision: stringEnum(["proceed", "halt", "pause", "escalate"] as const),
-    rule_fired: Type.String({ minLength: 1 }),
-    reason: Type.String({ minLength: 1 }),
-    branch_count: Type.Integer({ minimum: 0 }),
-    success_count: Type.Integer({ minimum: 0 }),
-    failure_count: Type.Integer({ minimum: 0 }),
-    required_successes: Type.Integer({ minimum: 0 }),
-    branch_receipts: Type.Array(Type.String({ minLength: 1 })),
-    gate: Type.Optional(unknownRecordSchema()),
-  },
-  { additionalProperties: false },
-);
-
-export const targetCooldownSchema = Type.Object(
-  {
-    state: stringEnum(["none", "cooling_down"] as const),
-    until: Type.Optional(dateTimeStringSchema()),
-    reason_code: Type.Optional(Type.String({ minLength: 1 })),
-  },
-  { additionalProperties: false },
-);
-
-export const targetSchema = Type.Object(
-  {
-    schema: Type.Literal(RUNX_LOGICAL_SCHEMAS.target),
-    target_id: Type.String({ minLength: 1 }),
-    target_ref: referenceSchema,
-    title: Type.String({ minLength: 1 }),
-    summary: Type.Optional(Type.String({ minLength: 1 })),
-    lifecycle_state: targetLifecycleStateSchema,
-    authority_refs: Type.Array(referenceSchema),
-    fingerprint: fingerprintSchema,
-    links: Type.Optional(linksSchema),
-    cooldown: targetCooldownSchema,
-    verification_recipe_refs: Type.Array(referenceSchema),
-    owner_refs: Type.Optional(Type.Array(referenceSchema)),
-    created_at: dateTimeStringSchema(),
-    updated_at: dateTimeStringSchema(),
-  },
-  {
-    $schema: JSON_SCHEMA_DRAFT_2020_12,
-    $id: RUNX_CONTRACT_IDS.target,
-    "x-runx-schema": RUNX_LOGICAL_SCHEMAS.target,
-    additionalProperties: false,
-  },
-);
-
-export const opportunitySchema = Type.Object(
-  {
-    schema: Type.Literal(RUNX_LOGICAL_SCHEMAS.opportunity),
-    opportunity_id: Type.String({ minLength: 1 }),
-    target_ref: referenceSchema,
-    summary: Type.String({ minLength: 1 }),
-    proposed_form: actFormSchema,
-    value_score: Type.Integer({ minimum: 0, maximum: 100 }),
-    risk_score: Type.Integer({ minimum: 0, maximum: 100 }),
-    freshness_expires_at: dateTimeStringSchema(),
-    fingerprint: fingerprintSchema,
-    links: Type.Optional(linksSchema),
-    source_refs: Type.Array(referenceSchema),
-    evidence_refs: Type.Array(referenceSchema),
-    discovered_at: dateTimeStringSchema(),
-  },
-  {
-    $schema: JSON_SCHEMA_DRAFT_2020_12,
-    $id: RUNX_CONTRACT_IDS.opportunity,
-    "x-runx-schema": RUNX_LOGICAL_SCHEMAS.opportunity,
-    additionalProperties: false,
-  },
-);
-
-export const thesisAssessmentSchema = Type.Object(
-  {
-    schema: Type.Literal(RUNX_LOGICAL_SCHEMAS.thesisAssessment),
-    assessment_id: Type.String({ minLength: 1 }),
-    target_ref: referenceSchema,
-    opportunity_ref: referenceSchema,
-    thesis_ref: referenceSchema,
-    score: Type.Integer({ minimum: 0, maximum: 100 }),
-    rubric_refs: Type.Array(referenceSchema),
-    proof_strength: thesisProofStrengthSchema,
-    authority_cost: authorityCostLevelSchema,
-    rationale: Type.String({ minLength: 1 }),
-    evidence_refs: Type.Array(referenceSchema),
-    assessed_at: dateTimeStringSchema(),
-  },
-  {
-    $schema: JSON_SCHEMA_DRAFT_2020_12,
-    $id: RUNX_CONTRACT_IDS.thesisAssessment,
-    "x-runx-schema": RUNX_LOGICAL_SCHEMAS.thesisAssessment,
-    additionalProperties: false,
-  },
-);
-
-export const selectionSchema = Type.Object(
-  {
-    schema: Type.Literal(RUNX_LOGICAL_SCHEMAS.selection),
-    selection_id: Type.String({ minLength: 1 }),
-    cycle_ref: referenceSchema,
-    opportunity_ref: referenceSchema,
-    candidate_refs: Type.Array(referenceSchema, { minItems: 1 }),
-    rank: Type.Integer({ minimum: 1 }),
-    score: Type.Integer({ minimum: 0, maximum: 100 }),
-    selected: Type.Boolean(),
-    reason: Type.String({ minLength: 1 }),
-    cooldown_until: Type.Optional(dateTimeStringSchema()),
-    decision_ref: nullableReferenceSchema,
-    evidence_refs: Type.Array(referenceSchema),
-    selected_at: dateTimeStringSchema(),
-  },
-  {
-    $schema: JSON_SCHEMA_DRAFT_2020_12,
-    $id: RUNX_CONTRACT_IDS.selection,
-    "x-runx-schema": RUNX_LOGICAL_SCHEMAS.selection,
-    additionalProperties: false,
-  },
-);
-
-export const skillBindingSchema = Type.Object(
-  {
-    schema: Type.Literal(RUNX_LOGICAL_SCHEMAS.skillBinding),
-    binding_id: Type.String({ minLength: 1 }),
-    skill_ref: referenceSchema,
-    scope_family: authorityResourceFamilySchema,
-    allowed_act_forms: Type.Array(actFormSchema, { minItems: 1 }),
-    authority_refs: Type.Array(referenceSchema),
-    policy_refs: Type.Array(referenceSchema),
-    harness_template_ref: nullableReferenceSchema,
-    active: Type.Boolean(),
-    created_at: dateTimeStringSchema(),
-    updated_at: dateTimeStringSchema(),
-  },
-  {
-    $schema: JSON_SCHEMA_DRAFT_2020_12,
-    $id: RUNX_CONTRACT_IDS.skillBinding,
-    "x-runx-schema": RUNX_LOGICAL_SCHEMAS.skillBinding,
-    additionalProperties: false,
-  },
-);
-
-export const targetTransitionEntrySchema = Type.Object(
-  {
-    schema: Type.Literal(RUNX_LOGICAL_SCHEMAS.targetTransitionEntry),
-    entry_id: Type.String({ minLength: 1 }),
-    target_ref: referenceSchema,
-    from_state: Type.Union([targetLifecycleStateSchema, Type.Null()]),
-    to_state: targetLifecycleStateSchema,
-    reason_code: Type.String({ minLength: 1 }),
-    summary: Type.String({ minLength: 1 }),
-    source_refs: Type.Array(referenceSchema),
-    decision_ref: nullableReferenceSchema,
-    receipt_ref: nullableReferenceSchema,
-    recorded_at: dateTimeStringSchema(),
-  },
-  {
-    $schema: JSON_SCHEMA_DRAFT_2020_12,
-    $id: RUNX_CONTRACT_IDS.targetTransitionEntry,
-    "x-runx-schema": RUNX_LOGICAL_SCHEMAS.targetTransitionEntry,
-    additionalProperties: false,
-  },
-);
-
-export const selectionCycleSchema = Type.Object(
-  {
-    schema: Type.Literal(RUNX_LOGICAL_SCHEMAS.selectionCycle),
-    cycle_id: Type.String({ minLength: 1 }),
-    state: selectionCycleStateSchema,
-    started_at: dateTimeStringSchema(),
-    closed_at: Type.Union([dateTimeStringSchema(), Type.Null()]),
-    input_refs: Type.Array(referenceSchema),
-    target_refs: Type.Array(referenceSchema),
-    opportunity_refs: Type.Array(referenceSchema),
-    ranked_selection_refs: Type.Array(referenceSchema),
-    chosen_selection_ref: nullableReferenceSchema,
-    decision_ref: nullableReferenceSchema,
-    receipt_ref: nullableReferenceSchema,
-    no_action_closure: Type.Union([closureSchema, Type.Null()]),
-    fingerprint: fingerprintSchema,
-  },
-  {
-    $schema: JSON_SCHEMA_DRAFT_2020_12,
-    $id: RUNX_CONTRACT_IDS.selectionCycle,
-    "x-runx-schema": RUNX_LOGICAL_SCHEMAS.selectionCycle,
-    additionalProperties: false,
-  },
-);
-
-export const reflectionEntrySchema = Type.Object(
-  {
-    schema: Type.Literal(RUNX_LOGICAL_SCHEMAS.reflectionEntry),
-    reflection_id: Type.String({ minLength: 1 }),
-    target_ref: nullableReferenceSchema,
-    opportunity_ref: nullableReferenceSchema,
-    selection_ref: nullableReferenceSchema,
-    decision_ref: nullableReferenceSchema,
-    receipt_refs: Type.Array(referenceSchema),
-    act_refs: Type.Array(actReferenceSchema),
-    summary: Type.String({ minLength: 1 }),
-    lessons: Type.Array(Type.String({ minLength: 1 })),
-    follow_up_refs: Type.Array(referenceSchema),
-    evidence_refs: Type.Array(referenceSchema),
-    recorded_at: dateTimeStringSchema(),
-  },
-  {
-    $schema: JSON_SCHEMA_DRAFT_2020_12,
-    $id: RUNX_CONTRACT_IDS.reflectionEntry,
-    "x-runx-schema": RUNX_LOGICAL_SCHEMAS.reflectionEntry,
-    additionalProperties: false,
-  },
-);
-
-export const feedEntrySchema = Type.Object(
-  {
-    schema: Type.Literal(RUNX_LOGICAL_SCHEMAS.feedEntry),
-    feed_entry_id: Type.String({ minLength: 1 }),
-    public_at: dateTimeStringSchema(),
-    title: Type.String({ minLength: 1 }),
-    summary: Type.String({ minLength: 1 }),
-    target_ref: nullableReferenceSchema,
-    opportunity_ref: nullableReferenceSchema,
-    selection_ref: nullableReferenceSchema,
-    decision_refs: Type.Array(referenceSchema, { minItems: 1 }),
-    receipt_refs: Type.Array(referenceSchema, { minItems: 1 }),
-    act_refs: Type.Array(actReferenceSchema, { minItems: 1 }),
-    verification_refs: Type.Array(referenceSchema, { minItems: 1 }),
-    evidence_refs: Type.Array(referenceSchema, { minItems: 1 }),
-    artifact_refs: Type.Array(referenceSchema),
-    redaction_policy_ref: referenceSchema,
-    redaction_refs: Type.Array(referenceSchema),
-  },
-  {
-    $schema: JSON_SCHEMA_DRAFT_2020_12,
-    $id: RUNX_CONTRACT_IDS.feedEntry,
-    "x-runx-schema": RUNX_LOGICAL_SCHEMAS.feedEntry,
-    additionalProperties: false,
-  },
-);
-
-export type ReferenceTypeContract = DeepReadonly<Static<typeof referenceTypeSchema>>;
-export type SignalTypeContract = DeepReadonly<Static<typeof signalTypeSchema>>;
-export type SignalTrustLevelContract = DeepReadonly<Static<typeof signalTrustLevelSchema>>;
-export type ClosureDispositionContract = DeepReadonly<Static<typeof closureDispositionSchema>>;
-export type DecisionChoiceContract = DeepReadonly<Static<typeof decisionChoiceSchema>>;
-export type ActFormContract = DeepReadonly<Static<typeof actFormSchema>>;
-export type TargetLifecycleStateContract = DeepReadonly<Static<typeof targetLifecycleStateSchema>>;
-export type ThesisProofStrengthContract = DeepReadonly<Static<typeof thesisProofStrengthSchema>>;
-export type AuthorityCostLevelContract = DeepReadonly<Static<typeof authorityCostLevelSchema>>;
-export type SelectionCycleStateContract = DeepReadonly<Static<typeof selectionCycleStateSchema>>;
-export type CriterionStatusContract = DeepReadonly<Static<typeof criterionStatusSchema>>;
-export type VerificationStatusContract = DeepReadonly<Static<typeof verificationStatusSchema>>;
-export type AuthorityResourceFamilyContract = DeepReadonly<Static<typeof authorityResourceFamilySchema>>;
-export type AuthorityVerbContract = DeepReadonly<Static<typeof authorityVerbSchema>>;
-export type AuthorityCapabilityContract = DeepReadonly<Static<typeof authorityCapabilitySchema>>;
-export type AuthorityConditionPredicateContract = DeepReadonly<Static<typeof authorityConditionPredicateSchema>>;
-export type PaymentCredentialFormContract = DeepReadonly<Static<typeof paymentCredentialFormSchema>>;
-export type ProofKindContract = DeepReadonly<Static<typeof proofKindSchema>>;
-export type ReferenceContract = DeepReadonly<Static<typeof referenceSchema>>;
-export type ActReferenceContract = DeepReadonly<Static<typeof actReferenceSchema>>;
-export type HashCommitmentContract = DeepReadonly<Static<typeof hashCommitmentSchema>>;
-export type RedactionContract = DeepReadonly<Static<typeof redactionSchema>>;
-export type FingerprintContract = DeepReadonly<Static<typeof fingerprintSchema>>;
-export type LinksContract = DeepReadonly<Static<typeof linksSchema>>;
-export type SignalAuthenticityContract = DeepReadonly<Static<typeof signalAuthenticitySchema>>;
-export type SignalContract = DeepReadonly<Static<typeof signalSchema>>;
-export type PaymentAuthorityBoundsContract = DeepReadonly<Static<typeof paymentAuthorityBoundsSchema>>;
-export type AuthorityBoundsContract = DeepReadonly<Static<typeof authorityBoundsSchema>>;
-export type AuthorityConditionContract = DeepReadonly<Static<typeof authorityConditionSchema>>;
-export type AuthorityApprovalContract = DeepReadonly<Static<typeof authorityApprovalSchema>>;
-export type AuthorityTermContract = DeepReadonly<Static<typeof authorityTermSchema>>;
-export type AuthoritySubsetProofContract = DeepReadonly<Static<typeof authoritySubsetProofSchema>>;
-export type AuthorityContract = DeepReadonly<Static<typeof authoritySchema>>;
-export type SuccessCriterionContract = DeepReadonly<Static<typeof successCriterionSchema>>;
-export type IntentContract = DeepReadonly<Static<typeof intentSchema>>;
-export type VerificationCheckContract = DeepReadonly<Static<typeof verificationCheckSchema>>;
-export type VerificationContract = DeepReadonly<Static<typeof verificationSchema>>;
-export type TargetSurfaceContract = DeepReadonly<Static<typeof targetSurfaceSchema>>;
-export type ChangeRequestContract = DeepReadonly<Static<typeof changeRequestSchema>>;
-export type ChangePlanContract = DeepReadonly<Static<typeof changePlanSchema>>;
-export type RevisionDetailsContract = DeepReadonly<Static<typeof revisionDetailsSchema>>;
-export type VerificationDetailsContract = DeepReadonly<Static<typeof verificationDetailsSchema>>;
-export type CriterionBindingContract = DeepReadonly<Static<typeof criterionBindingSchema>>;
-export type ActContract = DeepReadonly<Static<typeof actSchema>>;
-export type DecisionInputsContract = DeepReadonly<Static<typeof decisionInputsSchema>>;
-export type DecisionJustificationContract = DeepReadonly<Static<typeof decisionJustificationSchema>>;
-export type ClosureRecordContract = DeepReadonly<Static<typeof closureSchema>>;
-export type DecisionContract = DeepReadonly<Static<typeof decisionSchema>>;
-export type ReceiptVerificationSummaryContract = DeepReadonly<Static<typeof receiptVerificationSummarySchema>>;
-export type ArtifactContract = DeepReadonly<Static<typeof artifactSchema>>;
-export type ReceiptIssuerContract = DeepReadonly<Static<typeof receiptIssuerSchema>>;
-export type ReceiptSignatureContract = DeepReadonly<Static<typeof receiptSignatureSchema>>;
-export type FanoutReceiptSyncPointContract = DeepReadonly<Static<typeof fanoutReceiptSyncPointSchema>>;
-export type TargetCooldownContract = DeepReadonly<Static<typeof targetCooldownSchema>>;
-export type TargetContract = DeepReadonly<Static<typeof targetSchema>>;
-export type OpportunityContract = DeepReadonly<Static<typeof opportunitySchema>>;
-export type ThesisAssessmentContract = DeepReadonly<Static<typeof thesisAssessmentSchema>>;
-export type SelectionContract = DeepReadonly<Static<typeof selectionSchema>>;
-export type SkillBindingContract = DeepReadonly<Static<typeof skillBindingSchema>>;
-export type TargetTransitionEntryContract = DeepReadonly<Static<typeof targetTransitionEntrySchema>>;
-export type SelectionCycleContract = DeepReadonly<Static<typeof selectionCycleSchema>>;
-export type ReflectionEntryContract = DeepReadonly<Static<typeof reflectionEntrySchema>>;
-export type FeedEntryContract = DeepReadonly<Static<typeof feedEntrySchema>>;
+export const referenceTypes = enumValues(referenceTypeSchema, "reference.type");
+export const signalTypes = enumValues(signalTypeSchema, "signal.signal_type");
+export const signalTrustLevels = enumValues(signalTrustLevelSchema, "signal.authenticity.trust_level");
+export const closureDispositions = enumValues(closureDispositionSchema, "act.closure.disposition");
+export const decisionChoices = enumValues(decisionChoiceSchema, "decision.choice");
+export const actForms = enumValues(actFormSchema, "act.form");
+export const targetLifecycleStates = enumValues(targetLifecycleStateSchema, "target.lifecycle_state");
+export const thesisProofStrengths = enumValues(thesisProofStrengthSchema, "thesis_assessment.proof_strength");
+export const authorityCostLevels = enumValues(authorityCostLevelSchema, "thesis_assessment.authority_cost");
+export const selectionCycleStates = enumValues(selectionCycleStateSchema, "selection_cycle.state");
+export const criterionStatuses = enumValues(criterionStatusSchema, "act.criterion_bindings[].status");
+export const verificationStatuses = enumValues(verificationStatusSchema, "verification.status");
+export const authorityResourceFamilies = enumValues(authorityResourceFamilySchema, "authority.terms[].resource_family");
+export const authorityVerbs = enumValues(authorityVerbSchema, "authority.terms[].verbs[]");
+export const authorityCapabilities = enumValues(authorityCapabilitySchema, "authority.terms[].capabilities[]");
+export const authorityConditionPredicates = enumValues(authorityConditionPredicateSchema, "authority.terms[].conditions[].predicate");
+export const paymentCredentialForms = enumValues(paymentCredentialFormSchema, "authority.terms[].bounds.payment.credential_form");
+export const proofKinds = enumValues(proofKindSchema, "reference.proof_kind");
+export const redactionCommitmentAlgorithms = enumValues(redactionCommitmentAlgorithmSchema, "redaction.hash_commitments[].algorithm");
 
 export function validateReferenceContract(value: unknown, label = "reference"): ReferenceContract {
-  return validateContractSchema(referenceSchema, value, label);
+  return validateContractSchema(referenceSchema, value, label) as ReferenceContract;
 }
 
 export function validateSignalContract(value: unknown, label = "signal"): SignalContract {
-  return validateContractSchema(signalSchema, value, label);
+  return validateContractSchema(signalSchema, value, label) as SignalContract;
 }
 
 export function validateAuthorityContract(value: unknown, label = "authority"): AuthorityContract {
-  return validateContractSchema(authoritySchema, value, label);
+  return validateContractSchema(authoritySchema, value, label) as AuthorityContract;
 }
 
 export function validateAuthoritySubsetProofContract(
   value: unknown,
   label = "authority_subset_proof",
 ): AuthoritySubsetProofContract {
-  return validateContractSchema(authoritySubsetProofSchema, value, label);
+  return validateContractSchema(authoritySubsetProofSchema, value, label) as AuthoritySubsetProofContract;
 }
 
 export function validateDecisionContract(value: unknown, label = "decision"): DecisionContract {
-  return validateContractSchema(decisionSchema, value, label);
+  return validateContractSchema(decisionSchema, value, label) as DecisionContract;
 }
 
 export function validateActContract(value: unknown, label = "act"): ActContract {
-  const act = validateContractSchema(actSchema, value, label);
+  const act = validateContractSchema(actSchema, value, label) as ActContract;
   assertActFormDetails(act, label);
   return act;
 }
 
 export function validateVerificationContract(value: unknown, label = "verification"): VerificationContract {
-  return validateContractSchema(verificationSchema, value, label);
+  return validateContractSchema(verificationSchema, value, label) as VerificationContract;
 }
 
 export function validateSpineArtifactContract(value: unknown, label = "artifact"): ArtifactContract {
-  return validateContractSchema(artifactSchema, value, label);
+  return validateContractSchema(artifactSchema, value, label) as ArtifactContract;
 }
 
 export function validateRedactionContract(value: unknown, label = "redaction"): RedactionContract {
-  return validateContractSchema(redactionSchema, value, label);
+  return validateContractSchema(redactionSchema, value, label) as RedactionContract;
 }
 
 export function validateTargetContract(value: unknown, label = "target"): TargetContract {
-  return validateContractSchema(targetSchema, value, label);
+  return validateContractSchema(targetSchema, value, label) as TargetContract;
 }
 
 export function validateOpportunityContract(value: unknown, label = "opportunity"): OpportunityContract {
-  return validateContractSchema(opportunitySchema, value, label);
+  return validateContractSchema(opportunitySchema, value, label) as OpportunityContract;
 }
 
 export function validateThesisAssessmentContract(
   value: unknown,
   label = "thesis_assessment",
 ): ThesisAssessmentContract {
-  return validateContractSchema(thesisAssessmentSchema, value, label);
+  return validateContractSchema(thesisAssessmentSchema, value, label) as ThesisAssessmentContract;
 }
 
 export function validateSelectionContract(value: unknown, label = "selection"): SelectionContract {
-  return validateContractSchema(selectionSchema, value, label);
+  return validateContractSchema(selectionSchema, value, label) as SelectionContract;
 }
 
 export function validateSkillBindingContract(value: unknown, label = "skill_binding"): SkillBindingContract {
-  return validateContractSchema(skillBindingSchema, value, label);
+  return validateContractSchema(skillBindingSchema, value, label) as SkillBindingContract;
 }
 
 export function validateTargetTransitionEntryContract(
   value: unknown,
   label = "target_transition_entry",
 ): TargetTransitionEntryContract {
-  return validateContractSchema(targetTransitionEntrySchema, value, label);
+  return validateContractSchema(targetTransitionEntrySchema, value, label) as TargetTransitionEntryContract;
 }
 
 export function validateSelectionCycleContract(
   value: unknown,
   label = "selection_cycle",
 ): SelectionCycleContract {
-  return validateContractSchema(selectionCycleSchema, value, label);
+  return validateContractSchema(selectionCycleSchema, value, label) as SelectionCycleContract;
 }
 
 export function validateReflectionEntryContract(
   value: unknown,
   label = "reflection_entry",
 ): ReflectionEntryContract {
-  return validateContractSchema(reflectionEntrySchema, value, label);
+  return validateContractSchema(reflectionEntrySchema, value, label) as ReflectionEntryContract;
 }
 
 export function validateFeedEntryContract(value: unknown, label = "feed_entry"): FeedEntryContract {
-  return validateContractSchema(feedEntrySchema, value, label);
+  return validateContractSchema(feedEntrySchema, value, label) as FeedEntryContract;
 }
 
 function assertActFormDetails(act: ActContract, label: string): void {
@@ -1162,4 +566,3 @@ function assertActFormDetails(act: ActContract, label: string): void {
     throw new Error(`${label} must not carry revision or verification details when form is ${act.form}.`);
   }
 }
-

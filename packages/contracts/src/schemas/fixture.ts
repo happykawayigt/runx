@@ -1,39 +1,22 @@
-import { Type, type Static } from "../internal.js";
 import {
-  JSON_SCHEMA_DRAFT_2020_12,
-  RUNX_CONTRACT_IDS,
-  RUNX_LOGICAL_SCHEMAS,
   type DeepReadonly,
+  type UnknownRecord,
   generatedSchema,
-  stringEnum,
-  unknownRecordSchema,
 } from "../internal.js";
 
-const fixtureLanes = ["deterministic", "agent", "repo-integration"] as const;
+export type FixtureLaneContract = "deterministic" | "agent" | "repo-integration";
 
-const fixtureEnvelopeSchema = unknownRecordSchema();
-
-const fixtureV1TypeSchema = Type.Object(
-  {
-    name: Type.String(),
-    lane: stringEnum(fixtureLanes),
-    target: unknownRecordSchema(),
-    inputs: Type.Optional(fixtureEnvelopeSchema),
-    env: Type.Optional(fixtureEnvelopeSchema),
-    agent: Type.Optional(fixtureEnvelopeSchema),
-    repo: Type.Optional(fixtureEnvelopeSchema),
-    execution: Type.Optional(fixtureEnvelopeSchema),
-    permissions: Type.Optional(fixtureEnvelopeSchema),
-    expect: fixtureEnvelopeSchema,
-  },
-  {
-    $schema: JSON_SCHEMA_DRAFT_2020_12,
-    $id: RUNX_CONTRACT_IDS.fixture,
-    "x-runx-schema": RUNX_LOGICAL_SCHEMAS.fixture,
-    additionalProperties: false,
-  },
-);
-
-export type FixtureContract = DeepReadonly<Static<typeof fixtureV1TypeSchema>>;
+export type FixtureContract = DeepReadonly<{
+  name: string;
+  lane: FixtureLaneContract;
+  target: UnknownRecord;
+  inputs?: UnknownRecord;
+  env?: UnknownRecord;
+  agent?: UnknownRecord;
+  repo?: UnknownRecord;
+  execution?: UnknownRecord;
+  permissions?: UnknownRecord;
+  expect: UnknownRecord;
+}>;
 
 export const fixtureV1Schema = generatedSchema<FixtureContract>("fixture.schema.json");

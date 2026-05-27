@@ -1,76 +1,62 @@
-import { Type, type Static } from "../internal.js";
 import {
-  JSON_SCHEMA_DRAFT_2020_12,
-  RUNX_CONTRACT_IDS,
   RUNX_LOGICAL_SCHEMAS,
   type DeepReadonly,
+  type UnknownRecord,
   generatedSchema,
-  stringEnum,
-  unknownRecordSchema,
+  generatedSchemaAt,
   validateContractSchema,
 } from "../internal.js";
-import { doctorV1Schema } from "./doctor.js";
+import type { DoctorReportContract } from "./doctor.js";
 
 export const devStatuses = ["success", "failure", "skipped", "needs_approval"] as const;
-const fixtureAssertionKinds = [
-  "subset_miss",
-  "exact_mismatch",
-  "packet_invalid",
-  "status_mismatch",
-  "type_mismatch",
-] as const;
+export type DevStatusContract = (typeof devStatuses)[number];
+export type DevFixtureAssertionKindContract =
+  | "subset_miss"
+  | "exact_mismatch"
+  | "packet_invalid"
+  | "status_mismatch"
+  | "type_mismatch";
 
-const devFixtureAssertionSchema = Type.Object(
-  {
-    path: Type.String(),
-    expected: Type.Optional(Type.Unknown()),
-    actual: Type.Optional(Type.Unknown()),
-    kind: stringEnum(fixtureAssertionKinds),
-    message: Type.String(),
-  },
-  { additionalProperties: false },
-);
+export type DevFixtureAssertionContract = DeepReadonly<{
+  path: string;
+  expected?: unknown;
+  actual?: unknown;
+  kind: DevFixtureAssertionKindContract;
+  message: string;
+}>;
 
-const devFixtureResultSchema = Type.Object(
-  {
-    name: Type.String(),
-    lane: Type.String(),
-    target: unknownRecordSchema(),
-    status: stringEnum(["success", "failure", "skipped"] as const),
-    duration_ms: Type.Integer({ minimum: 0 }),
-    assertions: Type.Array(devFixtureAssertionSchema),
-    skip_reason: Type.Optional(Type.String()),
-    output: Type.Optional(Type.Unknown()),
-    replay_path: Type.Optional(Type.String()),
-  },
-  { additionalProperties: false },
-);
+export type DevFixtureResultContract = DeepReadonly<{
+  name: string;
+  lane: string;
+  target: UnknownRecord;
+  status: "success" | "failure" | "skipped";
+  duration_ms: number;
+  assertions: readonly DevFixtureAssertionContract[];
+  skip_reason?: string;
+  output?: unknown;
+  replay_path?: string;
+}>;
 
-export type DevFixtureAssertionContract = DeepReadonly<Static<typeof devFixtureAssertionSchema>>;
-export type DevFixtureResultContract = DeepReadonly<Static<typeof devFixtureResultSchema>>;
-
-const devV1TypeSchema = Type.Object(
-  {
-    schema: Type.Literal(RUNX_LOGICAL_SCHEMAS.dev),
-    status: stringEnum(devStatuses),
-    doctor: Type.Ref(doctorV1Schema),
-    fixtures: Type.Array(devFixtureResultSchema),
-    receipt_id: Type.Optional(Type.String()),
-  },
-  {
-    $schema: JSON_SCHEMA_DRAFT_2020_12,
-    $id: RUNX_CONTRACT_IDS.dev,
-    "x-runx-schema": RUNX_LOGICAL_SCHEMAS.dev,
-    additionalProperties: false,
-  },
-);
-
-const devContractReferences = [doctorV1Schema] as const;
-
-export type DevReportContract = DeepReadonly<Static<typeof devV1TypeSchema>>;
+export type DevReportContract = DeepReadonly<{
+  schema: typeof RUNX_LOGICAL_SCHEMAS.dev;
+  status: DevStatusContract;
+  doctor: DoctorReportContract;
+  fixtures: readonly DevFixtureResultContract[];
+  receipt_id?: string;
+}>;
 
 export const devV1Schema = generatedSchema<DevReportContract>("dev.schema.json");
+export const devFixtureResultSchema = generatedSchemaAt<DevFixtureResultContract>(
+  devV1Schema,
+  ["properties", "fixtures", "items"],
+  "dev.fixtures[]",
+);
+export const devFixtureAssertionSchema = generatedSchemaAt<DevFixtureAssertionContract>(
+  devFixtureResultSchema,
+  ["properties", "assertions", "items"],
+  "dev.fixtures[].assertions[]",
+);
 
 export function validateDevReportContract(value: unknown, label = "dev_report"): DevReportContract {
-  return validateContractSchema(devV1Schema, value, label, devContractReferences);
+  return validateContractSchema(devV1Schema, value, label);
 }

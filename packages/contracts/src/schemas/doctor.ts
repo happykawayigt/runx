@@ -1,103 +1,88 @@
-import { Type, type Static } from "../internal.js";
 import {
-  JSON_SCHEMA_DRAFT_2020_12,
-  RUNX_CONTRACT_IDS,
   RUNX_LOGICAL_SCHEMAS,
   type DeepReadonly,
+  type UnknownRecord,
   generatedSchema,
-  stringEnum,
-  unknownRecordSchema,
+  generatedSchemaAt,
   validateContractSchema,
 } from "../internal.js";
 
-const doctorDiagnosticSeverities = ["error", "warning", "info"] as const;
-const doctorRepairKinds = [
-  "create_file",
-  "replace_file",
-  "edit_yaml",
-  "edit_json",
-  "add_fixture",
-  "run_command",
-  "manual",
-] as const;
-const doctorRepairConfidences = ["low", "medium", "high"] as const;
-const doctorRepairRisks = ["low", "medium", "high", "sensitive"] as const;
-const doctorStatuses = ["success", "failure"] as const;
+export type DoctorDiagnosticSeverityContract = "error" | "warning" | "info";
+export type DoctorRepairKindContract =
+  | "create_file"
+  | "replace_file"
+  | "edit_yaml"
+  | "edit_json"
+  | "add_fixture"
+  | "run_command"
+  | "manual";
+export type DoctorRepairConfidenceContract = "low" | "medium" | "high";
+export type DoctorRepairRiskContract = "low" | "medium" | "high" | "sensitive";
 
-const doctorTargetSchema = unknownRecordSchema();
-const doctorEvidenceSchema = unknownRecordSchema();
+export type DoctorRepairContract = DeepReadonly<{
+  id: string;
+  kind: DoctorRepairKindContract;
+  confidence: DoctorRepairConfidenceContract;
+  risk: DoctorRepairRiskContract;
+  path?: string;
+  json_pointer?: string;
+  contents?: string;
+  patch?: string;
+  command?: string;
+  requires_human_review: boolean;
+}>;
 
-export const doctorRepairSchema = Type.Object(
-  {
-    id: Type.String(),
-    kind: stringEnum(doctorRepairKinds),
-    confidence: stringEnum(doctorRepairConfidences),
-    risk: stringEnum(doctorRepairRisks),
-    path: Type.Optional(Type.String()),
-    json_pointer: Type.Optional(Type.String()),
-    contents: Type.Optional(Type.String()),
-    patch: Type.Optional(Type.String()),
-    command: Type.Optional(Type.String()),
-    requires_human_review: Type.Boolean(),
-  },
-  { additionalProperties: false },
-);
+export type DoctorLocationContract = DeepReadonly<{
+  path: string;
+  json_pointer?: string;
+}>;
 
-export const doctorLocationSchema = Type.Object(
-  {
-    path: Type.String(),
-    json_pointer: Type.Optional(Type.String()),
-  },
-  { additionalProperties: false },
-);
+export type DoctorDiagnosticContract = DeepReadonly<{
+  id: string;
+  instance_id: string;
+  severity: DoctorDiagnosticSeverityContract;
+  title: string;
+  message: string;
+  target: UnknownRecord;
+  location: DoctorLocationContract;
+  evidence?: UnknownRecord;
+  repairs: readonly DoctorRepairContract[];
+}>;
 
-export const doctorDiagnosticSchema = Type.Object(
-  {
-    id: Type.String(),
-    instance_id: Type.String(),
-    severity: stringEnum(doctorDiagnosticSeverities),
-    title: Type.String(),
-    message: Type.String(),
-    target: doctorTargetSchema,
-    location: doctorLocationSchema,
-    evidence: Type.Optional(doctorEvidenceSchema),
-    repairs: Type.Array(doctorRepairSchema),
-  },
-  { additionalProperties: false },
-);
+export type DoctorSummaryContract = DeepReadonly<{
+  errors: number;
+  warnings: number;
+  infos: number;
+}>;
 
-export const doctorSummarySchema = Type.Object(
-  {
-    errors: Type.Integer({ minimum: 0 }),
-    warnings: Type.Integer({ minimum: 0 }),
-    infos: Type.Integer({ minimum: 0 }),
-  },
-  { additionalProperties: false },
-);
-
-export type DoctorRepairContract = DeepReadonly<Static<typeof doctorRepairSchema>>;
-export type DoctorLocationContract = DeepReadonly<Static<typeof doctorLocationSchema>>;
-export type DoctorDiagnosticContract = DeepReadonly<Static<typeof doctorDiagnosticSchema>>;
-export type DoctorSummaryContract = DeepReadonly<Static<typeof doctorSummarySchema>>;
-
-const doctorV1TypeSchema = Type.Object(
-  {
-    schema: Type.Literal(RUNX_LOGICAL_SCHEMAS.doctor),
-    status: stringEnum(doctorStatuses),
-    summary: doctorSummarySchema,
-    diagnostics: Type.Array(doctorDiagnosticSchema),
-  },
-  {
-    $schema: JSON_SCHEMA_DRAFT_2020_12,
-    $id: RUNX_CONTRACT_IDS.doctor,
-    "x-runx-schema": RUNX_LOGICAL_SCHEMAS.doctor,
-    additionalProperties: false,
-  },
-);
-
-export type DoctorReportContract = DeepReadonly<Static<typeof doctorV1TypeSchema>>;
+export type DoctorReportContract = DeepReadonly<{
+  schema: typeof RUNX_LOGICAL_SCHEMAS.doctor;
+  status: "success" | "failure";
+  summary: DoctorSummaryContract;
+  diagnostics: readonly DoctorDiagnosticContract[];
+}>;
 
 export const doctorV1Schema = generatedSchema<DoctorReportContract>("doctor.schema.json");
+export const doctorDiagnosticSchema = generatedSchemaAt<DoctorDiagnosticContract>(
+  doctorV1Schema,
+  ["properties", "diagnostics", "items"],
+  "doctor.diagnostics[]",
+);
+export const doctorLocationSchema = generatedSchemaAt<DoctorLocationContract>(
+  doctorDiagnosticSchema,
+  ["properties", "location"],
+  "doctor.diagnostics[].location",
+);
+export const doctorRepairSchema = generatedSchemaAt<DoctorRepairContract>(
+  doctorDiagnosticSchema,
+  ["properties", "repairs", "items"],
+  "doctor.diagnostics[].repairs[]",
+);
+export const doctorSummarySchema = generatedSchemaAt<DoctorSummaryContract>(
+  doctorV1Schema,
+  ["properties", "summary"],
+  "doctor.summary",
+);
 
 export function validateDoctorReportContract(value: unknown, label = "doctor_report"): DoctorReportContract {
   return validateContractSchema(doctorV1Schema, value, label);

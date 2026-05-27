@@ -1,74 +1,70 @@
-import { Type, type Static } from "../internal.js";
 import {
-  JSON_SCHEMA_DRAFT_2020_12,
-  RUNX_CONTRACT_IDS,
   RUNX_LOGICAL_SCHEMAS,
   type DeepReadonly,
   generatedSchema,
-  stringEnum,
+  generatedSchemaAt,
   validateContractSchema,
 } from "../internal.js";
 
-const runxListRequestedKinds = ["all", "tools", "skills", "graphs", "packets", "overlays"] as const;
-const runxListItemKinds = ["tool", "skill", "graph", "packet", "overlay"] as const;
-const runxListSources = ["local", "workspace", "dependencies", "built-in"] as const;
-const runxListStatuses = ["ok", "invalid"] as const;
+export type RunxListRequestedKindContract =
+  | "all"
+  | "tools"
+  | "skills"
+  | "graphs"
+  | "packets"
+  | "overlays";
+export type RunxListItemKindContract = "tool" | "skill" | "graph" | "packet" | "overlay";
+export type RunxListSourceContract = "local" | "workspace" | "dependencies" | "built-in";
+export type RunxListStatusContract = "ok" | "invalid";
 
-const runxListEmitSchema = Type.Object(
-  {
-    name: Type.String(),
-    packet: Type.Optional(Type.String()),
-  },
-  { additionalProperties: false },
-);
+export type RunxListEmitContract = DeepReadonly<{
+  name: string;
+  packet?: string;
+}>;
 
-export const runxListRequestedKindSchema = stringEnum(runxListRequestedKinds);
-export const runxListItemKindSchema = stringEnum(runxListItemKinds);
-export const runxListSourceSchema = stringEnum(runxListSources);
+export type RunxListItemContract = DeepReadonly<{
+  kind: RunxListItemKindContract;
+  name: string;
+  source: RunxListSourceContract;
+  path: string;
+  status: RunxListStatusContract;
+  diagnostics?: readonly string[];
+  scopes?: readonly string[];
+  emits?: readonly RunxListEmitContract[];
+  fixtures?: number;
+  harness_cases?: number;
+  steps?: number;
+  wraps?: string;
+}>;
 
-export type RunxListRequestedKindContract = DeepReadonly<Static<typeof runxListRequestedKindSchema>>;
-export type RunxListItemKindContract = DeepReadonly<Static<typeof runxListItemKindSchema>>;
-export type RunxListSourceContract = DeepReadonly<Static<typeof runxListSourceSchema>>;
-export type RunxListEmitContract = DeepReadonly<Static<typeof runxListEmitSchema>>;
-
-export const runxListItemSchema = Type.Object(
-  {
-    kind: runxListItemKindSchema,
-    name: Type.String(),
-    source: runxListSourceSchema,
-    path: Type.String(),
-    status: stringEnum(runxListStatuses),
-    diagnostics: Type.Optional(Type.Array(Type.String())),
-    scopes: Type.Optional(Type.Array(Type.String())),
-    emits: Type.Optional(Type.Array(runxListEmitSchema)),
-    fixtures: Type.Optional(Type.Integer({ minimum: 0 })),
-    harness_cases: Type.Optional(Type.Integer({ minimum: 0 })),
-    steps: Type.Optional(Type.Integer({ minimum: 0 })),
-    wraps: Type.Optional(Type.String()),
-  },
-  { additionalProperties: false },
-);
-
-export type RunxListItemContract = DeepReadonly<Static<typeof runxListItemSchema>>;
-
-const listV1TypeSchema = Type.Object(
-  {
-    schema: Type.Literal(RUNX_LOGICAL_SCHEMAS.list),
-    root: Type.String(),
-    requested_kind: runxListRequestedKindSchema,
-    items: Type.Array(runxListItemSchema),
-  },
-  {
-    $schema: JSON_SCHEMA_DRAFT_2020_12,
-    $id: RUNX_CONTRACT_IDS.list,
-    "x-runx-schema": RUNX_LOGICAL_SCHEMAS.list,
-    additionalProperties: false,
-  },
-);
-
-export type RunxListReportContract = DeepReadonly<Static<typeof listV1TypeSchema>>;
+export type RunxListReportContract = DeepReadonly<{
+  schema: typeof RUNX_LOGICAL_SCHEMAS.list;
+  root: string;
+  requested_kind: RunxListRequestedKindContract;
+  items: readonly RunxListItemContract[];
+}>;
 
 export const listV1Schema = generatedSchema<RunxListReportContract>("list.schema.json");
+export const runxListItemSchema = generatedSchemaAt<RunxListItemContract>(
+  listV1Schema,
+  ["properties", "items", "items"],
+  "list.items[]",
+);
+export const runxListRequestedKindSchema = generatedSchemaAt<RunxListRequestedKindContract>(
+  listV1Schema,
+  ["properties", "requested_kind"],
+  "list.requested_kind",
+);
+export const runxListItemKindSchema = generatedSchemaAt<RunxListItemKindContract>(
+  runxListItemSchema,
+  ["properties", "kind"],
+  "list.items[].kind",
+);
+export const runxListSourceSchema = generatedSchemaAt<RunxListSourceContract>(
+  runxListItemSchema,
+  ["properties", "source"],
+  "list.items[].source",
+);
 
 export function validateRunxListReportContract(value: unknown, label = "list_report"): RunxListReportContract {
   return validateContractSchema(listV1Schema, value, label);

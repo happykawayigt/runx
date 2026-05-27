@@ -1,40 +1,22 @@
-import { Type, type Static } from "../internal.js";
 import {
-  JSON_SCHEMA_DRAFT_2020_12,
-  RUNX_CONTRACT_IDS,
   RUNX_LOGICAL_SCHEMAS,
   type DeepReadonly,
+  type UnknownRecord,
   generatedSchema,
-  stringEnum,
-  unknownRecordSchema,
 } from "../internal.js";
-import { devStatuses } from "./dev.js";
+import type { DevStatusContract } from "./dev.js";
 
-const runSummaryStepSchema = unknownRecordSchema();
-
-const runSummaryV1TypeSchema = Type.Object(
-  {
-    schema: Type.Literal(RUNX_LOGICAL_SCHEMAS.runSummary),
-    run_id: Type.String(),
-    command: Type.String(),
-    status: stringEnum(devStatuses),
-    started_at: Type.String(),
-    finished_at: Type.Optional(Type.String()),
-    root: Type.String(),
-    unit: Type.Optional(unknownRecordSchema()),
-    steps: Type.Array(runSummaryStepSchema),
-    // Projection beside the governance receipt, not a competing receipt: links a
-    // CLI run summary to the signed runx.receipt.v1 it summarizes.
-    receipt_ref: Type.Optional(Type.String()),
-  },
-  {
-    $schema: JSON_SCHEMA_DRAFT_2020_12,
-    $id: RUNX_CONTRACT_IDS.runSummary,
-    "x-runx-schema": RUNX_LOGICAL_SCHEMAS.runSummary,
-    additionalProperties: false,
-  },
-);
-
-export type RunSummaryContract = DeepReadonly<Static<typeof runSummaryV1TypeSchema>>;
+export type RunSummaryContract = DeepReadonly<{
+  schema: typeof RUNX_LOGICAL_SCHEMAS.runSummary;
+  run_id: string;
+  command: string;
+  status: DevStatusContract;
+  started_at: string;
+  finished_at?: string;
+  root: string;
+  unit?: UnknownRecord;
+  steps: readonly UnknownRecord[];
+  receipt_ref?: string;
+}>;
 
 export const runSummaryV1Schema = generatedSchema<RunSummaryContract>("run-summary.schema.json");

@@ -142,6 +142,28 @@ export function generatedSchema<TStatic>(fileName: RunxSchemaArtifactName): Json
   return runxSchemaArtifacts[fileName] as JsonSchema<TStatic>;
 }
 
+export function generatedSchemaAt<TStatic>(
+  schema: JsonSchema,
+  path: readonly (string | number)[],
+  label: string,
+): JsonSchema<TStatic> {
+  let current: unknown = schema;
+  for (const segment of path) {
+    if (
+      current === null
+      || typeof current !== "object"
+      || !(segment in current)
+    ) {
+      throw new Error(`generated schema fragment not found: ${label}`);
+    }
+    current = (current as Record<string | number, unknown>)[segment];
+  }
+  if (current === null || typeof current !== "object") {
+    throw new Error(`generated schema fragment is not an object: ${label}`);
+  }
+  return current as JsonSchema<TStatic>;
+}
+
 type AnySchema = JsonSchema<any>;
 type SchemaWithOptional<TStatic = unknown> = JsonSchema<TStatic> & { readonly [optionalSchema]: true };
 type OptionalKeys<TProperties extends Record<string, AnySchema>> = {

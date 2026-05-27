@@ -12,9 +12,8 @@ use runx_contracts::{
     CriterionBinding, CriterionStatus, Decision, DecisionChoice, DecisionInputs,
     DecisionJustification, FanoutReceiptSyncPoint, Intent, JsonObject, JsonValue, Lineage,
     ProofKind, RECEIPT_CANONICALIZATION, Receipt, ReceiptAct, ReceiptAuthority, ReceiptEnforcement,
-    ReceiptIdempotency, ReceiptIssuer, ReceiptIssuerType, ReceiptSchema, ReceiptSubjectKind,
-    Reference, ReferenceType, Seal, SignatureAlgorithm, Subject, SuccessCriterion,
-    json_string_field,
+    ReceiptIdempotency, ReceiptIssuer, ReceiptSchema, ReceiptSubjectKind, Reference, ReferenceType,
+    Seal, SignatureAlgorithm, Subject, SuccessCriterion, json_string_field,
 };
 use runx_receipts::{
     ReceiptProofContext, ReceiptProofContextProvider, ReceiptSignature, ReceiptTreeConfig,
@@ -22,6 +21,7 @@ use runx_receipts::{
     content_addressed_receipt_id,
 };
 
+use super::local_runtime_issuer;
 use super::signing::{
     RuntimeReceiptSigner, RuntimeReceiptSigningError, is_local_pseudo_signature,
     validate_production_issuer,
@@ -363,7 +363,7 @@ fn build_receipt(parts: BuildReceipt<'_>) -> Receipt {
         id: id.into(),
         created_at: created_at.into(),
         canonicalization: RECEIPT_CANONICALIZATION.into(),
-        issuer: local_issuer(),
+        issuer: local_runtime_issuer(),
         signature: placeholder_signature(),
         digest: "sha256:runtime-skeleton".into(),
         idempotency: idempotency(graph_name, node_id),
@@ -838,14 +838,6 @@ fn attach_parent_to_child_receipts(
     Ok(())
 }
 
-fn local_issuer() -> ReceiptIssuer {
-    ReceiptIssuer {
-        issuer_type: ReceiptIssuerType::Local,
-        kid: "runtime-skeleton".into(),
-        public_key_sha256: "sha256:runtime-skeleton-public".into(),
-    }
-}
-
 fn placeholder_signature() -> ReceiptSignature {
     ReceiptSignature {
         alg: SignatureAlgorithm::Ed25519,
@@ -996,7 +988,7 @@ impl<'a> RuntimeReceiptSignaturePolicy<'a> {
 
     fn prepare_receipt(self, receipt: &mut Receipt) -> Result<(), RuntimeError> {
         if self.allows_local_pseudo_signatures() {
-            receipt.issuer = local_issuer();
+            receipt.issuer = local_runtime_issuer();
             return Ok(());
         }
         let Some(signer) = self.production_signer else {
