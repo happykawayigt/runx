@@ -1,7 +1,7 @@
+mod support;
+
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 #[test]
 fn native_cli_smoke_runs_without_node_or_typescript_env() -> Result<(), Box<dyn std::error::Error>>
@@ -26,7 +26,7 @@ fn native_cli_smoke_runs_without_node_or_typescript_env() -> Result<(), Box<dyn 
     let list_json = serde_json::from_slice::<serde_json::Value>(&list.stdout)?;
     assert_eq!(list_json["schema"], "runx.list.v1");
 
-    let temp = temp_root("runx-native-no-ts");
+    let temp = support::temp_root("runx-native-no-ts");
     fs::create_dir_all(&temp)?;
     let receipt_dir = temp.join("receipts");
 
@@ -68,10 +68,13 @@ fn native_cli_smoke_runs_without_node_or_typescript_env() -> Result<(), Box<dyn 
     assert_eq!(skill_json["status"], "needs_agent");
     assert_eq!(skill_json["requests"][0]["kind"], "agent_act");
 
+    let harness_fixture = write_sequential_graph_smoke_harness(&temp)?;
     let harness = native_command()?
         .args([
             "harness",
-            "fixtures/harness/sequential-graph.yaml",
+            harness_fixture
+                .to_str()
+                .ok_or("non-utf8 harness fixture path")?,
             "--json",
         ])
         .output()?;
@@ -85,15 +88,8 @@ fn native_cli_smoke_runs_without_node_or_typescript_env() -> Result<(), Box<dyn 
     Ok(())
 }
 
-fn native_command() -> Result<Command, Box<dyn std::error::Error>> {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_runx"));
-    command.current_dir(repo_root()?);
-    command.env_clear();
-    if let Some(path) = std::env::var_os("PATH") {
-        command.env("PATH", path);
-    }
-    command.env("NO_COLOR", "1");
-    Ok(command)
+fn native_command() -> Result<std::process::Command, Box<dyn std::error::Error>> {
+    support::isolated_runx_command("native-no-ts-test-key")
 }
 
 fn assert_success(output: &std::process::Output) -> Result<(), Box<dyn std::error::Error>> {
@@ -106,12 +102,6 @@ fn assert_success(output: &std::process::Output) -> Result<(), Box<dyn std::erro
     );
     assert_eq!(String::from_utf8(output.stderr.clone())?, "");
     Ok(())
-}
-
-fn repo_root() -> Result<PathBuf, Box<dyn std::error::Error>> {
-    Ok(Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .canonicalize()?)
 }
 
 fn write_agent_step_skill(root: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
@@ -138,13 +128,26 @@ runners:
     Ok(skill_dir)
 }
 
-fn temp_root(name: &str) -> PathBuf {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |duration| duration.as_nanos());
-    let root = std::env::temp_dir().join(format!("{name}-{}-{nanos}", std::process::id()));
-    if root.exists() {
-        let _ignored = fs::remove_dir_all(&root);
-    }
-    root
+fn write_sequential_graph_smoke_harness(
+    root: &Path,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let graph_path = support::repo_root()?.join("fixtures/graphs/sequential/graph.yaml");
+    let harness_path = root.join("sequential-graph-smoke.yaml");
+    fs::write(
+        &harness_path,
+        format!(
+            r#"
+name: sequential-graph-smoke
+kind: graph
+target: {}
+expect:
+  status: sealed
+  steps:
+    - first
+    - second
+"#,
+            graph_path.display()
+        ),
+    )?;
+    Ok(harness_path)
 }

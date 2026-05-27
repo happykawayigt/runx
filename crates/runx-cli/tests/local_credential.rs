@@ -5,18 +5,18 @@
 //! `cli-tool` runners must reject that process-env delivery path before spawn
 //! so local secrets cannot enter an unbounded child process.
 
+mod support;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 const SECRET: &str = "ghs_cli_local_provision_secret_value";
-const FIXTURE_SIGNING_SEED: &str = "QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI=";
 
 #[test]
 fn cli_rejects_local_credential_for_cli_tool_before_spawn() -> Result<(), Box<dyn std::error::Error>>
 {
-    let temp = temp_root("runx-cli-local-credential");
+    let temp = support::temp_root("runx-cli-local-credential");
     fs::create_dir_all(&temp)?;
     let skill_dir = write_echo_token_skill(&temp)?;
     let receipt_dir = temp.join("receipts");
@@ -59,7 +59,7 @@ fn cli_rejects_local_credential_for_cli_tool_before_spawn() -> Result<(), Box<dy
 
 #[test]
 fn cli_rejects_secret_env_without_credential() -> Result<(), Box<dyn std::error::Error>> {
-    let temp = temp_root("runx-cli-local-credential-bad");
+    let temp = support::temp_root("runx-cli-local-credential-bad");
     fs::create_dir_all(&temp)?;
     let skill_dir = write_echo_token_skill(&temp)?;
 
@@ -91,7 +91,7 @@ fn cli_rejects_secret_env_without_credential() -> Result<(), Box<dyn std::error:
 
 #[test]
 fn cli_rejects_empty_secret_value() -> Result<(), Box<dyn std::error::Error>> {
-    let temp = temp_root("runx-cli-local-credential-empty");
+    let temp = support::temp_root("runx-cli-local-credential-empty");
     fs::create_dir_all(&temp)?;
     let skill_dir = write_echo_token_skill(&temp)?;
 
@@ -121,7 +121,7 @@ fn cli_rejects_empty_secret_value() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn cli_rejects_secret_env_value_on_argv() -> Result<(), Box<dyn std::error::Error>> {
-    let temp = temp_root("runx-cli-local-credential-argv-secret");
+    let temp = support::temp_root("runx-cli-local-credential-argv-secret");
     fs::create_dir_all(&temp)?;
     let skill_dir = write_echo_token_skill(&temp)?;
 
@@ -153,19 +153,9 @@ fn cli_rejects_secret_env_value_on_argv() -> Result<(), Box<dyn std::error::Erro
 }
 
 fn native_command() -> Result<Command, Box<dyn std::error::Error>> {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_runx"));
-    command.env_clear();
-    if let Some(path) = std::env::var_os("PATH") {
-        command.env("PATH", path);
-    }
-    command.env("NO_COLOR", "1");
-    command.env("RUNX_RECEIPT_SIGN_KID", "local-credential-test-key");
-    command.env(
-        "RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64",
-        FIXTURE_SIGNING_SEED,
-    );
-    command.env("RUNX_RECEIPT_SIGN_ISSUER_TYPE", "hosted");
-    Ok(command)
+    Ok(support::isolated_runx_command_with_inherited_cwd(
+        "local-credential-test-key",
+    ))
 }
 
 /// A cli-tool skill that echoes the delivered `$GITHUB_TOKEN`. The command is a
@@ -194,12 +184,4 @@ runners:
 "#,
     )?;
     Ok(skill_dir)
-}
-
-fn temp_root(prefix: &str) -> PathBuf {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|elapsed| elapsed.as_nanos())
-        .unwrap_or_default();
-    std::env::temp_dir().join(format!("{prefix}-{nanos}"))
 }

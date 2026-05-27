@@ -1,3 +1,5 @@
+mod support;
+
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -7,8 +9,6 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
-
-const FIXTURE_SIGNING_SEED: &str = "QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI=";
 
 #[test]
 fn mcp_native_binary_dogfoods_streaming_skill_calls_and_receipts()
@@ -137,15 +137,11 @@ fn mcp_native_binary_reports_mid_session_framing_fault() -> Result<(), Box<dyn s
 
 fn spawn_mcp_server(args: &[String]) -> Result<McpProcess, Box<dyn std::error::Error>> {
     let repo_root = repo_root()?;
-    let mut child = Command::new(env!("CARGO_BIN_EXE_runx"))
+    let mut command = Command::new(env!("CARGO_BIN_EXE_runx"));
+    support::apply_fixture_signing(&mut command, "mcp-dogfood-test-key");
+    let mut child = command
         .current_dir(&repo_root)
         .env("RUNX_CWD", &repo_root)
-        .env("RUNX_RECEIPT_SIGN_KID", "mcp-dogfood-test-key")
-        .env(
-            "RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64",
-            FIXTURE_SIGNING_SEED,
-        )
-        .env("RUNX_RECEIPT_SIGN_ISSUER_TYPE", "hosted")
         .arg("mcp")
         .arg("serve")
         .args(args)

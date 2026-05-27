@@ -234,7 +234,7 @@ fn mcp_sandbox_runtime_metadata(profile: &str) -> JsonObject {
         (
             "reason".to_owned(),
             JsonValue::String(format!(
-                "local sandbox profile '{profile}' requires Linux bubblewrap support for filesystem and network enforcement"
+                "local sandbox profile '{profile}' requires Linux bubblewrap or macOS sandbox-exec for filesystem and network enforcement"
             )),
         ),
     ]

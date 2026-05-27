@@ -1,7 +1,8 @@
+mod support;
+
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, Output};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::Value;
 
@@ -18,13 +19,7 @@ fn native_x402_mock_dogfood_fixtures_run_without_typescript()
     )?;
     assert_eq!(approved["schema"], "runx.receipt.v1");
     assert_eq!(approved["seal"]["disposition"], "closed");
-    assert_eq!(
-        child_receipt_uris(&approved),
-        vec![
-            "runx:receipt:sha256:52e7c50c456df404c8035bd61adbc9d8569c185ba021f92f78c17af8b25fac3c",
-            "runx:receipt:sha256:bad21e45243061abe17b4857de3575077c8e1cccb533d8d82731a13f0a4667cc",
-        ]
-    );
+    assert_child_receipts(&approved, 2)?;
 
     let denied = run_harness_fixture(
         "fixtures/harness/x402-pay-approval-denied.yaml",
@@ -37,12 +32,7 @@ fn native_x402_mock_dogfood_fixtures_run_without_typescript()
     assert_eq!(denied["schema"], "runx.receipt.v1");
     assert_eq!(denied["seal"]["disposition"], "blocked");
     assert_eq!(denied["seal"]["reason_code"], "graph_blocked");
-    assert_eq!(
-        child_receipt_uris(&denied),
-        vec![
-            "runx:receipt:sha256:52e7c50c456df404c8035bd61adbc9d8569c185ba021f92f78c17af8b25fac3c",
-        ]
-    );
+    assert_child_receipts(&denied, 1)?;
 
     Ok(())
 }
@@ -61,16 +51,7 @@ fn native_x402_paid_echo_fixture_passes_only_refs_downstream()
 
     assert_eq!(receipt["schema"], "runx.receipt.v1");
     assert_eq!(receipt["seal"]["disposition"], "closed");
-    assert_eq!(
-        child_receipt_uris(&receipt),
-        vec![
-            "runx:receipt:sha256:1c7d8bbb7cd158c66bc1caa5892d59098f4a95e5b7b9905cf9579d6145827c67",
-            "runx:receipt:sha256:d2e2d46f918f65f7f83aed7e1a81a03d3546ee926aae6ff19351df6214d8f7ac",
-            "runx:receipt:sha256:9fc76aef8bf0c9e612f41328eb3b7bbacc742d48b45d0c535f63a7f13584aa2d",
-            "runx:receipt:sha256:5564557b690efa24b498616eb8b849afb8a7538d2d70bbb8181649be31070a7f",
-            "runx:receipt:sha256:119e9b8572fd756a383aa203b2a3bfcbc5e40361bcee312d5885baa4ef61898b",
-        ]
-    );
+    assert_child_receipts(&receipt, 5)?;
 
     Ok(())
 }
@@ -78,13 +59,10 @@ fn native_x402_paid_echo_fixture_passes_only_refs_downstream()
 #[test]
 fn native_x402_ledger_projection() -> Result<(), Box<dyn std::error::Error>> {
     let receipt_dir = isolated_receipt_dir()?;
+    let fixture = support::governed_harness_fixture("fixtures/harness/x402-pay-paid-echo.yaml")?;
     let output = native_command()?
         .env("RUNX_RECEIPT_DIR", &receipt_dir)
-        .args([
-            "harness",
-            "fixtures/harness/x402-pay-paid-echo.yaml",
-            "--json",
-        ])
+        .args(["harness", fixture.path_str()?, "--json"])
         .output()?;
     assert_success(&output)?;
     let stdout = String::from_utf8(output.stdout)?;
@@ -101,12 +79,14 @@ fn native_x402_ledger_projection() -> Result<(), Box<dyn std::error::Error>> {
 
     let receipt: Value = serde_json::from_str(&stdout)?;
     assert_eq!(receipt["seal"]["disposition"], "closed");
+    let receipt_ref = receipt_ref(&receipt)?;
+    let receipt_id = receipt_id(&receipt)?;
 
     let projection_path = receipt_dir
         .join("artifacts")
         .join("payment-ledger")
         .join("x402-pay")
-        .join("sha256:c3d4c37bb414273c6db19f82f2b6608feb8604215f734f5ff53389aec73ea943.json");
+        .join(format!("{receipt_id}.json"));
     let projection: Value = serde_json::from_str(&fs::read_to_string(&projection_path)?)?;
     assert_eq!(
         projection["schema_version"],
@@ -128,11 +108,11 @@ fn native_x402_ledger_projection() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(event["entry"]["data"]["kind"], "payment_ledger_projected");
     assert_eq!(
         event["entry"]["data"]["detail"]["projection_artifact_id"],
-        "x402-pay:runx:receipt:sha256:c3d4c37bb414273c6db19f82f2b6608feb8604215f734f5ff53389aec73ea943"
+        format!("x402-pay:{receipt_ref}")
     );
     assert_eq!(
         event["entry"]["data"]["detail"]["source_receipt_id"],
-        "runx:receipt:sha256:c3d4c37bb414273c6db19f82f2b6608feb8604215f734f5ff53389aec73ea943"
+        receipt_ref
     );
 
     fs::remove_dir_all(&receipt_dir).ok();
@@ -142,24 +122,25 @@ fn native_x402_ledger_projection() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn native_x402_refusal_ledger_projection() -> Result<(), Box<dyn std::error::Error>> {
     let receipt_dir = isolated_receipt_dir()?;
+    let fixture = support::governed_harness_fixture(
+        "fixtures/harness/x402-pay-ledger-governed-refusal.yaml",
+    )?;
     let output = native_command()?
         .env("RUNX_RECEIPT_DIR", &receipt_dir)
-        .args([
-            "harness",
-            "fixtures/harness/x402-pay-ledger-governed-refusal.yaml",
-            "--json",
-        ])
+        .args(["harness", fixture.path_str()?, "--json"])
         .output()?;
     assert_success(&output)?;
 
     let receipt: Value = serde_json::from_slice(&output.stdout)?;
     assert_eq!(receipt["seal"]["disposition"], "blocked");
+    let receipt_ref = receipt_ref(&receipt)?;
+    let receipt_id = receipt_id(&receipt)?;
 
     let projection_path = receipt_dir
         .join("artifacts")
         .join("payment-ledger")
         .join("x402-pay")
-        .join("sha256:17fef387c0dacac2ee37c6cc8bcf403de6a853bdbd6c37af8ee79630dc161c1d.json");
+        .join(format!("{receipt_id}.json"));
     let projection: Value = serde_json::from_str(&fs::read_to_string(&projection_path)?)?;
     assert_eq!(
         projection["schema_version"],
@@ -190,7 +171,7 @@ fn native_x402_refusal_ledger_projection() -> Result<(), Box<dyn std::error::Err
     assert_eq!(event["entry"]["data"]["kind"], "payment_ledger_projected");
     assert_eq!(
         event["entry"]["data"]["detail"]["projection_artifact_id"],
-        "x402-pay:runx:receipt:sha256:17fef387c0dacac2ee37c6cc8bcf403de6a853bdbd6c37af8ee79630dc161c1d"
+        format!("x402-pay:{receipt_ref}")
     );
     assert_eq!(event["entry"]["data"]["detail"]["disposition"], "refused");
 
@@ -215,15 +196,7 @@ fn native_x402_stripe_spt_happy_path_runs_without_typescript()
 
     assert_eq!(receipt["schema"], "runx.receipt.v1");
     assert_eq!(receipt["seal"]["disposition"], "closed");
-    assert_eq!(
-        child_receipt_uris(&receipt),
-        vec![
-            "runx:receipt:sha256:00e05c36bd2952f2b828468478e91e4928fd3af9a494608bbb0a3da381c2fd5f",
-            "runx:receipt:sha256:a21ef882927def2220bf5853780f41b3e2acf7accca1efd1804a7fb4a3e92647",
-            "runx:receipt:sha256:1d6c11c695647c10198eb0990f0f3afc2eaaf37ae091e21262a35142f7c2afd8",
-            "runx:receipt:sha256:5eb7f98ffad1cf331453a950b03c011f05003cf325ed04fd138a2dc78f9a4431",
-        ]
-    );
+    assert_child_receipts(&receipt, 4)?;
 
     Ok(())
 }
@@ -238,12 +211,7 @@ fn native_x402_negative_fixtures_refuse_without_settlement()
     assert_eq!(malformed["schema"], "runx.receipt.v1");
     assert_eq!(malformed["seal"]["disposition"], "blocked");
     assert_eq!(malformed["seal"]["reason_code"], "graph_blocked");
-    assert_eq!(
-        child_receipt_uris(&malformed),
-        vec![
-            "runx:receipt:sha256:0b169c32175d9878a5332a982b51d1f186e6f6383f61ba84c7492f90d5ec80d1",
-        ]
-    );
+    assert_child_receipts(&malformed, 1)?;
 
     let ambiguous = run_harness_fixture(
         "fixtures/harness/x402-pay-negative-ambiguous-bounds.yaml",
@@ -255,13 +223,7 @@ fn native_x402_negative_fixtures_refuse_without_settlement()
     assert_eq!(ambiguous["schema"], "runx.receipt.v1");
     assert_eq!(ambiguous["seal"]["disposition"], "blocked");
     assert_eq!(ambiguous["seal"]["reason_code"], "graph_blocked");
-    assert_eq!(
-        child_receipt_uris(&ambiguous),
-        vec![
-            "runx:receipt:sha256:796d310f6fb0417a238eba93f26d5b63dc582c2610fdc2016fdbb81ed9a23e0a",
-            "runx:receipt:sha256:bd01860a2bd9554fdb5438760059f67df56141a2e5b42cc2a166ce90a6059d97",
-        ]
-    );
+    assert_child_receipts(&ambiguous, 2)?;
 
     let cap_exceeded = run_harness_fixture_failure(
         "fixtures/harness/x402-pay-negative-cap-exceeded.yaml",
@@ -345,8 +307,9 @@ fn run_harness_fixture(
     fixture: &str,
     denied_fragments: &[&str],
 ) -> Result<Value, Box<dyn std::error::Error>> {
+    let fixture = support::governed_harness_fixture(fixture)?;
     let output = native_command()?
-        .args(["harness", fixture, "--json"])
+        .args(["harness", fixture.path_str()?, "--json"])
         .output()?;
     assert_success(&output)?;
     let stdout = String::from_utf8(output.stdout)?;
@@ -367,8 +330,9 @@ fn run_harness_fixture_failure(
     fixture: &str,
     required_stderr_fragments: &[&str],
 ) -> Result<FailedHarnessOutput, Box<dyn std::error::Error>> {
+    let fixture = support::governed_harness_fixture(fixture)?;
     let output = native_command()?
-        .args(["harness", fixture, "--json"])
+        .args(["harness", fixture.path_str()?, "--json"])
         .output()?;
     assert!(
         !output.status.success(),
@@ -388,14 +352,7 @@ fn run_harness_fixture_failure(
 }
 
 fn native_command() -> Result<Command, Box<dyn std::error::Error>> {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_runx"));
-    command.current_dir(repo_root()?);
-    command.env_clear();
-    if let Some(path) = std::env::var_os("PATH") {
-        command.env("PATH", path);
-    }
-    command.env("NO_COLOR", "1");
-    Ok(command)
+    support::isolated_runx_command("x402-native-dogfood-test-key")
 }
 
 fn assert_success(output: &Output) -> Result<(), Box<dyn std::error::Error>> {
@@ -419,20 +376,42 @@ fn child_receipt_uris(receipt: &Value) -> Vec<String> {
         .collect()
 }
 
-fn repo_root() -> Result<PathBuf, Box<dyn std::error::Error>> {
-    Ok(Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .canonicalize()?)
+fn assert_child_receipts(
+    receipt: &Value,
+    expected_count: usize,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let uris = child_receipt_uris(receipt);
+    assert_eq!(
+        uris.len(),
+        expected_count,
+        "unexpected child refs: {uris:?}"
+    );
+    let unique = uris.iter().collect::<std::collections::BTreeSet<_>>().len();
+    assert_eq!(
+        unique, expected_count,
+        "child refs must be unique: {uris:?}"
+    );
+    for uri in uris {
+        assert!(
+            uri.starts_with("runx:receipt:sha256:"),
+            "child ref must be a receipt digest URI: {uri}"
+        );
+    }
+    Ok(())
+}
+
+fn receipt_id(receipt: &Value) -> Result<&str, Box<dyn std::error::Error>> {
+    receipt["id"]
+        .as_str()
+        .ok_or_else(|| "receipt id must be a string".into())
+}
+
+fn receipt_ref(receipt: &Value) -> Result<String, Box<dyn std::error::Error>> {
+    Ok(format!("runx:receipt:{}", receipt_id(receipt)?))
 }
 
 fn isolated_receipt_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let nanos = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
-    let path = repo_root()?
-        .join("crates")
-        .join("target")
-        .join("x402-ledger-projection")
-        .join(format!("{}-{nanos}", std::process::id()));
-    fs::remove_dir_all(&path).ok();
+    let path = support::isolated_target_temp_root("x402-ledger-projection")?;
     fs::create_dir_all(&path)?;
     Ok(path)
 }

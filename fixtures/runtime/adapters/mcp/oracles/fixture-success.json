@@ -48,7 +48,7 @@
       },
       "runtime": {
         "enforcer": "declared-policy-only",
-        "reason": "local sandbox profile 'readonly' requires Linux bubblewrap support for filesystem and network enforcement"
+        "reason": "local sandbox profile 'readonly' requires Linux bubblewrap or macOS sandbox-exec for filesystem and network enforcement"
       }
     }
   }

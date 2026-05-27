@@ -1,11 +1,12 @@
+mod support;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 #[test]
 fn native_skill_pauses_and_resumes_with_run_id() -> Result<(), Box<dyn std::error::Error>> {
-    let root = temp_root("runx-skill");
+    let root = support::temp_root("runx-skill");
     let skill_dir = write_agent_step_skill(&root)?;
     let receipt_dir = root.join("receipts");
 
@@ -70,7 +71,7 @@ fn native_skill_pauses_and_resumes_with_run_id() -> Result<(), Box<dyn std::erro
 
 #[test]
 fn native_skill_rejects_answers_without_run_id() -> Result<(), Box<dyn std::error::Error>> {
-    let root = temp_root("runx-skill-reject-answers");
+    let root = support::temp_root("runx-skill-reject-answers");
     let skill_dir = write_agent_step_skill(&root)?;
     let answers_path = root.join("answers.json");
     fs::write(&answers_path, "{}")?;
@@ -92,7 +93,7 @@ fn native_skill_rejects_answers_without_run_id() -> Result<(), Box<dyn std::erro
 
 #[test]
 fn native_skill_rejects_run_id_without_answers() -> Result<(), Box<dyn std::error::Error>> {
-    let root = temp_root("runx-skill-reject-run-id");
+    let root = support::temp_root("runx-skill-reject-run-id");
     let skill_dir = write_agent_step_skill(&root)?;
     let output = runx_command()
         .args([
@@ -112,7 +113,7 @@ fn native_skill_rejects_run_id_without_answers() -> Result<(), Box<dyn std::erro
 
 #[test]
 fn native_skill_rejects_retired_receipt_options() -> Result<(), Box<dyn std::error::Error>> {
-    let root = temp_root("runx-skill-reject-retired-receipt");
+    let root = support::temp_root("runx-skill-reject-retired-receipt");
     let skill_dir = write_agent_step_skill(&root)?;
     let receipt_dir = root.join("receipts");
     let retired_receipt = format!("--{}", "receipt");
@@ -158,9 +159,7 @@ fn native_skill_rejects_retired_receipt_options() -> Result<(), Box<dyn std::err
 }
 
 fn runx_command() -> Command {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_runx"));
-    command.env("NO_COLOR", "1");
-    command
+    support::signed_runx_command("skill-test-key")
 }
 
 fn assert_json(
@@ -213,15 +212,4 @@ runners:
 "#,
     )?;
     Ok(skill_dir)
-}
-
-fn temp_root(name: &str) -> PathBuf {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |duration| duration.as_nanos());
-    let root = std::env::temp_dir().join(format!("{name}-{}-{nanos}", std::process::id()));
-    if root.exists() {
-        let _ignored = fs::remove_dir_all(&root);
-    }
-    root
 }

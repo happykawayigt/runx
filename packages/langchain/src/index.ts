@@ -77,7 +77,14 @@ export interface RunxCliBoundaryOptions {
   readonly cwd?: string;
   readonly env?: NodeJS.ProcessEnv;
   readonly signal?: AbortSignal;
+  readonly processRunner?: RunxCliProcessRunner;
 }
+
+export type RunxCliProcessRunner = (
+  command: string,
+  args: readonly string[],
+  options: RunxCliProcessOptions,
+) => Promise<RunxCliProcessResult>;
 
 export interface RunxSkillCliRunOptions extends RunxCliBoundaryOptions {
   readonly skillPath: string;
@@ -119,7 +126,8 @@ export async function runSkillWithRunxCli(options: RunxSkillCliRunOptions): Prom
   const env = options.env ?? process.env;
   const command = options.command ?? env.RUNX_BIN ?? "runx";
   const args = runxSkillArgs(options);
-  const result = await spawnRunx(command, args, {
+  const processRunner = options.processRunner ?? spawnRunx;
+  const result = await processRunner(command, args, {
     cwd: options.cwd,
     env,
     signal: options.signal,
@@ -209,21 +217,21 @@ function cliInputValue(value: unknown): string {
   return JSON.stringify(value) ?? "null";
 }
 
-interface SpawnRunxOptions {
+export interface RunxCliProcessOptions {
   readonly cwd?: string;
   readonly env: NodeJS.ProcessEnv;
   readonly signal?: AbortSignal;
 }
 
-interface SpawnRunxResult {
+export interface RunxCliProcessResult {
   readonly exitCode: number | null;
   readonly signal: NodeJS.Signals | null;
   readonly stdout: string;
   readonly stderr: string;
 }
 
-function spawnRunx(command: string, args: readonly string[], options: SpawnRunxOptions): Promise<SpawnRunxResult> {
-  return new Promise<SpawnRunxResult>((resolve, reject) => {
+function spawnRunx(command: string, args: readonly string[], options: RunxCliProcessOptions): Promise<RunxCliProcessResult> {
+  return new Promise<RunxCliProcessResult>((resolve, reject) => {
     const child = spawn(command, [...args], {
       cwd: options.cwd,
       env: options.env,

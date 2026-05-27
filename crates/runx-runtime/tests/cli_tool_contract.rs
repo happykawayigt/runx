@@ -614,7 +614,10 @@ fn path_string(path: &Path) -> Result<String, Box<dyn std::error::Error>> {
 fn platform_sandbox_backend_available() -> bool {
     #[cfg(target_os = "macos")]
     {
-        Path::new("/usr/bin/sandbox-exec").exists()
+        std::process::Command::new("/usr/bin/sandbox-exec")
+            .args(["-p", "(version 1)\n(allow default)", "/usr/bin/true"])
+            .status()
+            .is_ok_and(|status| status.success())
     }
     #[cfg(target_os = "linux")]
     {

@@ -23,6 +23,9 @@ runx-runtime = { workspace = true, features = ["cli-tool", "catalog", "mcp"] }
 serde.workspace = true
 serde_json.workspace = true
 
+[dev-dependencies]
+serde_norway.workspace = true
+
 [[bin]]
 name = "runx"
 path = "src/main.rs"

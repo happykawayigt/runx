@@ -207,7 +207,7 @@ fn mcp_process_transport_reuses_session_for_matching_scope() -> Result<(), Runti
 }
 
 #[test]
-fn mcp_process_transport_isolates_sessions_by_environment_scope() -> Result<(), RuntimeError> {
+fn mcp_session_isolation_by_environment_scope() -> Result<(), RuntimeError> {
     let marker_path = lifecycle_marker_path("session-scope")?;
     let transport = ProcessMcpTransport::default();
     reset_transport_session_pool(&transport)?;
@@ -227,6 +227,33 @@ fn mcp_process_transport_isolates_sessions_by_environment_scope() -> Result<(), 
 
     reset_transport_session_pool(&transport)?;
     let _ = fs::remove_file(&marker_path);
+    Ok(())
+}
+
+#[test]
+fn mcp_session_isolation_rejects_process_env_secret_delivery() -> Result<(), RuntimeError> {
+    let mut inputs = JsonObject::new();
+    inputs.insert("name".to_owned(), JsonValue::String("API_KEY".to_owned()));
+    let mut request = fixture_invocation("env", Some(5), inputs)?;
+    request.credential_delivery = runx_runtime::CredentialDelivery::from_local_descriptor(
+        "github",
+        "api_key",
+        "API_KEY",
+        "local:github:test",
+        vec!["repo:read".to_owned()],
+        "mcp-secret-value",
+    )
+    .map_err(|error| runtime_test_error(error.to_string()))?;
+
+    let transport = ProcessMcpTransport::default();
+    transport.reset_spawn_count();
+
+    let output = McpAdapter::new(transport.clone()).invoke(request)?;
+
+    assert_eq!(output.status, InvocationStatus::Failure);
+    assert_eq!(output.stderr, "MCP adapter failed.");
+    assert!(!output.stderr.contains("mcp-secret-value"));
+    assert_eq!(transport.spawned_process_count(), 0);
     Ok(())
 }
 
