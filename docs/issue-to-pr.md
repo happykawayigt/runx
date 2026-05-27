@@ -167,8 +167,9 @@ pnpm live:issue-to-pr -- --allow-repo owner/repo --repo owner/repo --issue 123 -
 The preflight is read-only. It verifies that the workspace is a scafld repo,
 that the target repo is explicitly allowlisted for proving-ground mutation,
 that the workspace is on the intended issue branch, that the selected scafld
-binary can run in that workspace, that `RUNX_BIN` is either unset or points at
-an executable CLI, and that provider publication has explicit token env
+binary can run in that workspace, that `--runx-bin`, `RUNX_BIN`, a local
+`crates/target/{debug,release}/runx`, or `runx` on `PATH` points at an
+executable native CLI, and that provider publication has explicit token env
 available to the sandbox. It returns JSON with blocked checks and the exact
 dogfood command to run next.
 
@@ -208,14 +209,27 @@ pnpm live:issue-to-pr -- --prepare-branch --allow-repo owner/repo --repo owner/r
 When the preflight is ready, run:
 
 ```bash
-pnpm dogfood:github-issue-to-pr -- --prepare-branch --allow-repo owner/repo --repo owner/repo --issue 123 --workspace /path/to/repo
+pnpm dogfood:github-issue-to-pr -- --mode create --prepare-branch --allow-repo owner/repo --repo owner/repo --issue 123 --workspace /path/to/repo
 ```
 
 The dogfood command hydrates the GitHub issue thread, executes the governed
-lane, publishes the draft PR through `thread.push_outbox`, and rehydrates the
-source thread so the output shows before/after provider state. The emitted
-dossier records source issue URL, PR URL, receipt id, branch, review verdict,
-and the human merge gate without printing absolute local paths.
+lane through native `runx skill skills/issue-to-pr`, and passes explicit
+contracts for the hydrated thread, target workspace, branch, scafld binary,
+allowlisted operational policy, repo snapshot, and receipt directory. If the
+graph reaches an agent-mediated authoring boundary, create mode returns
+`status: "needs_agent"` with a `run_id`, sanitized request payload, and a
+continuation command. Resolve that request into an answers file, then resume
+the same native run:
+
+```bash
+pnpm dogfood:github-issue-to-pr -- --mode create --run-id <run-id> --answers answers.json --allow-repo owner/repo --repo owner/repo --issue 123 --workspace /path/to/repo
+```
+
+When the graph seals, the provider push remains inside the existing
+`thread.push_outbox` step. The command rehydrates the source thread and emits a
+machine-readable dossier with source issue URL, PR URL, branch, run id, receipt
+refs, source-thread publication refs, and the human merge gate without printing
+absolute local paths.
 
 After a human merges or closes the PR, observe the outcome:
 

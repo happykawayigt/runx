@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import path from "node:path";
-import { stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 
 import {
   fetchGitHubIssueThread,
@@ -12,6 +14,9 @@ import {
   selectPreferredGitHubPullRequest,
 } from "../tools/thread/github_adapter.mjs";
 import { sanitizePublicMarkdown } from "../tools/public_markdown.mjs";
+
+const RUNX_OSS_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const ISSUE_TO_PR_SKILL_PATH = path.join(RUNX_OSS_ROOT, "skills", "issue-to-pr");
 
 class DogfoodPreflightError extends Error {
   constructor(preflight) {
@@ -70,14 +75,18 @@ try {
   } else if (preflight.status === "blocked") {
     throw new DogfoodPreflightError(preflight);
   } else {
-    process.stdout.write(`${JSON.stringify(buildDogfoodCreateBlocked({
+    const created = await createDogfoodIssueToPr({
+      args,
       issueRef,
       workspace,
+      scafldBin,
       taskId,
       branchName,
       preflight,
-    }), null, 2)}\n`);
-    process.exitCode = 1;
+      allowlist: resolved.allowlist,
+    });
+    process.stdout.write(`${JSON.stringify(created, null, 2)}\n`);
+    process.exitCode = dogfoodCreateExitCode(created);
   }
 } catch (error) {
   if (error instanceof DogfoodPreflightError) {
@@ -309,6 +318,7 @@ Mutation gates:
 Examples:
   pnpm live:issue-to-pr -- --allow-repo owner/repo --repo owner/repo --issue 123 --workspace /repo
   pnpm dogfood:github-issue-to-pr -- --mode create --prepare-branch --allow-repo owner/repo --repo owner/repo --issue 123 --workspace /repo
+  pnpm dogfood:github-issue-to-pr -- --mode create --run-id <run-id> --answers answers.json --allow-repo owner/repo --repo owner/repo --issue 123 --workspace /repo
   pnpm dogfood:github-issue-to-pr -- --mode observe --allow-repo owner/repo --repo owner/repo --issue 123 --workspace /repo
 `;
 }
@@ -340,22 +350,16 @@ async function buildDogfoodPreflight({ args: argsRecord, issueRef, workspace, sc
       requested: scafldBin,
       reason: "workspace is not a scafld workspace",
     };
-  const runxBinCheck = process.env.RUNX_BIN
-    ? inspectCommand({
-      name: "RUNX_BIN",
-      source: "env:RUNX_BIN",
-      command: resolveCommandCandidate(process.env.RUNX_BIN, process.cwd()),
-      requested: process.env.RUNX_BIN,
-      args: ["--help"],
-      cwd: process.cwd(),
-      next: "Unset RUNX_BIN or point it at the executable runx CLI for this checkout. Verify with `$RUNX_BIN --help`.",
-    })
-    : {
-      name: "RUNX_BIN",
-      status: "skipped",
-      source: "env:RUNX_BIN",
-      reason: "RUNX_BIN is not set; create mode is blocked until issue-to-pr graph execution is routed through the Rust CLI.",
-    };
+  const runxCli = resolveRunxCli(argsRecord);
+  const runxBinCheck = inspectCommand({
+    name: "RUNX_BIN",
+    source: runxCli.source,
+    command: runxCli.command,
+    requested: runxCli.requested,
+    args: ["--help"],
+    cwd: process.cwd(),
+    next: "Set --runx-bin, RUNX_BIN, or put the executable runx CLI on PATH. Verify with `runx --help`.",
+  });
   const githubPublishAuthCheck = inspectGitHubPublishAuth(process.env);
   const checks = {
     target_repo_allowlist: inspectDogfoodRepoAllowlist(issueRef.repo_slug, allowlist),
@@ -389,7 +393,11 @@ async function buildDogfoodPreflight({ args: argsRecord, issueRef, workspace, sc
     branchName && branchName !== taskId ? `--branch ${shellQuote(branchName)}` : "",
     argsRecord.prepare_branch ? "--prepare-branch" : "",
     argsRecord.scafld_bin ? `--scafld-bin ${shellQuote(argsRecord.scafld_bin)}` : "",
+    argsRecord.runx_bin ? `--runx-bin ${shellQuote(argsRecord.runx_bin)}` : "",
+    argsRecord.skill ? `--skill ${shellQuote(argsRecord.skill)}` : "",
+    argsRecord.run_id ? `--run-id ${shellQuote(argsRecord.run_id)}` : "",
     argsRecord.answers ? `--answers ${shellQuote(argsRecord.answers)}` : "",
+    argsRecord.receipt_dir ? `--receipt-dir ${shellQuote(argsRecord.receipt_dir)}` : "",
   ].filter(Boolean).join(" ");
 
   return {
@@ -427,10 +435,362 @@ async function buildDogfoodPreflight({ args: argsRecord, issueRef, workspace, sc
   };
 }
 
-function buildDogfoodCreateBlocked({ issueRef, workspace, taskId, branchName, preflight }) {
+async function createDogfoodIssueToPr({
+  args: argsRecord,
+  issueRef,
+  workspace,
+  scafldBin,
+  taskId,
+  branchName,
+  preflight,
+  allowlist,
+}) {
+  const continuationCheck = inspectContinuationArgs(argsRecord, taskId, issueRef, workspace);
+  if (continuationCheck) {
+    return continuationCheck;
+  }
+
+  prepareDogfoodBranch({
+    workspace,
+    branchName,
+    prepareBranch: argsRecord.prepare_branch === true,
+  });
+
+  const thread = fetchGitHubIssueThread({
+    adapterRef: issueRef.adapter_ref,
+    env: process.env,
+    cwd: workspace,
+  });
+  const beforePreferredPull = selectPreferredPullFromThread(thread, branchName);
+  const runxCli = resolveRunxCli(argsRecord);
+  const receiptDir = resolveDogfoodReceiptDir(argsRecord, workspace);
+  const operationalPolicy = await resolveDogfoodOperationalPolicy({
+    args: argsRecord,
+    issueRef,
+    allowlist,
+  });
+  const repoSnapshot = buildDogfoodRepoSnapshot({
+    workspace,
+    issueRef,
+    branchName,
+    thread,
+  });
+  const invocation = buildIssueToPrSkillInvocation({
+    args: argsRecord,
+    issueRef,
+    workspace,
+    scafldBin,
+    taskId,
+    branchName,
+    thread,
+    receiptDir,
+    operationalPolicy,
+    repoSnapshot,
+  });
+  const run = spawnSync(runxCli.command, invocation.argv, {
+    cwd: workspace,
+    encoding: "utf8",
+    shell: false,
+    env: process.env,
+    maxBuffer: 20 * 1024 * 1024,
+  });
+  const redactions = dogfoodRedactions(workspace);
+  if (run.error) {
+    return buildDogfoodCreateRunxFailure({
+      issueRef,
+      workspace,
+      taskId,
+      branchName,
+      preflight,
+      runxCli,
+      receiptDir,
+      run,
+      redactions,
+      reason: "dogfood_create_runx_cli_unavailable",
+    });
+  }
+
+  const nativeOutput = parseJsonOutput(run.stdout);
+  const nativeStatus = firstNonEmptyString(nativeOutput?.status);
+  if (run.status !== 0 && !(run.status === 2 && nativeStatus === "needs_agent")) {
+    return buildDogfoodCreateRunxFailure({
+      issueRef,
+      workspace,
+      taskId,
+      branchName,
+      preflight,
+      runxCli,
+      receiptDir,
+      run,
+      redactions,
+      reason: "dogfood_create_native_route_failed",
+      nativeOutput,
+    });
+  }
+
+  const refreshedThread = nativeStatus === "sealed"
+    ? fetchGitHubIssueThread({
+        adapterRef: issueRef.adapter_ref,
+        env: process.env,
+        cwd: workspace,
+      })
+    : thread;
+  const preferredPull = selectPreferredPullFromThread(refreshedThread, branchName);
+  return buildDogfoodCreateResult({
+    args: argsRecord,
+    issueRef,
+    workspace,
+    taskId,
+    branchName,
+    preflight,
+    runxCli,
+    receiptDir,
+    beforePreferredPull,
+    preferredPull,
+    refreshedThread,
+    run,
+    nativeOutput,
+    redactions,
+  });
+}
+
+function inspectContinuationArgs(argsRecord, taskId, issueRef, workspace) {
+  const answers = firstNonEmptyString(argsRecord.answers);
+  const runId = firstNonEmptyString(argsRecord.run_id);
+  if (answers && !runId) {
+    return {
+      status: "blocked",
+      reason: "dogfood_create_answers_require_run_id",
+      mode: "create",
+      mutation: "none",
+      repo: issueRef.repo_slug,
+      issue: {
+        number: issueRef.issue_number,
+        url: issueRef.issue_url,
+      },
+      task_id: taskId,
+      workspace: summarizeLocalPath(workspace),
+      next: "First run create mode without --answers, then rerun with the returned run_id and --answers file.",
+    };
+  }
+  if (runId && !answers) {
+    return {
+      status: "blocked",
+      reason: "dogfood_create_run_id_requires_answers",
+      mode: "create",
+      mutation: "none",
+      repo: issueRef.repo_slug,
+      issue: {
+        number: issueRef.issue_number,
+        url: issueRef.issue_url,
+      },
+      task_id: taskId,
+      run_id: runId,
+      workspace: summarizeLocalPath(workspace),
+      next: "Pass --answers with --run-id so the native graph can resume the stored run state.",
+    };
+  }
+  return undefined;
+}
+
+function buildIssueToPrSkillInvocation({
+  args: argsRecord,
+  issueRef,
+  workspace,
+  scafldBin,
+  taskId,
+  branchName,
+  thread,
+  receiptDir,
+  operationalPolicy,
+  repoSnapshot,
+}) {
+  const skillPath = resolveDogfoodSkillPath(argsRecord);
+  const threadBody = primaryThreadBody(thread);
+  const argv = [
+    "skill",
+    skillPath,
+    "--json",
+    "--receipt-dir",
+    receiptDir,
+    "--task-id",
+    taskId,
+    "--thread-title",
+    firstNonEmptyString(thread.title, `GitHub issue ${issueRef.issue_number}`),
+    "--thread-body",
+    threadBody ?? issueRef.issue_url,
+    "--thread-locator",
+    issueRef.thread_locator,
+    "--thread",
+    JSON.stringify(thread),
+    "--target-repo",
+    issueRef.repo_slug,
+    "--source-id",
+    firstNonEmptyString(argsRecord.source_id, "github-issues"),
+    "--runner-id",
+    firstNonEmptyString(argsRecord.runner_id, "local-dogfood"),
+    "--operational-policy",
+    JSON.stringify(operationalPolicy),
+    "--branch",
+    branchName,
+    "--fixture",
+    workspace,
+    "--workspace-path",
+    workspace,
+    "--scafld-bin",
+    scafldInputValue(scafldBin),
+    "--repo-snapshot",
+    JSON.stringify(repoSnapshot),
+  ];
+  pushOptionalInput(argv, "--repo-context", argsRecord.repo_context);
+  pushOptionalInput(argv, "--size", argsRecord.size);
+  pushOptionalInput(argv, "--risk", argsRecord.risk);
+  pushOptionalInput(argv, "--base", argsRecord.base);
+  pushOptionalInput(argv, "--provider", argsRecord.provider);
+  pushOptionalInput(argv, "--provider-command", argsRecord.provider_command);
+  pushOptionalInput(argv, "--provider-binary", argsRecord.provider_binary);
+  pushOptionalInput(argv, "--model", argsRecord.model);
+
+  const runId = firstNonEmptyString(argsRecord.run_id);
+  const answers = firstNonEmptyString(argsRecord.answers);
+  if (runId && answers) {
+    argv.push("--run-id", runId, "--answers", resolveInputPath(answers));
+  }
+
+  return {
+    skill_path: skillPath,
+    argv,
+  };
+}
+
+function pushOptionalInput(argv, flag, value) {
+  const text = firstNonEmptyString(value);
+  if (text) {
+    argv.push(flag, text);
+  }
+}
+
+function buildDogfoodCreateResult({
+  args: argsRecord,
+  issueRef,
+  workspace,
+  taskId,
+  branchName,
+  preflight,
+  runxCli,
+  receiptDir,
+  beforePreferredPull,
+  preferredPull,
+  refreshedThread,
+  run,
+  nativeOutput,
+  redactions,
+}) {
+  const nativeStatus = firstNonEmptyString(nativeOutput?.status);
+  const runId = firstNonEmptyString(nativeOutput?.run_id);
+  const receiptRefs = collectReceiptRefs(nativeOutput);
+  if (nativeStatus === "needs_agent") {
+    return {
+      status: "needs_agent",
+      reason: "dogfood_create_native_graph_needs_agent",
+      mode: "create",
+      mutation: "local_graph_state",
+      repo: issueRef.repo_slug,
+      issue: {
+        number: issueRef.issue_number,
+        url: issueRef.issue_url,
+      },
+      task_id: taskId,
+      branch: branchName,
+      run_id: runId,
+      receipt_dir: summarizeLocalPath(receiptDir),
+      preflight: summarizePreflight(preflight),
+      native_route: summarizeNativeRoute(runxCli, run, nativeOutput, redactions),
+      requests: sanitizeDogfoodValue(nativeOutput?.requests, redactions),
+      next_command: buildContinuationCommand({
+        args: argsRecord,
+        issueRef,
+        workspace,
+        taskId,
+        branchName,
+        runId,
+        receiptDir,
+      }),
+      next_human_gate: "Resolve the native graph request and rerun create mode with --run-id and --answers.",
+    };
+  }
+
+  if (nativeStatus === "sealed" && preferredPull) {
+    return {
+      status: "created",
+      reason: firstNonEmptyString(preferredPull.url) === firstNonEmptyString(beforePreferredPull?.url)
+        ? "dogfood_create_pr_refreshed"
+        : "dogfood_create_pr_published",
+      mode: "create",
+      mutation: "branch_pr_source_thread",
+      source_issue_url: issueRef.issue_url,
+      pull_request_url: firstNonEmptyString(preferredPull.url),
+      pull_request: {
+        number: firstNonEmptyString(preferredPull.number),
+        url: firstNonEmptyString(preferredPull.url),
+        branch: firstNonEmptyString(preferredPull.headRefName),
+        state: firstNonEmptyString(preferredPull.state),
+        is_draft: preferredPull.isDraft === true,
+      },
+      task_id: taskId,
+      branch: branchName,
+      run_id: runId,
+      receipt_refs: receiptRefs,
+      source_thread_publication_refs: sourceThreadPublicationRefs(refreshedThread),
+      thread: summarizeThread(refreshedThread, preferredPull),
+      preflight: summarizePreflight(preflight),
+      native_route: summarizeNativeRoute(runxCli, run, nativeOutput, redactions),
+      next_human_gate: "Review, merge, or close the draft PR outside the harness, then run observe mode.",
+    };
+  }
+
   return {
     status: "blocked",
-    reason: "dogfood_create_rust_route_unavailable",
+    reason: nativeStatus === "sealed"
+      ? "dogfood_create_pr_not_found_after_native_run"
+      : "dogfood_create_native_route_unexpected_output",
+    mode: "create",
+    mutation: nativeStatus === "sealed" ? "native_route_completed" : "unknown",
+    repo: issueRef.repo_slug,
+    issue: {
+      number: issueRef.issue_number,
+      url: issueRef.issue_url,
+    },
+    task_id: taskId,
+    branch: branchName,
+    workspace: summarizeLocalPath(workspace),
+    run_id: runId,
+    receipt_refs: receiptRefs,
+    thread: summarizeThread(refreshedThread, preferredPull),
+    preflight: summarizePreflight(preflight),
+    native_route: summarizeNativeRoute(runxCli, run, nativeOutput, redactions),
+    next: nativeStatus === "sealed"
+      ? "The native graph sealed but no matching PR was observed. Inspect the source thread outbox and branch before retrying."
+      : "Inspect the native route output; create mode expects runx.skill_run.v1 with status needs_agent or sealed.",
+  };
+}
+
+function buildDogfoodCreateRunxFailure({
+  issueRef,
+  workspace,
+  taskId,
+  branchName,
+  preflight,
+  runxCli,
+  receiptDir,
+  run,
+  redactions,
+  reason,
+  nativeOutput,
+}) {
+  return {
+    status: "blocked",
+    reason,
     mode: "create",
     mutation: "none",
     repo: issueRef.repo_slug,
@@ -441,23 +801,385 @@ function buildDogfoodCreateBlocked({ issueRef, workspace, taskId, branchName, pr
     task_id: taskId,
     branch: branchName,
     workspace: summarizeLocalPath(workspace),
-    preflight: {
-      status: preflight.status,
-      reason: preflight.reason,
-    },
-    blocker: {
-      name: "issue_to_pr_graph_rust_cli_route",
-      status: "blocked",
-      owner: "rust-ts-sunset-runtime-local oracle-scripts slice",
-      reason: "The live issue-to-pr dogfood lane is a graph runner. Current native `runx skill` execution only accepts direct agent and agent-step runners, while completed Rust evidence covers checked-in harness fixtures, not this live GitHub graph lane.",
-      completed_evidence: [
-        ".scafld/specs/archive/2026-05/rust-runtime-skill-execution.md",
-        "fixtures/runtime/skills/issue-to-pr/**",
-      ],
-      required_route: "Route this live lane through a Rust CLI graph/harness entrypoint that accepts dynamic thread inputs and caller answers before create mode can mutate a branch, issue, or PR.",
-    },
-    next: "Keep using --preflight and --mode observe; leave create mode blocked until the issue-to-pr graph runner has a Rust CLI route.",
+    receipt_dir: summarizeLocalPath(receiptDir),
+    preflight: summarizePreflight(preflight),
+    native_route: summarizeNativeRoute(runxCli, run, nativeOutput, redactions),
+    next: "Fix the native runx skill invocation, then rerun create mode. No provider publication result was accepted from this run.",
   };
+}
+
+function summarizePreflight(preflight) {
+  return {
+    status: preflight.status,
+    reason: preflight.reason,
+  };
+}
+
+function summarizeNativeRoute(runxCli, run, nativeOutput, redactions) {
+  return {
+    command: runxCli.requested,
+    source: runxCli.source,
+    route: "runx skill skills/issue-to-pr",
+    exit_code: typeof run?.status === "number" ? run.status : undefined,
+    signal: firstNonEmptyString(run?.signal),
+    stdout: nativeOutput
+      ? undefined
+      : preview(redactLocalPaths(sanitizePublicMarkdown(run?.stdout ?? ""), redactions)),
+    stderr: preview(redactLocalPaths(sanitizePublicMarkdown(run?.stderr ?? ""), redactions)),
+    output_status: firstNonEmptyString(nativeOutput?.status),
+    output_run_id: firstNonEmptyString(nativeOutput?.run_id),
+    output_receipt_id: firstNonEmptyString(nativeOutput?.receipt_id),
+  };
+}
+
+function buildContinuationCommand({ args: argsRecord, issueRef, workspace, taskId, branchName, runId, receiptDir }) {
+  return [
+    "pnpm dogfood:github-issue-to-pr --",
+    "--mode create",
+    "--allow-repo", issueRef.repo_slug,
+    "--repo", issueRef.repo_slug,
+    "--issue", issueRef.issue_number,
+    "--workspace", shellQuote(workspace),
+    "--task-id", shellQuote(taskId),
+    branchName && branchName !== taskId ? `--branch ${shellQuote(branchName)}` : "",
+    argsRecord.prepare_branch ? "--prepare-branch" : "",
+    argsRecord.scafld_bin ? `--scafld-bin ${shellQuote(argsRecord.scafld_bin)}` : "",
+    argsRecord.runx_bin ? `--runx-bin ${shellQuote(argsRecord.runx_bin)}` : "",
+    argsRecord.skill ? `--skill ${shellQuote(argsRecord.skill)}` : "",
+    receiptDir ? `--receipt-dir ${shellQuote(receiptDir)}` : "",
+    argsRecord.source_id ? `--source-id ${shellQuote(argsRecord.source_id)}` : "",
+    argsRecord.runner_id ? `--runner-id ${shellQuote(argsRecord.runner_id)}` : "",
+    argsRecord.operational_policy ? `--operational-policy ${shellQuote(argsRecord.operational_policy)}` : "",
+    argsRecord.repo_context ? `--repo-context ${shellQuote(argsRecord.repo_context)}` : "",
+    argsRecord.size ? `--size ${shellQuote(argsRecord.size)}` : "",
+    argsRecord.risk ? `--risk ${shellQuote(argsRecord.risk)}` : "",
+    argsRecord.base ? `--base ${shellQuote(argsRecord.base)}` : "",
+    argsRecord.provider ? `--provider ${shellQuote(argsRecord.provider)}` : "",
+    argsRecord.provider_command ? `--provider-command ${shellQuote(argsRecord.provider_command)}` : "",
+    argsRecord.provider_binary ? `--provider-binary ${shellQuote(argsRecord.provider_binary)}` : "",
+    argsRecord.model ? `--model ${shellQuote(argsRecord.model)}` : "",
+    runId ? `--run-id ${shellQuote(runId)}` : "",
+    "--answers <answers.json>",
+  ].filter(Boolean).join(" ");
+}
+
+function dogfoodCreateExitCode(result) {
+  if (result?.status === "created") {
+    return 0;
+  }
+  if (result?.status === "needs_agent") {
+    return 2;
+  }
+  return 1;
+}
+
+function resolveRunxCli(argsRecord) {
+  const explicit = firstNonEmptyString(argsRecord.runx_bin, process.env.RUNX_BIN);
+  if (explicit) {
+    return {
+      requested: explicit,
+      command: resolveCommandCandidate(explicit, process.cwd()),
+      source: argsRecord.runx_bin ? "flag:--runx-bin" : "env:RUNX_BIN",
+    };
+  }
+  const local = [
+    path.join(RUNX_OSS_ROOT, "crates", "target", "debug", "runx"),
+    path.join(RUNX_OSS_ROOT, "crates", "target", "release", "runx"),
+  ].find((candidate) => existsSync(candidate));
+  const requested = local ?? "runx";
+  return {
+    requested,
+    command: resolveCommandCandidate(requested, process.cwd()),
+    source: local ? "local:crates/target/runx" : "path:runx",
+  };
+}
+
+function resolveDogfoodSkillPath(argsRecord) {
+  return resolveInputPath(firstNonEmptyString(
+    argsRecord.skill,
+    process.env.RUNX_LIVE_ISSUE_TO_PR_SKILL,
+    ISSUE_TO_PR_SKILL_PATH,
+  ));
+}
+
+function resolveDogfoodReceiptDir(argsRecord, workspace) {
+  return resolveInputPath(firstNonEmptyString(
+    argsRecord.receipt_dir,
+    process.env.RUNX_LIVE_ISSUE_TO_PR_RECEIPT_DIR,
+    path.join(workspace, ".runx", "receipts"),
+  ));
+}
+
+function resolveInputPath(value) {
+  const text = firstNonEmptyString(value);
+  if (!text) {
+    return text;
+  }
+  return path.isAbsolute(text) ? text : path.resolve(process.cwd(), text);
+}
+
+function scafldInputValue(scafldBin) {
+  const value = firstNonEmptyString(scafldBin, "scafld");
+  return value.includes(path.sep) ? resolveCommandCandidate(value, process.cwd()) : value;
+}
+
+async function resolveDogfoodOperationalPolicy({ args: argsRecord, issueRef, allowlist }) {
+  const explicit = firstNonEmptyString(argsRecord.operational_policy);
+  if (explicit) {
+    if (explicit.trim().startsWith("{")) {
+      return JSON.parse(explicit);
+    }
+    const raw = await readFile(resolveInputPath(explicit), "utf8");
+    return JSON.parse(raw);
+  }
+  return buildDogfoodOperationalPolicy({
+    issueRef,
+    allowlist,
+    sourceId: firstNonEmptyString(argsRecord.source_id, "github-issues"),
+    runnerId: firstNonEmptyString(argsRecord.runner_id, "local-dogfood"),
+  });
+}
+
+function buildDogfoodOperationalPolicy({ issueRef, allowlist, sourceId, runnerId }) {
+  const repos = Array.from(new Set([issueRef.repo_slug, ...allowlist]));
+  return {
+    schema: "runx.operational_policy.v1",
+    schema_version: "runx.operational_policy.v1",
+    policy_id: `dogfood-${issueRef.repo_slug.replace(/\//g, "-")}`,
+    sources: [
+      {
+        source_id: sourceId,
+        provider: "github",
+        allowed_locators: [`github://${issueRef.repo_slug}/issues`],
+        allowed_actions: ["reply-only", "issue-intake", "issue-to-pr"],
+        source_thread: {
+          required: true,
+          publish_mode: "comment",
+          missing_behavior: "fail_closed",
+        },
+      },
+    ],
+    runners: [
+      {
+        runner_id: runnerId,
+        kind: "local",
+        state: "available",
+        allowed_actions: ["reply-only", "issue-intake", "issue-to-pr"],
+        target_repos: repos,
+        scafld_required: true,
+      },
+    ],
+    owner_routes: [
+      {
+        route_id: "dogfood-maintainers",
+        owners: ["maintainers"],
+        target_repos: repos,
+      },
+    ],
+    targets: repos.map((repo) => ({
+      repo,
+      runner_ids: [runnerId],
+      allowed_actions: ["reply-only", "issue-intake", "issue-to-pr"],
+      default_owner_route: "dogfood-maintainers",
+      scafld_required: true,
+    })),
+    dedupe: {
+      strategy: "source_fingerprint",
+      key_fields: ["source.provider", "source.locator", "signal.fingerprint"],
+      on_duplicate: "reuse",
+    },
+    outcomes: {
+      observe_provider: true,
+      verification_required: true,
+      close_source_issue: "when_verified",
+      publish_final_source_thread_update: true,
+    },
+    permissions: {
+      auto_merge: false,
+      mutate_target_repo: true,
+      require_human_merge_gate: true,
+    },
+  };
+}
+
+function buildDogfoodRepoSnapshot({ workspace, issueRef, branchName, thread }) {
+  const files = gitOutputOrEmpty(workspace, ["ls-files"])
+    .split(/\r?\n/g)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  const status = gitOutputOrEmpty(workspace, ["status", "--porcelain=v1"])
+    .split(/\r?\n/g)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  const head = firstNonEmptyString(gitOutputOrEmpty(workspace, ["rev-parse", "--short=12", "HEAD"]));
+  const text = [thread.title, primaryThreadBody(thread)].filter(Boolean).join("\n\n");
+  return {
+    schema: "runx.repo_snapshot.v1",
+    target_repo: issueRef.repo_slug,
+    branch: branchName,
+    head,
+    dirty_count: status.length,
+    dirty_paths: status.slice(0, 50),
+    existing_files: selectSnapshotFiles(files),
+    recommended_files: inferRecommendedFiles(text, files),
+  };
+}
+
+function gitOutputOrEmpty(workspace, args) {
+  const result = spawnSync("git", args, {
+    cwd: workspace,
+    encoding: "utf8",
+    shell: false,
+    env: process.env,
+  });
+  return result.status === 0 ? result.stdout : "";
+}
+
+function selectSnapshotFiles(files) {
+  const preferred = [
+    "README.md",
+    "package.json",
+    "pnpm-workspace.yaml",
+    "Cargo.toml",
+    "pyproject.toml",
+    "go.mod",
+  ];
+  const selected = new Set();
+  for (const file of preferred) {
+    if (files.includes(file)) {
+      selected.add(file);
+    }
+  }
+  for (const file of files) {
+    if (
+      selected.size >= 80 ||
+      file.startsWith(".scafld/") ||
+      file.startsWith(".git/")
+    ) {
+      continue;
+    }
+    if (/\.(md|mdx|ts|tsx|js|jsx|mjs|cjs|rs|go|py|json|yaml|yml|toml)$/.test(file)) {
+      selected.add(file);
+    }
+  }
+  return [...selected];
+}
+
+function inferRecommendedFiles(text, files) {
+  const candidates = new Set();
+  const body = firstNonEmptyString(text) ?? "";
+  for (const match of body.matchAll(/`([^`\n]+\.[A-Za-z0-9]+)`/g)) {
+    candidates.add(match[1]);
+  }
+  for (const match of body.matchAll(/\b([A-Za-z0-9_.-]+\/[A-Za-z0-9_./-]+\.[A-Za-z0-9]+)\b/g)) {
+    candidates.add(match[1]);
+  }
+  const known = new Set(files);
+  return [...candidates]
+    .map((entry) => entry.replace(/^\.\//, ""))
+    .filter((entry) => known.has(entry))
+    .slice(0, 20);
+}
+
+function primaryThreadBody(thread) {
+  const entry = threadEntries(thread)
+    .find((candidate) => firstNonEmptyString(candidate?.body));
+  const body = firstNonEmptyString(entry?.body);
+  if (!body) {
+    return undefined;
+  }
+  const sanitized = sanitizePublicMarkdown(body);
+  return sanitized.length > 20000 ? `${sanitized.slice(0, 20000)}...` : sanitized;
+}
+
+function selectPreferredPullFromThread(thread, branchName) {
+  return selectPreferredGitHubPullRequest(
+    threadOutbox(thread).map((entry) => ({
+      number: optionalNumber(entry.metadata?.number),
+      url: entry.locator,
+      headRefName: entry.metadata?.branch,
+      updatedAt: entry.metadata?.updated_at,
+      isDraft: entry.status === "draft",
+      state: entry.status === "closed" ? "CLOSED" : "OPEN",
+      mergedAt: entry.metadata?.merged_at,
+    })),
+    branchName,
+  );
+}
+
+function collectReceiptRefs(nativeOutput) {
+  const refs = [];
+  const push = (value) => {
+    const text = firstNonEmptyString(value);
+    if (text && !refs.includes(text)) {
+      refs.push(text);
+    }
+  };
+  push(nativeOutput?.receipt_id);
+  const steps = Array.isArray(nativeOutput?.payload?.steps) ? nativeOutput.payload.steps : [];
+  for (const step of steps) {
+    push(step?.receipt_id);
+  }
+  return refs;
+}
+
+function sourceThreadPublicationRefs(thread) {
+  return threadOutbox(thread)
+    .map((entry) => ({
+      entry_id: firstNonEmptyString(entry.entry_id),
+      kind: firstNonEmptyString(entry.kind),
+      status: firstNonEmptyString(entry.status),
+      locator: firstNonEmptyString(entry.locator),
+      branch: firstNonEmptyString(entry.metadata?.branch),
+      comment_id: firstNonEmptyString(entry.metadata?.comment_id),
+    }))
+    .filter((entry) => entry.locator || entry.comment_id)
+    .slice(-5);
+}
+
+function parseJsonOutput(value) {
+  const text = firstNonEmptyString(value);
+  if (!text) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
+
+function dogfoodRedactions(workspace) {
+  return [
+    [workspace, "{workspace}"],
+    [RUNX_OSS_ROOT, "{runx_oss}"],
+  ].filter(([from]) => firstNonEmptyString(from));
+}
+
+function sanitizeDogfoodValue(value, redactions) {
+  if (Array.isArray(value)) {
+    return value.map((entry) => sanitizeDogfoodValue(entry, redactions));
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, nested]) => [
+        key,
+        sanitizeDogfoodValue(nested, redactions),
+      ]),
+    );
+  }
+  if (typeof value === "string") {
+    return redactLocalPaths(sanitizePublicMarkdown(value), redactions);
+  }
+  return value;
+}
+
+function redactLocalPaths(value, redactions) {
+  let text = String(value ?? "");
+  for (const [from, to] of redactions) {
+    text = text.split(from).join(to);
+  }
+  return text;
 }
 
 async function inspectWorkspace(workspace) {

@@ -298,6 +298,10 @@ runners:
         type: string
         required: false
         description: "Workspace root containing the target .scafld directory."
+      workspace_path:
+        type: string
+        required: false
+        description: "Workspace root forwarded to provider-push tools that need local git state for branch and PR publication."
       scafld_bin:
         type: string
         required: false

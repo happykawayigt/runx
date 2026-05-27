@@ -583,3 +583,9 @@ Issues:
   though native graph skill execution now supports graph runners.
 - 2026-05-26T08:08+10:00: Drafted this umbrella spec to coordinate existing
   narrow specs into one release-readiness bar.
+- 2026-05-27: Replaced the stale dogfood create blocker with the existing
+  native `runx skill skills/issue-to-pr` graph route. The harness now hydrates
+  the GitHub issue thread, passes explicit workspace/branch/scafld/policy/repo
+  snapshot inputs, returns `needs_agent` continuation instructions with
+  `run_id` and `--answers`, and reports sealed PR/source-thread evidence from
+  the existing `thread.push_outbox` boundary. No new adapter path was added.
