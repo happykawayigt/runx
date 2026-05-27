@@ -10,11 +10,9 @@ use runx_parser::{
     validate_runner_manifest,
 };
 
-use crate::adapter::SkillOutput;
 use crate::{RuntimeError, StepRun};
 
 use super::graph_index::PriorRunIndex;
-use super::output_projection::project_skill_output;
 
 #[derive(Clone)]
 pub(crate) struct LoadedStepSkill {
@@ -194,15 +192,6 @@ pub(crate) fn resolve_inputs_with_index(
         inputs.insert(edge.input.clone(), value);
     }
     Ok(inputs)
-}
-
-pub(crate) fn output_object(output: &SkillOutput) -> JsonObject {
-    output_object_with_claim(output).0
-}
-
-pub(crate) fn output_object_with_claim(output: &SkillOutput) -> (JsonObject, JsonObject) {
-    let projection = project_skill_output(output);
-    (projection.outputs, projection.claim)
 }
 
 fn context_from(step: &GraphStep) -> Option<Vec<String>> {

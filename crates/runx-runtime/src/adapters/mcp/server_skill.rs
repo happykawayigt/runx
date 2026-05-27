@@ -1,6 +1,6 @@
 // rust-style-allow: large-file because skill execution, graph fallback,
 // runx envelope construction, and host plumbing for `runx mcp serve` stay
-// adjacent to the McpServerState that orchestrates them.
+// adjacent to the server execution boundary.
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -18,7 +18,7 @@ use crate::services::ReceiptServices;
 use crate::{GraphRun, Runtime, RuntimeError, RuntimeOptions};
 
 use super::adapter::McpAdapter;
-use super::server::{McpServerState, mcp_tool_result_from_host_result};
+use super::server::mcp_tool_result_from_host_result;
 use super::types::{
     McpHostRunResult, McpServerExecutionOptions, McpServerOptions, McpServerSkillExecution,
     McpServerTool, McpServerToolBehavior, McpToolResult,
@@ -160,33 +160,30 @@ fn normalize_input_type(input_type: &str) -> Option<&str> {
 }
 
 pub(super) fn execute_mcp_server_skill(
-    state: &mut McpServerState,
+    run_id: &str,
     execution: McpServerSkillExecution,
     inputs: JsonObject,
 ) -> Result<McpToolResult, RuntimeError> {
     let inputs = apply_input_defaults(&execution.skill, inputs);
     if let Some(request) = input_resolution_request(&execution.skill, &inputs) {
         let skill_name = execution.skill.name.clone();
-        let run_id = state.next_run_id(&execution.skill.name);
         return Ok(mcp_tool_result_from_host_result(
             McpHostRunResult::NeedsAgent {
                 skill_name: skill_name.clone(),
-                run_id: run_id.clone(),
+                run_id: run_id.to_owned(),
                 request_count: 1,
-                runx: needs_agent_runx(&skill_name, &run_id, &[request])?,
+                runx: needs_agent_runx(&skill_name, run_id, &[request])?,
             },
         ));
     }
 
-    let run_id = state.next_run_id(&execution.skill.name);
     if execution.skill.source.source_type == runx_parser::SourceKind::Graph {
-        return execute_mcp_server_graph(state, &run_id, execution, inputs);
+        return execute_mcp_server_graph(run_id, execution, inputs);
     }
-    complete_mcp_server_skill(&run_id, execution, inputs)
+    complete_mcp_server_skill(run_id, execution, inputs)
 }
 
 fn execute_mcp_server_graph(
-    _state: &mut McpServerState,
     run_id: &str,
     execution: McpServerSkillExecution,
     _inputs: JsonObject,

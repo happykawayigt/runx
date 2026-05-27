@@ -3,7 +3,8 @@
 // serve` all sit on the same protocol surface.
 use std::io::{Read, Write};
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::task::{Context, Poll};
 use std::thread;
 
@@ -13,8 +14,8 @@ use tokio::sync::mpsc;
 use super::rmcp_content_length::{RmcpContentLengthTransport, RmcpTransportErrorState};
 use super::server_skill::{execute_mcp_server_skill, identifier_segment};
 use super::types::{
-    McpContent, McpHostRunResult, McpServerError, McpServerOptions, McpServerTool,
-    McpServerToolBehavior, McpToolResult,
+    McpContent, McpHostRunResult, McpServerError, McpServerOptions, McpServerSkillExecution,
+    McpServerTool, McpServerToolBehavior, McpToolResult,
 };
 
 const MAX_SERVER_REQUEST_BYTES: usize = 4 * 1024 * 1024;
@@ -193,7 +194,7 @@ where
         error_state.clone(),
     );
     let service = RmcpProofServer {
-        state: Mutex::new(McpServerState::new(options)),
+        state: McpServerState::new(options),
     };
     let running = rmcp::serve_server(service, transport)
         .await
@@ -215,19 +216,14 @@ where
 }
 
 struct RmcpProofServer {
-    state: Mutex<McpServerState>,
+    state: McpServerState,
 }
 
 impl rmcp::ServerHandler for RmcpProofServer {
     fn get_info(&self) -> rmcp::model::ServerInfo {
-        let (package_name, package_version) = self.state.lock().map_or_else(
-            |_| ("runx-mcp".to_owned(), "0.0.0".to_owned()),
-            |state| {
-                (
-                    state.options.package_name.clone(),
-                    state.options.package_version.clone(),
-                )
-            },
+        let (package_name, package_version) = (
+            self.state.options.package_name.clone(),
+            self.state.options.package_version.clone(),
         );
         rmcp::model::ServerInfo::new(
             rmcp::model::ServerCapabilities::builder()
@@ -249,17 +245,12 @@ impl rmcp::ServerHandler for RmcpProofServer {
     {
         let result = self
             .state
-            .lock()
-            .map_err(|_| rmcp_internal_error("MCP server state lock failed."))
-            .and_then(|state| {
-                let tools = state
-                    .options
-                    .tools
-                    .iter()
-                    .map(rmcp_tool_from_server_tool)
-                    .collect::<Result<Vec<_>, _>>()?;
-                Ok(rmcp::model::ListToolsResult::with_all_items(tools))
-            });
+            .options
+            .tools
+            .iter()
+            .map(rmcp_tool_from_server_tool)
+            .collect::<Result<Vec<_>, _>>()
+            .map(rmcp::model::ListToolsResult::with_all_items);
         std::future::ready(result)
     }
 
@@ -269,52 +260,80 @@ impl rmcp::ServerHandler for RmcpProofServer {
         _context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> impl Future<Output = Result<rmcp::model::CallToolResult, rmcp::ErrorData>> + Send + '_
     {
-        let result = self
-            .state
-            .lock()
-            .map_err(|_| rmcp_internal_error("MCP server state lock failed."))
-            .and_then(|mut state| {
-                let arguments = match request.arguments {
-                    Some(arguments) => runx_json_object(arguments).map_err(rmcp_invalid_params)?,
-                    None => JsonObject::new(),
-                };
-                handle_rmcp_tool_call(&mut state, &request.name, arguments)
-            });
-        std::future::ready(result)
+        let prepared = (|| {
+            let arguments = match request.arguments {
+                Some(arguments) => runx_json_object(arguments).map_err(rmcp_invalid_params)?,
+                None => JsonObject::new(),
+            };
+            prepare_rmcp_tool_call(&self.state, &request.name, arguments)
+        })();
+        execute_rmcp_tool_call(prepared)
     }
 
     fn get_tool(&self, name: &str) -> Option<rmcp::model::Tool> {
         self.state
-            .lock()
-            .ok()
-            .and_then(|state| {
-                state
-                    .options
-                    .tools
-                    .iter()
-                    .find(|tool| tool.name == name)
-                    .cloned()
-            })
+            .options
+            .tools
+            .iter()
+            .find(|tool| tool.name == name)
+            .cloned()
             .and_then(|tool| rmcp_tool_from_server_tool(&tool).ok())
     }
 }
 
-fn handle_rmcp_tool_call(
-    state: &mut McpServerState,
+enum PreparedMcpToolCall {
+    Fixed(McpToolResult),
+    Skill {
+        run_id: String,
+        execution: Box<McpServerSkillExecution>,
+        arguments: JsonObject,
+    },
+}
+
+fn prepare_rmcp_tool_call(
+    state: &McpServerState,
     name: &str,
     arguments: JsonObject,
-) -> Result<rmcp::model::CallToolResult, rmcp::ErrorData> {
-    let Some(tool) = state.options.tools.iter().find(|tool| tool.name == name) else {
+) -> Result<PreparedMcpToolCall, rmcp::ErrorData> {
+    let Some(tool) = state
+        .options
+        .tools
+        .iter()
+        .find(|tool| tool.name == name)
+        .cloned()
+    else {
         return Err(rmcp::ErrorData::new(
             rmcp::model::ErrorCode::METHOD_NOT_FOUND,
             format!("tool not found: {name}"),
             None,
         ));
     };
-    match tool.result.clone() {
-        McpServerToolBehavior::Fixed(result) => rmcp_call_tool_result(result),
-        McpServerToolBehavior::Skill(execution) => {
-            match execute_mcp_server_skill(state, *execution, arguments) {
+    match tool.result {
+        McpServerToolBehavior::Fixed(result) => Ok(PreparedMcpToolCall::Fixed(result)),
+        McpServerToolBehavior::Skill(execution) => Ok(PreparedMcpToolCall::Skill {
+            run_id: state.next_run_id(&execution.skill.name),
+            execution,
+            arguments,
+        }),
+    }
+}
+
+async fn execute_rmcp_tool_call(
+    prepared: Result<PreparedMcpToolCall, rmcp::ErrorData>,
+) -> Result<rmcp::model::CallToolResult, rmcp::ErrorData> {
+    match prepared? {
+        PreparedMcpToolCall::Fixed(result) => rmcp_call_tool_result(result),
+        PreparedMcpToolCall::Skill {
+            run_id,
+            execution,
+            arguments,
+        } => {
+            let result = tokio::task::spawn_blocking(move || {
+                execute_mcp_server_skill(&run_id, *execution, arguments)
+            })
+            .await
+            .map_err(|error| rmcp_internal_error(format!("MCP tool task failed: {error}")))?;
+            match result {
                 Ok(result) => rmcp_call_tool_result(result),
                 Err(error) => Err(rmcp_internal_error(error.to_string())),
             }
@@ -488,24 +507,25 @@ where
 #[derive(Debug)]
 pub(super) struct McpServerState {
     options: McpServerOptions,
-    next_run_sequence: u64,
+    next_run_sequence: AtomicU64,
 }
 
 impl McpServerState {
     fn new(options: McpServerOptions) -> Self {
         Self {
             options,
-            next_run_sequence: 0,
+            next_run_sequence: AtomicU64::new(0),
         }
     }
 
-    pub(super) fn next_run_id(&mut self, skill_name: &str) -> String {
-        self.next_run_sequence = self.next_run_sequence.saturating_add(1);
-        format!(
-            "rx_mcp_{}_{}",
-            identifier_segment(skill_name),
-            self.next_run_sequence
-        )
+    pub(super) fn next_run_id(&self, skill_name: &str) -> String {
+        let sequence = self
+            .next_run_sequence
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+                Some(value.saturating_add(1))
+            })
+            .map_or(u64::MAX, |previous| previous.saturating_add(1));
+        format!("rx_mcp_{}_{}", identifier_segment(skill_name), sequence)
     }
 }
 
@@ -520,4 +540,52 @@ fn assert_unique_server_tool_names(tools: &[McpServerTool]) -> Result<(), McpSer
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeSet;
+    use std::sync::{Arc, Barrier};
+
+    use super::*;
+
+    #[test]
+    fn next_run_id_is_unique_under_concurrent_allocation() -> Result<(), String> {
+        let state = Arc::new(McpServerState::new(McpServerOptions {
+            package_name: "runx-test".to_owned(),
+            package_version: "0.0.0".to_owned(),
+            tools: Vec::new(),
+        }));
+        let worker_count = 8;
+        let ids_per_worker = 64;
+        let barrier = Arc::new(Barrier::new(worker_count));
+
+        let handles = (0..worker_count)
+            .map(|_| {
+                let state = Arc::clone(&state);
+                let barrier = Arc::clone(&barrier);
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    (0..ids_per_worker)
+                        .map(|_| state.next_run_id("skill.alpha"))
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect::<Vec<_>>();
+
+        let mut ids = Vec::new();
+        for handle in handles {
+            let worker_ids = handle
+                .join()
+                .map_err(|_| "run-id worker panicked".to_owned())?;
+            ids.extend(worker_ids);
+        }
+        let ids = ids.into_iter().collect::<BTreeSet<_>>();
+
+        assert_eq!(ids.len(), worker_count * ids_per_worker);
+        for sequence in 1..=(worker_count * ids_per_worker) {
+            assert!(ids.contains(&format!("rx_mcp_skill_alpha_{sequence}")));
+        }
+        Ok(())
+    }
 }

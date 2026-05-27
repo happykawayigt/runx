@@ -2,6 +2,9 @@
 // signature policy, and local proof sealing stay together until the runtime
 // receipt builder is split out.
 use crate::adapter::SkillOutput;
+use crate::execution::output_projection::{
+    StepOutputProjection, StepOutputRefs, project_step_output,
+};
 use crate::payment::supervisor::{
     payment_supervisor_evidence_from_metadata, payment_supervisor_proof_from_metadata,
     rebind_supervisor_proof_to_receipt,
@@ -10,8 +13,8 @@ use crate::{RuntimeError, StepRun};
 use runx_contracts::{
     ActForm, AuthorityAttenuation, AuthoritySubsetResult, Closure, ClosureDisposition,
     CriterionBinding, CriterionStatus, Decision, DecisionChoice, DecisionInputs,
-    DecisionJustification, FanoutReceiptSyncPoint, Intent, JsonObject, JsonValue, Lineage,
-    ProofKind, RECEIPT_CANONICALIZATION, Receipt, ReceiptAct, ReceiptAuthority, ReceiptEnforcement,
+    DecisionJustification, FanoutReceiptSyncPoint, Intent, JsonObject, Lineage, ProofKind,
+    RECEIPT_CANONICALIZATION, Receipt, ReceiptAct, ReceiptAuthority, ReceiptEnforcement,
     ReceiptIdempotency, ReceiptIssuer, ReceiptSchema, ReceiptSubjectKind, Reference, ReferenceType,
     Seal, SignatureAlgorithm, Subject, SuccessCriterion, json_string_field,
 };
@@ -70,6 +73,32 @@ pub fn step_receipt_with_signature_policy(
     )
 }
 
+pub(crate) fn step_receipt_with_projection_and_signature_policy(
+    graph_name: &str,
+    step_id: &str,
+    attempt: u32,
+    output: &SkillOutput,
+    projection: &StepOutputProjection,
+    created_at: &str,
+    signature_policy: RuntimeReceiptSignaturePolicy<'_>,
+) -> Result<Receipt, RuntimeError> {
+    let disposition = disposition(output);
+    step_receipt_with_disposition_projection_and_policy(
+        StepReceiptWithDisposition {
+            graph_name,
+            step_id,
+            attempt,
+            output,
+            created_at,
+            reason_code: process_reason_code(&disposition),
+            disposition,
+            summary: format!("step {step_id} completed"),
+        },
+        projection,
+        signature_policy,
+    )
+}
+
 pub(crate) struct StepReceiptWithDisposition<'a> {
     pub(crate) graph_name: &'a str,
     pub(crate) step_id: &'a str,
@@ -94,6 +123,15 @@ pub(crate) fn step_receipt_with_disposition_and_policy(
     params: StepReceiptWithDisposition<'_>,
     signature_policy: RuntimeReceiptSignaturePolicy<'_>,
 ) -> Result<Receipt, RuntimeError> {
+    let projection = project_step_output(params.output);
+    step_receipt_with_disposition_projection_and_policy(params, &projection, signature_policy)
+}
+
+pub(crate) fn step_receipt_with_disposition_projection_and_policy(
+    params: StepReceiptWithDisposition<'_>,
+    projection: &StepOutputProjection,
+    signature_policy: RuntimeReceiptSignaturePolicy<'_>,
+) -> Result<Receipt, RuntimeError> {
     let StepReceiptWithDisposition {
         graph_name,
         step_id,
@@ -104,7 +142,7 @@ pub(crate) fn step_receipt_with_disposition_and_policy(
         reason_code,
         summary,
     } = params;
-    let output_refs = output_refs(output);
+    let output_refs = output_refs(output, &projection.refs);
     let act = observation_act(
         step_id,
         output,
@@ -145,7 +183,7 @@ pub(crate) fn step_receipt_with_disposition_and_policy(
 
 /// The single `process_exit` criterion binding a step receipt seals on, derived
 /// from the skill output and its reference set.
-fn process_exit_criterion(output: &SkillOutput, output_refs: &OutputRefs) -> CriterionBinding {
+fn process_exit_criterion(output: &SkillOutput, output_refs: &StepOutputRefs) -> CriterionBinding {
     CriterionBinding {
         criterion_id: "process_exit".into(),
         status: if output.succeeded() {
@@ -416,7 +454,7 @@ fn observation_act(
     output: &SkillOutput,
     performed_at: &str,
     disposition: ClosureDisposition,
-    refs: &OutputRefs,
+    refs: &StepOutputRefs,
 ) -> ReceiptAct {
     let mut artifact_refs = refs.artifact_refs.clone();
     artifact_refs.extend(refs.surface_refs.iter().cloned());
@@ -522,18 +560,8 @@ fn idempotency(graph_name: &str, node_id: &str) -> ReceiptIdempotency {
     }
 }
 
-#[derive(Clone, Debug, Default)]
-struct OutputRefs {
-    signal_refs: Vec<Reference>,
-    source_refs: Vec<Reference>,
-    evidence_refs: Vec<Reference>,
-    surface_refs: Vec<Reference>,
-    artifact_refs: Vec<Reference>,
-    verification_refs: Vec<Reference>,
-}
-
-fn output_refs(output: &SkillOutput) -> OutputRefs {
-    let mut refs = OutputRefs::default();
+fn output_refs(output: &SkillOutput, projected_refs: &StepOutputRefs) -> StepOutputRefs {
+    let mut refs = projected_refs.clone();
     if let Some(request_id) = json_string_field(&output.metadata, "agent_request_id") {
         let reference = Reference {
             uri: format!("runx:agent_act:{request_id}").into(),
@@ -544,227 +572,14 @@ fn output_refs(output: &SkillOutput) -> OutputRefs {
             observed_at: None,
             proof_kind: None,
         };
-        refs.source_refs.push(reference.clone());
-        refs.evidence_refs.push(reference);
+        refs.source_refs.insert(0, reference.clone());
+        refs.evidence_refs.insert(0, reference);
     }
-    collect_stdout_refs(&output.stdout, &mut refs);
     collect_supervisor_metadata_refs(&output.metadata, &mut refs);
     refs
 }
 
-fn collect_stdout_refs(stdout: &str, refs: &mut OutputRefs) {
-    let trimmed = stdout.trim();
-    if trimmed.is_empty() {
-        return;
-    }
-    let Ok(value) = serde_json::from_str::<JsonValue>(trimmed) else {
-        return;
-    };
-    collect_stdout_artifact_refs(&value, refs);
-    collect_stdout_signal_refs(&value, refs);
-    collect_stdout_change_set_refs(&value, refs);
-}
-
-fn collect_stdout_artifact_refs(value: &JsonValue, refs: &mut OutputRefs) {
-    let Some(object) = value.as_object() else {
-        return;
-    };
-    if let Some(artifact) = object.get("artifact") {
-        collect_artifact_reference(artifact, refs);
-    }
-    if let Some(artifacts) = object.get("artifacts") {
-        collect_artifact_reference(artifacts, refs);
-    }
-}
-
-fn collect_artifact_reference(value: &JsonValue, refs: &mut OutputRefs) {
-    match value {
-        JsonValue::Array(items) => {
-            for item in items {
-                collect_artifact_reference(item, refs);
-            }
-        }
-        JsonValue::Object(object) => {
-            let Some(artifact_id) = object
-                .get("artifact_id")
-                .or_else(|| object.get("id"))
-                .and_then(JsonValue::as_str)
-                .map(str::trim)
-                .filter(|entry| !entry.is_empty())
-            else {
-                return;
-            };
-            let artifact_type = object
-                .get("artifact_type")
-                .or_else(|| object.get("type"))
-                .and_then(JsonValue::as_str)
-                .map(str::trim)
-                .filter(|entry| !entry.is_empty());
-            let mut reference = Reference::runx(ReferenceType::Artifact, artifact_id);
-            reference.locator = Some(artifact_id.to_owned().into());
-            reference.label = artifact_type.map(Into::into);
-            refs.artifact_refs.push(reference);
-        }
-        JsonValue::Null | JsonValue::Bool(_) | JsonValue::Number(_) | JsonValue::String(_) => {}
-    }
-}
-
-fn collect_stdout_signal_refs(value: &JsonValue, refs: &mut OutputRefs) {
-    let Some(object) = value.as_object() else {
-        return;
-    };
-    if let Some(signal) = object.get("signal") {
-        collect_signal_reference(signal, refs);
-    }
-    if let Some(signals) = object.get("signals") {
-        collect_signal_reference(signals, refs);
-    }
-}
-
-fn collect_stdout_change_set_refs(value: &JsonValue, refs: &mut OutputRefs) {
-    let Some(object) = value.as_object() else {
-        return;
-    };
-    if let Some(change_set) = object.get("change_set") {
-        collect_change_set_reference(change_set, refs);
-    }
-}
-
-fn collect_change_set_reference(value: &JsonValue, refs: &mut OutputRefs) {
-    match value {
-        JsonValue::Array(items) => {
-            for item in items {
-                collect_change_set_reference(item, refs);
-            }
-        }
-        JsonValue::Object(object) => {
-            if let Some(target_surfaces) = object.get("target_surfaces") {
-                collect_target_surface_reference(target_surfaces, refs);
-            }
-        }
-        JsonValue::Null | JsonValue::Bool(_) | JsonValue::Number(_) | JsonValue::String(_) => {}
-    }
-}
-
-fn collect_target_surface_reference(value: &JsonValue, refs: &mut OutputRefs) {
-    match value {
-        JsonValue::Array(items) => {
-            for item in items {
-                collect_target_surface_reference(item, refs);
-            }
-        }
-        JsonValue::Object(object) => {
-            let Some(surface) = object
-                .get("surface")
-                .and_then(JsonValue::as_str)
-                .map(str::trim)
-                .filter(|entry| !entry.is_empty())
-            else {
-                return;
-            };
-            let mut reference = Reference::runx(ReferenceType::Surface, surface);
-            reference.locator = Some(surface.to_owned().into());
-            reference.label = object
-                .get("kind")
-                .and_then(JsonValue::as_str)
-                .map(str::trim)
-                .filter(|entry| !entry.is_empty())
-                .map(|value| value.to_owned().into());
-            refs.surface_refs.push(reference);
-        }
-        JsonValue::Null | JsonValue::Bool(_) | JsonValue::Number(_) | JsonValue::String(_) => {}
-    }
-}
-
-fn collect_signal_reference(value: &JsonValue, refs: &mut OutputRefs) {
-    match value {
-        JsonValue::Array(items) => {
-            for item in items {
-                collect_signal_reference(item, refs);
-            }
-        }
-        JsonValue::Object(object) => {
-            if let Some(signal_id) = object
-                .get("signal_id")
-                .or_else(|| object.get("id"))
-                .and_then(JsonValue::as_str)
-                .map(str::trim)
-                .filter(|entry| !entry.is_empty())
-            {
-                refs.signal_refs
-                    .push(Reference::runx(ReferenceType::Signal, signal_id));
-            }
-            if let Some(source_events) = object.get("source_events") {
-                collect_source_event_reference(source_events, refs);
-            }
-            if let Some(artifact) = object.get("artifact") {
-                collect_artifact_reference(artifact, refs);
-            }
-            if let Some(artifacts) = object.get("artifacts") {
-                collect_artifact_reference(artifacts, refs);
-            }
-        }
-        JsonValue::Null | JsonValue::Bool(_) | JsonValue::Number(_) | JsonValue::String(_) => {}
-    }
-}
-
-fn collect_source_event_reference(value: &JsonValue, refs: &mut OutputRefs) {
-    match value {
-        JsonValue::Array(items) => {
-            for item in items {
-                collect_source_event_reference(item, refs);
-            }
-        }
-        JsonValue::Object(object) => {
-            let Some(locator) = object
-                .get("source_locator")
-                .or_else(|| object.get("locator"))
-                .or_else(|| object.get("thread_locator"))
-                .and_then(JsonValue::as_str)
-                .map(str::trim)
-                .filter(|entry| !entry.is_empty())
-            else {
-                return;
-            };
-            let provider = object
-                .get("provider")
-                .and_then(JsonValue::as_str)
-                .map(str::trim)
-                .filter(|entry| !entry.is_empty());
-            let label = object
-                .get("title")
-                .and_then(JsonValue::as_str)
-                .map(str::trim)
-                .filter(|entry| !entry.is_empty());
-            refs.source_refs.push(Reference {
-                uri: locator.to_owned().into(),
-                reference_type: reference_type_for_source(provider, locator),
-                provider: provider.map(|value| value.to_owned().into()),
-                locator: Some(locator.to_owned().into()),
-                label: label.map(|value| value.to_owned().into()),
-                observed_at: None,
-                proof_kind: None,
-            });
-        }
-        JsonValue::Null | JsonValue::Bool(_) | JsonValue::Number(_) | JsonValue::String(_) => {}
-    }
-}
-
-fn reference_type_for_source(provider: Option<&str>, locator: &str) -> ReferenceType {
-    match provider {
-        Some("github") => ReferenceType::GithubIssue,
-        Some("slack") => ReferenceType::SlackThread,
-        Some("sentry") => ReferenceType::SentryEvent,
-        _ if locator.starts_with("github://") || locator.contains("github.com/") => {
-            ReferenceType::GithubIssue
-        }
-        _ if locator.starts_with("slack://") => ReferenceType::SlackThread,
-        _ if locator.starts_with("sentry://") => ReferenceType::SentryEvent,
-        _ => ReferenceType::ExternalUrl,
-    }
-}
-
-fn collect_supervisor_metadata_refs(metadata: &JsonObject, refs: &mut OutputRefs) {
+fn collect_supervisor_metadata_refs(metadata: &JsonObject, refs: &mut StepOutputRefs) {
     let Ok(Some(proof)) = payment_supervisor_proof_from_metadata(metadata) else {
         let Ok(Some(evidence)) = payment_supervisor_evidence_from_metadata(metadata) else {
             return;

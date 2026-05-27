@@ -60,7 +60,7 @@ import { ensureRunxInstallState } from "./runx-state.js";
 import { resolveBundledCliToolRoots } from "./runtime-assets.js";
 import { resolveRunnableSkillReference, runSkillSearch } from "./skill-refs.js";
 import { streamTrainableReceipts } from "./trainable-receipts.js";
-import { runNativeRunx, type NativeRunxProcessResult } from "./native-runx.js";
+import { runNativeRunx, streamNativeRunx, type NativeRunxProcessResult } from "./native-runx.js";
 
 export async function dispatchCli(
   parsed: ParsedArgs,
@@ -69,7 +69,7 @@ export async function dispatchCli(
   _services: CliServices = {},
 ): Promise<number> {
   if (parsed.command === "harness" && parsed.harnessPath) {
-    return await writeNativeRunx(io, ["harness", resolvePathFromUserInput(parsed.harnessPath, env), "--json"], env);
+    return await streamNativeRunxToIo(io, ["harness", resolvePathFromUserInput(parsed.harnessPath, env), "--json"], env);
   }
 
   if (parsed.command === "doctor") {
@@ -123,7 +123,7 @@ export async function dispatchCli(
     if (parsed.devPath) args.push(parsed.devPath);
     if (parsed.devLane) args.push("--lane", parsed.devLane);
     if (parsed.json) args.push("--json");
-    return await writeNativeRunx(io, args, env);
+    return await streamNativeRunxToIo(io, args, env);
   }
 
   if (parsed.command === "mcp" && parsed.mcpAction === "serve") {
@@ -157,7 +157,7 @@ export async function dispatchCli(
     }
     const args = ["policy", parsed.policyAction, resolvePathFromUserInput(parsed.policyPath, env)];
     if (parsed.json) args.push("--json");
-    return await writeNativeRunx(io, args, env);
+    return await streamNativeRunxToIo(io, args, env);
   }
 
   if (parsed.command === "init" && parsed.initAction) {
@@ -181,11 +181,11 @@ export async function dispatchCli(
   }
 
   if (parsed.command === "tool" && parsed.toolAction === "search" && parsed.searchQuery) {
-    return await writeNativeRunx(io, nativeToolArgs("search", parsed.searchQuery, parsed), env);
+    return await streamNativeRunxToIo(io, nativeToolArgs("search", parsed.searchQuery, parsed), env);
   }
 
   if (parsed.command === "tool" && parsed.toolAction === "inspect" && parsed.toolRef) {
-    return await writeNativeRunx(io, nativeToolArgs("inspect", parsed.toolRef, parsed), env);
+    return await streamNativeRunxToIo(io, nativeToolArgs("inspect", parsed.toolRef, parsed), env);
   }
 
   if (parsed.command === "skill" && parsed.skillAction === "search" && parsed.searchQuery) {
@@ -253,7 +253,7 @@ export async function dispatchCli(
     pushOptionalFlag(args, "--version", parsed.installVersion);
     pushOptionalFlag(args, "--digest", parsed.expectedDigest);
     pushOptionalFlag(args, "--installation-id", installState?.state.installation_id);
-    return await writeNativeRunx(io, args, env);
+    return await streamNativeRunxToIo(io, args, env);
   }
 
   if (parsed.command === "skill" && parsed.skillAction === "publish" && parsed.publishPath) {
@@ -265,12 +265,12 @@ export async function dispatchCli(
     pushOptionalFlag(args, "--registry", parsed.registryUrl);
     pushOptionalFlag(args, "--owner", parsed.publishOwner);
     pushOptionalFlag(args, "--version", parsed.publishVersion);
-    return await writeNativeRunx(io, args, env);
+    return await streamNativeRunxToIo(io, args, env);
   }
 
   if (parsed.command === "history") {
     if (parsed.json) {
-      return await writeNativeRunx(io, nativeHistoryArgs(parsed, env), env);
+      return await streamNativeRunxToIo(io, nativeHistoryArgs(parsed, env), env);
     }
     const history = await handleHistoryCommand(parsed, env);
     io.stdout.write(renderHistory(history.receipts, env, parsed.historyQuery, history.pendingRuns));
@@ -402,18 +402,12 @@ function resolveDefaultReceiptDir(env: NodeJS.ProcessEnv): string {
   return path.join(resolveRunxGlobalHomeDir(env), "receipts");
 }
 
-async function writeNativeRunx(
+async function streamNativeRunxToIo(
   io: CliIo,
   args: readonly string[],
   env: NodeJS.ProcessEnv,
 ): Promise<number> {
-  const result = await runNativeRunx(args, { env });
-  if (result.stdout) {
-    io.stdout.write(result.stdout);
-  }
-  if (result.stderr) {
-    io.stderr.write(result.stderr);
-  }
+  const result = await streamNativeRunx(args, { env, stdout: io.stdout, stderr: io.stderr });
   return result.status ?? 1;
 }
 
@@ -468,7 +462,7 @@ function cliInputValue(value: unknown): string {
 function parseNativeSkillOutput(args: readonly string[], result: NativeRunxProcessResult): unknown {
   if (result.status !== 0 && result.status !== 2) {
     throw new Error(
-      `native runx ${args.join(" ")} failed with exit ${result.status}: ${firstNonEmpty(result.stderr, result.stdout, "no output")}`,
+      `native runx ${args.join(" ")} failed with ${nativeRunxExitDescription(result)}: ${firstNonEmpty(result.stderr, result.stdout, "no output")}`,
     );
   }
   try {
@@ -476,6 +470,16 @@ function parseNativeSkillOutput(args: readonly string[], result: NativeRunxProce
   } catch (error) {
     throw new Error(`native runx ${args.join(" ")} returned invalid skill JSON: ${(error as Error).message}`);
   }
+}
+
+function nativeRunxExitDescription(result: NativeRunxProcessResult): string {
+  if (result.status !== null) {
+    return `exit ${result.status}`;
+  }
+  if (result.signal) {
+    return `signal ${result.signal}`;
+  }
+  return "unknown status";
 }
 
 function nativeSkillRunResult(skillPath: string, value: unknown): CliSkillRunResult {

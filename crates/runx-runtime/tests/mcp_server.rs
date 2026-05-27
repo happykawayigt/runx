@@ -1,5 +1,7 @@
 #![cfg(feature = "mcp")]
 
+#[cfg(all(feature = "mcp", feature = "cli-tool"))]
+use std::fs;
 use std::io::Cursor;
 #[cfg(feature = "mcp")]
 use std::path::PathBuf;
@@ -172,6 +174,98 @@ fn mcp_server_handles_many_calls_in_one_streaming_session() -> Result<(), Box<dy
             Some(&JsonValue::String("hello from server".to_owned()))
         );
     }
+    Ok(())
+}
+
+#[test]
+#[cfg(all(feature = "mcp", feature = "cli-tool"))]
+fn mcp_server_concurrent_call_completes_while_slow_skill_runs()
+-> Result<(), Box<dyn std::error::Error>> {
+    let slow_skill = tempfile::tempdir()?;
+    fs::write(
+        slow_skill.path().join("SKILL.md"),
+        r#"---
+name: slow-cli
+description: Slow skill used to prove MCP dispatch concurrency.
+source:
+  type: cli-tool
+  command: sh
+  args:
+    - ./run.sh
+  timeout_seconds: 5
+  sandbox:
+    profile: readonly
+    cwd_policy: skill-directory
+inputs: {}
+---
+
+Slow fixture.
+"#,
+    )?;
+    fs::write(
+        slow_skill.path().join("run.sh"),
+        "#!/bin/sh\nsleep 0.2\nprintf '%s\\n' '{\"slow\":true}'\n",
+    )?;
+    let mut options = McpServerOptions::from_skill_paths_with_execution(
+        &[slow_skill.path().to_path_buf()],
+        "runx-cli",
+        "0.0.0",
+        mcp_server_execution_options(None)?,
+    )?;
+    options.tools.push(fixed_tool("fast"));
+
+    let input = [
+        frame(&rmcp_initialize_request(0))?,
+        frame(&initialized_notification())?,
+        frame(&request(
+            1,
+            "tools/call",
+            [
+                ("name".to_owned(), JsonValue::String("slow-cli".to_owned())),
+                ("arguments".to_owned(), JsonValue::Object(JsonObject::new())),
+            ]
+            .into(),
+        ))?,
+        frame(&request(
+            2,
+            "tools/call",
+            [
+                ("name".to_owned(), JsonValue::String("fast".to_owned())),
+                ("arguments".to_owned(), JsonValue::Object(JsonObject::new())),
+            ]
+            .into(),
+        ))?,
+    ]
+    .concat();
+
+    let responses = parse_frames(&run_raw_output_with_options(input, options)?)?;
+    let fast_position = responses
+        .iter()
+        .position(|response| response_id(response) == Some(2))
+        .ok_or("missing fast tool response")?;
+    let slow_position = responses
+        .iter()
+        .position(|response| response_id(response) == Some(1))
+        .ok_or("missing slow tool response")?;
+
+    assert!(
+        fast_position < slow_position,
+        "fast tool response should complete before slow skill response: {responses:?}"
+    );
+    assert_eq!(
+        path(
+            &responses[fast_position],
+            &["result", "content", "0", "text"]
+        ),
+        Some(&JsonValue::String("hello from server".to_owned()))
+    );
+    assert_eq!(
+        path(
+            &responses[slow_position],
+            &["result", "structuredContent", "runx", "status"]
+        ),
+        Some(&JsonValue::String("completed".to_owned()))
+    );
     Ok(())
 }
 
@@ -844,10 +938,16 @@ fn sort_responses_by_id(mut messages: Vec<JsonValue>) -> Vec<JsonValue> {
 }
 
 fn response_sort_key(message: &JsonValue) -> i128 {
+    response_id(message).map_or(i128::MAX, i128::from)
+}
+
+fn response_id(message: &JsonValue) -> Option<i64> {
     match path(message, &["id"]) {
-        Some(JsonValue::Number(runx_contracts::JsonNumber::I64(value))) => i128::from(*value),
-        Some(JsonValue::Number(runx_contracts::JsonNumber::U64(value))) => i128::from(*value),
-        _ => i128::MAX,
+        Some(JsonValue::Number(runx_contracts::JsonNumber::I64(value))) => Some(*value),
+        Some(JsonValue::Number(runx_contracts::JsonNumber::U64(value))) => {
+            i64::try_from(*value).ok()
+        }
+        _ => None,
     }
 }
 

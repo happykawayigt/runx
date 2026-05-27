@@ -16,6 +16,8 @@ pub(crate) use issuer::{local_runtime_issuer, local_target_runner_issuer};
 pub(crate) use seal::{
     GraphClosure, RuntimeReceiptProofContextProvider, StepReceiptWithDisposition,
     graph_receipt_with_disposition_and_policy, step_receipt_with_disposition_and_policy,
+    step_receipt_with_disposition_projection_and_policy,
+    step_receipt_with_projection_and_signature_policy,
 };
 pub use seal::{
     RuntimeReceiptSignaturePolicy, graph_receipt, graph_receipt_with_signature_policy,

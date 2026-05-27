@@ -10,9 +10,7 @@ use runx_contracts::{
 use runx_core::state_machine::StepAdmissionWitness;
 use runx_parser::{GraphStep, SkillSource, SourceKind};
 
-use super::super::graph::{
-    LoadedStepSkill, load_step_skill, output_object, output_object_with_claim,
-};
+use super::super::graph::{LoadedStepSkill, load_step_skill};
 use super::authority::{
     StepAuthorityContext, StepPaymentReplay, attach_payment_supervisor_evidence_before_gate,
     authority_denied, enforce_step_authority_admission,
@@ -30,14 +28,15 @@ use crate::agent_invocation::{
     AgentActInvocationSourceType, agent_act_invocation_id, agent_act_resolution_request,
 };
 use crate::approval::ApprovalResolution;
+use crate::execution::output_projection::{StepOutputProjection, project_step_output};
 use crate::host::Host;
 use crate::payment::state::{PaymentStepStateInput, persist_payment_step_state};
 use crate::payment::supervisor::{
     PaymentSupervisorProof, insert_payment_supervisor_proof_metadata,
 };
 use crate::receipts::{
-    StepReceiptWithDisposition, step_receipt_with_disposition_and_policy,
-    step_receipt_with_signature_policy,
+    StepReceiptWithDisposition, step_receipt_with_disposition_projection_and_policy,
+    step_receipt_with_projection_and_signature_policy,
 };
 
 const EXTERNAL_ADAPTER_HOST_RESOLUTION_REQUEST_METADATA: &str =
@@ -53,8 +52,7 @@ struct AgentSkillStepInvocation {
 
 struct RegularSkillStepOutput {
     output: SkillOutput,
-    outputs: JsonObject,
-    skill_claim: JsonObject,
+    projection: StepOutputProjection,
 }
 
 pub(super) struct StepRunRequest<'a, A: SkillAdapter> {
@@ -266,19 +264,15 @@ where
 {
     let mut output = runtime.adapter.invoke(invocation)?;
     route_external_adapter_host_resolution(step, host, &mut output)?;
-    let (outputs, skill_claim) = step_output_object_and_claim(step, &output)?;
+    let projection = step_output_projection(step, &output)?;
     attach_payment_supervisor_evidence_before_gate(
         step,
         authority,
-        &skill_claim,
+        &projection.claim,
         &mut output,
         &runtime.options.payment_supervisor,
     )?;
-    Ok(RegularSkillStepOutput {
-        output,
-        outputs,
-        skill_claim,
-    })
+    Ok(RegularSkillStepOutput { output, projection })
 }
 
 fn seal_regular_skill_step<A>(
@@ -290,14 +284,14 @@ where
 {
     let RegularSkillStepOutput {
         mut output,
-        outputs,
-        skill_claim,
+        projection,
     } = regular;
-    let receipt = step_receipt_with_signature_policy(
+    let receipt = step_receipt_with_projection_and_signature_policy(
         context.graph_name,
         &context.step.id,
         context.attempt,
         &output,
+        &projection,
         &context.runtime.options.created_at,
         context.runtime.options.signature_policy(),
     )?;
@@ -305,7 +299,7 @@ where
         context.step,
         context.authority,
         &output,
-        &skill_claim,
+        &projection.claim,
         &receipt,
     )?;
     record_payment_supervisor_proof_metadata(context.step, &mut output, supervisor_proof.as_ref())?;
@@ -314,7 +308,7 @@ where
         context.graph_dir,
         context.step,
         context.authority,
-        &skill_claim,
+        &projection.claim,
         &receipt,
         supervisor_proof.as_ref(),
     )?;
@@ -325,7 +319,7 @@ where
         context.attempt,
         context.skill_name,
         output,
-        outputs,
+        projection.outputs,
         receipt,
         admission_witness,
     ))
@@ -495,11 +489,13 @@ fn run_replayed_payment_step(
                 format!("recording replayed supervisor proof metadata failed: {source}"),
             )
         })?;
-    let receipt = step_receipt_with_signature_policy(
+    let projection = step_output_projection(step, &output)?;
+    let receipt = step_receipt_with_projection_and_signature_policy(
         graph_name,
         &step.id,
         attempt,
         &output,
+        &projection,
         &replay.receipt_created_at,
         runtime.options.signature_policy(),
     )?;
@@ -534,7 +530,6 @@ fn run_replayed_payment_step(
         ));
     }
     validate_replayed_payment_supervisor_proof(step, &replay)?;
-    let outputs = step_output_object(step, &output)?;
     let admission_witness = StepAdmissionWitness::local_runtime(&step.id, &replay.receipt_ref);
     Ok(StepRun {
         step_id: step.id.clone(),
@@ -543,7 +538,7 @@ fn run_replayed_payment_step(
         runner: step.runner.clone(),
         fanout_group: step.fanout_group.clone(),
         output,
-        outputs,
+        outputs: projection.outputs,
         receipt,
         admission_witness,
     })
@@ -621,37 +616,25 @@ fn replay_stdout_payload(outputs: &JsonObject) -> JsonObject {
     payload
 }
 
-fn step_output_object(step: &GraphStep, output: &SkillOutput) -> Result<JsonObject, RuntimeError> {
-    step_output_object_and_claim(step, output).map(|(outputs, _claim)| outputs)
-}
-
-fn agent_task_output_object(
+fn step_output_projection(
     step: &GraphStep,
     output: &SkillOutput,
-) -> Result<JsonObject, RuntimeError> {
-    build_step_output_object(step, output, ClaimContextExposure::DeclaredOnly)
-        .map(|(outputs, _claim)| outputs)
+) -> Result<StepOutputProjection, RuntimeError> {
+    build_step_output_projection(step, output, ClaimContextExposure::DeclaredAndContext)
 }
 
-fn step_output_object_and_claim(
-    step: &GraphStep,
-    output: &SkillOutput,
-) -> Result<(JsonObject, JsonObject), RuntimeError> {
-    build_step_output_object(step, output, ClaimContextExposure::DeclaredAndContext)
-}
-
-fn build_step_output_object(
+fn build_step_output_projection(
     step: &GraphStep,
     output: &SkillOutput,
     exposure: ClaimContextExposure,
-) -> Result<(JsonObject, JsonObject), RuntimeError> {
-    let (mut outputs, claim) = output_object_with_claim(output);
-    expose_declared_run_outputs(step, &claim, &mut outputs)?;
-    expose_declared_artifacts(step, &claim, &mut outputs)?;
+) -> Result<StepOutputProjection, RuntimeError> {
+    let mut projection = project_step_output(output);
+    expose_declared_run_outputs(step, &projection.claim, &mut projection.outputs)?;
+    expose_declared_artifacts(step, &projection.claim, &mut projection.outputs)?;
     if matches!(exposure, ClaimContextExposure::DeclaredAndContext) {
-        expose_skill_claim_context_fields(&claim, &mut outputs);
+        expose_skill_claim_context_fields(&projection.claim, &mut projection.outputs);
     }
-    Ok((outputs, claim))
+    Ok(projection)
 }
 
 enum ClaimContextExposure {
@@ -841,9 +824,10 @@ where
     };
     let disposition = agent_answer_disposition_value(&response.payload);
     let output = agent_task_output(response)?;
-    let outputs = agent_task_output_object(step, &output)?;
+    let projection =
+        build_step_output_projection(step, &output, ClaimContextExposure::DeclaredOnly)?;
     let disposition_label = closure_disposition_label(&disposition);
-    let receipt = step_receipt_with_disposition_and_policy(
+    let receipt = step_receipt_with_disposition_projection_and_policy(
         StepReceiptWithDisposition {
             graph_name,
             step_id: &step.id,
@@ -854,6 +838,7 @@ where
             reason_code: format!("agent_act_{disposition_label}"),
             summary: format!("agent act closed with {disposition_label}"),
         },
+        &projection,
         runtime.options.signature_policy(),
     )?;
     let admission_witness = StepAdmissionWitness::local_runtime(&step.id, receipt.id.as_str());
@@ -864,7 +849,7 @@ where
         runner: step.runner.clone(),
         fanout_group: step.fanout_group.clone(),
         output,
-        outputs,
+        outputs: projection.outputs,
         receipt,
         admission_witness,
     })
@@ -900,9 +885,10 @@ where
     )?;
     let disposition = agent_answer_disposition_value(&response.payload);
     let output = agent_task_output(response)?;
-    let outputs = agent_task_output_object(step, &output)?;
+    let projection =
+        build_step_output_projection(step, &output, ClaimContextExposure::DeclaredOnly)?;
     let disposition_label = closure_disposition_label(&disposition);
-    let receipt = step_receipt_with_disposition_and_policy(
+    let receipt = step_receipt_with_disposition_projection_and_policy(
         StepReceiptWithDisposition {
             graph_name,
             step_id: &step.id,
@@ -913,6 +899,7 @@ where
             reason_code: format!("agent_act_{disposition_label}"),
             summary: format!("agent act closed with {disposition_label}"),
         },
+        &projection,
         runtime.options.signature_policy(),
     )?;
     let admission_witness = StepAdmissionWitness::local_runtime(&step.id, receipt.id.as_str());
@@ -923,7 +910,7 @@ where
         runner: step.runner.clone(),
         fanout_group: step.fanout_group.clone(),
         output,
-        outputs,
+        outputs: projection.outputs,
         receipt,
         admission_witness,
     })
@@ -1044,12 +1031,13 @@ where
             credential_delivery: crate::credentials::CredentialDelivery::none(),
         };
         let output = CatalogAdapter::default().invoke(invocation)?;
-        let outputs = step_output_object(step, &output)?;
-        let receipt = step_receipt_with_signature_policy(
+        let projection = step_output_projection(step, &output)?;
+        let receipt = step_receipt_with_projection_and_signature_policy(
             graph_name,
             &step.id,
             attempt,
             &output,
+            &projection,
             &runtime.options.created_at,
             runtime.options.signature_policy(),
         )?;
@@ -1061,7 +1049,7 @@ where
             runner: step.runner.clone(),
             fanout_group: step.fanout_group.clone(),
             output,
-            outputs,
+            outputs: projection.outputs,
             receipt,
             admission_witness,
         })
@@ -1209,11 +1197,13 @@ where
         duration_ms: 0,
         metadata: JsonObject::new(),
     };
-    let receipt = step_receipt_with_signature_policy(
+    let projection = project_step_output(&output);
+    let receipt = step_receipt_with_projection_and_signature_policy(
         graph_name,
         &step.id,
         attempt,
         &output,
+        &projection,
         &runtime.options.created_at,
         runtime.options.signature_policy(),
     )?;
@@ -1370,12 +1360,13 @@ where
         duration_ms: 0,
         metadata: JsonObject::new(),
     };
-    let outputs = output_object(&output);
-    let receipt = step_receipt_with_signature_policy(
+    let projection = project_step_output(&output);
+    let receipt = step_receipt_with_projection_and_signature_policy(
         graph_name,
         &step.id,
         attempt,
         &output,
+        &projection,
         &runtime.options.created_at,
         runtime.options.signature_policy(),
     )?;
@@ -1387,7 +1378,7 @@ where
         runner: step.runner.clone(),
         fanout_group: step.fanout_group.clone(),
         output,
-        outputs,
+        outputs: projection.outputs,
         receipt,
         admission_witness,
     })
