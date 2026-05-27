@@ -31,6 +31,17 @@ pub fn assert_yaml_parity_subset(field: &str, source: &str) -> Result<(), ParseE
     Ok(())
 }
 
+/// `false` for scalars YAML would coerce to a non-string (booleans, numbers,
+/// dates, special floats), so callers know to keep them quoted.
+///
+/// # Examples
+///
+/// ```
+/// use runx_parser::yaml::yaml_scalar_subset_allows;
+///
+/// assert!(yaml_scalar_subset_allows("echo")); // plain string: safe
+/// assert!(!yaml_scalar_subset_allows("yes")); // YAML boolean: ambiguous
+/// ```
 #[must_use]
 pub fn yaml_scalar_subset_allows(literal: &str) -> bool {
     let trimmed = literal.trim();

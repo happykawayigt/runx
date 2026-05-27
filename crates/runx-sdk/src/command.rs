@@ -20,6 +20,25 @@ pub struct CommandOutput {
 }
 
 impl CommandPlan {
+    /// Build a plan from a command vector (program + leading args) plus extra args.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use runx_sdk::command::CommandPlan;
+    /// use runx_sdk::error::RunxResult;
+    ///
+    /// # fn main() -> RunxResult<()> {
+    /// let plan = CommandPlan::new(&["runx".into()], &["skill".into(), "echo".into()])?;
+    /// assert_eq!(plan.program, "runx");
+    /// assert_eq!(plan.args, ["skill", "echo"]);
+    /// assert_eq!(plan.argv(), ["runx", "skill", "echo"]);
+    ///
+    /// // An empty command is rejected.
+    /// assert!(CommandPlan::new(&[], &[]).is_err());
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn new(command: &[String], args: &[String]) -> RunxResult<Self> {
         let (program, command_args) = command.split_first().ok_or(RunxError::EmptyCommand)?;
         let mut combined_args = command_args.to_vec();
