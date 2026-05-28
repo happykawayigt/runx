@@ -199,7 +199,9 @@ jobs:
           set -eux
           stem="runx-${{ needs.prepare.outputs.version }}-${{ matrix.target }}"
           if [ "${{ matrix.ext }}" = "zip" ]; then
-            tar -xf "dist/${stem}.zip" -C dist   # bsdtar on the windows runner handles zip
+            # GitHub windows-latest ships 7-Zip (the same tool that produced
+            # the archive); the runner's bsdtar does not autodetect zip.
+            7z x -y "dist/${stem}.zip" -o"dist" >/dev/null
           else
             tar -xzf "dist/${stem}.tar.gz" -C dist
           fi
