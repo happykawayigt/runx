@@ -1,8 +1,17 @@
 // rust-style-allow: large-file because harness replay owns fixture loading,
 // adapter invocation, receipt assertion, and graph replay sealing as one
 // deterministic proof path until MCP replay creates a separate module boundary.
+
+mod dispositions;
+
 use std::fs;
 use std::path::{Path, PathBuf};
+
+use dispositions::{
+    agent_answer_disposition, agent_task_output, disposition_from_expected_status,
+    disposition_suffix, named_reason_code, process_reason_code, required_string_metadata,
+    skill_output_object, string_metadata,
+};
 #[cfg(feature = "cli-tool")]
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -786,128 +795,6 @@ fn create_harness_temp_dir(name: &str) -> Result<PathBuf, HarnessReplayError> {
     fs::create_dir_all(&path)
         .map_err(|source| RuntimeError::io("creating x402 idempotency fixture temp dir", source))?;
     Ok(path)
-}
-
-fn agent_task_output(
-    fixture: &HarnessFixture,
-    request_id: &str,
-) -> Result<SkillOutput, HarnessReplayError> {
-    let mut metadata = JsonObject::new();
-    metadata.insert(
-        "agent_request_id".to_owned(),
-        JsonValue::String(request_id.to_owned()),
-    );
-    let payload = fixture
-        .caller
-        .get("answers")
-        .and_then(JsonValue::as_object)
-        .and_then(|answers| answers.get(request_id))
-        .cloned()
-        .unwrap_or(JsonValue::Null);
-    if matches!(payload, JsonValue::Null) {
-        return Ok(SkillOutput {
-            status: crate::InvocationStatus::Failure,
-            stdout: String::new(),
-            stderr: format!("missing replay answer for {request_id}"),
-            exit_code: None,
-            duration_ms: 0,
-            metadata,
-        });
-    }
-    Ok(SkillOutput {
-        status: crate::InvocationStatus::Success,
-        stdout: serde_json::to_string(&payload).map_err(|source| RuntimeError::Json {
-            context: format!("serializing replay answer {request_id}"),
-            source,
-        })?,
-        stderr: String::new(),
-        exit_code: Some(0),
-        duration_ms: 0,
-        metadata,
-    })
-}
-
-fn skill_output_object(output: &SkillOutput) -> JsonObject {
-    let mut object = JsonObject::new();
-    if let Ok(parsed) = serde_json::from_str::<JsonValue>(&output.stdout) {
-        object.insert("skill_claim".to_owned(), parsed);
-    }
-    object
-}
-
-fn string_metadata<'a>(fixture: &'a HarnessFixture, field: &str) -> Option<&'a str> {
-    match fixture.metadata.get(field) {
-        Some(JsonValue::String(value)) => Some(value),
-        _ => None,
-    }
-}
-
-fn required_string_metadata(
-    object: &JsonObject,
-    field_path: &str,
-    field: &str,
-) -> Result<String, HarnessReplayError> {
-    match object.get(field) {
-        Some(JsonValue::String(value)) if !value.is_empty() => Ok(value.clone()),
-        Some(_) => Err(HarnessReplayError::InvalidReplayMetadata {
-            field: field_path.to_owned(),
-            message: "non-empty string is required".to_owned(),
-        }),
-        None => Err(HarnessReplayError::InvalidReplayMetadata {
-            field: field_path.to_owned(),
-            message: "field is required".to_owned(),
-        }),
-    }
-}
-
-fn agent_answer_disposition(answer: &JsonValue) -> ClosureDisposition {
-    match answer
-        .as_object()
-        .and_then(|object| object.get("closure"))
-        .and_then(JsonValue::as_object)
-        .and_then(|closure| closure.get("disposition"))
-        .and_then(JsonValue::as_str)
-    {
-        Some("deferred") => ClosureDisposition::Deferred,
-        Some("superseded") => ClosureDisposition::Superseded,
-        Some("declined") => ClosureDisposition::Declined,
-        Some("blocked") => ClosureDisposition::Blocked,
-        Some("failed") => ClosureDisposition::Failed,
-        Some("killed") => ClosureDisposition::Killed,
-        Some("timed_out") => ClosureDisposition::TimedOut,
-        _ => ClosureDisposition::Closed,
-    }
-}
-
-fn disposition_from_expected_status(status: &HarnessExpectedStatus) -> ClosureDisposition {
-    match status {
-        HarnessExpectedStatus::Sealed => ClosureDisposition::Closed,
-        HarnessExpectedStatus::Failure => ClosureDisposition::Failed,
-        HarnessExpectedStatus::NeedsAgent => ClosureDisposition::Deferred,
-        HarnessExpectedStatus::PolicyDenied => ClosureDisposition::Blocked,
-        HarnessExpectedStatus::Escalated => ClosureDisposition::Deferred,
-    }
-}
-
-fn process_reason_code(disposition: &ClosureDisposition) -> String {
-    format!("process_{}", disposition_suffix(disposition))
-}
-
-fn named_reason_code(name: &str, disposition: &ClosureDisposition) -> String {
-    format!("{name}_{}", disposition_suffix(disposition))
-}
-
-fn disposition_suffix(disposition: &ClosureDisposition) -> &'static str {
-    match disposition {
-        ClosureDisposition::Closed => "closed",
-        ClosureDisposition::Deferred => "deferred",
-        ClosureDisposition::Superseded => "superseded",
-        ClosureDisposition::Declined => "declined",
-        ClosureDisposition::Blocked => "blocked",
-        ClosureDisposition::Failed => "failed",
-        ClosureDisposition::Killed => "killed",
-        ClosureDisposition::TimedOut => "timed_out",
-    }
 }
 
 #[cfg(all(test, feature = "cli-tool"))]
