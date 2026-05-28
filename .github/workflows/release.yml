@@ -137,6 +137,7 @@ jobs:
             --out "signatures-${{ matrix.platform }}.json" \
             --identity "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
       - name: Package npm artifacts (selector + native)
+        shell: bash
         run: |
           pnpm exec tsx scripts/package-rust-cli.ts \
             --binary "crates/target/${{ matrix.target }}/release/${{ matrix.binary }}" \
@@ -144,6 +145,7 @@ jobs:
             --out-dir ".runx/rust-cli-artifacts" \
             --signature-manifest "signatures-${{ matrix.platform }}.json"
       - name: Build raw release archive
+        shell: bash
         run: |
           pnpm exec tsx scripts/build-release-archives.ts \
             --binary "crates/target/${{ matrix.target }}/release/${{ matrix.binary }}" \
