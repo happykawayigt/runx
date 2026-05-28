@@ -1,3 +1,4 @@
+use runx_contracts::operational_policy_source_provider;
 use runx_contracts::{JsonObject, JsonValue, Reference, ReferenceType};
 
 use crate::adapter::SkillOutput;
@@ -250,9 +251,9 @@ fn collect_source_event_reference(value: &JsonValue, refs: &mut StepOutputRefs) 
 
 fn reference_type_for_source(provider: Option<&str>, locator: &str) -> ReferenceType {
     match provider {
-        Some("github") => ReferenceType::GithubIssue,
-        Some("slack") => ReferenceType::SlackThread,
-        Some("sentry") => ReferenceType::SentryEvent,
+        Some(operational_policy_source_provider::GITHUB) => ReferenceType::GithubIssue,
+        Some(operational_policy_source_provider::SLACK) => ReferenceType::SlackThread,
+        Some(operational_policy_source_provider::SENTRY) => ReferenceType::SentryEvent,
         _ if locator.starts_with("github://") || locator.contains("github.com/") => {
             ReferenceType::GithubIssue
         }

@@ -1,6 +1,7 @@
 // rust-style-allow: large-file - target-repo runner planning, dedupe lookup,
 // execution plans, and receipt metadata share one fixture-driven oracle.
 use crate::operational_policy::operational_policy_source_provider;
+use crate::schema::NonEmptyString;
 use crate::{
     JsonNumber, JsonObject, JsonValue, OperationalPolicy, OperationalPolicyAdmission,
     OperationalPolicyAdmissionRequest, OperationalPolicyAdmissionStatus,
@@ -431,7 +432,9 @@ fn source_issue_ref(plan: &TargetRepoRunnerPlan) -> Option<Reference> {
     plan.source.issue_url.as_ref().map(|issue_url| Reference {
         reference_type: ReferenceType::GithubIssue,
         uri: issue_url.clone().into(),
-        provider: Some("github".to_owned().into()),
+        provider: Some(NonEmptyString::from(
+            operational_policy_source_provider::GITHUB,
+        )),
         locator: Some(github_issue_locator(issue_url).into()),
         label: Some("source issue".to_owned().into()),
         observed_at: None,
@@ -469,7 +472,9 @@ fn target_repo_ref(repo: &str) -> Reference {
     Reference {
         reference_type: ReferenceType::GithubRepo,
         uri: format!("https://github.com/{repo}").into(),
-        provider: Some("github".to_owned().into()),
+        provider: Some(NonEmptyString::from(
+            operational_policy_source_provider::GITHUB,
+        )),
         locator: Some(repo.to_owned().into()),
         label: Some("target repo".to_owned().into()),
         observed_at: None,
@@ -481,7 +486,9 @@ fn pull_request_ref(repo: &str, pull_request: &TargetRepoRunnerExistingPullReque
     Reference {
         reference_type: ReferenceType::GithubPullRequest,
         uri: pull_request.url.clone().into(),
-        provider: Some("github".to_owned().into()),
+        provider: Some(NonEmptyString::from(
+            operational_policy_source_provider::GITHUB,
+        )),
         locator: pull_request
             .number
             .map(|number| format!("{repo}#{number}").into()),

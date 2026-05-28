@@ -1,5 +1,6 @@
 // rust-style-allow: large-file - closure planning, runtime dedupe, receipt
 // projection, and idempotency helpers share one fixture-driven oracle.
+use super::post_merge_provider;
 use crate::operational_policy::OperationalPolicySourceRule;
 use crate::{
     ActForm, ClosureDisposition, CriterionStatus, JsonValue, OperationalPolicy,
@@ -361,7 +362,11 @@ fn normalized_signal_ref(
                 "webhook delivery",
             )?;
             require_command_reference_metadata(reference, "signal_ref")?;
-            require_command_reference_provider(reference, "signal_ref", "github")?;
+            require_command_reference_provider(
+                reference,
+                "signal_ref",
+                post_merge_provider::GITHUB,
+            )?;
             Ok(Some(reference.clone()))
         }
         PostMergeObserverSignalSource::Scheduler => {
@@ -386,7 +391,7 @@ fn validate_github_reference(
 ) -> Result<(), PostMergeObserverPlanError> {
     require_command_reference_type(reference, field, expected_type, expected_label)?;
     require_command_reference_metadata(reference, field)?;
-    require_command_reference_provider(reference, field, "github")
+    require_command_reference_provider(reference, field, post_merge_provider::GITHUB)
 }
 
 fn require_command_reference_type(

@@ -8,6 +8,7 @@ mod github;
 
 use std::collections::BTreeSet;
 
+use runx_contracts::operational_policy_source_provider;
 use runx_contracts::post_merge_observer::{
     PostMergeObserverCommand, PostMergeObserverCommandRequest,
     normalize_post_merge_observer_command,
@@ -675,7 +676,10 @@ fn validate_source_publication_required_commands(
     observation: &PostMergeObserverSourcePublicationObservation,
 ) -> Result<(), PostMergeObserverRuntimeError> {
     if source_issue_comment_required(request)
-        && !has_provider_ref(&observation.published_refs, "github")
+        && !has_provider_ref(
+            &observation.published_refs,
+            operational_policy_source_provider::GITHUB,
+        )
     {
         return Err(PostMergeObserverRuntimeError::SourcePublicationMismatch(
             "source issue comment readback is required".to_owned(),
@@ -685,7 +689,7 @@ fn validate_source_publication_required_commands(
         && !has_typed_provider_ref(
             &observation.published_refs,
             ReferenceType::SlackThread,
-            "slack",
+            operational_policy_source_provider::SLACK,
         )
     {
         return Err(PostMergeObserverRuntimeError::SourcePublicationMismatch(

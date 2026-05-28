@@ -11,6 +11,7 @@ use std::fmt::{self, Write as _};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
+use runx_contracts::operational_policy_source_provider;
 use runx_contracts::{
     ActForm, AuthorityAttenuation, AuthoritySubsetProof, AuthoritySubsetResult, ChangePlan,
     ChangeRequest, Closure, ClosureDisposition, CriterionBinding, CriterionStatus, Intent,
@@ -308,7 +309,7 @@ pub fn target_repo_runner_checkout_command(
         public_repo_ref: Reference {
             reference_type: ReferenceType::GithubRepo,
             uri: format!("https://github.com/{}", plan.target.repo).into(),
-            provider: Some("github".to_owned().into()),
+            provider: Some(operational_policy_source_provider::GITHUB.into()),
             locator: Some(plan.target.repo.clone().into()),
             label: Some("target repo".to_owned().into()),
             observed_at: None,
