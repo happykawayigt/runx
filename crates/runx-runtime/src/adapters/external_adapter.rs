@@ -1,7 +1,12 @@
 // rust-style-allow: large-file because the process supervisor, contract
 // validation, timeout handling, and frame normalization must stay adjacent to
 // keep the external adapter boundary auditable.
+
+mod redaction;
+
 use std::collections::BTreeMap;
+
+use redaction::redact_response;
 use std::path::{Component, Path, PathBuf};
 use std::time::Duration;
 
@@ -11,8 +16,8 @@ use runx_contracts::{
     ExternalAdapterCredentialReference, ExternalAdapterCredentialRequest,
     ExternalAdapterHostResolutionFrame, ExternalAdapterInvocation, ExternalAdapterInvocationSchema,
     ExternalAdapterManifest, ExternalAdapterManifestSchema, ExternalAdapterProtocolVersion,
-    ExternalAdapterResponse, ExternalAdapterStatus, ExternalAdapterTelemetryValue,
-    ExternalAdapterTransportKind, JsonNumber, JsonObject, JsonValue, Reference, ReferenceType,
+    ExternalAdapterResponse, ExternalAdapterStatus, ExternalAdapterTransportKind, JsonNumber,
+    JsonObject, JsonValue, Reference, ReferenceType,
 };
 use thiserror::Error;
 
@@ -909,78 +914,6 @@ fn host_resolution_response(
     };
     redact_response(&mut response, credential_delivery);
     Ok(response)
-}
-
-fn redact_response(
-    response: &mut ExternalAdapterResponse,
-    credential_delivery: &CredentialDelivery,
-) {
-    response.schema = credential_delivery.redact_text(std::mem::take(&mut response.schema));
-    response.protocol_version =
-        credential_delivery.redact_text(std::mem::take(&mut response.protocol_version));
-    response.invocation_id =
-        credential_delivery.redact_text(std::mem::take(&mut response.invocation_id));
-    response.adapter_id = credential_delivery.redact_text(std::mem::take(&mut response.adapter_id));
-    response.observed_at =
-        credential_delivery.redact_text(std::mem::take(&mut response.observed_at));
-    if let Some(stdout) = response.stdout.take() {
-        response.stdout = Some(credential_delivery.redact_text(stdout));
-    }
-    if let Some(stderr) = response.stderr.take() {
-        response.stderr = Some(credential_delivery.redact_text(stderr));
-    }
-    if let Some(output) = response.output.as_mut() {
-        redact_json_object(output, credential_delivery);
-    }
-    if let Some(metadata) = response.metadata.as_mut() {
-        redact_json_object(metadata, credential_delivery);
-    }
-    if let Some(artifacts) = response.artifacts.as_mut() {
-        for artifact in artifacts {
-            if let Some(summary) = artifact.summary.take() {
-                artifact.summary = Some(credential_delivery.redact_text(summary));
-            }
-        }
-    }
-    if let Some(errors) = response.errors.as_mut() {
-        for error in errors {
-            error.code = credential_delivery.redact_text(std::mem::take(&mut error.code));
-            error.message = credential_delivery.redact_text(std::mem::take(&mut error.message));
-        }
-    }
-    if let Some(telemetry) = response.telemetry.as_mut() {
-        for observation in telemetry {
-            observation.name =
-                credential_delivery.redact_text(std::mem::take(&mut observation.name));
-            if let Some(unit) = observation.unit.take() {
-                observation.unit = Some(credential_delivery.redact_text(unit));
-            }
-            if let ExternalAdapterTelemetryValue::String(value) = &mut observation.value {
-                *value = credential_delivery.redact_text(std::mem::take(value));
-            }
-        }
-    }
-}
-
-fn redact_json_object(object: &mut JsonObject, credential_delivery: &CredentialDelivery) {
-    for value in object.values_mut() {
-        redact_json_value(value, credential_delivery);
-    }
-}
-
-fn redact_json_value(value: &mut JsonValue, credential_delivery: &CredentialDelivery) {
-    match value {
-        JsonValue::String(text) => {
-            *text = credential_delivery.redact_text(std::mem::take(text));
-        }
-        JsonValue::Array(values) => {
-            for value in values {
-                redact_json_value(value, credential_delivery);
-            }
-        }
-        JsonValue::Object(object) => redact_json_object(object, credential_delivery),
-        JsonValue::Null | JsonValue::Bool(_) | JsonValue::Number(_) => {}
-    }
 }
 
 fn validate_response_contract(
