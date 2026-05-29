@@ -10,8 +10,8 @@ use runx_contracts::{
 };
 use runx_core::state_machine::GraphStatus;
 use runx_parser::{
-    ExecutionGraph, SkillRunnerDefinition, SkillRunnerManifest, parse_runner_manifest_yaml,
-    validate_runner_manifest,
+    ExecutionGraph, HarnessCallerFixture, SkillRunnerDefinition, SkillRunnerManifest,
+    parse_runner_manifest_yaml, validate_runner_manifest,
 };
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "cli-tool")]
@@ -50,13 +50,38 @@ pub enum SkillRunError {
     ReceiptStore(#[from] ReceiptStoreError),
 }
 
+/// Optional, non-default knobs for a single skill run.
+///
+/// `execute_skill_run` keeps today's behavior (default runner, file-based
+/// answers). The inline harness needs two extra capabilities without touching
+/// the 35+ `SkillRunRequest` construction sites: select a named runner, and
+/// seed answers inline for a single fresh pass (distinct from the `answers_path`
+/// resume channel). Both default to "off", so `execute_skill_run` and every CLI
+/// path are unchanged.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct SkillRunOverrides {
+    /// Select a runner by name instead of the manifest default.
+    pub(crate) runner: Option<String>,
+    /// Answers seeded for a single fresh run, keyed by resolution request id.
+    /// Drives agent/graph runs to completion in one pass; `None` keeps the
+    /// `answers_path` (resume-from-checkpoint) behavior.
+    pub(crate) seeded_answers: Option<JsonObject>,
+}
+
 pub(crate) fn execute_skill_run(request: &SkillRunRequest) -> Result<JsonValue, SkillRunError> {
+    execute_skill_run_with_overrides(request, &SkillRunOverrides::default())
+}
+
+pub(crate) fn execute_skill_run_with_overrides(
+    request: &SkillRunRequest,
+    overrides: &SkillRunOverrides,
+) -> Result<JsonValue, SkillRunError> {
     let workspace = WorkspaceEnv::new(request.env.clone(), request.cwd.clone());
     let receipts = ReceiptServices::from_env(workspace.env())
         .map_err(|error| SkillRunError::Invalid(error.to_string()))?;
     let skill_dir = resolve_skill_dir(&request.skill_path)?;
     let manifest = load_runner_manifest(&skill_dir)?;
-    let runner = selected_runner(&manifest)?;
+    let runner = selected_runner(&manifest, overrides.runner.as_deref())?;
     if runner.source.source_type == runx_parser::SourceKind::CliTool
         && request.local_credential.is_some()
     {
@@ -77,16 +102,194 @@ pub(crate) fn execute_skill_run(request: &SkillRunRequest) -> Result<JsonValue, 
         );
     }
     if runner.source.source_type == runx_parser::SourceKind::Graph {
-        return execute_graph_skill_run(request, &workspace, &receipts, &manifest, runner);
+        return execute_graph_skill_run(request, overrides, &workspace, &receipts, &manifest, runner);
     }
 
     execute_agent_skill_run(
-        request, &workspace, &receipts, &manifest, runner, invocation,
+        request, overrides, &workspace, &receipts, &manifest, runner, invocation,
     )
+}
+
+/// Aggregate result of running a skill's declared inline harness (the
+/// `harness.cases` in its runner manifest). Mirrors the publish-harness summary
+/// the registry publish flow records: a status, counts, the per-case assertion
+/// failures, the case names, the receipts each case sealed, and how many cases
+/// exercised a graph (the stable-maturity graph-integration signal).
+#[derive(Clone, Debug, Serialize)]
+pub struct InlineHarnessReport {
+    pub status: &'static str,
+    pub case_count: usize,
+    pub assertion_error_count: usize,
+    pub assertion_errors: Vec<String>,
+    pub case_names: Vec<String>,
+    pub receipt_ids: Vec<String>,
+    pub graph_case_count: usize,
+}
+
+impl InlineHarnessReport {
+    fn not_declared() -> Self {
+        Self {
+            status: "not_declared",
+            case_count: 0,
+            assertion_error_count: 0,
+            assertion_errors: Vec::new(),
+            case_names: Vec::new(),
+            receipt_ids: Vec::new(),
+            graph_case_count: 0,
+        }
+    }
+}
+
+/// Run a skill's declared inline harness and summarize it. Each declared case is
+/// run through the same path as `runx skill` (so a graph that blocks on an agent
+/// step yields `needs_agent`, exactly as a real run would), with the case's
+/// runner selected and its caller answers/approvals seeded for a single pass.
+/// A skill with no declared harness is `not_declared` (not a failure). The
+/// run is `passed` only when every case meets its declared expectation.
+pub(crate) fn run_inline_harness(
+    skill_path: &Path,
+    receipt_dir: Option<&Path>,
+) -> Result<InlineHarnessReport, SkillRunError> {
+    let skill_dir = resolve_skill_dir(skill_path)?;
+    let manifest = load_runner_manifest(&skill_dir)?;
+    let Some(harness) = manifest.harness.as_ref() else {
+        return Ok(InlineHarnessReport::not_declared());
+    };
+    if harness.cases.is_empty() {
+        return Ok(InlineHarnessReport::not_declared());
+    }
+
+    let cwd = std::env::current_dir()
+        .map_err(|source| RuntimeError::io("resolving cwd for inline harness", source))?;
+
+    let mut assertion_errors = Vec::new();
+    let mut case_names = Vec::with_capacity(harness.cases.len());
+    let mut receipt_ids = Vec::new();
+    let mut graph_case_count = 0;
+
+    for case in &harness.cases {
+        case_names.push(case.name.clone());
+
+        // Resolve the runner the case targets up front, so a graph case still
+        // counts toward the graph-integration signal even when it blocks before
+        // sealing, and a bad runner reference is reported per case rather than
+        // aborting the whole suite.
+        let is_graph = match selected_runner(&manifest, case.runner.as_deref()) {
+            Ok(runner) => runner.source.source_type == runx_parser::SourceKind::Graph,
+            Err(error) => {
+                assertion_errors.push(format!("{}: {error}", case.name));
+                continue;
+            }
+        };
+
+        // Inherit the process env (carries receipt-signing config the governed
+        // runtime requires) and overlay the case's declared env, matching how
+        // `runx skill` and the standalone fixture harness compose env.
+        let mut env: BTreeMap<String, String> = std::env::vars().collect();
+        env.extend(case.env.clone());
+        let request = SkillRunRequest {
+            skill_path: skill_dir.clone(),
+            receipt_dir: receipt_dir.map(Path::to_path_buf),
+            run_id: None,
+            answers_path: None,
+            inputs: case.inputs.clone(),
+            env,
+            cwd: cwd.clone(),
+            local_credential: None,
+        };
+        let overrides = SkillRunOverrides {
+            runner: case.runner.clone(),
+            seeded_answers: seeded_answers_from_caller(&case.caller),
+        };
+
+        match execute_skill_run_with_overrides(&request, &overrides) {
+            Ok(output) => {
+                if is_graph {
+                    graph_case_count += 1;
+                }
+                if let Some(receipt_id) = output
+                    .as_object()
+                    .and_then(|object| object.get("receipt_id"))
+                    .and_then(JsonValue::as_str)
+                {
+                    receipt_ids.push(receipt_id.to_owned());
+                }
+                if let Some(expected) = case.expect.status.as_deref() {
+                    let actual = inline_harness_actual_status(&output);
+                    if actual != expected {
+                        assertion_errors.push(format!(
+                            "{}: expected status {expected}, got {actual}",
+                            case.name
+                        ));
+                    }
+                }
+            }
+            Err(error) => assertion_errors.push(format!("{}: {error}", case.name)),
+        }
+    }
+
+    let status = if assertion_errors.is_empty() {
+        "passed"
+    } else {
+        "failed"
+    };
+    Ok(InlineHarnessReport {
+        assertion_error_count: assertion_errors.len(),
+        status,
+        case_count: harness.cases.len(),
+        assertion_errors,
+        case_names,
+        receipt_ids,
+        graph_case_count,
+    })
+}
+
+// Merge a harness case's caller answers + approvals into one map keyed by
+// resolution request id, the shape the seeded agent/graph answer lookup expects.
+// Approvals are recorded as booleans under their gate id.
+fn seeded_answers_from_caller(caller: &HarnessCallerFixture) -> Option<JsonObject> {
+    let mut merged = caller.answers.clone().unwrap_or_default();
+    if let Some(approvals) = &caller.approvals {
+        for (gate, approved) in approvals {
+            merged
+                .entry(gate.clone())
+                .or_insert_with(|| JsonValue::Bool(*approved));
+        }
+    }
+    if merged.is_empty() {
+        None
+    } else {
+        Some(merged)
+    }
+}
+
+// Map an `execute_skill_run` output onto the harness status vocabulary
+// (sealed/failure/needs_agent/policy_denied). A pending run is needs_agent; a
+// terminal run is derived from its closure disposition so the mapping matches
+// the standalone harness `status_from_disposition`.
+fn inline_harness_actual_status(output: &JsonValue) -> &'static str {
+    let Some(object) = output.as_object() else {
+        return "sealed";
+    };
+    if object.get("status").and_then(JsonValue::as_str) == Some("needs_agent") {
+        return "needs_agent";
+    }
+    let disposition = object
+        .get("closure")
+        .and_then(JsonValue::as_object)
+        .and_then(|closure| closure.get("disposition"))
+        .and_then(JsonValue::as_str);
+    match disposition {
+        Some("deferred") => "needs_agent",
+        Some("blocked") => "policy_denied",
+        Some("declined" | "failed" | "killed" | "timed_out" | "superseded") => "failure",
+        _ => "sealed",
+    }
 }
 
 fn execute_agent_skill_run(
     request: &SkillRunRequest,
+    overrides: &SkillRunOverrides,
     workspace: &WorkspaceEnv,
     receipts: &ReceiptServices,
     manifest: &SkillRunnerManifest,
@@ -98,15 +301,25 @@ fn execute_agent_skill_run(
     let run_id = agent_run_id(request, &request_id)?;
     let resolution_request = agent_request(&invocation, source_type)?;
 
-    let Some(answers_path) = &request.answers_path else {
-        return Ok(JsonValue::Object(needs_agent_output(
-            &run_id,
-            &request_id,
-            resolution_request,
-        )));
+    // Seeded answers (inline, single pass) take priority over the file-based
+    // resume channel; absent both, the run yields to the public agent loop.
+    let seeded_answer = overrides
+        .seeded_answers
+        .as_ref()
+        .and_then(|answers| answers.get(&request_id).cloned());
+    let answer = match seeded_answer {
+        Some(answer) => answer,
+        None => {
+            let Some(answers_path) = &request.answers_path else {
+                return Ok(JsonValue::Object(needs_agent_output(
+                    &run_id,
+                    &request_id,
+                    resolution_request,
+                )));
+            };
+            read_answer(answers_path, &request_id)?
+        }
     };
-
-    let answer = read_answer(answers_path, &request_id)?;
     let stdout = serde_json::to_string(&answer)
         .map_err(|error| SkillRunError::Invalid(format!("failed to serialize answer: {error}")))?;
     let disposition = answer_disposition(&answer);
@@ -133,6 +346,7 @@ fn execute_agent_skill_run(
 // checkpoint hydration, host resolution, and final receipt sealing in one path.
 fn execute_graph_skill_run(
     request: &SkillRunRequest,
+    overrides: &SkillRunOverrides,
     workspace: &WorkspaceEnv,
     receipts: &ReceiptServices,
     manifest: &SkillRunnerManifest,
@@ -161,12 +375,21 @@ fn execute_graph_skill_run(
             payment_supervisor: Default::default(),
         },
     );
-    let answers = match &request.answers_path {
-        Some(path) => read_answers(path)?,
-        None => JsonObject::new(),
+    // Seeded answers run a single fresh pass with the answers pre-loaded into the
+    // host (they drive the graph to completion, or block -> needs_agent when a
+    // step has no seeded answer). The file-based `answers_path` remains the
+    // resume-from-checkpoint channel.
+    let seeded = overrides.seeded_answers.clone();
+    let resume = request.answers_path.is_some() && seeded.is_none();
+    let answers = match &seeded {
+        Some(seeded) => seeded.clone(),
+        None => match &request.answers_path {
+            Some(path) => read_answers(path)?,
+            None => JsonObject::new(),
+        },
     };
     let mut host = SkillRunGraphHost::new(answers);
-    let mut checkpoint = if request.answers_path.is_some() {
+    let mut checkpoint = if resume {
         read_graph_state(request, workspace, receipts, &run_id, &runner.name)?.checkpoint
     } else {
         runtime.run_graph_until_steps_with_host(&skill_dir, &graph, 0, &mut host)?
@@ -626,9 +849,16 @@ fn load_runner_manifest(skill_dir: &Path) -> Result<SkillRunnerManifest, SkillRu
         .map_err(Into::into)
 }
 
-fn selected_runner(
-    manifest: &SkillRunnerManifest,
-) -> Result<&SkillRunnerDefinition, SkillRunError> {
+fn selected_runner<'a>(
+    manifest: &'a SkillRunnerManifest,
+    requested: Option<&str>,
+) -> Result<&'a SkillRunnerDefinition, SkillRunError> {
+    if let Some(name) = requested {
+        return manifest
+            .runners
+            .get(name)
+            .ok_or_else(|| invalid(format!("runner {name} is not declared in the manifest")));
+    }
     let defaults = manifest
         .runners
         .values()

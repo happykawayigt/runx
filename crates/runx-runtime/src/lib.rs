@@ -101,9 +101,10 @@ pub use list::{
     list_authoring_primitives,
 };
 pub use orchestrator::{
-    GraphRunRequest, HarnessRunRequest, LocalOrchestrator, OrchestratorError, RunContinuation,
-    RunRequest, RunResult, RunStatus, SkillRunRequest,
+    GraphRunRequest, HarnessRunRequest, InlineHarnessRequest, LocalOrchestrator, OrchestratorError,
+    RunContinuation, RunRequest, RunResult, RunStatus, SkillRunRequest,
 };
+pub use skill_run::InlineHarnessReport;
 pub use outbox_provider::{
     ThreadOutboxProviderProcessOutcome, ThreadOutboxProviderProcessSupervisor,
     ThreadOutboxProviderSupervisorError, ThreadOutboxProviderSupervisorOptions,

@@ -13,7 +13,7 @@ use thiserror::Error;
 use super::harness::{HarnessReplayError, HarnessReplayOutput};
 #[cfg(feature = "cli-tool")]
 use super::runner::GraphRun;
-use super::skill_run::{SkillRunError, execute_skill_run};
+use super::skill_run::{InlineHarnessReport, SkillRunError, execute_skill_run, run_inline_harness};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct SkillRunRequest {
@@ -80,6 +80,15 @@ pub struct GraphRunRequest {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HarnessRunRequest {
     pub fixture_path: PathBuf,
+}
+
+/// Request to run a skill's declared inline harness (`harness.cases`) rather than
+/// a standalone fixture file. `skill_path` is a skill package directory or its
+/// `SKILL.md`; receipts each case seals land under `receipt_dir`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InlineHarnessRequest {
+    pub skill_path: PathBuf,
+    pub receipt_dir: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -158,6 +167,16 @@ impl LocalOrchestrator {
 
     pub fn run_harness(&self, request: &HarnessRunRequest) -> Result<RunResult, OrchestratorError> {
         harness_result(super::harness::run_harness_fixture(&request.fixture_path)?)
+    }
+
+    pub fn run_inline_harness(
+        &self,
+        request: &InlineHarnessRequest,
+    ) -> Result<InlineHarnessReport, OrchestratorError> {
+        Ok(run_inline_harness(
+            &request.skill_path,
+            request.receipt_dir.as_deref(),
+        )?)
     }
 }
 

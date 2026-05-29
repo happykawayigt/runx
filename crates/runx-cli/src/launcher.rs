@@ -51,7 +51,11 @@ pub struct DevPlan {
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct HarnessPlan {
+    /// Replay targets: standalone fixture `.yaml` files, or a skill package
+    /// (directory / `SKILL.md`) whose declared inline `harness.cases` are run.
     pub fixture_paths: Vec<OsString>,
+    /// Where receipts the cases seal are written (`--receipt-dir`).
+    pub receipt_dir: Option<OsString>,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -240,7 +244,7 @@ Commands:
   runx dev [root] [--lane lane] [--json]
   runx mcp serve <skill-ref...> [--receipt-dir dir]
   runx skill <skill-ref|skill-dir|SKILL.md> [--input k=v] [--receipt-dir dir] [--run-id id] [--answers file] [--json]
-  runx harness <fixture.yaml...> [--json]
+  runx harness <fixture.yaml...|skill-dir|SKILL.md> [--receipt-dir dir] [--json]
   runx tool build <tool-dir>|--all [--json]
   runx tool search <query> [--source source] [--json]
   runx tool inspect <ref> [--source source] [--json]
@@ -270,6 +274,7 @@ fn mcp_runner_before_serve(args: &[OsString]) -> bool {
 
 fn native_harness_plan(args: &[OsString]) -> LauncherAction {
     let mut fixture_paths = Vec::new();
+    let mut receipt_dir = None;
     let mut index = 1;
 
     while index < args.len() {
@@ -291,15 +296,35 @@ fn native_harness_plan(args: &[OsString]) -> LauncherAction {
                 }
                 index += 1;
             }
+            "--receipt-dir" => match inline_value {
+                Some(value) => {
+                    receipt_dir = Some(OsString::from(value));
+                    index += 1;
+                }
+                None => {
+                    let Some(value) = args.get(index + 1) else {
+                        return LauncherAction::Error(
+                            "--receipt-dir requires a directory".to_owned(),
+                        );
+                    };
+                    receipt_dir = Some(value.clone());
+                    index += 2;
+                }
+            },
             _ => return LauncherAction::Error(format!("unknown harness flag {flag}")),
         }
     }
 
     if fixture_paths.is_empty() {
-        return LauncherAction::Error("runx harness requires at least one fixture path".to_owned());
+        return LauncherAction::Error(
+            "runx harness requires a fixture path or skill package".to_owned(),
+        );
     }
 
-    LauncherAction::RunHarness(HarnessPlan { fixture_paths })
+    LauncherAction::RunHarness(HarnessPlan {
+        fixture_paths,
+        receipt_dir,
+    })
 }
 
 fn parse_new_plan(args: &[OsString]) -> Result<NewPlan, String> {

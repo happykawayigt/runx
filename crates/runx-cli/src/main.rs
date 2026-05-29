@@ -1,10 +1,10 @@
 use std::env;
 use std::ffi::OsString;
 use std::io::{self, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use runx_cli::launcher::{LauncherAction, help_text};
+use runx_cli::launcher::{HarnessPlan, LauncherAction, help_text};
 use runx_runtime::LocalOrchestrator;
 
 fn main() -> ExitCode {
@@ -24,7 +24,7 @@ fn main() -> ExitCode {
         LauncherAction::RunHistory(plan) => run_native_history(plan.args),
         LauncherAction::RunList(plan) => run_native_list(plan),
         LauncherAction::RunMcp(plan) => runx_cli::mcp::run_native_mcp(plan),
-        LauncherAction::RunHarness(plan) => run_native_harness(plan.fixture_paths),
+        LauncherAction::RunHarness(plan) => run_native_harness(plan),
         LauncherAction::RunKernel(plan) => runx_cli::kernel::run_native_kernel(plan),
         LauncherAction::RunParser(plan) => runx_cli::parser::run_native_parser(plan),
         LauncherAction::RunConfig(plan) => run_native_config(plan),
@@ -97,9 +97,23 @@ fn run_native_config(plan: runx_cli::config::ConfigPlan) -> ExitCode {
     }
 }
 
-fn run_native_harness(fixture_paths: Vec<OsString>) -> ExitCode {
+fn run_native_harness(plan: HarnessPlan) -> ExitCode {
+    // A skill package (directory or SKILL.md) runs its declared inline
+    // `harness.cases` and prints the publish summary; standalone fixture `.yaml`
+    // files replay as receipts. Mixing the two in one invocation is rejected so
+    // the output shape is unambiguous.
+    if plan.fixture_paths.iter().any(|path| is_skill_package(Path::new(path))) {
+        let [target] = plan.fixture_paths.as_slice() else {
+            let _ignored = write_stderr_line(
+                "runx harness accepts one skill package, or one or more fixture files, not a mix",
+            );
+            return ExitCode::from(64);
+        };
+        return run_inline_harness(Path::new(target), plan.receipt_dir.as_ref());
+    }
+
     let mut outputs = Vec::new();
-    for fixture_path in fixture_paths {
+    for fixture_path in plan.fixture_paths {
         let request = runx_runtime::HarnessRunRequest {
             fixture_path: PathBuf::from(fixture_path),
         };
@@ -127,6 +141,49 @@ fn run_native_harness(fixture_paths: Vec<OsString>) -> ExitCode {
                 write_stderr_line(&format!("runx: failed to serialize receipt: {error}"));
             ExitCode::from(1)
         }
+    }
+}
+
+// A harness target is a skill package (run its declared inline harness) when it
+// is a directory or a SKILL.md file; otherwise it is a standalone fixture file.
+fn is_skill_package(path: &Path) -> bool {
+    path.is_dir()
+        || path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.eq_ignore_ascii_case("SKILL.md"))
+}
+
+fn run_inline_harness(skill_path: &Path, receipt_dir: Option<&OsString>) -> ExitCode {
+    let request = runx_runtime::InlineHarnessRequest {
+        skill_path: skill_path.to_path_buf(),
+        receipt_dir: receipt_dir.map(PathBuf::from),
+    };
+    let report = match LocalOrchestrator.run_inline_harness(&request) {
+        Ok(report) => report,
+        Err(error) => {
+            let _ignored = write_stderr_line(&format!(
+                "runx: inline harness failed for {}: {error}",
+                skill_path.display()
+            ));
+            return ExitCode::from(1);
+        }
+    };
+    let json = match serde_json::to_string_pretty(&report) {
+        Ok(json) => json,
+        Err(error) => {
+            let _ignored =
+                write_stderr_line(&format!("runx: failed to serialize harness summary: {error}"));
+            return ExitCode::from(1);
+        }
+    };
+    // The summary (including a `failed` one) is the artifact a caller parses, so
+    // always emit it; a `failed` suite still exits non-zero for shell use.
+    let _ignored = write_stdout_line(&json);
+    if report.status == "failed" {
+        ExitCode::from(1)
+    } else {
+        ExitCode::SUCCESS
     }
 }
 
