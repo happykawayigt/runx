@@ -186,7 +186,7 @@ review:
       model: "gpt-5.5"
       # binary: "codex"
     claude:
-      model: "claude-opus-4-7"
+      model: "claude-opus-4-8"
       # binary: "claude"
   # Review focus included in the external challenger's prompt.
   # Ordering is explicit; scafld sorts by `order`, not mapping insertion luck.

@@ -249,11 +249,11 @@ cd ../cloud && pnpm typecheck:server && \
 Review gate:
 
 ```
-scafld review runx-effect-kernel-v1 --provider claude --review-depth deep
+scafld review runx-effect-kernel-v1 --provider claude --model claude-opus-4-8 --review-depth deep
 ```
 
-Claude review is mandatory at the lifecycle review gate for the spec and again
-after each phase commit before moving to the next phase. A phase is not
+Claude 4.8 review is mandatory at the lifecycle review gate for the spec and
+again after each phase commit before moving to the next phase. A phase is not
 complete if Claude finds a blocker or if the no-dual-path/perf gates fail.
 
 ## Phase 0: Confirm the golden net (no breaking change needed)
@@ -269,7 +269,7 @@ change" is unnecessary; drop it.
 - Confirm the existing golden net is the baseline: oracle receipts
   (`fixtures/harness/oracle/{echo-skill,sequential-graph,payment-approval-graph}.receipt.json`)
   asserted by `tests/harness_fixtures.rs` + `tests/receipt_signing.rs` +
-  `tests/parity.rs`, the 386-test integration suite, and the 39/51 harness sweep.
+  `tests/parity.rs`, the 386-test integration suite, and the 40/51 harness sweep.
 - Add the regression tools that don't yet exist: `scripts/harness-sweep.mjs`
   (runs every `skills/*` inline harness, prints `N/51`, `--require`/`--allow`
   gating), `scripts/perf-compare.mjs` (criterion baseline delta, fails >5%), and
@@ -283,7 +283,7 @@ change" is unnecessary; drop it.
 - Capture the criterion bench baseline (`cargo bench -p runx-runtime -- --save-baseline phase0`)
   and the harness-sweep wall-clock as the perf reference.
 - **Acceptance:** baseline green (`cargo test -p runx-runtime --all-features` +
-  `node scripts/harness-sweep.mjs` reports 39/51 + `cloud` suites); snapshots +
+  `node scripts/harness-sweep.mjs` reports 40/51 + `cloud` suites); snapshots +
   perf baseline captured; `pnpm fixtures:kernel:check` clean (no digest drift);
   the reserved fields serialize byte-identically to pre-Phase-0 when absent.
 
@@ -300,7 +300,7 @@ change" is unnecessary; drop it.
   admission → run → attach evidence → seal).
 - Build registries once at `Runtime` construction; feature flags gate which
   handlers are registered.
-- **Acceptance:** `node scripts/harness-sweep.mjs` still 39/51;
+- **Acceptance:** `node scripts/harness-sweep.mjs` still 40/51;
   `cargo test -p runx-runtime --all-features` (386+) green; `pnpm
   fixtures:kernel:check` clean (no digest drift); unregistered `run_type`/source
   fails closed with a clear error; **perf:** `cargo bench -p runx-runtime` +
@@ -432,4 +432,3 @@ Changes:
 
 Acceptance:
 - none
-

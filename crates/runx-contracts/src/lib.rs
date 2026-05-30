@@ -194,11 +194,11 @@ pub use post_merge_observer::{
     project_post_merge_observer_publication_from_receipt,
 };
 pub use receipt::{
-    FanoutReceiptDecision, FanoutReceiptStrategy, FanoutReceiptSyncPoint, Lineage,
-    RECEIPT_CANONICALIZATION, RECEIPT_SCHEMA, Receipt, ReceiptAct, ReceiptAuthority,
-    ReceiptCommitment, ReceiptCommitmentScope, ReceiptEnforcement, ReceiptIdempotency,
-    ReceiptInputContext, ReceiptIssuer, ReceiptIssuerType, ReceiptSchema, ReceiptSignature,
-    RunnerProvenance, Seal, SignatureAlgorithm, Subject, receipt_subject_kind,
+    EFFECT_SETTLEMENT_RECEIPT_SCHEMA, FanoutReceiptDecision, FanoutReceiptStrategy,
+    FanoutReceiptSyncPoint, Lineage, RECEIPT_CANONICALIZATION, RECEIPT_SCHEMA, Receipt,
+    ReceiptAct, ReceiptAuthority, ReceiptCommitment, ReceiptCommitmentScope, ReceiptEnforcement,
+    ReceiptIdempotency, ReceiptInputContext, ReceiptIssuer, ReceiptIssuerType, ReceiptSchema,
+    ReceiptSignature, RunnerProvenance, Seal, SignatureAlgorithm, Subject, receipt_subject_kind,
 };
 pub use redaction::{HashAlgorithm, HashCommitment, REDACTION_SCHEMA, Redaction, RedactionSchema};
 pub use reference::{ActRef, ProofKind, Reference, ReferenceLink, ReferenceType};

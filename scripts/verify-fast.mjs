@@ -93,6 +93,7 @@ if (cliBuild.status === 0 && oracleBuild.status === 0) {
       step("fixtures:contracts:check", "pnpm", ["fixtures:contracts:check"]),
       step("fixtures:contracts:keys", "pnpm", ["fixtures:contracts:keys"]),
       step("fixtures:harness:check", "pnpm", ["fixtures:harness:check"]),
+      step("fixtures:harness:summary-check", "pnpm", ["fixtures:harness:summary-check"]),
       step("fixtures:adapters:a2a:check", "pnpm", ["fixtures:adapters:a2a:check"]),
       step("fixtures:adapters:agent:check", "pnpm", ["fixtures:adapters:agent:check"]),
       step("fixtures:cli-parity:check", "pnpm", ["fixtures:cli-parity:check"]),

@@ -24,6 +24,11 @@ use crate::{
 /// Logical schema name for the governance receipt.
 pub const RECEIPT_SCHEMA: &str = "runx.receipt.v1";
 
+/// Logical schema name reserved for follow-on receipts that settle deferred
+/// effect evidence. A settlement receipt is emitted as a new artifact; sealed
+/// receipts are never mutated after the fact.
+pub const EFFECT_SETTLEMENT_RECEIPT_SCHEMA: &str = "runx.effect_settlement_receipt.v1";
+
 /// The canonicalization byte contract this receipt's digest commits under.
 pub const RECEIPT_CANONICALIZATION: &str = "runx.receipt.c14n.v1";
 
