@@ -209,7 +209,7 @@ fn execute_mcp_server_graph(
             created_at: crate::time::now_iso8601(),
             env: execution.env.clone(),
             receipt_signature: receipts.signature_config().clone(),
-            payment_supervisor: Default::default(),
+            effects: Default::default(),
         },
     );
     let mut host = McpServerHost::default();

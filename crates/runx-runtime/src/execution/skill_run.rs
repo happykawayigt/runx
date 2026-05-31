@@ -374,7 +374,7 @@ fn execute_graph_skill_run(
             created_at: crate::time::now_iso8601(),
             env,
             receipt_signature: receipts.signature_config().clone(),
-            payment_supervisor: Default::default(),
+            effects: Default::default(),
         },
     );
     // Seeded answers run a single fresh pass with the answers pre-loaded into the

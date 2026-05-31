@@ -2,10 +2,13 @@ use std::path::{Path, PathBuf};
 
 use runx_contracts::{ClosureDisposition, JsonObject, JsonValue, ReceiptSchema};
 use runx_receipts::canonical_receipt_json;
+use runx_runtime::effects::{
+    EffectSettlementEvidence, EffectSettlementRequest, EffectSupervisor, EffectSupervisorError,
+    RuntimeEffectRegistry,
+};
 use runx_runtime::payment::supervisor::{
-    PAYMENT_RAIL_SUPERVISOR_VERIFIER_ID, PaymentRailSupervisor, PaymentSupervisorError,
+    PAYMENT_RAIL_SUPERVISOR_VERIFIER_ID, PaymentSupervisorError,
     PaymentSupervisorSettlementEvidence, PaymentSupervisorSettlementRequest,
-    RuntimePaymentSupervisor,
 };
 use runx_runtime::{
     HarnessExpectedStatus, HarnessFixtureError, HarnessFixtureKind, InvocationStatus,
@@ -405,36 +408,38 @@ fn run_fixture_with_test_adapter(
 fn fixture_runtime_options() -> RuntimeOptions {
     RuntimeOptions {
         created_at: FIXTURE_CREATED_AT.to_owned(),
-        payment_supervisor: RuntimePaymentSupervisor::from_supervisor(FixturePaymentSupervisor),
+        effects: RuntimeEffectRegistry::with_payment_effect(FixtureEffectSupervisor),
         ..RuntimeOptions::local_development()
     }
 }
 
 #[derive(Clone, Debug)]
-struct FixturePaymentSupervisor;
+struct FixtureEffectSupervisor;
 
-impl PaymentRailSupervisor for FixturePaymentSupervisor {
+impl EffectSupervisor for FixtureEffectSupervisor {
     fn settlement_evidence(
         &self,
-        request: PaymentSupervisorSettlementRequest<'_>,
-    ) -> Result<PaymentSupervisorSettlementEvidence, PaymentSupervisorError> {
+        request: EffectSettlementRequest<'_>,
+    ) -> Result<EffectSettlementEvidence, EffectSupervisorError> {
+        let request = request.payment_rail()?;
         match request.proof_ref {
-            "receipt-proof:mock:x402-pay-approval-001" => Ok(payment_supervisor_evidence(
-                request,
-                "merchant-123",
-                "payment:x402-pay-approval-001",
-            )),
-            "receipt-proof:mock:paid-echo-001" => Ok(payment_supervisor_evidence(
-                request,
-                "merchant:paid-echo",
-                "payment:paid-echo-001",
+            "receipt-proof:mock:x402-pay-approval-001" => Ok(
+                EffectSettlementEvidence::from_payment_rail(payment_supervisor_evidence(
+                    request,
+                    "merchant-123",
+                    "payment:x402-pay-approval-001",
+                )),
+            ),
+            "receipt-proof:mock:paid-echo-001" => Ok(EffectSettlementEvidence::from_payment_rail(
+                payment_supervisor_evidence(request, "merchant:paid-echo", "payment:paid-echo-001"),
             )),
             _ => Err(PaymentSupervisorError::InvalidSupervisorEvidence {
                 message: format!(
                     "fixture supervisor has no settlement for {}",
                     request.proof_ref
                 ),
-            }),
+            }
+            .into()),
         }
     }
 }

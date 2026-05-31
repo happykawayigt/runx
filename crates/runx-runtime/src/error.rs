@@ -5,7 +5,7 @@ use runx_core::state_machine::FanoutSyncDecision;
 use thiserror::Error;
 
 use crate::credentials::CredentialDeliveryError;
-use crate::payment::state::PaymentStateError;
+use crate::effects::state::EffectStateError;
 
 #[derive(Debug, Error)]
 pub enum RuntimeError {
@@ -72,11 +72,11 @@ pub enum RuntimeError {
     SandboxViolation { message: String },
     #[error("credential delivery failed: {0}")]
     CredentialDelivery(#[from] CredentialDeliveryError),
-    #[error("payment state failed while {context}: {source}")]
-    PaymentState {
+    #[error("effect state failed while {context}: {source}")]
+    EffectState {
         context: String,
         #[source]
-        source: PaymentStateError,
+        source: EffectStateError,
     },
     #[error("skill file is missing at {path}")]
     SkillFileMissing { path: PathBuf },
@@ -101,8 +101,8 @@ impl RuntimeError {
         }
     }
 
-    pub(crate) fn payment_state(context: impl Into<String>, source: PaymentStateError) -> Self {
-        Self::PaymentState {
+    pub(crate) fn effect_state(context: impl Into<String>, source: EffectStateError) -> Self {
+        Self::EffectState {
             context: context.into(),
             source,
         }

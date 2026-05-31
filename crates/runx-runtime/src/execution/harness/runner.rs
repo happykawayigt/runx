@@ -35,21 +35,25 @@ use super::fixtures::{
 use crate::RuntimeError;
 use crate::adapter::{InvocationStatus, SkillAdapter, SkillInvocation, SkillOutput};
 use crate::agent_invocation::{AgentActInvocationSourceType, agent_act_invocation_id};
+#[cfg(feature = "cli-tool")]
+use crate::effects::state::{
+    EffectIdempotencyKey, EffectMutationStatus, EffectRecoveryState, FileBackedEffectStateStore,
+    RUNX_EFFECT_STATE_PATH_ENV,
+};
+#[cfg(feature = "cli-tool")]
+use crate::effects::{
+    EffectSettlementEvidence, EffectSettlementRequest, EffectSupervisor, EffectSupervisorError,
+    PAYMENT_EFFECT_FAMILY, RuntimeEffectRegistry,
+};
 use crate::execution::runner::{GraphRun, Runtime, RuntimeOptions, StepRun};
 use crate::host::Host;
 use crate::payment::ledger::{
     X402_PAY_PAYMENT_PROFILE, persist_x402_payment_ledger_projection_event,
 };
 #[cfg(feature = "cli-tool")]
-use crate::payment::state::{
-    FileBackedPaymentStateStore, PaymentIdempotencyKey, PaymentRecoveryState,
-    RUNX_PAYMENT_STATE_PATH_ENV, RailMutationStatus,
-};
-#[cfg(feature = "cli-tool")]
 use crate::payment::supervisor::{
-    PAYMENT_RAIL_SUPERVISOR_VERIFIER_ID, PaymentRailSupervisor, PaymentSupervisorError,
-    PaymentSupervisorSettlementEvidence, PaymentSupervisorSettlementRequest,
-    RuntimePaymentSupervisor,
+    PAYMENT_RAIL_SUPERVISOR_VERIFIER_ID, PaymentSupervisorError,
+    PaymentSupervisorSettlementEvidence,
 };
 #[cfg(feature = "cli-tool")]
 use crate::receipts::RuntimeReceiptSignaturePolicy;
@@ -135,26 +139,27 @@ pub fn run_harness_fixture_cli_tool(
 fn fixture_runtime_options() -> Result<RuntimeOptions, HarnessReplayError> {
     Ok(RuntimeOptions {
         created_at: crate::time::DEFAULT_CREATED_AT.to_owned(),
-        payment_supervisor: RuntimePaymentSupervisor::from_supervisor(FixturePaymentSupervisor),
+        effects: RuntimeEffectRegistry::with_payment_effect(FixtureEffectSupervisor),
         ..RuntimeOptions::from_process_env()?
     })
 }
 
 #[cfg(feature = "cli-tool")]
 #[derive(Clone, Debug)]
-struct FixturePaymentSupervisor;
+struct FixtureEffectSupervisor;
 
 #[cfg(feature = "cli-tool")]
-impl PaymentRailSupervisor for FixturePaymentSupervisor {
+impl EffectSupervisor for FixtureEffectSupervisor {
     fn settlement_evidence(
         &self,
-        request: PaymentSupervisorSettlementRequest<'_>,
-    ) -> Result<PaymentSupervisorSettlementEvidence, PaymentSupervisorError> {
+        request: EffectSettlementRequest<'_>,
+    ) -> Result<EffectSettlementEvidence, EffectSupervisorError> {
+        let request = request.payment_rail()?;
         match request.proof_ref {
             "receipt-proof:mock:x402-pay-approval-001"
             | "receipt-proof:mock:paid-echo-001"
-            | "receipt-proof:stripe-spt:demo-search-001" => {
-                Ok(PaymentSupervisorSettlementEvidence {
+            | "receipt-proof:stripe-spt:demo-search-001" => Ok(
+                EffectSettlementEvidence::from_payment_rail(PaymentSupervisorSettlementEvidence {
                     verifier_id: PAYMENT_RAIL_SUPERVISOR_VERIFIER_ID.to_owned(),
                     proof_ref: request.proof_ref.to_owned(),
                     rail: request.rail.to_owned(),
@@ -164,14 +169,15 @@ impl PaymentRailSupervisor for FixturePaymentSupervisor {
                     idempotency_key: request.idempotency_key.to_owned(),
                     settlement_status: Some("fulfilled".to_owned()),
                     provider_event_ref: Some(format!("fixture:event:{}", request.proof_ref)),
-                })
-            }
+                }),
+            ),
             _ => Err(PaymentSupervisorError::InvalidSupervisorEvidence {
                 message: format!(
                     "fixture supervisor has no settlement for {}",
                     request.proof_ref
                 ),
-            }),
+            }
+            .into()),
         }
     }
 }
@@ -281,13 +287,13 @@ fn run_x402_idempotency_sequence_fixture(
         "x402_idempotency_scenario",
     )?;
     let temp_dir = create_harness_temp_dir(&fixture.name)?;
-    let payment_state_path = temp_dir.join("payment-state.json");
+    let effect_state_path = temp_dir.join("effect-state.json");
     let rail_count_path = temp_dir.join("rail-count.txt");
 
     let first = x402_idempotency_run_env(
         &options,
         fixture,
-        &payment_state_path,
+        &effect_state_path,
         &rail_count_path,
         &scenario,
         true,
@@ -295,7 +301,7 @@ fn run_x402_idempotency_sequence_fixture(
     let second = x402_idempotency_run_env(
         &options,
         fixture,
-        &payment_state_path,
+        &effect_state_path,
         &rail_count_path,
         &scenario,
         false,
@@ -305,7 +311,7 @@ fn run_x402_idempotency_sequence_fixture(
             let first_run = run_x402_idempotency_graph(graph_path, fixture, first)?;
             let second_run = run_x402_idempotency_graph(graph_path, fixture, second)?;
             assert_x402_rail_invocation_count(&rail_count_path, 1)?;
-            assert_x402_replay_state(&payment_state_path, "payment:paid-echo-001")?;
+            assert_x402_replay_state(&effect_state_path, "payment:paid-echo-001")?;
             let first_fulfill = step_receipt_digest(&first_run, "fulfill")?;
             let second_fulfill = step_receipt_digest(&second_run, "fulfill")?;
             if first_fulfill != second_fulfill {
@@ -359,7 +365,7 @@ fn run_x402_idempotency_sequence_fixture(
                 })?;
             assert_authority_denied_contains(&second_error, "recovery escalated")?;
             assert_x402_rail_invocation_count(&rail_count_path, 1)?;
-            assert_x402_escalated_state(&payment_state_path, "payment:paid-echo-001")?;
+            assert_x402_escalated_state(&effect_state_path, "payment:paid-echo-001")?;
             empty_sequence_error_output(
                 fixture,
                 &options.created_at,
@@ -533,7 +539,7 @@ fn graph_replay_steps(
 fn x402_idempotency_run_env(
     options: &RuntimeOptions,
     fixture: &HarnessFixture,
-    payment_state_path: &Path,
+    effect_state_path: &Path,
     rail_count_path: &Path,
     scenario: &str,
     first_run: bool,
@@ -542,15 +548,15 @@ fn x402_idempotency_run_env(
     env.extend(fixture.env.clone());
     env.insert(
         RUNX_CWD_ENV.to_owned(),
-        payment_state_path
+        effect_state_path
             .parent()
             .unwrap_or_else(|| Path::new("."))
             .to_string_lossy()
             .into_owned(),
     );
     env.insert(
-        RUNX_PAYMENT_STATE_PATH_ENV.to_owned(),
-        payment_state_path.to_string_lossy().into_owned(),
+        RUNX_EFFECT_STATE_PATH_ENV.to_owned(),
+        effect_state_path.to_string_lossy().into_owned(),
     );
     env.insert(
         "RUNX_PAYMENT_RAIL_COUNT_PATH".to_owned(),
@@ -578,7 +584,7 @@ fn x402_idempotency_run_env(
         created_at: options.created_at.clone(),
         env,
         receipt_signature: options.receipt_signature.clone(),
-        payment_supervisor: options.payment_supervisor.clone(),
+        effects: options.effects.clone(),
     })
 }
 
@@ -729,12 +735,12 @@ fn assert_x402_rail_invocation_count(path: &Path, expected: u64) -> Result<(), H
 
 #[cfg(feature = "cli-tool")]
 fn assert_x402_replay_state(path: &Path, key: &str) -> Result<(), HarnessReplayError> {
-    let store = FileBackedPaymentStateStore::open(path).map_err(|source| {
-        RuntimeError::payment_state("reading x402 replay fixture state", source)
+    let store = FileBackedEffectStateStore::open(path).map_err(|source| {
+        RuntimeError::effect_state("reading x402 replay fixture state", source)
     })?;
     let key = x402_paid_echo_key(key);
     let entry = store
-        .lookup_idempotency(&key)
+        .lookup_idempotency(PAYMENT_EFFECT_FAMILY, &key)
         .ok_or_else(|| HarnessReplayError::Mismatch {
             field: "metadata.x402_idempotency_replay_state",
             expected: "sealed idempotency entry".to_owned(),
@@ -754,20 +760,19 @@ fn assert_x402_replay_state(path: &Path, key: &str) -> Result<(), HarnessReplayE
 
 #[cfg(feature = "cli-tool")]
 fn assert_x402_escalated_state(path: &Path, key: &str) -> Result<(), HarnessReplayError> {
-    let store = FileBackedPaymentStateStore::open(path).map_err(|source| {
-        RuntimeError::payment_state("reading x402 recovery fixture state", source)
+    let store = FileBackedEffectStateStore::open(path).map_err(|source| {
+        RuntimeError::effect_state("reading x402 recovery fixture state", source)
     })?;
     let key = x402_paid_echo_key(key);
-    let mutation =
-        store
-            .lookup_rail_mutation(&key)
-            .ok_or_else(|| HarnessReplayError::Mismatch {
-                field: "metadata.x402_idempotency_recovery_state",
-                expected: "rail mutation".to_owned(),
-                actual: "none".to_owned(),
-            })?;
-    if mutation.status == RailMutationStatus::Escalated
-        && mutation.recovery_state == PaymentRecoveryState::Escalated
+    let mutation = store
+        .lookup_mutation(PAYMENT_EFFECT_FAMILY, &key)
+        .ok_or_else(|| HarnessReplayError::Mismatch {
+            field: "metadata.x402_idempotency_recovery_state",
+            expected: "rail mutation".to_owned(),
+            actual: "none".to_owned(),
+        })?;
+    if mutation.status == EffectMutationStatus::Escalated
+        && mutation.recovery_state == EffectRecoveryState::Escalated
     {
         return Ok(());
     }
@@ -779,8 +784,8 @@ fn assert_x402_escalated_state(path: &Path, key: &str) -> Result<(), HarnessRepl
 }
 
 #[cfg(feature = "cli-tool")]
-fn x402_paid_echo_key(key: &str) -> PaymentIdempotencyKey {
-    PaymentIdempotencyKey::new("mock", "merchant:paid-echo", key)
+fn x402_paid_echo_key(key: &str) -> EffectIdempotencyKey {
+    EffectIdempotencyKey::new("mock", "merchant:paid-echo", key)
 }
 
 #[cfg(feature = "cli-tool")]

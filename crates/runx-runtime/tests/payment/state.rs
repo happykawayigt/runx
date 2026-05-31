@@ -2,12 +2,12 @@ use std::collections::BTreeMap;
 
 use runx_contracts::{JsonObject, JsonValue, Receipt};
 use runx_runtime::RUNX_RECEIPT_DIR_ENV;
-use runx_runtime::payment::state::{
-    FileBackedPaymentStateStore, PaymentIdempotencyEntry, PaymentIdempotencyKey,
-    PaymentRecoveryState, PaymentStepStateInput, RUNX_PAYMENT_STATE_PATH_ENV, RailMutation,
-    RailMutationStatus, SpendCapabilityConsumption, consumed_spend_capability_recorded,
-    escalate_payment_rail_mutation, lookup_payment_idempotency_entry, lookup_payment_rail_mutation,
-    persist_payment_step_state,
+use runx_runtime::effects::PAYMENT_EFFECT_FAMILY;
+use runx_runtime::effects::state::{
+    EffectCapabilityConsumption, EffectIdempotencyEntry, EffectIdempotencyKey, EffectMutation,
+    EffectMutationStatus, EffectRecoveryState, EffectStepStateInput, FileBackedEffectStateStore,
+    RUNX_EFFECT_STATE_PATH_ENV, consumed_spend_capability_recorded, escalate_effect_mutation,
+    lookup_effect_idempotency_entry, lookup_effect_mutation, persist_effect_step_state,
 };
 use runx_runtime::payment::supervisor::{
     PAYMENT_RAIL_SUPERVISOR_VERIFIER_ID, PaymentSupervisorProof,
@@ -16,54 +16,124 @@ use runx_runtime::receipts::step_receipt;
 use runx_runtime::{InvocationStatus, SkillOutput};
 use serde_json::json;
 
+const MESSAGE_EFFECT_FAMILY: &str = "message";
+
 #[test]
-fn persists_payment_state_across_fresh_store() -> Result<(), Box<dyn std::error::Error>> {
+fn persists_effect_state_across_fresh_store() -> Result<(), Box<dyn std::error::Error>> {
     let temp = tempfile::tempdir()?;
-    let path = temp.path().join("payment-state.json");
+    let path = temp.path().join("effect-state.json");
     let idempotency_key =
-        PaymentIdempotencyKey::new("mock", "merchant:paid-echo", "payment:paid-echo-001");
+        EffectIdempotencyKey::new("mock", "merchant:paid-echo", "payment:paid-echo-001");
 
     {
-        let mut store = FileBackedPaymentStateStore::open(&path)?;
-        store.record_idempotency(PaymentIdempotencyEntry {
-            idempotency_key: idempotency_key.clone(),
-            receipt_ref: "receipt:paid-echo:first".to_owned(),
-            receipt_created_at: "2026-05-18T00:00:00Z".to_owned(),
-            receipt_digest: "sha256:receipt-paid-echo-first".to_owned(),
-            rail_proof_ref: "receipt-proof:mock:paid-echo-001".to_owned(),
-            supervisor_proof: supervisor_proof_for_fields(
-                "receipt-proof:mock:paid-echo-001",
-                "receipt:paid-echo:first",
-                "sha256:receipt-paid-echo-first",
-            ),
-            amount_minor: 125,
-            currency: "USD".to_owned(),
-            outputs: JsonObject::new(),
-        })?;
-        store.record_rail_mutation(RailMutation {
-            idempotency_key: idempotency_key.clone(),
-            rail: "mock".to_owned(),
-            amount_minor: 125,
-            currency: "USD".to_owned(),
-            counterparty: "merchant:paid-echo".to_owned(),
-            status: RailMutationStatus::Fulfilled,
-            proof_ref: Some("receipt-proof:mock:paid-echo-001".to_owned()),
-            recovery_state: PaymentRecoveryState::Sealed,
-        })?;
+        let mut store = FileBackedEffectStateStore::open(&path)?;
+        store.record_idempotency(
+            PAYMENT_EFFECT_FAMILY,
+            EffectIdempotencyEntry {
+                idempotency_key: idempotency_key.clone(),
+                receipt_ref: "receipt:paid-echo:first".to_owned(),
+                receipt_created_at: "2026-05-18T00:00:00Z".to_owned(),
+                receipt_digest: "sha256:receipt-paid-echo-first".to_owned(),
+                rail_proof_ref: "receipt-proof:mock:paid-echo-001".to_owned(),
+                supervisor_proof: supervisor_proof_for_fields(
+                    "receipt-proof:mock:paid-echo-001",
+                    "receipt:paid-echo:first",
+                    "sha256:receipt-paid-echo-first",
+                ),
+                amount_minor: 125,
+                currency: "USD".to_owned(),
+                outputs: JsonObject::new(),
+            },
+        )?;
+        store.record_mutation(
+            PAYMENT_EFFECT_FAMILY,
+            EffectMutation {
+                idempotency_key: idempotency_key.clone(),
+                rail: "mock".to_owned(),
+                amount_minor: 125,
+                currency: "USD".to_owned(),
+                counterparty: "merchant:paid-echo".to_owned(),
+                status: EffectMutationStatus::Fulfilled,
+                proof_ref: Some("receipt-proof:mock:paid-echo-001".to_owned()),
+                recovery_state: EffectRecoveryState::Sealed,
+            },
+        )?;
     }
 
-    let store = FileBackedPaymentStateStore::open(&path)?;
+    let store = FileBackedEffectStateStore::open(&path)?;
     let entry = store
-        .lookup_idempotency(&idempotency_key)
+        .lookup_idempotency(PAYMENT_EFFECT_FAMILY, &idempotency_key)
         .ok_or("idempotency entry should survive fresh store open")?;
     assert_eq!(entry.receipt_ref, "receipt:paid-echo:first");
     assert_eq!(entry.rail_proof_ref, "receipt-proof:mock:paid-echo-001");
 
     let mutation = store
-        .lookup_rail_mutation(&idempotency_key)
+        .lookup_mutation(PAYMENT_EFFECT_FAMILY, &idempotency_key)
         .ok_or("rail mutation should survive fresh store open")?;
-    assert_eq!(mutation.status, RailMutationStatus::Fulfilled);
-    assert_eq!(mutation.recovery_state, PaymentRecoveryState::Sealed);
+    assert_eq!(mutation.status, EffectMutationStatus::Fulfilled);
+    assert_eq!(mutation.recovery_state, EffectRecoveryState::Sealed);
+
+    Ok(())
+}
+
+#[test]
+fn effect_state_namespaces_idempotency_by_family() -> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("effect-state.json");
+    let idempotency_key =
+        EffectIdempotencyKey::new("mock", "merchant:paid-echo", "payment:paid-echo-001");
+    let mut store = FileBackedEffectStateStore::open(&path)?;
+
+    store.record_idempotency(
+        PAYMENT_EFFECT_FAMILY,
+        EffectIdempotencyEntry {
+            idempotency_key: idempotency_key.clone(),
+            receipt_ref: "receipt:payment".to_owned(),
+            receipt_created_at: "2026-05-18T00:00:00Z".to_owned(),
+            receipt_digest: "sha256:receipt-payment".to_owned(),
+            rail_proof_ref: "proof:payment".to_owned(),
+            supervisor_proof: supervisor_proof_for_fields(
+                "proof:payment",
+                "receipt:payment",
+                "sha256:receipt-payment",
+            ),
+            amount_minor: 125,
+            currency: "USD".to_owned(),
+            outputs: JsonObject::new(),
+        },
+    )?;
+    store.record_idempotency(
+        MESSAGE_EFFECT_FAMILY,
+        EffectIdempotencyEntry {
+            idempotency_key: idempotency_key.clone(),
+            receipt_ref: "receipt:message".to_owned(),
+            receipt_created_at: "2026-05-18T00:00:00Z".to_owned(),
+            receipt_digest: "sha256:receipt-message".to_owned(),
+            rail_proof_ref: "proof:message".to_owned(),
+            supervisor_proof: supervisor_proof_for_fields(
+                "proof:message",
+                "receipt:message",
+                "sha256:receipt-message",
+            ),
+            amount_minor: 125,
+            currency: "USD".to_owned(),
+            outputs: JsonObject::new(),
+        },
+    )?;
+
+    let store = FileBackedEffectStateStore::open(&path)?;
+    assert_eq!(
+        store
+            .lookup_idempotency(PAYMENT_EFFECT_FAMILY, &idempotency_key)
+            .map(|entry| entry.receipt_ref.as_str()),
+        Some("receipt:payment")
+    );
+    assert_eq!(
+        store
+            .lookup_idempotency(MESSAGE_EFFECT_FAMILY, &idempotency_key)
+            .map(|entry| entry.receipt_ref.as_str()),
+        Some("receipt:message")
+    );
 
     Ok(())
 }
@@ -71,22 +141,25 @@ fn persists_payment_state_across_fresh_store() -> Result<(), Box<dyn std::error:
 #[test]
 fn records_consumed_spend_capability_for_reuse_lookup() -> Result<(), Box<dyn std::error::Error>> {
     let temp = tempfile::tempdir()?;
-    let path = temp.path().join("nested").join("payment-state.json");
+    let path = temp.path().join("nested").join("effect-state.json");
     let idempotency_key =
-        PaymentIdempotencyKey::new("mock", "merchant:paid-echo", "payment:paid-echo-001");
+        EffectIdempotencyKey::new("mock", "merchant:paid-echo", "payment:paid-echo-001");
     let capability_ref = "runx:payment-capability:paid-echo-spend-1";
 
-    let mut store = FileBackedPaymentStateStore::open(&path)?;
-    store.consume_spend_capability(SpendCapabilityConsumption {
-        capability_ref: capability_ref.to_owned(),
-        idempotency_key: idempotency_key.clone(),
-        receipt_ref: Some("receipt:paid-echo:first".to_owned()),
-        recovery_state: Some(PaymentRecoveryState::Sealed),
-    })?;
+    let mut store = FileBackedEffectStateStore::open(&path)?;
+    store.consume_spend_capability(
+        PAYMENT_EFFECT_FAMILY,
+        EffectCapabilityConsumption {
+            capability_ref: capability_ref.to_owned(),
+            idempotency_key: idempotency_key.clone(),
+            receipt_ref: Some("receipt:paid-echo:first".to_owned()),
+            recovery_state: Some(EffectRecoveryState::Sealed),
+        },
+    )?;
 
-    let store = FileBackedPaymentStateStore::open(&path)?;
+    let store = FileBackedEffectStateStore::open(&path)?;
     let consumed = store
-        .lookup_consumed_spend_capability(capability_ref)
+        .lookup_consumed_spend_capability(PAYMENT_EFFECT_FAMILY, capability_ref)
         .ok_or("consumed spend capability should be persisted")?;
     assert_eq!(consumed.idempotency_key, idempotency_key);
     assert_eq!(
@@ -100,22 +173,22 @@ fn records_consumed_spend_capability_for_reuse_lookup() -> Result<(), Box<dyn st
 #[test]
 fn rejects_duplicate_spend_capability_consumption() -> Result<(), Box<dyn std::error::Error>> {
     let temp = tempfile::tempdir()?;
-    let path = temp.path().join("payment-state.json");
+    let path = temp.path().join("effect-state.json");
     let idempotency_key =
-        PaymentIdempotencyKey::new("mock", "merchant:paid-echo", "payment:paid-echo-001");
+        EffectIdempotencyKey::new("mock", "merchant:paid-echo", "payment:paid-echo-001");
     let capability_ref = "runx:payment-capability:paid-echo-spend-1";
-    let consumption = SpendCapabilityConsumption {
+    let consumption = EffectCapabilityConsumption {
         capability_ref: capability_ref.to_owned(),
         idempotency_key,
         receipt_ref: Some("receipt:paid-echo:first".to_owned()),
-        recovery_state: Some(PaymentRecoveryState::Sealed),
+        recovery_state: Some(EffectRecoveryState::Sealed),
     };
 
-    let mut store = FileBackedPaymentStateStore::open(&path)?;
-    store.consume_spend_capability(consumption.clone())?;
+    let mut store = FileBackedEffectStateStore::open(&path)?;
+    store.consume_spend_capability(PAYMENT_EFFECT_FAMILY, consumption.clone())?;
 
     let error = store
-        .consume_spend_capability(consumption)
+        .consume_spend_capability(PAYMENT_EFFECT_FAMILY, consumption)
         .err()
         .ok_or("duplicate spend capability should be rejected")?;
     assert_eq!(
@@ -130,42 +203,48 @@ fn rejects_duplicate_spend_capability_consumption() -> Result<(), Box<dyn std::e
 fn rejects_duplicate_idempotency_and_rail_mutation_without_overwrite()
 -> Result<(), Box<dyn std::error::Error>> {
     let temp = tempfile::tempdir()?;
-    let path = temp.path().join("payment-state.json");
+    let path = temp.path().join("effect-state.json");
     let idempotency_key =
-        PaymentIdempotencyKey::new("mock", "merchant:paid-echo", "payment:paid-echo-001");
-    let mut store = FileBackedPaymentStateStore::open(&path)?;
+        EffectIdempotencyKey::new("mock", "merchant:paid-echo", "payment:paid-echo-001");
+    let mut store = FileBackedEffectStateStore::open(&path)?;
 
-    store.record_idempotency(PaymentIdempotencyEntry {
-        idempotency_key: idempotency_key.clone(),
-        receipt_ref: "receipt:first".to_owned(),
-        receipt_created_at: "2026-05-18T00:00:00Z".to_owned(),
-        receipt_digest: "sha256:receipt-first".to_owned(),
-        rail_proof_ref: "proof:first".to_owned(),
-        supervisor_proof: supervisor_proof_for_fields(
-            "proof:first",
-            "receipt:first",
-            "sha256:receipt-first",
-        ),
-        amount_minor: 125,
-        currency: "USD".to_owned(),
-        outputs: JsonObject::new(),
-    })?;
-    let idempotency_error = store
-        .record_idempotency(PaymentIdempotencyEntry {
+    store.record_idempotency(
+        PAYMENT_EFFECT_FAMILY,
+        EffectIdempotencyEntry {
             idempotency_key: idempotency_key.clone(),
-            receipt_ref: "receipt:second".to_owned(),
+            receipt_ref: "receipt:first".to_owned(),
             receipt_created_at: "2026-05-18T00:00:00Z".to_owned(),
-            receipt_digest: "sha256:receipt-second".to_owned(),
-            rail_proof_ref: "proof:second".to_owned(),
+            receipt_digest: "sha256:receipt-first".to_owned(),
+            rail_proof_ref: "proof:first".to_owned(),
             supervisor_proof: supervisor_proof_for_fields(
-                "proof:second",
-                "receipt:second",
-                "sha256:receipt-second",
+                "proof:first",
+                "receipt:first",
+                "sha256:receipt-first",
             ),
-            amount_minor: 250,
+            amount_minor: 125,
             currency: "USD".to_owned(),
             outputs: JsonObject::new(),
-        })
+        },
+    )?;
+    let idempotency_error = store
+        .record_idempotency(
+            PAYMENT_EFFECT_FAMILY,
+            EffectIdempotencyEntry {
+                idempotency_key: idempotency_key.clone(),
+                receipt_ref: "receipt:second".to_owned(),
+                receipt_created_at: "2026-05-18T00:00:00Z".to_owned(),
+                receipt_digest: "sha256:receipt-second".to_owned(),
+                rail_proof_ref: "proof:second".to_owned(),
+                supervisor_proof: supervisor_proof_for_fields(
+                    "proof:second",
+                    "receipt:second",
+                    "sha256:receipt-second",
+                ),
+                amount_minor: 250,
+                currency: "USD".to_owned(),
+                outputs: JsonObject::new(),
+            },
+        )
         .err()
         .ok_or("duplicate idempotency record should be rejected")?;
     assert_eq!(
@@ -174,31 +253,37 @@ fn rejects_duplicate_idempotency_and_rail_mutation_without_overwrite()
     );
 
     let stored = store
-        .lookup_idempotency(&idempotency_key)
+        .lookup_idempotency(PAYMENT_EFFECT_FAMILY, &idempotency_key)
         .ok_or("original idempotency entry should remain stored")?;
     assert_eq!(stored.receipt_ref, "receipt:first");
 
-    store.record_rail_mutation(RailMutation {
-        idempotency_key: idempotency_key.clone(),
-        rail: "mock".to_owned(),
-        amount_minor: 125,
-        currency: "USD".to_owned(),
-        counterparty: "merchant:paid-echo".to_owned(),
-        status: RailMutationStatus::Partial,
-        proof_ref: None,
-        recovery_state: PaymentRecoveryState::InFlight,
-    })?;
-    let mutation_error = store
-        .record_rail_mutation(RailMutation {
+    store.record_mutation(
+        PAYMENT_EFFECT_FAMILY,
+        EffectMutation {
             idempotency_key: idempotency_key.clone(),
             rail: "mock".to_owned(),
-            amount_minor: 250,
+            amount_minor: 125,
             currency: "USD".to_owned(),
             counterparty: "merchant:paid-echo".to_owned(),
-            status: RailMutationStatus::Fulfilled,
-            proof_ref: Some("proof:second".to_owned()),
-            recovery_state: PaymentRecoveryState::Sealed,
-        })
+            status: EffectMutationStatus::Partial,
+            proof_ref: None,
+            recovery_state: EffectRecoveryState::InFlight,
+        },
+    )?;
+    let mutation_error = store
+        .record_mutation(
+            PAYMENT_EFFECT_FAMILY,
+            EffectMutation {
+                idempotency_key: idempotency_key.clone(),
+                rail: "mock".to_owned(),
+                amount_minor: 250,
+                currency: "USD".to_owned(),
+                counterparty: "merchant:paid-echo".to_owned(),
+                status: EffectMutationStatus::Fulfilled,
+                proof_ref: Some("proof:second".to_owned()),
+                recovery_state: EffectRecoveryState::Sealed,
+            },
+        )
         .err()
         .ok_or("duplicate rail mutation should be rejected")?;
     assert_eq!(
@@ -207,10 +292,10 @@ fn rejects_duplicate_idempotency_and_rail_mutation_without_overwrite()
     );
 
     let mutation = store
-        .lookup_rail_mutation(&idempotency_key)
+        .lookup_mutation(PAYMENT_EFFECT_FAMILY, &idempotency_key)
         .ok_or("original rail mutation should remain stored")?;
-    assert_eq!(mutation.status, RailMutationStatus::Partial);
-    assert_eq!(mutation.recovery_state, PaymentRecoveryState::InFlight);
+    assert_eq!(mutation.status, EffectMutationStatus::Partial);
+    assert_eq!(mutation.recovery_state, EffectRecoveryState::InFlight);
 
     Ok(())
 }
@@ -229,7 +314,7 @@ fn persists_sealed_payment_step_state_for_replay_and_reuse_lookups()
     let receipt = receipt_for_outputs("x402-pay-idempotency-replay", "fulfill", &outputs)?;
     let supervisor_proof =
         supervisor_proof_for_receipt(&input, "receipt-proof:mock:paid-echo-001", &receipt);
-    persist_payment_step_state(
+    persist_effect_step_state(
         &env,
         &graph_dir,
         &input,
@@ -238,8 +323,13 @@ fn persists_sealed_payment_step_state_for_replay_and_reuse_lookups()
         Some(&supervisor_proof),
     )?;
 
-    let entry = lookup_payment_idempotency_entry(&env, &graph_dir, &input.idempotency_key)?
-        .ok_or("sealed idempotency entry should be available through public lookup")?;
+    let entry = lookup_effect_idempotency_entry(
+        &env,
+        &graph_dir,
+        PAYMENT_EFFECT_FAMILY,
+        &input.idempotency_key,
+    )?
+    .ok_or("sealed idempotency entry should be available through public lookup")?;
     assert_eq!(entry.receipt_ref, receipt.id);
     assert_eq!(entry.rail_proof_ref, "receipt-proof:mock:paid-echo-001");
     assert_eq!(entry.receipt_created_at, receipt.created_at.as_str());
@@ -252,16 +342,17 @@ fn persists_sealed_payment_step_state_for_replay_and_reuse_lookups()
     assert!(consumed_spend_capability_recorded(
         &env,
         &graph_dir,
+        PAYMENT_EFFECT_FAMILY,
         &input.spend_capability_ref
     )?);
 
     let store =
-        FileBackedPaymentStateStore::open(graph_dir.join("receipts").join("payment-state.json"))?;
+        FileBackedEffectStateStore::open(graph_dir.join("receipts").join("effect-state.json"))?;
     let mutation = store
-        .lookup_rail_mutation(&input.idempotency_key)
+        .lookup_mutation(PAYMENT_EFFECT_FAMILY, &input.idempotency_key)
         .ok_or("sealed rail mutation should be persisted")?;
-    assert_eq!(mutation.status, RailMutationStatus::Fulfilled);
-    assert_eq!(mutation.recovery_state, PaymentRecoveryState::Sealed);
+    assert_eq!(mutation.status, EffectMutationStatus::Fulfilled);
+    assert_eq!(mutation.recovery_state, EffectRecoveryState::Sealed);
     assert_eq!(
         mutation.proof_ref.as_deref(),
         Some("receipt-proof:mock:paid-echo-001")
@@ -271,13 +362,13 @@ fn persists_sealed_payment_step_state_for_replay_and_reuse_lookups()
 }
 
 #[test]
-fn payment_step_state_persistence_keeps_first_sealed_record()
+fn effect_step_state_persistence_keeps_first_sealed_record()
 -> Result<(), Box<dyn std::error::Error>> {
     let temp = tempfile::tempdir()?;
     let mut env = BTreeMap::new();
     env.insert(
-        RUNX_PAYMENT_STATE_PATH_ENV.to_owned(),
-        "payment-state.json".to_owned(),
+        RUNX_EFFECT_STATE_PATH_ENV.to_owned(),
+        "effect-state.json".to_owned(),
     );
     let input = payment_step_input();
 
@@ -285,7 +376,7 @@ fn payment_step_state_persistence_keeps_first_sealed_record()
     let first_receipt = receipt_for_outputs("first", "fulfill", &first_outputs)?;
     let first_supervisor_proof =
         supervisor_proof_for_receipt(&input, "receipt-proof:mock:first", &first_receipt);
-    persist_payment_step_state(
+    persist_effect_step_state(
         &env,
         temp.path(),
         &input,
@@ -298,7 +389,7 @@ fn payment_step_state_persistence_keeps_first_sealed_record()
     let mut second_supervisor_proof =
         supervisor_proof_for_receipt(&input, "receipt-proof:mock:second", &second_receipt);
     second_supervisor_proof.amount_minor = 250;
-    persist_payment_step_state(
+    persist_effect_step_state(
         &env,
         temp.path(),
         &input,
@@ -307,16 +398,16 @@ fn payment_step_state_persistence_keeps_first_sealed_record()
         Some(&second_supervisor_proof),
     )?;
 
-    let store = FileBackedPaymentStateStore::open(temp.path().join("payment-state.json"))?;
+    let store = FileBackedEffectStateStore::open(temp.path().join("effect-state.json"))?;
     let entry = store
-        .lookup_idempotency(&input.idempotency_key)
+        .lookup_idempotency(PAYMENT_EFFECT_FAMILY, &input.idempotency_key)
         .ok_or("first idempotency entry should remain stored")?;
     assert_eq!(entry.receipt_ref, first_receipt.id);
     assert_eq!(entry.rail_proof_ref, "receipt-proof:mock:first");
     assert_eq!(entry.amount_minor, 125);
 
     let mutation = store
-        .lookup_rail_mutation(&input.idempotency_key)
+        .lookup_mutation(PAYMENT_EFFECT_FAMILY, &input.idempotency_key)
         .ok_or("first rail mutation should remain stored")?;
     assert_eq!(mutation.amount_minor, 125);
     assert_eq!(
@@ -331,54 +422,60 @@ fn payment_step_state_persistence_keeps_first_sealed_record()
 fn stale_store_mutation_reloads_locked_state_before_writing()
 -> Result<(), Box<dyn std::error::Error>> {
     let temp = tempfile::tempdir()?;
-    let path = temp.path().join("payment-state.json");
+    let path = temp.path().join("effect-state.json");
     let idempotency_key =
-        PaymentIdempotencyKey::new("mock", "merchant:paid-echo", "payment:paid-echo-001");
-    let mut first = FileBackedPaymentStateStore::open(&path)?;
-    let mut stale_second = FileBackedPaymentStateStore::open(&path)?;
+        EffectIdempotencyKey::new("mock", "merchant:paid-echo", "payment:paid-echo-001");
+    let mut first = FileBackedEffectStateStore::open(&path)?;
+    let mut stale_second = FileBackedEffectStateStore::open(&path)?;
 
-    first.record_idempotency(PaymentIdempotencyEntry {
-        idempotency_key: idempotency_key.clone(),
-        receipt_ref: "receipt:first".to_owned(),
-        receipt_created_at: "2026-05-18T00:00:00Z".to_owned(),
-        receipt_digest: "sha256:receipt-first".to_owned(),
-        rail_proof_ref: "proof:first".to_owned(),
-        supervisor_proof: supervisor_proof_for_fields(
-            "proof:first",
-            "receipt:first",
-            "sha256:receipt-first",
-        ),
-        amount_minor: 125,
-        currency: "USD".to_owned(),
-        outputs: JsonObject::new(),
-    })?;
-
-    let error = stale_second
-        .record_idempotency(PaymentIdempotencyEntry {
+    first.record_idempotency(
+        PAYMENT_EFFECT_FAMILY,
+        EffectIdempotencyEntry {
             idempotency_key: idempotency_key.clone(),
-            receipt_ref: "receipt:second".to_owned(),
+            receipt_ref: "receipt:first".to_owned(),
             receipt_created_at: "2026-05-18T00:00:00Z".to_owned(),
-            receipt_digest: "sha256:receipt-second".to_owned(),
-            rail_proof_ref: "proof:second".to_owned(),
+            receipt_digest: "sha256:receipt-first".to_owned(),
+            rail_proof_ref: "proof:first".to_owned(),
             supervisor_proof: supervisor_proof_for_fields(
-                "proof:second",
-                "receipt:second",
-                "sha256:receipt-second",
+                "proof:first",
+                "receipt:first",
+                "sha256:receipt-first",
             ),
-            amount_minor: 250,
+            amount_minor: 125,
             currency: "USD".to_owned(),
             outputs: JsonObject::new(),
-        })
+        },
+    )?;
+
+    let error = stale_second
+        .record_idempotency(
+            PAYMENT_EFFECT_FAMILY,
+            EffectIdempotencyEntry {
+                idempotency_key: idempotency_key.clone(),
+                receipt_ref: "receipt:second".to_owned(),
+                receipt_created_at: "2026-05-18T00:00:00Z".to_owned(),
+                receipt_digest: "sha256:receipt-second".to_owned(),
+                rail_proof_ref: "proof:second".to_owned(),
+                supervisor_proof: supervisor_proof_for_fields(
+                    "proof:second",
+                    "receipt:second",
+                    "sha256:receipt-second",
+                ),
+                amount_minor: 250,
+                currency: "USD".to_owned(),
+                outputs: JsonObject::new(),
+            },
+        )
         .err()
-        .ok_or("stale store must not overwrite locked payment state")?;
+        .ok_or("stale store must not overwrite locked effect state")?;
     assert_eq!(
         error.to_string(),
         "idempotency key mock\u{1f}merchant:paid-echo\u{1f}payment:paid-echo-001 was already recorded"
     );
 
-    let fresh = FileBackedPaymentStateStore::open(&path)?;
+    let fresh = FileBackedEffectStateStore::open(&path)?;
     let entry = fresh
-        .lookup_idempotency(&idempotency_key)
+        .lookup_idempotency(PAYMENT_EFFECT_FAMILY, &idempotency_key)
         .ok_or("first idempotency entry should remain persisted")?;
     assert_eq!(entry.receipt_ref, "receipt:first");
 
@@ -391,48 +488,66 @@ fn persists_partial_rail_mutation_for_recovery_lookup_without_sealed_idempotency
     let temp = tempfile::tempdir()?;
     let mut env = BTreeMap::new();
     env.insert(
-        RUNX_PAYMENT_STATE_PATH_ENV.to_owned(),
-        "payment-state.json".to_owned(),
+        RUNX_EFFECT_STATE_PATH_ENV.to_owned(),
+        "effect-state.json".to_owned(),
     );
     let input = payment_step_input();
 
     let outputs = partial_payment_outputs()?;
     let receipt = receipt_for_outputs("partial", "fulfill", &outputs)?;
-    persist_payment_step_state(&env, temp.path(), &input, &outputs, &receipt, None)?;
+    persist_effect_step_state(&env, temp.path(), &input, &outputs, &receipt, None)?;
 
     assert!(
-        lookup_payment_idempotency_entry(&env, temp.path(), &input.idempotency_key)?.is_none(),
+        lookup_effect_idempotency_entry(
+            &env,
+            temp.path(),
+            PAYMENT_EFFECT_FAMILY,
+            &input.idempotency_key
+        )?
+        .is_none(),
         "partial rail mutation without proof must not be exposed as sealed replay"
     );
     assert!(consumed_spend_capability_recorded(
         &env,
         temp.path(),
+        PAYMENT_EFFECT_FAMILY,
         &input.spend_capability_ref
     )?);
 
-    let store = FileBackedPaymentStateStore::open(temp.path().join("payment-state.json"))?;
+    let store = FileBackedEffectStateStore::open(temp.path().join("effect-state.json"))?;
     let mutation = store
-        .lookup_rail_mutation(&input.idempotency_key)
+        .lookup_mutation(PAYMENT_EFFECT_FAMILY, &input.idempotency_key)
         .ok_or("partial rail mutation should be persisted for recovery")?;
-    assert_eq!(mutation.status, RailMutationStatus::Partial);
-    assert_eq!(mutation.recovery_state, PaymentRecoveryState::InFlight);
+    assert_eq!(mutation.status, EffectMutationStatus::Partial);
+    assert_eq!(mutation.recovery_state, EffectRecoveryState::InFlight);
     assert_eq!(mutation.proof_ref, None);
 
-    let escalated = escalate_payment_rail_mutation(&env, temp.path(), &input.idempotency_key)?
-        .ok_or("partial rail mutation should be escalated by public recovery helper")?;
-    assert_eq!(escalated.status, RailMutationStatus::Escalated);
-    assert_eq!(escalated.recovery_state, PaymentRecoveryState::Escalated);
-    let looked_up = lookup_payment_rail_mutation(&env, temp.path(), &input.idempotency_key)?
-        .ok_or("escalated rail mutation should remain queryable")?;
-    assert_eq!(looked_up.status, RailMutationStatus::Escalated);
-    assert_eq!(looked_up.recovery_state, PaymentRecoveryState::Escalated);
+    let escalated = escalate_effect_mutation(
+        &env,
+        temp.path(),
+        PAYMENT_EFFECT_FAMILY,
+        &input.idempotency_key,
+    )?
+    .ok_or("partial rail mutation should be escalated by public recovery helper")?;
+    assert_eq!(escalated.status, EffectMutationStatus::Escalated);
+    assert_eq!(escalated.recovery_state, EffectRecoveryState::Escalated);
+    let looked_up = lookup_effect_mutation(
+        &env,
+        temp.path(),
+        PAYMENT_EFFECT_FAMILY,
+        &input.idempotency_key,
+    )?
+    .ok_or("escalated rail mutation should remain queryable")?;
+    assert_eq!(looked_up.status, EffectMutationStatus::Escalated);
+    assert_eq!(looked_up.recovery_state, EffectRecoveryState::Escalated);
 
     Ok(())
 }
 
-fn payment_step_input() -> PaymentStepStateInput {
-    PaymentStepStateInput {
-        idempotency_key: PaymentIdempotencyKey::new(
+fn payment_step_input() -> EffectStepStateInput {
+    EffectStepStateInput {
+        family: PAYMENT_EFFECT_FAMILY,
+        idempotency_key: EffectIdempotencyKey::new(
             "mock",
             "merchant:paid-echo",
             "payment:paid-echo-001",
@@ -447,7 +562,7 @@ fn payment_step_input() -> PaymentStepStateInput {
 }
 
 fn supervisor_proof_for_receipt(
-    input: &PaymentStepStateInput,
+    input: &EffectStepStateInput,
     proof_ref: &str,
     receipt: &Receipt,
 ) -> PaymentSupervisorProof {

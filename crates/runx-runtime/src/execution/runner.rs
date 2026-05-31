@@ -18,10 +18,10 @@ use serde::{Deserialize, Serialize};
 use super::graph::load_graph;
 use crate::RuntimeError;
 use crate::adapter::{SkillAdapter, SkillOutput};
+use crate::effects::RuntimeEffectRegistry;
 use crate::host::{Host, NoopHost};
 use crate::journal::ExecutionJournal;
 use crate::lifecycle::LifecycleEvent;
-use crate::payment::supervisor::RuntimePaymentSupervisor;
 use crate::receipts::paths::{RUNX_CWD_ENV, RUNX_PROJECT_DIR_ENV, RUNX_RECEIPT_DIR_ENV};
 use crate::receipts::{
     RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64_ENV, RUNX_RECEIPT_SIGN_ISSUER_TYPE_ENV,
@@ -48,7 +48,7 @@ pub struct RuntimeOptions {
     pub created_at: String,
     pub env: BTreeMap<String, String>,
     pub receipt_signature: RuntimeReceiptSignatureConfig,
-    pub payment_supervisor: RuntimePaymentSupervisor,
+    pub effects: RuntimeEffectRegistry,
 }
 
 impl RuntimeOptions {
@@ -59,7 +59,7 @@ impl RuntimeOptions {
             created_at: crate::time::now_iso8601(),
             env,
             receipt_signature: RuntimeReceiptSignatureConfig::local_development(),
-            payment_supervisor: RuntimePaymentSupervisor::default(),
+            effects: RuntimeEffectRegistry::default(),
         }
     }
 
@@ -76,7 +76,7 @@ impl RuntimeOptions {
             created_at: crate::time::now_iso8601(),
             env,
             receipt_signature: receipt_services.signature_config().clone(),
-            payment_supervisor: RuntimePaymentSupervisor::default(),
+            effects: RuntimeEffectRegistry::default(),
         })
     }
 

@@ -25,6 +25,7 @@ pub mod config;
 pub mod credentials;
 pub mod dev;
 pub mod doctor;
+pub mod effects;
 pub mod error;
 pub mod execution;
 pub mod host;
@@ -88,6 +89,10 @@ pub use dev::{
     discover_fixture_paths, render_dev_result, run_dev_once, should_ignore_dev_watch_path,
 };
 pub use doctor::{DoctorOptions, default_doctor_options, run_doctor};
+pub use effects::{
+    EffectSettlementEvidence, EffectSettlementRequest, EffectSupervisor, EffectSupervisorError,
+    PAYMENT_EFFECT_FAMILY, RuntimeEffectRegistry,
+};
 pub use error::RuntimeError;
 pub use harness::{
     HarnessExpectedStatus, HarnessFixtureError, HarnessFixtureKind, HarnessReplayError,

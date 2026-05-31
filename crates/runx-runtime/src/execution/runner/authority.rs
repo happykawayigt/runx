@@ -18,17 +18,14 @@ use super::inputs::{
 };
 use crate::RuntimeError;
 use crate::adapter::SkillOutput;
-use crate::payment::packets::{PaymentRailProof, read_payment_rail_packet};
-use crate::payment::state::{
-    PaymentIdempotencyKey, PaymentRecoveryState, RailMutationStatus,
-    consumed_spend_capability_recorded, escalate_payment_rail_mutation,
-    lookup_payment_idempotency_entry, lookup_payment_rail_mutation,
-};
-use crate::payment::supervisor::{
-    PAYMENT_RAIL_SUPERVISOR_EVIDENCE_METADATA, PaymentSupervisorProof, PaymentSupervisorProofMatch,
-    PaymentSupervisorSettlementRequest, PaymentSupervisorVerificationInput,
-    RuntimePaymentSupervisor, payment_supervisor_evidence_metadata_value,
-    validate_payment_supervisor_proof, verify_payment_rail_supervisor_proof,
+use crate::effects::{
+    EffectIdempotencyKey, EffectMutationStatus, EffectRecoveryState, PAYMENT_EFFECT_FAMILY,
+    PAYMENT_RAIL_SUPERVISOR_EVIDENCE_METADATA, PaymentRailProof, PaymentSupervisorProof,
+    PaymentSupervisorProofMatch, PaymentSupervisorSettlementRequest,
+    PaymentSupervisorVerificationInput, RuntimeEffectRegistry, consumed_spend_capability_recorded,
+    effect_evidence_metadata_value, escalate_effect_mutation, lookup_effect_idempotency_entry,
+    lookup_effect_mutation, read_payment_rail_packet, validate_effect_supervisor_proof,
+    verify_effect_supervisor_proof,
 };
 use crate::reference_match::same_reference;
 
@@ -36,12 +33,12 @@ use crate::reference_match::same_reference;
 /// runtime-owned supervisor before the receipt-before-success gate verifies it.
 /// The skill supplies only the rail proof claim; settlement evidence must come
 /// from the configured supervisor.
-pub(super) fn attach_payment_supervisor_evidence_before_gate(
+pub(super) fn attach_effect_evidence_before_gate(
     step: &GraphStep,
     authority: Option<&StepAuthorityContext>,
     outputs: &JsonObject,
     output: &mut SkillOutput,
-    supervisor: &RuntimePaymentSupervisor,
+    effects: &RuntimeEffectRegistry,
 ) -> Result<(), RuntimeError> {
     let Some(authority) = authority else {
         return Ok(());
@@ -70,14 +67,16 @@ pub(super) fn attach_payment_supervisor_evidence_before_gate(
         .as_ref()
         .and_then(|result| result.status.as_deref());
     let request = supervisor_settlement_request(payment, claim, settlement_status);
-    let evidence = supervisor.settlement_evidence(request).map_err(|source| {
-        authority_denied(
-            step,
-            AuthorityVerb::Spend,
-            format!("supervisor-verified rail settlement proof is required: {source}"),
-        )
-    })?;
-    let value = payment_supervisor_evidence_metadata_value(&evidence).map_err(|source| {
+    let evidence = effects
+        .payment_rail_settlement_evidence(request)
+        .map_err(|source| {
+            authority_denied(
+                step,
+                AuthorityVerb::Spend,
+                format!("supervisor-verified rail settlement proof is required: {source}"),
+            )
+        })?;
+    let value = effect_evidence_metadata_value(&evidence).map_err(|source| {
         authority_denied(
             step,
             AuthorityVerb::Spend,
@@ -123,7 +122,7 @@ pub(super) fn enforce_step_authority_receipt_before_success(
         return Ok(None);
     };
     let act_id = format!("act_{}", step.id);
-    let proof = verify_payment_rail_supervisor_proof(PaymentSupervisorVerificationInput {
+    let proof = verify_effect_supervisor_proof(PaymentSupervisorVerificationInput {
         outputs,
         metadata: &output.metadata,
         receipt,
@@ -145,11 +144,11 @@ pub(super) fn enforce_step_authority_receipt_before_success(
     Ok(Some(proof))
 }
 
-pub(super) fn validate_replayed_payment_supervisor_proof(
+pub(super) fn validate_replayed_effect_supervisor_proof(
     step: &GraphStep,
     replay: &StepPaymentReplay,
 ) -> Result<(), RuntimeError> {
-    validate_payment_supervisor_proof(
+    validate_effect_supervisor_proof(
         &replay.supervisor_proof,
         PaymentSupervisorProofMatch {
             proof_ref: &replay.rail_proof_ref,
@@ -175,7 +174,7 @@ pub(super) fn validate_replayed_payment_supervisor_proof(
 
 fn validate_entry_matches_payment(
     step: &GraphStep,
-    entry: &crate::payment::state::PaymentIdempotencyEntry,
+    entry: &crate::effects::EffectIdempotencyEntry,
     payment: &StepPaymentAuthorityContext,
 ) -> Result<(), RuntimeError> {
     if entry.amount_minor != payment.amount_minor || entry.currency != payment.currency {
@@ -284,10 +283,15 @@ pub(super) fn sealed_payment_replay(
     let Some(payment) = payment_context(&input) else {
         return Ok(None);
     };
-    let Some(entry) = lookup_payment_idempotency_entry(env, graph_dir, &payment.idempotency_key)
-        .map_err(|source| {
-            RuntimeError::payment_state("reading payment state for replay lookup", source)
-        })?
+    let Some(entry) = lookup_effect_idempotency_entry(
+        env,
+        graph_dir,
+        PAYMENT_EFFECT_FAMILY,
+        &payment.idempotency_key,
+    )
+    .map_err(|source| {
+        RuntimeError::effect_state("reading effect state for replay lookup", source)
+    })?
     else {
         return Ok(None);
     };
@@ -342,15 +346,20 @@ pub(super) fn escalate_in_flight_payment_recovery(
     let Some(payment) = payment_context(&input) else {
         return Ok(());
     };
-    let Some(mutation) = lookup_payment_rail_mutation(env, graph_dir, &payment.idempotency_key)
-        .map_err(|source| {
-            RuntimeError::payment_state("reading payment state for rail recovery", source)
-        })?
+    let Some(mutation) = lookup_effect_mutation(
+        env,
+        graph_dir,
+        PAYMENT_EFFECT_FAMILY,
+        &payment.idempotency_key,
+    )
+    .map_err(|source| {
+        RuntimeError::effect_state("reading effect state for rail recovery", source)
+    })?
     else {
         return Ok(());
     };
-    if mutation.recovery_state != PaymentRecoveryState::InFlight
-        && mutation.status != RailMutationStatus::Partial
+    if mutation.recovery_state != EffectRecoveryState::InFlight
+        && mutation.status != EffectMutationStatus::Partial
     {
         return Ok(());
     }
@@ -392,9 +401,13 @@ pub(super) fn escalate_in_flight_payment_recovery(
         ));
     }
 
-    let _ = escalate_payment_rail_mutation(env, graph_dir, &payment.idempotency_key).map_err(
-        |source| RuntimeError::payment_state("escalating payment rail recovery", source),
-    )?;
+    let _ = escalate_effect_mutation(
+        env,
+        graph_dir,
+        PAYMENT_EFFECT_FAMILY,
+        &payment.idempotency_key,
+    )
+    .map_err(|source| RuntimeError::effect_state("escalating effect recovery", source))?;
     Err(authority_denied(
         step,
         AuthorityVerb::Spend,
@@ -414,11 +427,16 @@ fn consumed_spend_capability_refs_for_admission(
     let Some(spend_capability_ref) = input.spend_capability_ref.as_ref() else {
         return Ok(refs);
     };
-    if consumed_spend_capability_recorded(env, graph_dir, &spend_capability_ref.uri).map_err(
-        |source| RuntimeError::payment_state("reading payment state for admission", source),
-    )? && !refs
-        .iter()
-        .any(|reference| same_reference(reference, spend_capability_ref))
+    if consumed_spend_capability_recorded(
+        env,
+        graph_dir,
+        PAYMENT_EFFECT_FAMILY,
+        &spend_capability_ref.uri,
+    )
+    .map_err(|source| RuntimeError::effect_state("reading effect state for admission", source))?
+        && !refs
+            .iter()
+            .any(|reference| same_reference(reference, spend_capability_ref))
     {
         refs.push(spend_capability_ref.clone());
     }
@@ -430,7 +448,7 @@ fn payment_context(input: &OwnedStepAuthoritySubmission) -> Option<StepPaymentAu
     let idempotency_key = input.idempotency_key.as_ref()?;
     let spend_capability_ref = input.spend_capability_ref.as_ref()?;
     Some(StepPaymentAuthorityContext {
-        idempotency_key: PaymentIdempotencyKey::new(
+        idempotency_key: EffectIdempotencyKey::new(
             binding.rail.clone(),
             binding.counterparty.clone(),
             idempotency_key.clone(),
@@ -575,7 +593,7 @@ pub(super) struct StepAuthorityContext {
 
 #[derive(Clone, Debug)]
 pub(super) struct StepPaymentAuthorityContext {
-    pub(super) idempotency_key: PaymentIdempotencyKey,
+    pub(super) idempotency_key: EffectIdempotencyKey,
     pub(super) spend_capability_ref: runx_contracts::Reference,
     pub(super) rail: String,
     pub(super) counterparty: String,
@@ -589,7 +607,7 @@ pub(super) struct StepPaymentReplay {
     pub(super) receipt_created_at: String,
     pub(super) receipt_digest: String,
     pub(super) rail_proof_ref: String,
-    pub(super) idempotency_key: PaymentIdempotencyKey,
+    pub(super) idempotency_key: EffectIdempotencyKey,
     pub(super) spend_capability_ref: String,
     pub(super) rail: String,
     pub(super) counterparty: String,

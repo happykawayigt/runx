@@ -10,14 +10,18 @@ use runx_contracts::{
 };
 use runx_core::state_machine::GraphStatus;
 use runx_receipts::ReceiptTreeConfig;
-use runx_runtime::payment::state::{
-    FileBackedPaymentStateStore, PaymentRecoveryState, RUNX_PAYMENT_STATE_PATH_ENV,
-    RailMutationStatus,
+use runx_runtime::effects::PAYMENT_EFFECT_FAMILY;
+use runx_runtime::effects::state::{
+    EffectMutationStatus, EffectRecoveryState, FileBackedEffectStateStore,
+    RUNX_EFFECT_STATE_PATH_ENV,
+};
+use runx_runtime::effects::{
+    EffectSettlementEvidence, EffectSettlementRequest, EffectSupervisor, EffectSupervisorError,
+    RuntimeEffectRegistry,
 };
 use runx_runtime::payment::supervisor::{
-    PAYMENT_RAIL_SUPERVISOR_VERIFIER_ID, PaymentRailSupervisor, PaymentSupervisorError,
-    PaymentSupervisorSettlementEvidence, PaymentSupervisorSettlementRequest,
-    RuntimePaymentSupervisor,
+    PAYMENT_RAIL_SUPERVISOR_VERIFIER_ID, PaymentSupervisorError,
+    PaymentSupervisorSettlementEvidence,
 };
 use runx_runtime::{
     Host, InvocationStatus, Runtime, RuntimeError, RuntimeOptions, SkillAdapter, SkillInvocation,
@@ -37,7 +41,7 @@ fn approved_payment_approval_emits_approval_output_and_runs_fulfill()
     let fixture = GraphFixture::new()?;
     let runtime = Runtime::new(
         RecordingAdapter::default(),
-        runtime_options_with_payment_supervisor(vec![x402_approval_supervisor_evidence()]),
+        runtime_options_with_effects(vec![x402_approval_supervisor_evidence()]),
     );
     let mut host = ApprovalHost::approved(true);
 
@@ -112,7 +116,7 @@ fn payment_approval_step_is_recorded_with_receipt() -> Result<(), Box<dyn std::e
     let fixture = GraphFixture::new()?;
     let runtime = Runtime::new(
         RecordingAdapter::default(),
-        runtime_options_with_payment_supervisor(vec![x402_approval_supervisor_evidence()]),
+        runtime_options_with_effects(vec![x402_approval_supervisor_evidence()]),
     );
     let mut host = ApprovalHost::approved(true);
 
@@ -141,7 +145,7 @@ fn payment_graph_seals_with_strict_parent_child_receipt_proof()
     let fixture = GraphFixture::new()?;
     let runtime = Runtime::new(
         RecordingAdapter::default(),
-        runtime_options_with_payment_supervisor(vec![x402_approval_supervisor_evidence()]),
+        runtime_options_with_effects(vec![x402_approval_supervisor_evidence()]),
     );
     let mut host = ApprovalHost::approved(true);
 
@@ -366,7 +370,7 @@ fn x402_paid_echo_returns_echo_only_after_sealed_payment_proof()
     let invocations = adapter.invocations();
     let runtime = Runtime::new(
         adapter,
-        runtime_options_with_payment_supervisor(vec![paid_echo_supervisor_evidence(
+        runtime_options_with_effects(vec![paid_echo_supervisor_evidence(
             PAID_ECHO_IDEMPOTENCY_KEY,
         )]),
     );
@@ -448,11 +452,11 @@ fn x402_paid_echo_replays_sealed_idempotency_without_second_rail()
 -> Result<(), Box<dyn std::error::Error>> {
     let fixture = PaidEchoFixture::new()?;
     let state_dir = tempfile::tempdir()?;
-    let payment_state_path = state_dir.path().join("payment-state.json");
+    let effect_state_path = state_dir.path().join("effect-state.json");
     let mut env = BTreeMap::new();
     env.insert(
-        RUNX_PAYMENT_STATE_PATH_ENV.to_owned(),
-        payment_state_path.to_string_lossy().into_owned(),
+        RUNX_EFFECT_STATE_PATH_ENV.to_owned(),
+        effect_state_path.to_string_lossy().into_owned(),
     );
     let adapter = PaidEchoAdapter::new(PaidEchoRailProof::Present);
     let invocations = adapter.invocations();
@@ -460,7 +464,7 @@ fn x402_paid_echo_replays_sealed_idempotency_without_second_rail()
         adapter,
         RuntimeOptions {
             env,
-            payment_supervisor: payment_supervisor(vec![paid_echo_supervisor_evidence(
+            effects: runtime_effects(vec![paid_echo_supervisor_evidence(
                 PAID_ECHO_IDEMPOTENCY_KEY,
             )]),
             ..RuntimeOptions::local_development()
@@ -513,10 +517,10 @@ fn x402_paid_echo_replays_sealed_idempotency_without_second_rail()
         echo_count, 2,
         "replay must still forward the scoped credential/proof to the paid tool"
     );
-    let state_text = std::fs::read_to_string(&payment_state_path)?;
+    let state_text = std::fs::read_to_string(&effect_state_path)?;
     assert!(
         !state_text.contains(PAID_ECHO_RAIL_SESSION_MATERIAL_REF),
-        "payment replay state must not persist rail session material"
+        "effect replay state must not persist rail session material"
     );
     Ok(())
 }
@@ -526,11 +530,11 @@ fn x402_paid_echo_replay_with_mismatched_amount_denies_before_second_rail()
 -> Result<(), Box<dyn std::error::Error>> {
     let fixture = PaidEchoFixture::new()?;
     let state_dir = tempfile::tempdir()?;
-    let payment_state_path = state_dir.path().join("payment-state.json");
+    let effect_state_path = state_dir.path().join("effect-state.json");
     let mut env = BTreeMap::new();
     env.insert(
-        RUNX_PAYMENT_STATE_PATH_ENV.to_owned(),
-        payment_state_path.to_string_lossy().into_owned(),
+        RUNX_EFFECT_STATE_PATH_ENV.to_owned(),
+        effect_state_path.to_string_lossy().into_owned(),
     );
     let adapter = PaidEchoAdapter::with_idempotency_keys_and_amounts(
         PaidEchoRailProof::Present,
@@ -542,7 +546,7 @@ fn x402_paid_echo_replay_with_mismatched_amount_denies_before_second_rail()
         adapter,
         RuntimeOptions {
             env,
-            payment_supervisor: payment_supervisor(vec![paid_echo_supervisor_evidence(
+            effects: runtime_effects(vec![paid_echo_supervisor_evidence(
                 PAID_ECHO_IDEMPOTENCY_KEY,
             )]),
             ..RuntimeOptions::local_development()
@@ -597,11 +601,11 @@ fn x402_paid_echo_reused_spend_capability_with_new_idempotency_denied_from_persi
 -> Result<(), Box<dyn std::error::Error>> {
     let fixture = PaidEchoFixture::new()?;
     let state_dir = tempfile::tempdir()?;
-    let payment_state_path = state_dir.path().join("payment-state.json");
+    let effect_state_path = state_dir.path().join("effect-state.json");
     let mut env = BTreeMap::new();
     env.insert(
-        RUNX_PAYMENT_STATE_PATH_ENV.to_owned(),
-        payment_state_path.to_string_lossy().into_owned(),
+        RUNX_EFFECT_STATE_PATH_ENV.to_owned(),
+        effect_state_path.to_string_lossy().into_owned(),
     );
     let adapter = PaidEchoAdapter::with_idempotency_keys(
         PaidEchoRailProof::Present,
@@ -612,7 +616,7 @@ fn x402_paid_echo_reused_spend_capability_with_new_idempotency_denied_from_persi
         adapter,
         RuntimeOptions {
             env,
-            payment_supervisor: payment_supervisor(vec![paid_echo_supervisor_evidence(
+            effects: runtime_effects(vec![paid_echo_supervisor_evidence(
                 PAID_ECHO_IDEMPOTENCY_KEY,
             )]),
             ..RuntimeOptions::local_development()
@@ -667,11 +671,11 @@ fn x402_paid_echo_partial_mutation_escalates_without_second_rail()
 -> Result<(), Box<dyn std::error::Error>> {
     let fixture = PaidEchoFixture::new()?;
     let state_dir = tempfile::tempdir()?;
-    let payment_state_path = state_dir.path().join("payment-state.json");
+    let effect_state_path = state_dir.path().join("effect-state.json");
     let mut env = BTreeMap::new();
     env.insert(
-        RUNX_PAYMENT_STATE_PATH_ENV.to_owned(),
-        payment_state_path.to_string_lossy().into_owned(),
+        RUNX_EFFECT_STATE_PATH_ENV.to_owned(),
+        effect_state_path.to_string_lossy().into_owned(),
     );
     let adapter = PaidEchoAdapter::new(PaidEchoRailProof::Partial);
     let invocations = adapter.invocations();
@@ -744,16 +748,19 @@ fn x402_paid_echo_partial_mutation_escalates_without_second_rail()
         fulfill_count, 1,
         "partial recovery escalation must not issue a second rail mutation"
     );
-    let store = FileBackedPaymentStateStore::open(&payment_state_path)?;
+    let store = FileBackedEffectStateStore::open(&effect_state_path)?;
     let mutation = store
-        .lookup_rail_mutation(&runx_runtime::payment::state::PaymentIdempotencyKey::new(
-            "mock",
-            "merchant:paid-echo",
-            PAID_ECHO_IDEMPOTENCY_KEY,
-        ))
+        .lookup_mutation(
+            PAYMENT_EFFECT_FAMILY,
+            &runx_runtime::effects::state::EffectIdempotencyKey::new(
+                "mock",
+                "merchant:paid-echo",
+                PAID_ECHO_IDEMPOTENCY_KEY,
+            ),
+        )
         .ok_or("rail mutation should be persisted")?;
-    assert_eq!(mutation.status, RailMutationStatus::Escalated);
-    assert_eq!(mutation.recovery_state, PaymentRecoveryState::Escalated);
+    assert_eq!(mutation.status, EffectMutationStatus::Escalated);
+    assert_eq!(mutation.recovery_state, EffectRecoveryState::Escalated);
     Ok(())
 }
 
@@ -891,27 +898,25 @@ fn assert_payment_admission_denied_before_adapter(
     Ok(())
 }
 
-fn runtime_options_with_payment_supervisor(
+fn runtime_options_with_effects(
     evidence: Vec<PaymentSupervisorSettlementEvidence>,
 ) -> RuntimeOptions {
     RuntimeOptions {
-        payment_supervisor: payment_supervisor(evidence),
+        effects: runtime_effects(evidence),
         ..RuntimeOptions::local_development()
     }
 }
 
-fn payment_supervisor(
-    evidence: Vec<PaymentSupervisorSettlementEvidence>,
-) -> RuntimePaymentSupervisor {
-    RuntimePaymentSupervisor::from_supervisor(ExpectedPaymentSupervisor::new(evidence))
+fn runtime_effects(evidence: Vec<PaymentSupervisorSettlementEvidence>) -> RuntimeEffectRegistry {
+    RuntimeEffectRegistry::with_payment_effect(ExpectedEffectSupervisor::new(evidence))
 }
 
 #[derive(Clone, Debug)]
-struct ExpectedPaymentSupervisor {
+struct ExpectedEffectSupervisor {
     evidence_by_proof_ref: BTreeMap<String, PaymentSupervisorSettlementEvidence>,
 }
 
-impl ExpectedPaymentSupervisor {
+impl ExpectedEffectSupervisor {
     fn new(evidence: Vec<PaymentSupervisorSettlementEvidence>) -> Self {
         Self {
             evidence_by_proof_ref: evidence
@@ -922,11 +927,12 @@ impl ExpectedPaymentSupervisor {
     }
 }
 
-impl PaymentRailSupervisor for ExpectedPaymentSupervisor {
+impl EffectSupervisor for ExpectedEffectSupervisor {
     fn settlement_evidence(
         &self,
-        request: PaymentSupervisorSettlementRequest<'_>,
-    ) -> Result<PaymentSupervisorSettlementEvidence, PaymentSupervisorError> {
+        request: EffectSettlementRequest<'_>,
+    ) -> Result<EffectSettlementEvidence, EffectSupervisorError> {
+        let request = request.payment_rail()?;
         let evidence = self
             .evidence_by_proof_ref
             .get(request.proof_ref)
@@ -946,7 +952,7 @@ impl PaymentRailSupervisor for ExpectedPaymentSupervisor {
             request.idempotency_key,
             &evidence.idempotency_key,
         )?;
-        Ok(evidence)
+        Ok(EffectSettlementEvidence::from_payment_rail(evidence))
     }
 }
 

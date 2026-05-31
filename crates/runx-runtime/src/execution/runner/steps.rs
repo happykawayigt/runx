@@ -17,10 +17,10 @@ use runx_parser::{GraphStep, SkillSource, SourceKind};
 
 use super::super::graph::{LoadedStepSkill, load_step_skill};
 use super::authority::{
-    StepAuthorityContext, StepPaymentReplay, attach_payment_supervisor_evidence_before_gate,
-    authority_denied, enforce_step_authority_admission,
-    enforce_step_authority_receipt_before_success, escalate_in_flight_payment_recovery,
-    sealed_payment_replay, validate_replayed_payment_supervisor_proof,
+    StepAuthorityContext, StepPaymentReplay, attach_effect_evidence_before_gate, authority_denied,
+    enforce_step_authority_admission, enforce_step_authority_receipt_before_success,
+    escalate_in_flight_payment_recovery, sealed_payment_replay,
+    validate_replayed_effect_supervisor_proof,
 };
 use super::host_resolution::resolve_step_approval;
 use super::inputs::{optional_input_string, required_input_string, string_value, string_value_ref};
@@ -33,12 +33,12 @@ use crate::agent_invocation::{
     AgentActInvocationSourceType, agent_act_invocation_id, agent_act_resolution_request,
 };
 use crate::approval::ApprovalResolution;
+use crate::effects::{
+    EffectStepStateInput, PAYMENT_EFFECT_FAMILY, PaymentSupervisorProof,
+    insert_effect_supervisor_proof_metadata, persist_effect_step_state,
+};
 use crate::execution::output_projection::{StepOutputProjection, project_step_output};
 use crate::host::Host;
-use crate::payment::state::{PaymentStepStateInput, persist_payment_step_state};
-use crate::payment::supervisor::{
-    PaymentSupervisorProof, insert_payment_supervisor_proof_metadata,
-};
 use crate::receipts::{
     StepReceiptWithDisposition, step_receipt_with_disposition_projection_and_policy,
     step_receipt_with_projection_and_signature_policy,
@@ -315,12 +315,12 @@ where
     let mut output = runtime.adapter.invoke(invocation)?;
     route_external_adapter_host_resolution(step, host, &mut output)?;
     let projection = step_output_projection(step, &output)?;
-    attach_payment_supervisor_evidence_before_gate(
+    attach_effect_evidence_before_gate(
         step,
         authority,
         &projection.claim,
         &mut output,
-        &runtime.options.payment_supervisor,
+        &runtime.options.effects,
     )?;
     Ok(RegularSkillStepOutput { output, projection })
 }
@@ -352,8 +352,8 @@ where
         &projection.claim,
         &receipt,
     )?;
-    record_payment_supervisor_proof_metadata(context.step, &mut output, supervisor_proof.as_ref())?;
-    persist_payment_state_for_step(
+    record_effect_supervisor_proof_metadata(context.step, &mut output, supervisor_proof.as_ref())?;
+    persist_effect_state_for_step(
         context.runtime,
         context.graph_dir,
         context.step,
@@ -375,7 +375,7 @@ where
     ))
 }
 
-fn record_payment_supervisor_proof_metadata(
+fn record_effect_supervisor_proof_metadata(
     step: &GraphStep,
     output: &mut SkillOutput,
     supervisor_proof: Option<&PaymentSupervisorProof>,
@@ -383,7 +383,7 @@ fn record_payment_supervisor_proof_metadata(
     let Some(proof) = supervisor_proof else {
         return Ok(());
     };
-    insert_payment_supervisor_proof_metadata(&mut output.metadata, proof).map_err(|source| {
+    insert_effect_supervisor_proof_metadata(&mut output.metadata, proof).map_err(|source| {
         authority_denied(
             step,
             AuthorityVerb::Spend,
@@ -476,7 +476,7 @@ fn host_resolution_event_data(step: &GraphStep, payload: JsonValue) -> JsonObjec
     data
 }
 
-fn persist_payment_state_for_step<A>(
+fn persist_effect_state_for_step<A>(
     runtime: &Runtime<A>,
     graph_dir: &Path,
     step: &GraphStep,
@@ -491,10 +491,11 @@ where
     let Some(payment) = authority.and_then(|authority| authority.payment.as_ref()) else {
         return Ok(());
     };
-    persist_payment_step_state(
+    persist_effect_step_state(
         &runtime.options.env,
         graph_dir,
-        &PaymentStepStateInput {
+        &EffectStepStateInput {
+            family: PAYMENT_EFFECT_FAMILY,
             idempotency_key: payment.idempotency_key.clone(),
             spend_capability_ref: payment.spend_capability_ref.uri.clone().into_string(),
             rail: payment.rail.clone(),
@@ -507,7 +508,7 @@ where
         receipt,
         supervisor_proof,
     )
-    .map_err(|source| RuntimeError::payment_state("persisting payment step state", source))
+    .map_err(|source| RuntimeError::effect_state("persisting effect step state", source))
 }
 
 // rust-style-allow: long-function - replayed payment step reconstruction is one linear recovery
@@ -531,7 +532,7 @@ fn run_replayed_payment_step(
             "sealed payment replay requires a successful stored rail output".to_owned(),
         ));
     }
-    insert_payment_supervisor_proof_metadata(&mut output.metadata, &replay.supervisor_proof)
+    insert_effect_supervisor_proof_metadata(&mut output.metadata, &replay.supervisor_proof)
         .map_err(|source| {
             authority_denied(
                 step,
@@ -579,7 +580,7 @@ fn run_replayed_payment_step(
             ),
         ));
     }
-    validate_replayed_payment_supervisor_proof(step, &replay)?;
+    validate_replayed_effect_supervisor_proof(step, &replay)?;
     let admission_witness = StepAdmissionWitness::local_runtime(&step.id, &replay.receipt_ref);
     Ok(StepRun {
         step_id: step.id.clone(),

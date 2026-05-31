@@ -1,10 +1,6 @@
-// rust-style-allow: large-file because the payment rail supervisor keeps the
-// settlement evidence/proof types, claim validation, runtime supervisor
-// boundary, and receipt binding in one trusted boundary until the payment
-// execution modules are split.
-use std::fmt;
-use std::sync::Arc;
-
+// rust-style-allow: large-file because payment rail proof schemas, claim
+// validation, evidence metadata, and receipt binding share one audited payment
+// trust boundary.
 use runx_contracts::{
     JsonObject, JsonValue, ProofKind, Receipt, Reference, ReferenceType, sha256_prefixed,
 };
@@ -16,69 +12,6 @@ use crate::payment::packets::{PaymentPacketError, PaymentRailResult, read_paymen
 pub const PAYMENT_RAIL_SUPERVISOR_EVIDENCE_METADATA: &str = "payment_rail_supervisor_evidence";
 pub const PAYMENT_RAIL_SUPERVISOR_PROOF_METADATA: &str = "payment_rail_supervisor_proof";
 pub const PAYMENT_RAIL_SUPERVISOR_VERIFIER_ID: &str = "runx.payment_rail_supervisor.local.v1";
-
-pub trait PaymentRailSupervisor: Send + Sync {
-    fn settlement_evidence(
-        &self,
-        request: PaymentSupervisorSettlementRequest<'_>,
-    ) -> Result<PaymentSupervisorSettlementEvidence, PaymentSupervisorError>;
-}
-
-#[derive(Clone)]
-pub struct RuntimePaymentSupervisor {
-    inner: Arc<dyn PaymentRailSupervisor>,
-}
-
-impl RuntimePaymentSupervisor {
-    #[must_use]
-    pub fn rejecting() -> Self {
-        Self::from_supervisor(RejectingPaymentRailSupervisor)
-    }
-
-    #[must_use]
-    pub fn from_supervisor<T>(supervisor: T) -> Self
-    where
-        T: PaymentRailSupervisor + 'static,
-    {
-        Self {
-            inner: Arc::new(supervisor),
-        }
-    }
-
-    pub fn settlement_evidence(
-        &self,
-        request: PaymentSupervisorSettlementRequest<'_>,
-    ) -> Result<PaymentSupervisorSettlementEvidence, PaymentSupervisorError> {
-        self.inner.settlement_evidence(request)
-    }
-}
-
-impl Default for RuntimePaymentSupervisor {
-    fn default() -> Self {
-        Self::rejecting()
-    }
-}
-
-impl fmt::Debug for RuntimePaymentSupervisor {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("RuntimePaymentSupervisor")
-            .field("configured", &true)
-            .finish_non_exhaustive()
-    }
-}
-
-#[derive(Debug)]
-struct RejectingPaymentRailSupervisor;
-
-impl PaymentRailSupervisor for RejectingPaymentRailSupervisor {
-    fn settlement_evidence(
-        &self,
-        _request: PaymentSupervisorSettlementRequest<'_>,
-    ) -> Result<PaymentSupervisorSettlementEvidence, PaymentSupervisorError> {
-        Err(PaymentSupervisorError::SupervisorUnavailable)
-    }
-}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

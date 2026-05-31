@@ -9,10 +9,13 @@ use runx_contracts::{
     ResolutionResponseActor,
 };
 use runx_core::state_machine::GraphStatus;
+use runx_runtime::effects::{
+    EffectSettlementEvidence, EffectSettlementRequest, EffectSupervisor, EffectSupervisorError,
+    RuntimeEffectRegistry,
+};
 use runx_runtime::payment::supervisor::{
-    PAYMENT_RAIL_SUPERVISOR_VERIFIER_ID, PaymentRailSupervisor, PaymentSupervisorError,
-    PaymentSupervisorSettlementEvidence, PaymentSupervisorSettlementRequest,
-    RuntimePaymentSupervisor,
+    PAYMENT_RAIL_SUPERVISOR_VERIFIER_ID, PaymentSupervisorError,
+    PaymentSupervisorSettlementEvidence,
 };
 use runx_runtime::{
     Host, InvocationStatus, Runtime, RuntimeError, RuntimeOptions, SkillAdapter, SkillInvocation,
@@ -34,7 +37,7 @@ fn stripe_spt_payment_seals_happy_path_with_scoped_proof() -> Result<(), Box<dyn
     let invocations = adapter.invocations();
     let runtime = Runtime::new(
         adapter,
-        runtime_options_with_payment_supervisor(vec![stripe_spt_supervisor_evidence()]),
+        runtime_options_with_effects(vec![stripe_spt_supervisor_evidence()]),
     );
     let mut host = ApprovalHost::approved(true);
 
@@ -187,23 +190,23 @@ enum StripeSptScenario {
     Timeout,
 }
 
-fn runtime_options_with_payment_supervisor(
+fn runtime_options_with_effects(
     evidence: Vec<PaymentSupervisorSettlementEvidence>,
 ) -> RuntimeOptions {
     RuntimeOptions {
-        payment_supervisor: RuntimePaymentSupervisor::from_supervisor(
-            ExpectedPaymentSupervisor::new(evidence),
-        ),
+        effects: RuntimeEffectRegistry::with_payment_effect(ExpectedEffectSupervisor::new(
+            evidence,
+        )),
         ..RuntimeOptions::local_development()
     }
 }
 
 #[derive(Clone, Debug)]
-struct ExpectedPaymentSupervisor {
+struct ExpectedEffectSupervisor {
     evidence_by_proof_ref: BTreeMap<String, PaymentSupervisorSettlementEvidence>,
 }
 
-impl ExpectedPaymentSupervisor {
+impl ExpectedEffectSupervisor {
     fn new(evidence: Vec<PaymentSupervisorSettlementEvidence>) -> Self {
         Self {
             evidence_by_proof_ref: evidence
@@ -214,11 +217,12 @@ impl ExpectedPaymentSupervisor {
     }
 }
 
-impl PaymentRailSupervisor for ExpectedPaymentSupervisor {
+impl EffectSupervisor for ExpectedEffectSupervisor {
     fn settlement_evidence(
         &self,
-        request: PaymentSupervisorSettlementRequest<'_>,
-    ) -> Result<PaymentSupervisorSettlementEvidence, PaymentSupervisorError> {
+        request: EffectSettlementRequest<'_>,
+    ) -> Result<EffectSettlementEvidence, EffectSupervisorError> {
+        let request = request.payment_rail()?;
         let evidence = self
             .evidence_by_proof_ref
             .get(request.proof_ref)
@@ -238,7 +242,7 @@ impl PaymentRailSupervisor for ExpectedPaymentSupervisor {
             request.idempotency_key,
             &evidence.idempotency_key,
         )?;
-        Ok(evidence)
+        Ok(EffectSettlementEvidence::from_payment_rail(evidence))
     }
 }
 

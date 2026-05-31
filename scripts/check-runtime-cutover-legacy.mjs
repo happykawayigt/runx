@@ -122,6 +122,7 @@ function runCutoverCheck() {
   checkWorkspaceFiles(inventory);
   checkSourceImports(inventory);
   checkRuntimeCompatModules();
+  checkEffectKernelPhase2NoDualPath();
   if (finalMode) {
     checkFinalPackageDirectories();
   }
@@ -233,6 +234,31 @@ function checkRuntimeCompatModules() {
     }
     if (/\b(?:LegacyExecutor|CompatExecutor)\b/u.test(source)) {
       findings.push(`${rel} declares legacy executor compatibility vocabulary`);
+    }
+  }
+}
+
+function checkEffectKernelPhase2NoDualPath() {
+  const runnerFiles = sourceFiles(["crates/runx-runtime/src/execution/runner"], [".rs"]);
+  const runnerRoot = path.join(workspaceRoot, "crates/runx-runtime/src/execution/runner.rs");
+  if (existsSync(runnerRoot)) {
+    runnerFiles.push(runnerRoot);
+  }
+  const retiredIdentifiers = /\b(?:PaymentRailSupervisor|RuntimePaymentSupervisor|FileBackedPaymentStateStore|PaymentStateError|PaymentStepStateInput|attach_payment_supervisor_evidence_before_gate|record_payment_supervisor_proof_metadata|persist_payment_step_state)\b/u;
+  const retiredSnake = /\bpayment_supervisor\b/u;
+  const retiredStateImport = /\b(?:crate|runx_runtime)::payment::state\b/u;
+  const paymentModuleImport = /\b(?:use\s+)?crate::payment::/u;
+  for (const filePath of runnerFiles) {
+    const rel = relative(filePath);
+    const source = readFileSync(filePath, "utf8");
+    if (retiredIdentifiers.test(source) || retiredSnake.test(source)) {
+      findings.push(`${rel} still references retired payment supervisor orchestration symbols`);
+    }
+    if (retiredStateImport.test(source)) {
+      findings.push(`${rel} imports retired payment state instead of effect state`);
+    }
+    if (paymentModuleImport.test(source)) {
+      findings.push(`${rel} imports payment modules directly instead of the effect registry boundary`);
     }
   }
 }

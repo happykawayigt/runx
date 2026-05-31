@@ -14,11 +14,14 @@ use runx_contracts::{JsonObject, JsonValue, Receipt};
 use runx_receipts::{
     canonical_receipt_body_digest, canonical_receipt_digest, canonical_receipt_json,
 };
+use runx_runtime::effects::{
+    EffectSettlementEvidence, EffectSettlementRequest, EffectSupervisor, EffectSupervisorError,
+    RuntimeEffectRegistry,
+};
 use runx_runtime::harness::{HarnessFixtureCase, list_cases};
 use runx_runtime::payment::supervisor::{
-    PAYMENT_RAIL_SUPERVISOR_VERIFIER_ID, PaymentRailSupervisor, PaymentSupervisorError,
-    PaymentSupervisorSettlementEvidence, PaymentSupervisorSettlementRequest,
-    RuntimePaymentSupervisor,
+    PAYMENT_RAIL_SUPERVISOR_VERIFIER_ID, PaymentSupervisorError,
+    PaymentSupervisorSettlementEvidence,
 };
 use runx_runtime::{
     HarnessReplayOutput, InvocationStatus, RuntimeOptions, SkillAdapter, SkillInvocation,
@@ -355,38 +358,42 @@ impl Error for MessageError {}
 fn fixture_runtime_options() -> RuntimeOptions {
     RuntimeOptions {
         created_at: "2026-05-18T00:00:00Z".to_owned(),
-        payment_supervisor: RuntimePaymentSupervisor::from_supervisor(FixturePaymentSupervisor),
+        effects: RuntimeEffectRegistry::with_payment_effect(FixtureEffectSupervisor),
         ..RuntimeOptions::local_development()
     }
 }
 
 #[derive(Clone, Debug)]
-struct FixturePaymentSupervisor;
+struct FixtureEffectSupervisor;
 
-impl PaymentRailSupervisor for FixturePaymentSupervisor {
+impl EffectSupervisor for FixtureEffectSupervisor {
     fn settlement_evidence(
         &self,
-        request: PaymentSupervisorSettlementRequest<'_>,
-    ) -> Result<PaymentSupervisorSettlementEvidence, PaymentSupervisorError> {
+        request: EffectSettlementRequest<'_>,
+    ) -> Result<EffectSettlementEvidence, EffectSupervisorError> {
+        let request = request.payment_rail()?;
         if request.proof_ref != "receipt-proof:mock:x402-pay-approval-001" {
             return Err(PaymentSupervisorError::InvalidSupervisorEvidence {
                 message: format!(
                     "fixture supervisor has no settlement for {}",
                     request.proof_ref
                 ),
-            });
+            }
+            .into());
         }
-        Ok(PaymentSupervisorSettlementEvidence {
-            verifier_id: PAYMENT_RAIL_SUPERVISOR_VERIFIER_ID.to_owned(),
-            proof_ref: request.proof_ref.to_owned(),
-            rail: request.rail.to_owned(),
-            counterparty: "merchant-123".to_owned(),
-            amount_minor: request.amount_minor,
-            currency: request.currency.to_owned(),
-            idempotency_key: "payment:x402-pay-approval-001".to_owned(),
-            settlement_status: Some("fulfilled".to_owned()),
-            provider_event_ref: Some("fixture:event:x402-pay-approval-001".to_owned()),
-        })
+        Ok(EffectSettlementEvidence::from_payment_rail(
+            PaymentSupervisorSettlementEvidence {
+                verifier_id: PAYMENT_RAIL_SUPERVISOR_VERIFIER_ID.to_owned(),
+                proof_ref: request.proof_ref.to_owned(),
+                rail: request.rail.to_owned(),
+                counterparty: "merchant-123".to_owned(),
+                amount_minor: request.amount_minor,
+                currency: request.currency.to_owned(),
+                idempotency_key: "payment:x402-pay-approval-001".to_owned(),
+                settlement_status: Some("fulfilled".to_owned()),
+                provider_event_ref: Some("fixture:event:x402-pay-approval-001".to_owned()),
+            },
+        ))
     }
 }
 
