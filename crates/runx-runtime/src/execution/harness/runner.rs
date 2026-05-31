@@ -53,7 +53,7 @@ use crate::payment::ledger::{
 #[cfg(feature = "cli-tool")]
 use crate::payment::supervisor::{
     PAYMENT_RAIL_SUPERVISOR_VERIFIER_ID, PaymentSupervisorError,
-    PaymentSupervisorSettlementEvidence,
+    PaymentSupervisorSettlementEvidence, payment_supervisor_evidence_to_effect_record,
 };
 #[cfg(feature = "cli-tool")]
 use crate::receipts::RuntimeReceiptSignaturePolicy;
@@ -158,8 +158,8 @@ impl EffectSupervisor for FixtureEffectSupervisor {
         match request.proof_ref {
             "receipt-proof:mock:x402-pay-approval-001"
             | "receipt-proof:mock:paid-echo-001"
-            | "receipt-proof:stripe-spt:demo-search-001" => Ok(
-                EffectSettlementEvidence::from_payment_rail(PaymentSupervisorSettlementEvidence {
+            | "receipt-proof:stripe-spt:demo-search-001" => Ok(EffectSettlementEvidence::generic(
+                payment_supervisor_evidence_to_effect_record(PaymentSupervisorSettlementEvidence {
                     verifier_id: PAYMENT_RAIL_SUPERVISOR_VERIFIER_ID.to_owned(),
                     proof_ref: request.proof_ref.to_owned(),
                     rail: request.rail.to_owned(),
@@ -170,7 +170,7 @@ impl EffectSupervisor for FixtureEffectSupervisor {
                     settlement_status: Some("fulfilled".to_owned()),
                     provider_event_ref: Some(format!("fixture:event:{}", request.proof_ref)),
                 }),
-            ),
+            )),
             _ => Err(PaymentSupervisorError::InvalidSupervisorEvidence {
                 message: format!(
                     "fixture supervisor has no settlement for {}",

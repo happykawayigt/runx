@@ -21,7 +21,7 @@ use runx_runtime::effects::{
 };
 use runx_runtime::payment::supervisor::{
     PAYMENT_RAIL_SUPERVISOR_VERIFIER_ID, PaymentSupervisorError,
-    PaymentSupervisorSettlementEvidence,
+    PaymentSupervisorSettlementEvidence, payment_supervisor_evidence_to_effect_record,
 };
 use runx_runtime::{
     Host, InvocationStatus, Runtime, RuntimeError, RuntimeOptions, SkillAdapter, SkillInvocation,
@@ -952,7 +952,9 @@ impl EffectSupervisor for ExpectedEffectSupervisor {
             request.idempotency_key,
             &evidence.idempotency_key,
         )?;
-        Ok(EffectSettlementEvidence::from_payment_rail(evidence))
+        Ok(EffectSettlementEvidence::generic(
+            payment_supervisor_evidence_to_effect_record(evidence),
+        ))
     }
 }
 

@@ -21,7 +21,7 @@ use runx_runtime::effects::{
 use runx_runtime::harness::{HarnessFixtureCase, list_cases};
 use runx_runtime::payment::supervisor::{
     PAYMENT_RAIL_SUPERVISOR_VERIFIER_ID, PaymentSupervisorError,
-    PaymentSupervisorSettlementEvidence,
+    PaymentSupervisorSettlementEvidence, payment_supervisor_evidence_to_effect_record,
 };
 use runx_runtime::{
     HarnessReplayOutput, InvocationStatus, RuntimeOptions, SkillAdapter, SkillInvocation,
@@ -381,8 +381,8 @@ impl EffectSupervisor for FixtureEffectSupervisor {
             }
             .into());
         }
-        Ok(EffectSettlementEvidence::from_payment_rail(
-            PaymentSupervisorSettlementEvidence {
+        Ok(EffectSettlementEvidence::generic(
+            payment_supervisor_evidence_to_effect_record(PaymentSupervisorSettlementEvidence {
                 verifier_id: PAYMENT_RAIL_SUPERVISOR_VERIFIER_ID.to_owned(),
                 proof_ref: request.proof_ref.to_owned(),
                 rail: request.rail.to_owned(),
@@ -392,7 +392,7 @@ impl EffectSupervisor for FixtureEffectSupervisor {
                 idempotency_key: "payment:x402-pay-approval-001".to_owned(),
                 settlement_status: Some("fulfilled".to_owned()),
                 provider_event_ref: Some("fixture:event:x402-pay-approval-001".to_owned()),
-            },
+            }),
         ))
     }
 }

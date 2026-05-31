@@ -9,6 +9,7 @@ use runx_runtime::effects::{
 use runx_runtime::payment::supervisor::{
     PAYMENT_RAIL_SUPERVISOR_VERIFIER_ID, PaymentSupervisorError,
     PaymentSupervisorSettlementEvidence, PaymentSupervisorSettlementRequest,
+    payment_supervisor_evidence_to_effect_record,
 };
 use runx_runtime::{
     HarnessExpectedStatus, HarnessFixtureError, HarnessFixtureKind, InvocationStatus,
@@ -423,15 +424,19 @@ impl EffectSupervisor for FixtureEffectSupervisor {
     ) -> Result<EffectSettlementEvidence, EffectSupervisorError> {
         let request = request.payment_rail()?;
         match request.proof_ref {
-            "receipt-proof:mock:x402-pay-approval-001" => Ok(
-                EffectSettlementEvidence::from_payment_rail(payment_supervisor_evidence(
+            "receipt-proof:mock:x402-pay-approval-001" => Ok(EffectSettlementEvidence::generic(
+                payment_supervisor_evidence_to_effect_record(payment_supervisor_evidence(
                     request,
                     "merchant-123",
                     "payment:x402-pay-approval-001",
                 )),
-            ),
-            "receipt-proof:mock:paid-echo-001" => Ok(EffectSettlementEvidence::from_payment_rail(
-                payment_supervisor_evidence(request, "merchant:paid-echo", "payment:paid-echo-001"),
+            )),
+            "receipt-proof:mock:paid-echo-001" => Ok(EffectSettlementEvidence::generic(
+                payment_supervisor_evidence_to_effect_record(payment_supervisor_evidence(
+                    request,
+                    "merchant:paid-echo",
+                    "payment:paid-echo-001",
+                )),
             )),
             _ => Err(PaymentSupervisorError::InvalidSupervisorEvidence {
                 message: format!(

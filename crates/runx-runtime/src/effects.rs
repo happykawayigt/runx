@@ -3,8 +3,8 @@ use std::fmt;
 use std::sync::Arc;
 
 use runx_contracts::{
-    EffectSettlementPhase, EffectSettlementReceipt, EffectSettlementReceiptSchema, JsonObject,
-    ProofKind, Reference, ReferenceType,
+    EffectSettlementPhase, EffectSettlementReceipt, EffectSettlementReceiptSchema, JsonNumber,
+    JsonObject, JsonValue, ProofKind, Reference, ReferenceType,
 };
 use thiserror::Error;
 
@@ -22,7 +22,9 @@ pub(crate) use crate::payment::supervisor::{
     PAYMENT_RAIL_SUPERVISOR_EVIDENCE_METADATA, PaymentSupervisorProof, PaymentSupervisorProofMatch,
     PaymentSupervisorSettlementRequest, PaymentSupervisorVerificationInput,
     insert_payment_supervisor_proof_metadata as insert_effect_supervisor_proof_metadata,
+    payment_supervisor_evidence_from_effect_record,
     payment_supervisor_evidence_metadata_value as effect_evidence_metadata_value,
+    payment_supervisor_settlement_request_payload,
     validate_payment_supervisor_proof as validate_effect_supervisor_proof,
     verify_payment_rail_supervisor_proof as verify_effect_supervisor_proof,
 };
@@ -42,19 +44,18 @@ pub struct EffectSettlementRequest<'a> {
     pub proof_kind: ProofKind,
     pub proof_ref: &'a str,
     pub idempotency_key: Option<&'a str>,
-    pub payload: EffectSettlementPayload<'a>,
+    pub payload: EffectSettlementPayload,
 }
 
 #[derive(Clone, Debug)]
-pub enum EffectSettlementPayload<'a> {
-    PaymentRail(PaymentSupervisorSettlementRequest<'a>),
+pub enum EffectSettlementPayload {
     Json(JsonObject),
 }
 
 impl<'a> EffectSettlementRequest<'a> {
     pub fn payment_rail(
         &self,
-    ) -> Result<PaymentSupervisorSettlementRequest<'a>, EffectSupervisorError> {
+    ) -> Result<PaymentSupervisorSettlementRequest<'_>, EffectSupervisorError> {
         if self.family != PAYMENT_EFFECT_FAMILY || self.proof_kind != ProofKind::PaymentRail {
             return Err(EffectSupervisorError::InvalidEvidence {
                 family: self.family.to_owned(),
@@ -64,24 +65,22 @@ impl<'a> EffectSettlementRequest<'a> {
                 ),
             });
         }
-        let request = match &self.payload {
-            EffectSettlementPayload::PaymentRail(request) => *request,
-            EffectSettlementPayload::Json(_) => {
-                return Err(EffectSupervisorError::InvalidEvidence {
+        let EffectSettlementPayload::Json(payload) = &self.payload;
+        let idempotency_key =
+            self.idempotency_key
+                .ok_or_else(|| EffectSupervisorError::InvalidEvidence {
                     family: self.family.to_owned(),
-                    message: "payment effect requires typed payment rail payload".to_owned(),
-                });
-            }
+                    message: "payment effect idempotency_key is required".to_owned(),
+                })?;
+        let request = PaymentSupervisorSettlementRequest {
+            rail: required_payload_str(payload, self.family, "rail")?,
+            counterparty: required_payload_str(payload, self.family, "counterparty")?,
+            amount_minor: required_payload_u64(payload, self.family, "amount_minor")?,
+            currency: required_payload_str(payload, self.family, "currency")?,
+            idempotency_key,
+            proof_ref: self.proof_ref,
+            skill_settlement_status: optional_payload_str(payload, "skill_settlement_status"),
         };
-        if request.proof_ref != self.proof_ref {
-            return Err(EffectSupervisorError::InvalidEvidence {
-                family: self.family.to_owned(),
-                message: format!(
-                    "payment effect proof_ref mismatch: expected {}, got {}",
-                    self.proof_ref, request.proof_ref
-                ),
-            });
-        }
         match self.idempotency_key {
             Some(idempotency_key) if idempotency_key == request.idempotency_key => Ok(request),
             Some(idempotency_key) => Err(EffectSupervisorError::InvalidEvidence {
@@ -99,9 +98,51 @@ impl<'a> EffectSettlementRequest<'a> {
     }
 }
 
+fn required_payload_str<'a>(
+    payload: &'a JsonObject,
+    family: &str,
+    field: &'static str,
+) -> Result<&'a str, EffectSupervisorError> {
+    payload
+        .get(field)
+        .and_then(JsonValue::as_str)
+        .ok_or_else(|| EffectSupervisorError::InvalidEvidence {
+            family: family.to_owned(),
+            message: format!("effect payload requires string field {field}"),
+        })
+}
+
+fn optional_payload_str<'a>(payload: &'a JsonObject, field: &'static str) -> Option<&'a str> {
+    payload.get(field).and_then(JsonValue::as_str)
+}
+
+fn required_payload_u64(
+    payload: &JsonObject,
+    family: &str,
+    field: &'static str,
+) -> Result<u64, EffectSupervisorError> {
+    match payload.get(field) {
+        Some(JsonValue::Number(JsonNumber::U64(value))) => Ok(*value),
+        Some(JsonValue::Number(JsonNumber::I64(value))) => {
+            u64::try_from(*value).map_err(|_| EffectSupervisorError::InvalidEvidence {
+                family: family.to_owned(),
+                message: format!("effect payload field {field} must be a u64"),
+            })
+        }
+        Some(JsonValue::Number(JsonNumber::F64(value)))
+            if value.is_finite() && value.fract() == 0.0 && *value >= 0.0 =>
+        {
+            Ok(*value as u64)
+        }
+        _ => Err(EffectSupervisorError::InvalidEvidence {
+            family: family.to_owned(),
+            message: format!("effect payload requires u64 field {field}"),
+        }),
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum EffectSettlementEvidence {
-    PaymentRail(PaymentSupervisorSettlementEvidence),
     Generic(EffectSettlementRecord),
 }
 
@@ -154,50 +195,31 @@ impl EffectSettlementRecord {
 }
 
 impl EffectSettlementEvidence {
-    pub fn from_payment_rail(evidence: PaymentSupervisorSettlementEvidence) -> Self {
-        Self::PaymentRail(evidence)
-    }
-
     pub fn generic(record: EffectSettlementRecord) -> Self {
         Self::Generic(record)
     }
 
     pub fn verifier_id(&self) -> &str {
         match self {
-            Self::PaymentRail(evidence) => &evidence.verifier_id,
             Self::Generic(record) => &record.verifier_id,
         }
     }
 
     pub fn proof_ref(&self) -> &str {
         match self {
-            Self::PaymentRail(evidence) => &evidence.proof_ref,
             Self::Generic(record) => &record.proof_ref,
         }
     }
 
     pub fn status(&self) -> Option<&str> {
         match self {
-            Self::PaymentRail(evidence) => evidence.settlement_status.as_deref(),
             Self::Generic(record) => record.status.as_deref(),
         }
     }
 
     pub fn idempotency_key(&self) -> Option<&str> {
         match self {
-            Self::PaymentRail(evidence) => Some(&evidence.idempotency_key),
             Self::Generic(record) => record.idempotency_key.as_deref(),
-        }
-    }
-
-    fn into_payment_rail(
-        self,
-    ) -> Result<PaymentSupervisorSettlementEvidence, PaymentSupervisorError> {
-        match self {
-            Self::PaymentRail(evidence) => Ok(evidence),
-            Self::Generic(_) => Err(PaymentSupervisorError::InvalidSupervisorEvidence {
-                message: "payment effect returned non-payment evidence".to_owned(),
-            }),
         }
     }
 }
@@ -293,7 +315,8 @@ impl RuntimeEffectRegistry {
         let evidence = self
             .settlement_evidence(payment_rail_effect_request(request))
             .map_err(payment_effect_error)?;
-        evidence.into_payment_rail()
+        let EffectSettlementEvidence::Generic(record) = evidence;
+        payment_supervisor_evidence_from_effect_record(record)
     }
 }
 
@@ -321,7 +344,9 @@ fn payment_rail_effect_request(
         proof_kind: ProofKind::PaymentRail,
         proof_ref: request.proof_ref,
         idempotency_key: Some(request.idempotency_key),
-        payload: EffectSettlementPayload::PaymentRail(request),
+        payload: EffectSettlementPayload::Json(payment_supervisor_settlement_request_payload(
+            request,
+        )),
     }
 }
 
@@ -363,7 +388,6 @@ mod tests {
                 idempotency_key: request.idempotency_key.map(str::to_owned),
                 payload: match request.payload {
                     EffectSettlementPayload::Json(payload) => payload,
-                    EffectSettlementPayload::PaymentRail(_) => JsonObject::new(),
                 },
             }))
         }

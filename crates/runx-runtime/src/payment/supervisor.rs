@@ -2,11 +2,13 @@
 // validation, evidence metadata, and receipt binding share one audited payment
 // trust boundary.
 use runx_contracts::{
-    JsonObject, JsonValue, ProofKind, Receipt, Reference, ReferenceType, sha256_prefixed,
+    EffectSettlementPhase, JsonNumber, JsonObject, JsonValue, ProofKind, Receipt, Reference,
+    ReferenceType, sha256_prefixed,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::effects::EffectSettlementRecord;
 use crate::payment::packets::{PaymentPacketError, PaymentRailResult, read_payment_rail_packet};
 
 pub const PAYMENT_RAIL_SUPERVISOR_EVIDENCE_METADATA: &str = "payment_rail_supervisor_evidence";
@@ -83,6 +85,80 @@ pub struct PaymentSupervisorSettlementRequest<'a> {
     pub idempotency_key: &'a str,
     pub proof_ref: &'a str,
     pub skill_settlement_status: Option<&'a str>,
+}
+
+pub fn payment_supervisor_settlement_request_payload(
+    request: PaymentSupervisorSettlementRequest<'_>,
+) -> JsonObject {
+    let mut payload = JsonObject::new();
+    payload.insert(
+        "rail".to_owned(),
+        JsonValue::String(request.rail.to_owned()),
+    );
+    payload.insert(
+        "counterparty".to_owned(),
+        JsonValue::String(request.counterparty.to_owned()),
+    );
+    payload.insert(
+        "amount_minor".to_owned(),
+        JsonValue::Number(JsonNumber::U64(request.amount_minor)),
+    );
+    payload.insert(
+        "currency".to_owned(),
+        JsonValue::String(request.currency.to_owned()),
+    );
+    if let Some(status) = request.skill_settlement_status {
+        payload.insert(
+            "skill_settlement_status".to_owned(),
+            JsonValue::String(status.to_owned()),
+        );
+    }
+    payload
+}
+
+pub fn payment_supervisor_evidence_to_effect_record(
+    evidence: PaymentSupervisorSettlementEvidence,
+) -> EffectSettlementRecord {
+    let mut payload = JsonObject::new();
+    payload.insert("rail".to_owned(), JsonValue::String(evidence.rail));
+    payload.insert(
+        "counterparty".to_owned(),
+        JsonValue::String(evidence.counterparty),
+    );
+    payload.insert(
+        "amount_minor".to_owned(),
+        JsonValue::Number(JsonNumber::U64(evidence.amount_minor)),
+    );
+    payload.insert("currency".to_owned(), JsonValue::String(evidence.currency));
+    EffectSettlementRecord {
+        verifier_id: evidence.verifier_id,
+        proof_ref: evidence.proof_ref,
+        phase: EffectSettlementPhase::Sealed,
+        provider_event_ref: evidence.provider_event_ref,
+        status: evidence.settlement_status,
+        idempotency_key: Some(evidence.idempotency_key),
+        payload,
+    }
+}
+
+pub fn payment_supervisor_evidence_from_effect_record(
+    record: EffectSettlementRecord,
+) -> Result<PaymentSupervisorSettlementEvidence, PaymentSupervisorError> {
+    Ok(PaymentSupervisorSettlementEvidence {
+        verifier_id: record.verifier_id,
+        proof_ref: record.proof_ref,
+        rail: required_payload_string(&record.payload, "rail")?.to_owned(),
+        counterparty: required_payload_string(&record.payload, "counterparty")?.to_owned(),
+        amount_minor: required_payload_u64(&record.payload, "amount_minor")?,
+        currency: required_payload_string(&record.payload, "currency")?.to_owned(),
+        idempotency_key: record.idempotency_key.ok_or_else(|| {
+            PaymentSupervisorError::InvalidSupervisorEvidence {
+                message: "generic effect evidence missing idempotency_key".to_owned(),
+            }
+        })?,
+        settlement_status: record.status,
+        provider_event_ref: record.provider_event_ref,
+    })
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -450,6 +526,40 @@ fn expect_field(
             expected: expected.to_owned(),
             actual: actual.to_owned(),
         })
+    }
+}
+
+fn required_payload_string<'a>(
+    payload: &'a JsonObject,
+    field: &'static str,
+) -> Result<&'a str, PaymentSupervisorError> {
+    match payload.get(field).and_then(JsonValue::as_str) {
+        Some(value) => Ok(value),
+        None => Err(PaymentSupervisorError::InvalidSupervisorEvidence {
+            message: format!("generic effect evidence missing string payload field {field}"),
+        }),
+    }
+}
+
+fn required_payload_u64(
+    payload: &JsonObject,
+    field: &'static str,
+) -> Result<u64, PaymentSupervisorError> {
+    match payload.get(field) {
+        Some(JsonValue::Number(JsonNumber::U64(value))) => Ok(*value),
+        Some(JsonValue::Number(JsonNumber::I64(value))) => {
+            u64::try_from(*value).map_err(|_| PaymentSupervisorError::InvalidSupervisorEvidence {
+                message: format!("generic effect evidence field {field} must be a u64"),
+            })
+        }
+        Some(JsonValue::Number(JsonNumber::F64(value)))
+            if value.is_finite() && value.fract() == 0.0 && *value >= 0.0 =>
+        {
+            Ok(*value as u64)
+        }
+        _ => Err(PaymentSupervisorError::InvalidSupervisorEvidence {
+            message: format!("generic effect evidence missing u64 payload field {field}"),
+        }),
     }
 }
 
