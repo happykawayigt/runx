@@ -251,6 +251,37 @@ where
                 )?;
                 Ok(execution.finish(graph, receipt))
             }
+            // A governed authority denial (e.g. a payment spend that exceeds the
+            // attenuated authority) is a policy block, not a runtime fault: under
+            // the receipt-sealing outcome it seals a signed blocked receipt, the
+            // same as any other graph block, so the refusal is provable.
+            Err(RuntimeError::AuthorityDenied {
+                verb,
+                step_id,
+                reason,
+            }) if blocked_outcome == BlockedGraphOutcome::Receipt => {
+                let receipt = graph_receipt_with_disposition_and_policy(
+                    &graph.name,
+                    &mut execution.runs,
+                    execution.sync_points.clone(),
+                    &self.options.created_at,
+                    crate::receipts::GraphClosure {
+                        disposition: ClosureDisposition::Blocked,
+                        reason_code: "authority_denied".to_owned(),
+                        summary: format!(
+                            "graph {} denied {verb:?} at {step_id}: {reason}",
+                            graph.name
+                        ),
+                    },
+                    self.options.effects.clone(),
+                    self.options.signature_policy(),
+                )?;
+                execution.record_lifecycle(
+                    host,
+                    LifecycleEvent::graph_blocked(&graph.name, &step_id, &receipt),
+                )?;
+                Ok(execution.finish(graph, receipt))
+            }
             Err(error) => Err(error),
         }
     }
