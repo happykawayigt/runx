@@ -65,7 +65,7 @@ source:
     )?;
     assert_eq!(skill.source.source_type, SourceKind::Http);
     assert_eq!(skill.source.source_type.as_str(), "http");
-    let http = skill.source.http.as_ref().expect("http config is present");
+    let http = skill.source.http.as_ref().ok_or("http config is present")?;
     assert_eq!(http.url, "https://api.example.test/v1/pets");
     assert_eq!(http.method.as_deref(), Some("POST"));
     Ok(())
@@ -86,7 +86,7 @@ source:
 # HTTP
 "#,
     )?;
-    let http = skill.source.http.as_ref().expect("http config is present");
+    let http = skill.source.http.as_ref().ok_or("http config is present")?;
     assert_eq!(http.allow_private_network, Some(true));
     assert_eq!(
         http.headers.as_ref().and_then(|h| h.get("authorization")).map(String::as_str),

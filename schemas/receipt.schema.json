@@ -7814,6 +7814,10 @@
                           {
                             "const": "single_use_spend_capability",
                             "type": "string"
+                          },
+                          {
+                            "const": "external_signer",
+                            "type": "string"
                           }
                         ]
                       },

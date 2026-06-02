@@ -169,6 +169,30 @@
         "cwd": {
           "type": "string"
         },
+        "http": {
+          "additionalProperties": false,
+          "properties": {
+            "allow_private_network": {
+              "type": "boolean"
+            },
+            "headers": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "method": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "url"
+          ],
+          "type": "object"
+        },
         "input_mode": {
           "anyOf": [
             {
@@ -291,6 +315,10 @@
             },
             {
               "const": "catalog",
+              "type": "string"
+            },
+            {
+              "const": "http",
               "type": "string"
             }
           ]

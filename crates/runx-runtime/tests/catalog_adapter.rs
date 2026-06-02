@@ -204,6 +204,45 @@ fn catalog_adapter_wraps_local_named_emits_for_graph_context_paths()
     Ok(())
 }
 
+#[cfg(feature = "http")]
+#[test]
+fn catalog_adapter_routes_http_tools_to_the_governed_http_adapter()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempdir()?;
+    write_catalog_tool(
+        &temp.path().join("tools/test/http"),
+        r#"{
+  "schema": "runx.tool.manifest.v1",
+  "name": "test.http",
+  "source": {
+    "type": "http",
+    "url": "http://127.0.0.1:9/v1/ping"
+  },
+  "scopes": ["test.http"]
+}
+"#,
+        "",
+    )?;
+    let result = CatalogAdapter::default().invoke(invocation_in_directory(
+        Some("test.http"),
+        JsonObject::new(),
+        temp.path().to_path_buf(),
+        tool_root_env(temp.path()),
+    ));
+    // Routed to the governed HTTP adapter: with no allow_private_network opt-in,
+    // the default transport fails the loopback URL closed in the http path,
+    // rather than the tool being rejected as an unsupported Rust adapter.
+    let message = match result {
+        Err(RuntimeError::SkillFailed { message, .. }) => message,
+        other => return Err(format!("expected the http adapter to engage, got: {other:?}").into()),
+    };
+    assert!(
+        message.contains("http request failed"),
+        "expected a governed http transport failure, got: {message}"
+    );
+    Ok(())
+}
+
 fn invocation(catalog_ref: Option<&str>, inputs: JsonObject) -> SkillInvocation {
     invocation_in_directory(catalog_ref, inputs, PathBuf::from("."), BTreeMap::new())
 }

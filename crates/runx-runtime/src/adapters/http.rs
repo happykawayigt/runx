@@ -272,15 +272,14 @@ mod tests {
     }
 
     #[test]
-    fn get_maps_inputs_to_query_and_seals_the_response() {
+    fn get_maps_inputs_to_query_and_seals_the_response() -> Result<(), RuntimeError> {
         let transport = stub(200, r#"{"ok":true}"#);
         let call = HttpCall {
             method: HttpMethod::Get,
             url: "https://api.example.test/v1/pets".to_owned(),
             headers: Vec::new(),
         };
-        let output = execute_http_call(&transport, &call, &inputs(&[("id", "p-7")]))
-            .expect("the call should produce output");
+        let output = execute_http_call(&transport, &call, &inputs(&[("id", "p-7")]))?;
         assert_eq!(output.status, InvocationStatus::Success);
         assert_eq!(output.stdout, r#"{"ok":true}"#);
         let sent = transport.requests.borrow();
@@ -289,18 +288,18 @@ mod tests {
             "GET inputs must go on the query string with no body; got: {:?}",
             sent.first()
         );
+        Ok(())
     }
 
     #[test]
-    fn post_maps_inputs_to_a_json_body() {
+    fn post_maps_inputs_to_a_json_body() -> Result<(), RuntimeError> {
         let transport = stub(201, "");
         let call = HttpCall {
             method: HttpMethod::Post,
             url: "https://api.example.test/v1/pets".to_owned(),
             headers: Vec::new(),
         };
-        execute_http_call(&transport, &call, &inputs(&[("name", "rex")]))
-            .expect("the call should produce output");
+        execute_http_call(&transport, &call, &inputs(&[("name", "rex")]))?;
         let sent = transport.requests.borrow();
         assert!(
             sent[0]
@@ -310,10 +309,12 @@ mod tests {
             "POST inputs must go in the JSON body; got: {:?}",
             sent[0].body
         );
+        Ok(())
     }
 
     #[test]
-    fn caller_headers_reach_the_wire_and_post_keeps_an_explicit_content_type() {
+    fn caller_headers_reach_the_wire_and_post_keeps_an_explicit_content_type()
+    -> Result<(), RuntimeError> {
         let transport = stub(200, "{}");
         let call = HttpCall {
             method: HttpMethod::Post,
@@ -323,8 +324,7 @@ mod tests {
                 RuntimeHttpHeader::new("content-type", "application/cbor"),
             ],
         };
-        execute_http_call(&transport, &call, &inputs(&[("name", "rex")]))
-            .expect("the call should produce output");
+        execute_http_call(&transport, &call, &inputs(&[("name", "rex")]))?;
         let sent = transport.requests.borrow();
         let content_types = sent[0]
             .headers
@@ -340,10 +340,12 @@ mod tests {
             "caller headers must pass through and an explicit content-type must not be duplicated; got: {:?}",
             sent[0].headers
         );
+        Ok(())
     }
 
     #[test]
-    fn substitute_secrets_resolves_a_delivered_secret_and_fails_closed_on_a_missing_one() {
+    fn substitute_secrets_resolves_a_delivered_secret_and_fails_closed_on_a_missing_one()
+    -> Result<(), Box<dyn std::error::Error>> {
         let delivery = crate::credentials::CredentialDelivery::from_local_descriptor(
             "github",
             "api_key",
@@ -351,31 +353,30 @@ mod tests {
             "ref-1",
             Vec::new(),
             "ghp_secret",
-        )
-        .expect("a local credential delivery should build");
+        )?;
         let secrets = delivery.secret_env();
         assert_eq!(
-            substitute_secrets("Bearer ${secret:GITHUB_TOKEN}", secrets)
-                .expect("a delivered secret resolves"),
+            substitute_secrets("Bearer ${secret:GITHUB_TOKEN}", secrets)?,
             "Bearer ghp_secret"
         );
         assert!(
             substitute_secrets("Bearer ${secret:MISSING}", secrets).is_err(),
             "a reference to an undelivered secret must fail closed"
         );
+        Ok(())
     }
 
     #[test]
-    fn non_2xx_is_a_failure_but_still_captures_the_body() {
+    fn non_2xx_is_a_failure_but_still_captures_the_body() -> Result<(), RuntimeError> {
         let transport = stub(404, "not found");
         let call = HttpCall {
             method: HttpMethod::Get,
             url: "https://api.example.test/v1/pets/none".to_owned(),
             headers: Vec::new(),
         };
-        let output = execute_http_call(&transport, &call, &JsonObject::new())
-            .expect("a non-2xx response is captured, not an error");
+        let output = execute_http_call(&transport, &call, &JsonObject::new())?;
         assert_eq!(output.status, InvocationStatus::Failure);
         assert_eq!(output.stdout, "not found");
+        Ok(())
     }
 }

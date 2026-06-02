@@ -58,6 +58,7 @@ pub enum ToolSourceType {
     Mcp,
     A2a,
     Catalog,
+    Http,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, RunxSchema)]
@@ -184,6 +185,24 @@ pub struct ToolSource {
     pub agent_card_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent_identity: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub http: Option<ToolHttpSource>,
+}
+
+/// Config for an `http` tool source: a governed HTTP call. Mirrors the parser's
+/// `SkillHttpSource`. Header values may carry `${secret:NAME}` references resolved
+/// at invocation; `allow_private_network` is the explicit, default-off opt-in to
+/// reach private/loopback endpoints (the governed transport blocks them otherwise).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, RunxSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ToolHttpSource {
+    pub url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub method: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub headers: BTreeMap<String, String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub allow_private_network: Option<bool>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, RunxSchema)]
@@ -521,6 +540,7 @@ mod tests {
             arguments: None,
             agent_card_url: None,
             agent_identity: None,
+            http: None,
         }
     }
 

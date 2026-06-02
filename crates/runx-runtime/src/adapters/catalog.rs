@@ -136,22 +136,16 @@ pub(crate) fn resolve_and_invoke_local_tool(
         Err(error) => return Err(catalog_error(request.skill_name, error)),
     };
 
-    if resolution.tool.source.source_type != runx_parser::SourceKind::CliTool {
-        return Ok(Some(failure(
-            format!(
-                "Resolved catalog tool '{}' uses unsupported Rust adapter '{}'.",
-                resolution.tool.name, resolution.tool.source.source_type
-            ),
-            started,
-        )));
-    }
-
     let artifacts = resolution.tool.artifacts.clone();
+    let tool_name = resolution.tool.name.clone();
+    let source_type = resolution.tool.source.source_type;
     let mut source = resolution.tool.source;
     let tool_directory = manifest_directory(&resolution.manifest_path, request.skill_directory);
-    normalize_local_cli_source(&mut source, &tool_directory);
+    if source_type == runx_parser::SourceKind::CliTool {
+        normalize_local_cli_source(&mut source, &tool_directory);
+    }
     let invocation = SkillInvocation {
-        skill_name: resolution.tool.name,
+        skill_name: tool_name,
         source,
         inputs: request.inputs.clone(),
         resolved_inputs: request.resolved_inputs.clone(),
@@ -159,7 +153,22 @@ pub(crate) fn resolve_and_invoke_local_tool(
         env: request.env.clone(),
         credential_delivery: request.credential_delivery.clone(),
     };
-    let mut output = CliToolAdapter.invoke(invocation)?;
+    let mut output = match source_type {
+        runx_parser::SourceKind::CliTool => CliToolAdapter.invoke(invocation)?,
+        #[cfg(feature = "http")]
+        runx_parser::SourceKind::Http => {
+            crate::adapters::http::HttpSkillAdapter.invoke(invocation)?
+        }
+        other => {
+            return Ok(Some(failure(
+                format!(
+                    "Resolved catalog tool '{}' uses unsupported Rust adapter '{other}'.",
+                    invocation.skill_name
+                ),
+                started,
+            )));
+        }
+    };
     apply_local_tool_artifact_wrappers(&mut output, artifacts.as_ref())?;
     Ok(Some(output))
 }

@@ -116,12 +116,12 @@ pub fn validate_tool_manifest(raw: RawToolManifestIr) -> Result<ValidatedTool, V
 fn validate_tool_source(source: SkillSource, field: &str) -> Result<SkillSource, ValidationError> {
     if matches!(
         source.source_type.as_str(),
-        "cli-tool" | "mcp" | "a2a" | "catalog"
+        "cli-tool" | "mcp" | "a2a" | "catalog" | "http"
     ) {
         return Ok(source);
     }
     Err(validation_error(format!(
-        "{field} must be one of cli-tool, mcp, a2a, or catalog for tool manifests."
+        "{field} must be one of cli-tool, mcp, a2a, catalog, or http for tool manifests."
     )))
 }
 

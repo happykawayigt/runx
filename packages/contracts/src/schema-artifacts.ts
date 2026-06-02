@@ -13141,6 +13141,10 @@ export const runxSchemaArtifacts = {
                         {
                           "const": "single_use_spend_capability",
                           "type": "string"
+                        },
+                        {
+                          "const": "external_signer",
+                          "type": "string"
                         }
                       ]
                     },
@@ -40688,6 +40692,10 @@ export const runxSchemaArtifacts = {
                           "anyOf": [
                             {
                               "const": "single_use_spend_capability",
+                              "type": "string"
+                            },
+                            {
+                              "const": "external_signer",
                               "type": "string"
                             }
                           ]
@@ -71581,6 +71589,30 @@ export const runxSchemaArtifacts = {
           "cwd": {
             "type": "string"
           },
+          "http": {
+            "additionalProperties": false,
+            "properties": {
+              "allow_private_network": {
+                "type": "boolean"
+              },
+              "headers": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "method": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "url"
+            ],
+            "type": "object"
+          },
           "input_mode": {
             "anyOf": [
               {
@@ -71703,6 +71735,10 @@ export const runxSchemaArtifacts = {
               },
               {
                 "const": "catalog",
+                "type": "string"
+              },
+              {
+                "const": "http",
                 "type": "string"
               }
             ]
