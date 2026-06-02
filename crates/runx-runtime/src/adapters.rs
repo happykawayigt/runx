@@ -10,6 +10,9 @@ pub mod agent;
 #[cfg(feature = "agent")]
 pub mod agent_loop;
 
+#[cfg(feature = "agent")]
+pub mod agent_anthropic;
+
 #[cfg(feature = "catalog")]
 pub mod catalog;
 
