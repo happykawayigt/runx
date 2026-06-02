@@ -16,6 +16,9 @@ pub mod agent_anthropic;
 #[cfg(feature = "agent")]
 pub mod agent_tools;
 
+#[cfg(feature = "agent")]
+pub mod agent_resolver;
+
 #[cfg(feature = "catalog")]
 pub mod catalog;
 
