@@ -528,9 +528,9 @@ struct SourceHandler {
     handler: SourceHandlerFn,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 struct SourceAdapterRegistry {
-    handlers: &'static [SourceHandler],
+    handlers: Vec<SourceHandler>,
 }
 
 impl SourceAdapterRegistry {
@@ -556,38 +556,25 @@ impl SourceAdapterRegistry {
     }
 }
 
-fn builtin_source_handlers() -> &'static [SourceHandler] {
-    #[cfg(all(feature = "cli-tool", feature = "catalog"))]
-    {
-        &[
-            SourceHandler {
-                source_type: "cli-tool",
-                handler: invoke_graph_cli_tool,
-            },
-            SourceHandler {
-                source_type: "catalog",
-                handler: invoke_graph_catalog_tool,
-            },
-        ]
-    }
-    #[cfg(all(feature = "cli-tool", not(feature = "catalog")))]
-    {
-        &[SourceHandler {
-            source_type: "cli-tool",
-            handler: invoke_graph_cli_tool,
-        }]
-    }
-    #[cfg(all(not(feature = "cli-tool"), feature = "catalog"))]
-    {
-        &[SourceHandler {
-            source_type: "catalog",
-            handler: invoke_graph_catalog_tool,
-        }]
-    }
-    #[cfg(all(not(feature = "cli-tool"), not(feature = "catalog")))]
-    {
-        &[]
-    }
+fn builtin_source_handlers() -> Vec<SourceHandler> {
+    #[allow(unused_mut)]
+    let mut handlers: Vec<SourceHandler> = Vec::new();
+    #[cfg(feature = "cli-tool")]
+    handlers.push(SourceHandler {
+        source_type: "cli-tool",
+        handler: invoke_graph_cli_tool,
+    });
+    #[cfg(feature = "catalog")]
+    handlers.push(SourceHandler {
+        source_type: "catalog",
+        handler: invoke_graph_catalog_tool,
+    });
+    #[cfg(feature = "external-adapter")]
+    handlers.push(SourceHandler {
+        source_type: "external-adapter",
+        handler: invoke_graph_external_adapter,
+    });
+    handlers
 }
 
 #[derive(Clone, Debug)]
@@ -621,6 +608,11 @@ fn invoke_graph_cli_tool(request: SkillInvocation) -> Result<SkillOutput, Runtim
 #[cfg(feature = "catalog")]
 fn invoke_graph_catalog_tool(request: SkillInvocation) -> Result<SkillOutput, RuntimeError> {
     crate::adapters::catalog::CatalogAdapter::default().invoke(request)
+}
+
+#[cfg(feature = "external-adapter")]
+fn invoke_graph_external_adapter(request: SkillInvocation) -> Result<SkillOutput, RuntimeError> {
+    crate::adapters::external_adapter::ExternalAdapterSkillAdapter::default().invoke(request)
 }
 
 #[derive(Default)]
@@ -1473,6 +1465,52 @@ mod tests {
                 Err(RuntimeError::UnsupportedSource { source_kind }) if source_kind == "mcp"
             ),
             "unexpected unregistered graph source result: {result:?}"
+        );
+    }
+
+    #[cfg(feature = "external-adapter")]
+    #[test]
+    fn graph_source_registry_routes_external_adapter() {
+        let mut raw = JsonObject::new();
+        raw.insert(
+            "type".to_owned(),
+            JsonValue::String("external-adapter".to_owned()),
+        );
+        let invocation = SkillInvocation {
+            skill_name: "fixture-external".to_owned(),
+            source: SkillSource {
+                source_type: SourceKind::ExternalAdapter,
+                command: None,
+                args: Vec::new(),
+                cwd: None,
+                timeout_seconds: None,
+                input_mode: None,
+                sandbox: None,
+                server: None,
+                catalog_ref: None,
+                tool: None,
+                arguments: None,
+                agent_card_url: None,
+                agent_identity: None,
+                agent: None,
+                task: None,
+                hook: None,
+                outputs: None,
+                graph: None,
+                raw,
+            },
+            inputs: JsonObject::new(),
+            resolved_inputs: JsonObject::new(),
+            skill_directory: PathBuf::from("."),
+            env: BTreeMap::new(),
+            credential_delivery: crate::credentials::CredentialDelivery::none(),
+        };
+
+        let result = SkillRunGraphAdapter::default().invoke(invocation);
+        assert!(
+            matches!(&result, Err(RuntimeError::SkillFailed { .. })),
+            "external-adapter source should route to the external adapter and fail on the \
+             missing manifest, not fall through as UnsupportedSource; got: {result:?}"
         );
     }
 }
