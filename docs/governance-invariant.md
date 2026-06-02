@@ -24,18 +24,18 @@ Before any step handler runs, the orchestration admits the act against the
 configured authority and effects: `enforce_step_authority_admission`
 (`crates/runx-runtime/src/execution/runner/authority.rs`), called once per step at
 `crates/runx-runtime/src/execution/runner/steps.rs:230` before dispatch. Local
-skills admit through `admit_local_skill` (`crates/runx-core/src/policy/local.rs`).
-An unadmitted act never reaches a handler.
+skills admit through `admit_local_skill` in the core policy crate
+(`crates/runx-core/src/policy/local.rs`). An unadmitted act never reaches a handler.
 
 ### 2. Deliver credentials (adapter contract)
 
 The adapter receives a `CredentialDelivery` and must (a) refuse ambient
 process-env credential delivery and (b) redact secret material out of captured
 output. The cli-tool front does both:
-`credential_delivery.reject_process_env_boundary(...)` and `redacted_capture(...)`
-(`crates/runx-runtime/src/adapters/cli_tool.rs:26-27`, and the redaction helpers
-below it). Credentials are delivered as structured refs, never as inherited child
-environment.
+`credential_delivery.reject_process_env_boundary(...)`
+(`crates/runx-runtime/src/adapters/cli_tool.rs:27`) and `redacted_capture(...)` over
+captured stdout/stderr (`cli_tool.rs:83` for the helper, called at `:104-105`).
+Credentials are delivered as structured refs, never as inherited child environment.
 
 ### 3. Sandbox (adapter contract)
 
