@@ -51,6 +51,69 @@ inputs:
 }
 
 #[test]
+fn http_source_parses_url_and_method() -> Result<(), String> {
+    let skill = parse_strict(
+        r#"---
+name: http-skill
+source:
+  type: http
+  url: https://api.example.test/v1/pets
+  method: POST
+---
+# HTTP
+"#,
+    )?;
+    assert_eq!(skill.source.source_type, SourceKind::Http);
+    assert_eq!(skill.source.source_type.as_str(), "http");
+    assert_eq!(
+        skill.source.url.as_deref(),
+        Some("https://api.example.test/v1/pets")
+    );
+    assert_eq!(skill.source.method.as_deref(), Some("POST"));
+    Ok(())
+}
+
+#[test]
+fn http_source_requires_a_url() -> Result<(), String> {
+    let raw = parse_skill_markdown(
+        r#"---
+name: http-no-url
+source:
+  type: http
+---
+# HTTP
+"#,
+    )
+    .map_err(|error| error.to_string())?;
+    assert!(
+        validate_skill(raw).is_err(),
+        "an http source without a url must fail closed"
+    );
+    Ok(())
+}
+
+#[test]
+fn http_source_rejects_an_unsupported_method() -> Result<(), String> {
+    let raw = parse_skill_markdown(
+        r#"---
+name: http-bad-method
+source:
+  type: http
+  url: https://api.example.test/v1/pets
+  method: PATCH
+---
+# HTTP
+"#,
+    )
+    .map_err(|error| error.to_string())?;
+    assert!(
+        validate_skill(raw).is_err(),
+        "an unsupported http method must fail closed"
+    );
+    Ok(())
+}
+
+#[test]
 fn unknown_source_type_fails_closed() -> Result<(), String> {
     let raw = parse_skill_markdown(
         r#"---

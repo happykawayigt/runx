@@ -27,7 +27,7 @@ payment-rails = ["runx-runtime/payment-rails"]
 [dependencies]
 runx-contracts.workspace = true
 runx-pay.workspace = true
-runx-runtime = { workspace = true, features = ["cli-tool", "catalog", "mcp", "external-adapter", "agent"] }
+runx-runtime = { workspace = true, features = ["cli-tool", "catalog", "mcp", "external-adapter", "agent", "http"] }
 serde.workspace = true
 serde_json.workspace = true
 

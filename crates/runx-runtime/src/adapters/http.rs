@@ -12,17 +12,23 @@ use runx_contracts::{JsonObject, JsonValue};
 use serde_json::Value as WireValue;
 
 use crate::RuntimeError;
-use crate::adapter::{InvocationStatus, SkillOutput};
-use crate::runtime_http::{HttpMethod, RuntimeHttpHeader, RuntimeHttpRequest, RuntimeHttpTransport};
+use crate::adapter::{InvocationStatus, SkillAdapter, SkillInvocation, SkillOutput};
+use crate::credentials::SecretEnv;
+use crate::runtime_http::{
+    HttpMethod, ReqwestHttpTransport, RuntimeHttpHeader, RuntimeHttpRequest, RuntimeHttpTransport,
+};
+use runx_parser::SourceKind;
 
 const HTTP_SKILL: &str = "http";
 
-/// A governed HTTP call: a method and a URL. Inputs are mapped to the query string
-/// (GET, DELETE) or a JSON body (POST).
+/// A governed HTTP call: a method, a URL, and the request headers (auth and the
+/// like, already resolved). Inputs are mapped to the query string (GET, DELETE) or
+/// a JSON body (POST).
 #[derive(Clone, Debug)]
 pub struct HttpCall {
     pub method: HttpMethod,
     pub url: String,
+    pub headers: Vec<RuntimeHttpHeader>,
 }
 
 fn failure(message: String) -> RuntimeError {
@@ -69,13 +75,18 @@ pub fn execute_http_call<T: RuntimeHttpTransport>(
     call: &HttpCall,
     inputs: &JsonObject,
 ) -> Result<SkillOutput, RuntimeError> {
-    let (url, body, headers) = match call.method {
-        HttpMethod::Post => (
-            call.url.clone(),
-            Some(json_body(inputs)?),
-            vec![RuntimeHttpHeader::new("content-type", "application/json")],
-        ),
-        HttpMethod::Get | HttpMethod::Delete => (with_query(&call.url, inputs), None, Vec::new()),
+    let mut headers = call.headers.clone();
+    let (url, body) = match call.method {
+        HttpMethod::Post => {
+            if !headers
+                .iter()
+                .any(|header| header.name.eq_ignore_ascii_case("content-type"))
+            {
+                headers.push(RuntimeHttpHeader::new("content-type", "application/json"));
+            }
+            (call.url.clone(), Some(json_body(inputs)?))
+        }
+        HttpMethod::Get | HttpMethod::Delete => (with_query(&call.url, inputs), None),
     };
     let response = transport
         .send(RuntimeHttpRequest {
@@ -103,6 +114,119 @@ pub fn execute_http_call<T: RuntimeHttpTransport>(
         duration_ms: 0,
         metadata,
     })
+}
+
+const SECRET_PREFIX: &str = "${secret:";
+
+/// Resolve `${secret:NAME}` references in a header value against the run's secret
+/// env, mirroring how the cli-tool front lets a command reference a delivered
+/// secret. A reference to a secret that was not delivered fails closed.
+fn substitute_secrets(value: &str, secrets: &SecretEnv) -> Result<String, RuntimeError> {
+    let mut out = String::with_capacity(value.len());
+    let mut rest = value;
+    while let Some(start) = rest.find(SECRET_PREFIX) {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + SECRET_PREFIX.len()..];
+        let end = after.find('}').ok_or_else(|| {
+            failure("http header secret reference is missing a closing '}'".to_owned())
+        })?;
+        let name = &after[..end];
+        let secret = secrets.get(name).ok_or_else(|| {
+            failure(format!(
+                "http header references secret {name}, which was not delivered to this run"
+            ))
+        })?;
+        out.push_str(secret);
+        rest = &after[end + 1..];
+    }
+    out.push_str(rest);
+    Ok(out)
+}
+
+/// Build the request headers from the source's `headers` map, resolving any
+/// `${secret:NAME}` references. Header names and values are otherwise passed
+/// through verbatim; the transport validates them and redacts sensitive ones.
+fn resolve_headers(
+    source: &JsonObject,
+    secrets: &SecretEnv,
+) -> Result<Vec<RuntimeHttpHeader>, RuntimeError> {
+    let Some(headers) = source.get("headers") else {
+        return Ok(Vec::new());
+    };
+    let headers = headers
+        .as_object()
+        .ok_or_else(|| failure("source.headers must be an object of header name to value".to_owned()))?;
+    headers
+        .iter()
+        .map(|(name, value)| {
+            let value = value
+                .as_str()
+                .ok_or_else(|| failure(format!("source.headers.{name} must be a string")))?;
+            Ok(RuntimeHttpHeader::new(
+                name.clone(),
+                substitute_secrets(value, secrets)?,
+            ))
+        })
+        .collect()
+}
+
+/// Parse a manifest method string into an [`HttpMethod`], defaulting to GET. The
+/// parser already restricts `source.method` to GET, POST, or DELETE, so this is a
+/// total mapping with a fail-closed arm.
+fn parse_method(raw: Option<&str>) -> Result<HttpMethod, RuntimeError> {
+    match raw.map(str::to_ascii_uppercase).as_deref() {
+        None | Some("GET") => Ok(HttpMethod::Get),
+        Some("POST") => Ok(HttpMethod::Post),
+        Some("DELETE") => Ok(HttpMethod::Delete),
+        Some(other) => Err(failure(format!("unsupported http method {other}"))),
+    }
+}
+
+/// Merge an invocation's raw and resolved inputs, with resolved inputs (the
+/// materialized `$input.*` values) taking precedence.
+fn merged_inputs(invocation: &SkillInvocation) -> JsonObject {
+    let mut inputs = invocation.inputs.clone();
+    for (key, value) in &invocation.resolved_inputs {
+        inputs.insert(key.clone(), value.clone());
+    }
+    inputs
+}
+
+/// The governed HTTP skill adapter: reads `url`/`method`/`headers` from an `http`
+/// source, resolves credential headers, and runs the call through the governed
+/// transport. The default constructs a [`ReqwestHttpTransport`]; the engine itself
+/// ([`execute_http_call`]) is transport-generic and unit-tested with a stub.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct HttpSkillAdapter;
+
+impl SkillAdapter for HttpSkillAdapter {
+    fn adapter_type(&self) -> &'static str {
+        HTTP_SKILL
+    }
+
+    fn invoke(&self, request: SkillInvocation) -> Result<SkillOutput, RuntimeError> {
+        if request.source.source_type != SourceKind::Http {
+            return Err(RuntimeError::UnsupportedAdapter {
+                adapter_type: request.source.source_type.as_str().to_owned(),
+            });
+        }
+        let url = request
+            .source
+            .url
+            .clone()
+            .ok_or_else(|| failure("http source is missing source.url".to_owned()))?;
+        let call = HttpCall {
+            method: parse_method(request.source.method.as_deref())?,
+            url,
+            headers: resolve_headers(
+                &request.source.raw,
+                request.credential_delivery.secret_env(),
+            )?,
+        };
+        let transport = ReqwestHttpTransport::new()
+            .map_err(|error| failure(format!("http transport unavailable: {error}")))?;
+        execute_http_call(&transport, &call, &merged_inputs(&request))
+    }
 }
 
 #[cfg(test)]
@@ -151,6 +275,7 @@ mod tests {
         let call = HttpCall {
             method: HttpMethod::Get,
             url: "https://api.example.test/v1/pets".to_owned(),
+            headers: Vec::new(),
         };
         let output = execute_http_call(&transport, &call, &inputs(&[("id", "p-7")]))
             .expect("the call should produce output");
@@ -170,6 +295,7 @@ mod tests {
         let call = HttpCall {
             method: HttpMethod::Post,
             url: "https://api.example.test/v1/pets".to_owned(),
+            headers: Vec::new(),
         };
         execute_http_call(&transport, &call, &inputs(&[("name", "rex")]))
             .expect("the call should produce output");
@@ -185,11 +311,65 @@ mod tests {
     }
 
     #[test]
+    fn caller_headers_reach_the_wire_and_post_keeps_an_explicit_content_type() {
+        let transport = stub(200, "{}");
+        let call = HttpCall {
+            method: HttpMethod::Post,
+            url: "https://api.example.test/v1/pets".to_owned(),
+            headers: vec![
+                RuntimeHttpHeader::new("authorization", "Bearer t"),
+                RuntimeHttpHeader::new("content-type", "application/cbor"),
+            ],
+        };
+        execute_http_call(&transport, &call, &inputs(&[("name", "rex")]))
+            .expect("the call should produce output");
+        let sent = transport.requests.borrow();
+        let content_types = sent[0]
+            .headers
+            .iter()
+            .filter(|header| header.name.eq_ignore_ascii_case("content-type"))
+            .count();
+        assert!(
+            sent[0]
+                .headers
+                .iter()
+                .any(|header| header.name == "authorization" && header.value == "Bearer t")
+                && content_types == 1,
+            "caller headers must pass through and an explicit content-type must not be duplicated; got: {:?}",
+            sent[0].headers
+        );
+    }
+
+    #[test]
+    fn substitute_secrets_resolves_a_delivered_secret_and_fails_closed_on_a_missing_one() {
+        let delivery = crate::credentials::CredentialDelivery::from_local_descriptor(
+            "github",
+            "api_key",
+            "GITHUB_TOKEN",
+            "ref-1",
+            Vec::new(),
+            "ghp_secret",
+        )
+        .expect("a local credential delivery should build");
+        let secrets = delivery.secret_env();
+        assert_eq!(
+            substitute_secrets("Bearer ${secret:GITHUB_TOKEN}", secrets)
+                .expect("a delivered secret resolves"),
+            "Bearer ghp_secret"
+        );
+        assert!(
+            substitute_secrets("Bearer ${secret:MISSING}", secrets).is_err(),
+            "a reference to an undelivered secret must fail closed"
+        );
+    }
+
+    #[test]
     fn non_2xx_is_a_failure_but_still_captures_the_body() {
         let transport = stub(404, "not found");
         let call = HttpCall {
             method: HttpMethod::Get,
             url: "https://api.example.test/v1/pets/none".to_owned(),
+            headers: Vec::new(),
         };
         let output = execute_http_call(&transport, &call, &JsonObject::new())
             .expect("a non-2xx response is captured, not an error");

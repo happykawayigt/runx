@@ -456,6 +456,8 @@ fn invocation(tool: &str, timeout_seconds: Option<u64>, inputs: JsonObject) -> S
             hook: None,
             outputs: None,
             graph: None,
+            url: None,
+            method: None,
             raw: JsonObject::new(),
         },
         inputs,

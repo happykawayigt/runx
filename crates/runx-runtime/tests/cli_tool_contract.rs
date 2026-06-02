@@ -420,6 +420,8 @@ fn cli_tool_spawn_failure_is_runtime_io() -> Result<(), Box<dyn std::error::Erro
             hook: None,
             outputs: None,
             graph: None,
+            url: None,
+            method: None,
             raw: JsonObject::new(),
         },
         inputs: JsonObject::new(),
@@ -518,6 +520,8 @@ fn enforced_readonly_sandbox_denies_workspace_write_when_backend_available()
             hook: None,
             outputs: None,
             graph: None,
+            url: None,
+            method: None,
             raw: JsonObject::new(),
         },
         inputs: JsonObject::new(),
@@ -564,6 +568,8 @@ fn source_with_args(
         hook: None,
         outputs: None,
         graph: None,
+        url: None,
+        method: None,
         raw: JsonObject::new(),
     }
 }

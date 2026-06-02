@@ -646,6 +646,11 @@ fn builtin_source_handlers() -> Vec<SourceHandler> {
         source_type: "external-adapter",
         handler: invoke_graph_external_adapter,
     });
+    #[cfg(feature = "http")]
+    handlers.push(SourceHandler {
+        source_type: "http",
+        handler: invoke_graph_http,
+    });
     handlers
 }
 
@@ -685,6 +690,11 @@ fn invoke_graph_catalog_tool(request: SkillInvocation) -> Result<SkillOutput, Ru
 #[cfg(feature = "external-adapter")]
 fn invoke_graph_external_adapter(request: SkillInvocation) -> Result<SkillOutput, RuntimeError> {
     crate::adapters::external_adapter::ExternalAdapterSkillAdapter::default().invoke(request)
+}
+
+#[cfg(feature = "http")]
+fn invoke_graph_http(request: SkillInvocation) -> Result<SkillOutput, RuntimeError> {
+    crate::adapters::http::HttpSkillAdapter.invoke(request)
 }
 
 #[derive(Default)]
@@ -1521,6 +1531,8 @@ mod tests {
                 hook: None,
                 outputs: None,
                 graph: None,
+                url: None,
+                method: None,
                 raw,
             },
             inputs: JsonObject::new(),
@@ -1569,6 +1581,8 @@ mod tests {
                 hook: None,
                 outputs: None,
                 graph: None,
+                url: None,
+                method: None,
                 raw,
             },
             inputs: JsonObject::new(),

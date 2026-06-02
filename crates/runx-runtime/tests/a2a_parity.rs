@@ -449,6 +449,8 @@ fn source(
         hook: None,
         outputs: None,
         graph: None,
+        url: None,
+        method: None,
         raw: JsonObject::new(),
     }
 }

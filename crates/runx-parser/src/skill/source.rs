@@ -52,6 +52,8 @@ pub(super) fn validate_source(
         hook: validate_hook(source, &source_type)?,
         outputs: optional_object(source.get("outputs"), "source.outputs")?,
         graph: validate_graph_source(source, &source_type)?,
+        url: validate_http_url(source, &source_type)?,
+        method: validate_http_method(source, &source_type)?,
         raw: source.clone(),
         source_type: source_kind,
     })
@@ -67,6 +69,7 @@ fn parse_source_kind(value: &str, field: &str) -> Result<SourceKind, ValidationE
         "agent-task" => Ok(SourceKind::AgentStep),
         "harness-hook" => Ok(SourceKind::HarnessHook),
         "graph" => Ok(SourceKind::Graph),
+        "http" => Ok(SourceKind::Http),
         "external-adapter" => Ok(SourceKind::ExternalAdapter),
         other => Err(validation_error(format!(
             "{field} {other} is not a supported source type."
@@ -184,6 +187,34 @@ fn validate_graph_source(
     }
     let graph = required_object(source.get("graph"), "source.graph")?.clone();
     validate_graph_document(graph.clone(), Some(RawGraphIr { document: graph })).map(Some)
+}
+
+fn validate_http_url(
+    source: &JsonObject,
+    source_type: &str,
+) -> Result<Option<String>, ValidationError> {
+    if source_type == "http" {
+        return Ok(Some(required_string(source.get("url"), "source.url")?));
+    }
+    optional_string(source.get("url"), "source.url")
+}
+
+fn validate_http_method(
+    source: &JsonObject,
+    source_type: &str,
+) -> Result<Option<String>, ValidationError> {
+    if source_type != "http" {
+        return Ok(None);
+    }
+    let Some(method) = optional_string(source.get("method"), "source.method")? else {
+        return Ok(None);
+    };
+    if !matches!(method.to_ascii_uppercase().as_str(), "GET" | "POST" | "DELETE") {
+        return Err(validation_error(format!(
+            "source.method {method} is not supported; use GET, POST, or DELETE."
+        )));
+    }
+    Ok(Some(method))
 }
 
 fn validate_agent_command_boundary(

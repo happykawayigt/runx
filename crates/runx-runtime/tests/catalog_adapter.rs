@@ -235,6 +235,8 @@ fn invocation_in_directory(
             hook: None,
             outputs: None,
             graph: None,
+            url: None,
+            method: None,
             raw: JsonObject::new(),
         },
         inputs,

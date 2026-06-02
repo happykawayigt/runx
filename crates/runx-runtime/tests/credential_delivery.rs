@@ -450,6 +450,8 @@ fn cli_source() -> SkillSource {
         hook: None,
         outputs: None,
         graph: None,
+        url: None,
+        method: None,
         raw: Default::default(),
     }
 }

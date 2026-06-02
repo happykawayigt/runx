@@ -52,6 +52,7 @@ pub enum SourceKind {
     AgentStep,
     HarnessHook,
     Graph,
+    Http,
     ExternalAdapter,
 }
 
@@ -66,6 +67,7 @@ impl SourceKind {
             SourceKind::AgentStep => "agent-task",
             SourceKind::HarnessHook => "harness-hook",
             SourceKind::Graph => "graph",
+            SourceKind::Http => "http",
             SourceKind::ExternalAdapter => "external-adapter",
         }
     }
@@ -133,6 +135,10 @@ pub struct SkillSource {
     pub outputs: Option<JsonObject>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub graph: Option<crate::ExecutionGraph>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub method: Option<String>,
     pub raw: JsonObject,
 }
 

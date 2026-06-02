@@ -819,6 +819,8 @@ fn cli_tool_source(step: &GraphStep) -> Result<SkillSource, RuntimeError> {
         hook: None,
         outputs: optional_object(run, "outputs"),
         graph: None,
+        url: None,
+        method: None,
         raw: run.clone(),
     })
 }
@@ -1025,6 +1027,8 @@ fn agent_task_source(step: &GraphStep) -> Result<SkillSource, RuntimeError> {
         hook: None,
         outputs: optional_object(run, "outputs"),
         graph: None,
+        url: None,
+        method: None,
         raw,
     })
 }
@@ -1121,6 +1125,8 @@ fn catalog_source(tool_ref: &str) -> SkillSource {
         hook: None,
         outputs: None,
         graph: None,
+        url: None,
+        method: None,
         raw,
     }
 }
