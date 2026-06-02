@@ -581,8 +581,8 @@ function validateGraphSource(value: unknown): ExecutionGraph {
 }
 
 function validateToolSource(source: SkillSource, field: string): SkillSource {
-  if (!["cli-tool", "mcp", "a2a", "catalog"].includes(source.type)) {
-    throw new SkillValidationError(`${field} must be one of cli-tool, mcp, a2a, or catalog for tool manifests.`);
+  if (!["cli-tool", "mcp", "a2a", "catalog", "http"].includes(source.type)) {
+    throw new SkillValidationError(`${field} must be one of cli-tool, mcp, a2a, catalog, or http for tool manifests.`);
   }
   return source;
 }
