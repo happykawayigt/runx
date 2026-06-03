@@ -5,8 +5,10 @@ caller:
   approvals:
     spend-approval: true
 expect:
-  status: failure
-  steps:
-    - quote
-    - reserve
-    - approve-spend
+  status: policy_denied
+  receipt:
+    schema: runx.receipt.v1
+    harness_id: hrn_x402-pay-negative-authority-broader-child_graph
+    state: sealed
+    disposition: blocked
+    reason_code: authority_denied

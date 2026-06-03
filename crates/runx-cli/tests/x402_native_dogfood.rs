@@ -224,80 +224,50 @@ fn native_x402_negative_fixtures_refuse_without_settlement()
     assert_eq!(ambiguous["seal"]["reason_code"], "graph_blocked");
     assert_child_receipts(&ambiguous, 2)?;
 
-    let cap_exceeded = run_harness_fixture_failure(
+    // Payment authority denials (cap exceeded, non-subset child, quote drift) are
+    // refused at admission: the run is policy_denied (blocked) with reason_code
+    // authority_denied, before the rail executes and without exposing rail material.
+    let cap_exceeded = run_harness_fixture(
         "fixtures/harness/x402-pay-negative-cap-exceeded.yaml",
-        &["payment spend capability binding does not match"],
+        &[
+            "pay-fulfill-rail",
+            "credential:mock:paid-echo-001",
+            "rail-session-material:mock:paid-echo-001",
+        ],
     )?;
-    assert!(
-        !cap_exceeded.stdout.contains("pay-fulfill-rail")
-            && !cap_exceeded
-                .stdout
-                .contains("credential:mock:paid-echo-001"),
-        "cap-exceeded fixture must fail before rail fulfillment"
-    );
-    assert!(
-        !cap_exceeded
-            .stdout
-            .contains("rail-session-material:mock:paid-echo-001"),
-        "cap-exceeded fixture must not expose rail material"
-    );
+    assert_eq!(cap_exceeded["seal"]["disposition"], "blocked");
+    assert_eq!(cap_exceeded["seal"]["reason_code"], "authority_denied");
 
-    let broader_child = run_harness_fixture_failure(
+    let broader_child = run_harness_fixture(
         "fixtures/harness/x402-pay-negative-authority-broader-child.yaml",
-        &["child payment authority is not a subset of parent authority"],
+        &[
+            "pay-fulfill-rail",
+            "credential:mock:paid-echo-001",
+            "rail-session-material:mock:paid-echo-001",
+            "hrn_rcpt_x402-pay-negative-authority-broader-child_fulfill",
+        ],
     )?;
-    assert!(
-        !broader_child
-            .stdout
-            .contains("hrn_rcpt_x402-pay-negative-authority-broader-child_fulfill"),
-        "broader-child fixture must fail before rail fulfillment"
-    );
-    assert!(
-        !broader_child.stdout.contains("pay-fulfill-rail")
-            && !broader_child
-                .stdout
-                .contains("credential:mock:paid-echo-001"),
-        "broader-child fixture must not expose mock rail credential material"
-    );
-    assert!(
-        !broader_child
-            .stdout
-            .contains("rail-session-material:mock:paid-echo-001"),
-        "broader-child fixture must not expose rail material"
-    );
+    assert_eq!(broader_child["seal"]["disposition"], "blocked");
+    assert_eq!(broader_child["seal"]["reason_code"], "authority_denied");
 
-    let quote_drift = run_harness_fixture_failure(
+    let quote_drift = run_harness_fixture(
         "fixtures/harness/x402-pay-negative-quote-drift.yaml",
-        &["payment spend capability binding does not match"],
+        &[
+            "pay-fulfill-rail",
+            "credential:mock:paid-echo-001",
+            "rail-session-material:mock:paid-echo-001",
+            "hrn_rcpt_x402-pay-negative-quote-drift_fulfill",
+        ],
     )?;
-    assert!(
-        !quote_drift
-            .stdout
-            .contains("hrn_rcpt_x402-pay-negative-quote-drift_fulfill"),
-        "quote-drift fixture must fail before rail fulfillment"
-    );
-    assert!(
-        !quote_drift.stdout.contains("pay-fulfill-rail")
-            && !quote_drift.stdout.contains("credential:mock:paid-echo-001"),
-        "quote-drift fixture must not expose mock rail credential material"
-    );
-    assert!(
-        !quote_drift
-            .stdout
-            .contains("rail-session-material:mock:paid-echo-001"),
-        "quote-drift fixture must not expose rail material"
-    );
+    assert_eq!(quote_drift["seal"]["disposition"], "blocked");
+    assert_eq!(quote_drift["seal"]["reason_code"], "authority_denied");
 
-    let proofless = run_harness_fixture_failure(
+    let proofless = run_harness_fixture(
         "fixtures/harness/x402-pay-negative-proofless-rail.yaml",
-        &["rail proof"],
+        &["hrn_rcpt_x402-pay-negative-proofless-rail_echo"],
     )?;
-    assert!(
-        !proofless
-            .stdout
-            .contains("hrn_rcpt_x402-pay-negative-proofless-rail_echo"),
-        "proofless rail fixture must not run paid echo"
-    );
+    assert_eq!(proofless["seal"]["disposition"], "blocked");
+    assert_eq!(proofless["seal"]["reason_code"], "authority_denied");
 
     Ok(())
 }
@@ -319,35 +289,6 @@ fn run_harness_fixture(
         );
     }
     Ok(serde_json::from_str(&stdout)?)
-}
-
-struct FailedHarnessOutput {
-    stdout: String,
-}
-
-fn run_harness_fixture_failure(
-    fixture: &str,
-    required_stderr_fragments: &[&str],
-) -> Result<FailedHarnessOutput, Box<dyn std::error::Error>> {
-    let fixture = crate::support::governed_harness_fixture(fixture)?;
-    let output = native_command()?
-        .args(["harness", fixture.path_str()?, "--json"])
-        .output()?;
-    assert!(
-        !output.status.success(),
-        "negative harness fixture unexpectedly succeeded\nstdout={}\nstderr={}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8(output.stdout)?;
-    let stderr = String::from_utf8(output.stderr)?;
-    for required in required_stderr_fragments {
-        assert!(
-            stderr.contains(required),
-            "native CLI failure stderr must contain {required:?}\nstderr={stderr}"
-        );
-    }
-    Ok(FailedHarnessOutput { stdout })
 }
 
 fn native_command() -> Result<Command, Box<dyn std::error::Error>> {
