@@ -10,10 +10,10 @@ import {
   sanitizePublicMarkdown,
   summarizePublicHandoffMarkdown,
   renderIssueToPrReviewerMarkdown,
-} from "../../markdown.ts";
+} from "../../markdown.js";
 import {
   ISSUE_TO_PR_STORY_MILESTONES,
-} from "../../../../packages/core/src/knowledge/thread-story.ts";
+} from "../../story.js";
 import { admitOperationalPolicyRequest } from "@runxhq/contracts";
 
 const build_pull_request_canonical_story_milestones = [...ISSUE_TO_PR_STORY_MILESTONES];

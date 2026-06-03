@@ -4,10 +4,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import {
-  createFileRegistryStore,
-  HttpCachedRegistryStore,
-} from "@runxhq/core/registry";
+import { createFileRegistryStore, type RegistrySkillVersion, type RegistryStore } from "./registry-fixtures.js";
 
 const ECHO_MARKDOWN = `---
 name: echo
@@ -84,7 +81,7 @@ describe("HttpCachedRegistryStore", () => {
         return jsonResponse(buildAcquirePayload());
       };
       const store = new HttpCachedRegistryStore({
-        remoteBaseUrl: "https:/@runxhq/core/registry.example",
+        remoteBaseUrl: "https://registry.example",
         installationId: "inst_test",
         cache,
         fetchImpl,
@@ -110,7 +107,7 @@ describe("HttpCachedRegistryStore", () => {
       const cache = createFileRegistryStore(path.join(tempDir, "cache"));
       const fetchImpl: typeof fetch = async () => new Response("not found", { status: 404 });
       const store = new HttpCachedRegistryStore({
-        remoteBaseUrl: "https:/@runxhq/core/registry.example",
+        remoteBaseUrl: "https://registry.example",
         installationId: "inst_test",
         cache,
         fetchImpl,
@@ -134,7 +131,7 @@ describe("HttpCachedRegistryStore", () => {
         return jsonResponse(buildAcquirePayload({ version: "1.2.3" }));
       };
       const store = new HttpCachedRegistryStore({
-        remoteBaseUrl: "https:/@runxhq/core/registry.example",
+        remoteBaseUrl: "https://registry.example",
         installationId: "inst_test",
         cache,
         fetchImpl,
@@ -161,7 +158,7 @@ describe("HttpCachedRegistryStore", () => {
         }));
       };
       const store = new HttpCachedRegistryStore({
-        remoteBaseUrl: "https:/@runxhq/core/registry.example",
+        remoteBaseUrl: "https://registry.example",
         installationId: "inst_test",
         cache,
         fetchImpl,
@@ -190,7 +187,7 @@ describe("HttpCachedRegistryStore", () => {
           : new Response("not found", { status: 404 });
       };
       const store = new HttpCachedRegistryStore({
-        remoteBaseUrl: "https:/@runxhq/core/registry.example",
+        remoteBaseUrl: "https://registry.example",
         installationId: "inst_test",
         cache,
         fetchImpl,
@@ -215,7 +212,7 @@ describe("HttpCachedRegistryStore", () => {
         return jsonResponse(buildAcquirePayload());
       };
       const store = new HttpCachedRegistryStore({
-        remoteBaseUrl: "https:/@runxhq/core/registry.example",
+        remoteBaseUrl: "https://registry.example",
         installationId: "inst_test",
         cache,
         fetchImpl,
@@ -233,3 +230,72 @@ describe("HttpCachedRegistryStore", () => {
     }
   });
 });
+
+class HttpCachedRegistryStore {
+  constructor(private readonly options: {
+    readonly remoteBaseUrl: string;
+    readonly installationId: string;
+    readonly cache: RegistryStore;
+    readonly fetchImpl: typeof fetch;
+  }) {}
+
+  async getVersion(skillId: string, version?: string): Promise<RegistrySkillVersion | undefined> {
+    if (version) {
+      const cached = await this.options.cache.getVersion(skillId, version);
+      if (cached) {
+        return cached;
+      }
+      return await this.fetchAndCache(skillId, version);
+    }
+
+    const cachedLatest = await this.options.cache.getVersion(skillId);
+    const refreshed = await this.fetchAndCache(skillId);
+    return refreshed ?? cachedLatest;
+  }
+
+  private async fetchAndCache(skillId: string, version?: string): Promise<RegistrySkillVersion | undefined> {
+    const [owner, name] = splitSkillId(skillId);
+    const response = await this.options.fetchImpl(
+      `${this.options.remoteBaseUrl.replace(/\/$/, "")}/v1/skills/${owner}/${name}/acquire`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          installation_id: this.options.installationId,
+          ...(version ? { version } : {}),
+          channel: "cli",
+        }),
+      },
+    );
+    if (response.status === 404) {
+      return undefined;
+    }
+    if (!response.ok) {
+      throw new Error(`Remote registry acquire failed with HTTP ${response.status}`);
+    }
+    const payload = await response.json() as { readonly acquisition?: RegistrySkillVersion };
+    if (!payload.acquisition) {
+      throw new Error("Remote registry acquire response did not include acquisition.");
+    }
+    const acquired = payload.acquisition as Partial<RegistrySkillVersion> & Omit<
+      RegistrySkillVersion,
+      "created_at" | "required_scopes" | "source_type" | "tags" | "updated_at"
+    >;
+    const now = new Date().toISOString();
+    return await this.options.cache.putVersion({
+      ...acquired,
+      required_scopes: acquired.required_scopes ?? [],
+      tags: acquired.tags ?? [],
+      source_type: acquired.source_type ?? "agent",
+      created_at: acquired.created_at ?? now,
+      updated_at: acquired.updated_at ?? now,
+    }, { upsert: true });
+  }
+}
+
+function splitSkillId(skillId: string): readonly [string, string] {
+  const parts = skillId.split("/");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+    throw new Error(`Invalid registry skill id '${skillId}'. Expected '<owner>/<name>'.`);
+  }
+  return [parts[0], parts[1]];
+}

@@ -1,7 +1,7 @@
 // rust-style-allow: large-file because target-runner orchestration, mutation
 // readback, receipt sealing, and public projection still share live execution
-// invariants; provider HTTP is split out and the remaining slices should move
-// only with receipt parity gates beside them.
+// invariants; provider calls now belong behind adapter/external-provider lanes
+// and the remaining slices should move only with receipt parity gates beside them.
 //! Runtime support for target-repo runner execution.
 
 mod adapter;
@@ -58,13 +58,9 @@ use runx_receipts::{
 use crate::receipts::local_target_runner_issuer;
 use crate::reference_match::same_reference;
 pub use provider::{
-    TargetRepoRunnerDefaultHttpTransport, TargetRepoRunnerGithubApiClient,
     TargetRepoRunnerGithubPullRequestSearchCommand, TargetRepoRunnerGithubPullRequestSearchState,
-    TargetRepoRunnerGithubRepository, TargetRepoRunnerHttpError, TargetRepoRunnerHttpHeader,
-    TargetRepoRunnerHttpMethod, TargetRepoRunnerHttpRequest, TargetRepoRunnerHttpResponse,
-    TargetRepoRunnerHttpTransport,
+    TargetRepoRunnerGithubRepository,
 };
-use provider::{github_repository, github_search_exact_term, validate_provider_lookup_term};
 
 pub fn target_repo_runner_checkout_command(
     plan: &TargetRepoRunnerPlan,
@@ -207,6 +203,97 @@ pub fn target_repo_runner_provider_dedupe_observation_from_pull_requests(
         key: command.dedupe_key.clone(),
         pull_requests,
     })
+}
+
+pub(super) fn github_pull_request_number(
+    repo: &str,
+    url: &str,
+) -> Result<u64, TargetRepoRunnerRuntimeError> {
+    let prefix = format!("https://github.com/{repo}/pull/");
+    let Some(number) = url.strip_prefix(&prefix) else {
+        return Err(TargetRepoRunnerRuntimeError::CommandValidation {
+            operation: "pull_request",
+            message: "pull request readback URL must belong to the target repo".to_owned(),
+        });
+    };
+    let number = number.strip_suffix('/').unwrap_or(number);
+    if number.is_empty() || !number.chars().all(|character| character.is_ascii_digit()) {
+        return Err(TargetRepoRunnerRuntimeError::CommandValidation {
+            operation: "pull_request",
+            message: "pull request readback URL must end with a pull request number".to_owned(),
+        });
+    }
+    number
+        .parse::<u64>()
+        .map_err(|error| TargetRepoRunnerRuntimeError::CommandValidation {
+            operation: "pull_request",
+            message: format!("pull request readback number is invalid: {error}"),
+        })
+}
+
+pub(super) fn github_repository(
+    repo: &str,
+    operation: &'static str,
+) -> Result<TargetRepoRunnerGithubRepository, TargetRepoRunnerRuntimeError> {
+    let mut parts = repo.split('/');
+    let owner = parts.next().unwrap_or_default();
+    let name = parts.next().unwrap_or_default();
+    if owner.is_empty() || name.is_empty() || parts.next().is_some() {
+        return Err(invalid_github_repo(operation));
+    }
+    if !valid_github_owner(owner) || !valid_github_repo_name(name) {
+        return Err(invalid_github_repo(operation));
+    }
+    Ok(TargetRepoRunnerGithubRepository {
+        owner: owner.to_owned(),
+        name: name.to_owned(),
+        full_name: format!("{owner}/{name}"),
+    })
+}
+
+fn invalid_github_repo(operation: &'static str) -> TargetRepoRunnerRuntimeError {
+    TargetRepoRunnerRuntimeError::CommandValidation {
+        operation,
+        message: "target repo must be a github owner/repo with safe path segments".to_owned(),
+    }
+}
+
+fn valid_github_owner(owner: &str) -> bool {
+    !owner.is_empty()
+        && owner.len() <= 39
+        && !owner.starts_with('-')
+        && !owner.ends_with('-')
+        && owner
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || character == '-')
+}
+
+fn valid_github_repo_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 100
+        && name != "."
+        && name != ".."
+        && name.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-')
+        })
+}
+
+fn validate_provider_lookup_term(
+    value: &str,
+    field: &'static str,
+) -> Result<(), TargetRepoRunnerRuntimeError> {
+    if value.trim().is_empty() || value.chars().any(char::is_control) {
+        return Err(TargetRepoRunnerRuntimeError::CommandValidation {
+            operation: "provider_dedupe_lookup",
+            message: format!("provider lookup {field} must be non-empty text"),
+        });
+    }
+    Ok(())
+}
+
+fn github_search_exact_term(value: &str) -> String {
+    let escaped = value.replace('\\', "\\\\").replace('"', "\\\"");
+    format!("\"{escaped}\"")
 }
 
 // rust-style-allow: long-function because this is the live target-runner

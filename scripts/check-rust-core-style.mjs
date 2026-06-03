@@ -28,7 +28,6 @@ const disallowedPatterns = [
     allowlist: [
       "crates/runx-runtime/src/adapters/agent_anthropic.rs",
       "crates/runx-runtime/src/adapters/http.rs",
-      "crates/runx-runtime/src/adapters/payment_supervisor.rs",
     ],
   },
   {

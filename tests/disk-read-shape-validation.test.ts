@@ -9,7 +9,7 @@ import {
   createRunEventEntry,
   readLedgerEntries,
   resolveLedgerPath,
-} from "@runxhq/core/artifacts";
+} from "./ledger-fixtures.js";
 const validArtifactEnvelope = {
   type: "run_event",
   version: "1",

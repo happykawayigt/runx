@@ -1,8 +1,8 @@
 # Kernel Parity Fixtures
 
-These fixtures are the TypeScript source-of-truth contract for the Rust
-trusted-kernel port. They cover pure `@runxhq/core/state-machine` and
-`@runxhq/core/policy` behavior only.
+These fixtures are regression evidence for the Rust trusted-kernel port. The
+old TypeScript state-machine and policy implementations are retired; the active
+owner is `runx-core`.
 
 Each fixture has:
 

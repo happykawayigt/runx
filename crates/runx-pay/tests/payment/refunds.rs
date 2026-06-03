@@ -46,11 +46,16 @@ fn refund_reversal_targets_recorded_payer() {
         charge: charge.clone(),
     });
 
-    let RefundAdmissionDecision::Admitted { reversal } = decision else {
-        panic!("sealed charge refund should be admitted");
-    };
-    assert_eq!(reversal.counterparty, charge.payer_ref);
-    assert_eq!(reversal.original_proof_ref, charge.proof_ref);
+    match decision {
+        RefundAdmissionDecision::Admitted { reversal } => {
+            assert_eq!(reversal.counterparty, charge.payer_ref);
+            assert_eq!(reversal.original_proof_ref, charge.proof_ref);
+        }
+        other => assert!(
+            matches!(other, RefundAdmissionDecision::Admitted { .. }),
+            "sealed charge refund should be admitted"
+        ),
+    }
 }
 
 #[test]

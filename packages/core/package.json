@@ -1,13 +1,10 @@
 {
   "name": "@runxhq/core",
   "version": "0.2.0",
-  "description": "Runx TypeScript client domains: parser, policy helpers, registry, config, knowledge, source, artifacts, and utilities.",
-  "private": false,
+  "description": "Private legacy TypeScript helper package retained only for build-only sunset surfaces.",
+  "private": true,
   "license": "MIT",
   "type": "module",
-  "publishConfig": {
-    "access": "public"
-  },
   "files": [
     "dist"
   ],
@@ -31,10 +28,6 @@
     "./parser": {
       "types": "./dist/src/parser/index.d.ts",
       "import": "./dist/src/parser/index.js"
-    },
-    "./policy": {
-      "types": "./dist/src/policy/index.d.ts",
-      "import": "./dist/src/policy/index.js"
     },
     "./registry": {
       "types": "./dist/src/registry/index.d.ts",

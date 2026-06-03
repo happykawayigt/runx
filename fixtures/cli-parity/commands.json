@@ -314,6 +314,37 @@
       ]
     },
     {
+      "id": "payment",
+      "usage": "runx payment admission issue --input <file|-> --json",
+      "aliases": [],
+      "requiredPositionals": [
+        "<file|->"
+      ],
+      "flags": [
+        "--input",
+        "--json"
+      ],
+      "exitCodes": [
+        0,
+        1,
+        2,
+        64
+      ],
+      "parity": {
+        "humanOutput": "semantic",
+        "jsonOutput": "schema-exact",
+        "receipt": "none",
+        "sideEffect": "local-runtime",
+        "surfaces": [
+          "authority",
+          "cli-presentation"
+        ]
+      },
+      "cases": [
+        "payment.validate"
+      ]
+    },
+    {
       "id": "kernel",
       "usage": "runx kernel eval --input <file|-> --json",
       "aliases": [],

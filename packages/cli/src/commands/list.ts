@@ -9,13 +9,13 @@ import type {
   RunxListRequestedKindContract,
   RunxListSourceContract,
 } from "@runxhq/contracts";
-import { resolveRunxWorkspaceBase } from "@runxhq/core/config";
+import { resolveRunxWorkspaceBase } from "../cli-config.js";
 import {
   parseRunnerManifestYaml,
   parseToolManifestJson,
   validateRunnerManifest,
   validateToolManifest,
-} from "@runxhq/core/parser";
+} from "../cli-parser/index.js";
 
 import {
   buildLocalPacketIndex,

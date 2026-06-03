@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 
-import { safeReadDir } from "@runxhq/core/util";
+import { safeReadDir } from "../../cli-util.js";
 
 import { discoverToolDirectories } from "../tool.js";
 

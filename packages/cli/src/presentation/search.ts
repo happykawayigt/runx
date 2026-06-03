@@ -1,4 +1,4 @@
-import type { SkillSearchResult } from "@runxhq/core/registry";
+import type { SkillSearchResult } from "../cli-registry.js";
 
 import { theme } from "../ui.js";
 

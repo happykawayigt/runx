@@ -14,7 +14,7 @@ import {
   type HandoffSignal,
   type HandoffState,
   type SuppressionRecord,
-} from "@runxhq/core/knowledge";
+} from "../../handoff.js";
 
 const handoffSignalDispositions = new Set([
   "acknowledged",

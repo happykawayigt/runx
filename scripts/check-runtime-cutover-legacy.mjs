@@ -127,6 +127,7 @@ function runCutoverCheck() {
     checkFinalPackageDirectories();
     checkFinalRustKernelDomainFree();
     checkFinalRuntimeCargoEdges();
+    checkFinalNoInKernelGithubProviderClients();
   }
 }
 
@@ -274,12 +275,10 @@ function checkFinalPackageDirectories() {
 }
 
 function checkFinalRustKernelDomainFree() {
-  const sourceRoots = ["crates/runx-runtime/src/execution/runner", "crates/runx-core/src"];
+  const sourceRoots = ["crates/runx-runtime/src", "crates/runx-core/src"];
   const manifestFiles = ["crates/runx-core/Cargo.toml"];
-  const runnerRoot = path.join(workspaceRoot, "crates/runx-runtime/src/execution/runner.rs");
   const files = [
     ...sourceFiles(sourceRoots, [".rs"]),
-    ...(existsSync(runnerRoot) ? [runnerRoot] : []),
     ...manifestFiles.map((relPath) => path.join(workspaceRoot, relPath)).filter(existsSync),
   ];
   const bannedParts = new Set(["payment", "settlement", "spend", "x402", "rail"]);
@@ -317,6 +316,35 @@ function checkFinalRuntimeCargoEdges() {
   }
   if (/\brunx-pay\b|\brunx_pay\b/u.test(result.stdout)) {
     findings.push("runx-runtime has a normal Cargo edge to runx-pay in final cutover mode");
+  }
+}
+
+function checkFinalNoInKernelGithubProviderClients() {
+  const deletedClientPath = path.join(workspaceRoot, "crates/runx-runtime/src/post_merge_observer/github.rs");
+  if (existsSync(deletedClientPath)) {
+    findings.push("crates/runx-runtime/src/post_merge_observer/github.rs reintroduces an in-kernel GitHub provider client");
+  }
+  const providerClientMarkers = [
+    /\breqwest\b/u,
+    /\bapi\.github\.com\b/u,
+    /\bGITHUB_TOKEN\b/u,
+    /\bbearer_auth\b/u,
+    /\bheader::AUTHORIZATION\b/u,
+    /\bAUTHORIZATION\b/u,
+  ];
+  const files = [
+    ...sourceFiles(["crates/runx-runtime/src/execution/target_runner"], [".rs"]),
+    ...sourceFiles(["crates/runx-runtime/src/post_merge_observer"], [".rs"]),
+    path.join(workspaceRoot, "crates/runx-runtime/src/execution/target_runner.rs"),
+    path.join(workspaceRoot, "crates/runx-runtime/src/post_merge_observer.rs"),
+  ].filter(existsSync);
+  for (const filePath of files) {
+    const rel = relative(filePath);
+    const source = readFileSync(filePath, "utf8");
+    const marker = providerClientMarkers.find((pattern) => pattern.test(source));
+    if (marker) {
+      findings.push(`${rel} contains outbound GitHub provider client marker ${marker}`);
+    }
   }
 }
 

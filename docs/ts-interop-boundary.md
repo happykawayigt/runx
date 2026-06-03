@@ -76,35 +76,27 @@ The crossing families above describe the intended boundary. The shipped CLI is
 narrower than the contracts suggest, and that gap is itself part of the boundary
 truth, so it is recorded here rather than implied.
 
-- **Family-4 lanes are contract-defined but not all shipped.** The
-  `external-adapter`, `agent`, and `a2a` runtime supervisors are
-  `#[cfg(feature = ...)]`-gated and are NOT enabled in `runx-cli`, which ships
-  `cli-tool`, `catalog`, and `mcp` (with `payment-rails` opt-in only). The
-  external-adapter wire contract lives in `runx-contracts/src/external_adapter.rs`,
-  but the shipped binary cannot currently launch an external adapter. The marquee
-  local lane is a contract, not yet a shipped capability; enabling it is the
-  prerequisite for moving any integration onto it.
+- **Family-4 lanes are contract-defined but not all shipped.** The `a2a` runtime
+  supervisor is `#[cfg(feature = ...)]`-gated and is NOT enabled in `runx-cli`.
+  The shipped binary enables the local `external-adapter` lane; future integration
+  work should land there instead of adding provider HTTP clients to the kernel.
 - **Payment: authority is Rust, the rail network leg is a family-4 crossing.**
   Admission, the spend-capability binding, proof validation, and receipt sealing
-  are Rust and stay Rust. The rail SETTLEMENT network leg (the x402 facilitator
-  `/verify`+`/settle` call and the external-signer call) is not kernel work: it is
+  are Rust and stay Rust. The rail SETTLEMENT network leg (provider
+  verify/settle calls and any external-signer call) is not kernel work: it is
   non-deterministic, secret-free, and offline-impossible, and belongs on a family-4
-  external-adapter lane, mirroring the `ExternalSignerClient` pattern the runtime
-  already uses to externalize EVM signing.
-- **Inert in-tree clients to relocate when wired.** `runx-runtime` currently
-  carries dead scaffolding on the wrong side of this boundary, all with no shipped
-  caller: the x402 facilitator HTTP client and dispatcher
-  (`adapters/payment_supervisor.rs`), the GitHub target-runner dedupe fetch
-  (`execution/target_runner/provider.rs`), and the GitHub post-merge observer's
-  pull-request read (`post_merge_observer/github.rs`, reachable only through the
-  post-merge/target-runner execution entries, which themselves have no shipped
-  caller). These are token-bearing or settlement provider calls baked in as kernel
-  `reqwest`; when the integrations are built for real they land on family-4 provider
-  / external-adapter lanes, not in-kernel. The unbuilt GitHub post-merge publisher
-  (mutation half) likewise belongs on the `thread-outbox-provider` lane, not a new
-  in-kernel client. Note the deterministic halves these feed (payment authority and
-  admission in `runx-core/src/policy`, the dedupe and post-merge decisions) are pure
-  and correctly stay in the kernel; only the network legs move.
+  external-adapter lane behind the generic effect kernel.
+- **Provider clients belong outside the kernel.** The dead GitHub target-runner
+  dedupe fetch and GitHub post-merge pull-request readback clients were removed
+  from `runx-runtime`; the remaining Rust code keeps only pure command/decision
+  helpers and fixture-backed readback. When these provider calls are wired for
+  real, they belong on family-4 provider/external-adapter lanes rather than as
+  token-bearing kernel `reqwest` clients. Payment's inert rail dispatcher and
+  HTTP clients were also removed; real rails are rebuilt as generic effect-family
+  adapters behind the kernel. The unbuilt GitHub post-merge publisher (mutation
+  half) likewise belongs on the `thread-outbox-provider` lane, not a new
+  in-kernel client. The deterministic halves these feed are pure and correctly
+  stay in the kernel; only the network legs move.
 - **Coded once, on the binary (in progress).** The agent loop now lives on the
   binary: the Rust managed-agent loop ships behind the enabled `agent` feature as the
   opt-in governance path (default stays host-drives). What remains is the MCP server,
@@ -125,7 +117,7 @@ truth, so it is recorded here rather than implied.
 | `@runxhq/authoring` | Stays as authoring tooling for skills, manifests, protocol fixtures, and generated artifacts until the authoring DX plan decides whether any piece moves to Rust or scafld. It does not own trusted local execution. |
 | `@runxhq/cli` | Stays as a platform-aware npm launcher that resolves and execs the Rust binary. It must remain useful from an installed package without TypeScript sources and must fail closed instead of falling back to TypeScript local execution. |
 | `@runxhq/contracts` | Stays as the published generated TypeScript view of `runx-contracts`, maintained with fixture cross-validation. |
-| `@runxhq/core` | Not yet sunset in practice. The trusted-executor surfaces (state-machine, policy, executor, receipts) are gone from the user-shipped runtime path, but the package is still published (`private: false`, v0.2.0) and ~20 of its `/util`, `/registry`, `/config`, `/knowledge`, `/parser` modules are imported by `oss/packages/cli/src` and by build/authoring tooling. Disposition: survives as a build/authoring/test utility, not a trusted local executor. Finish the sunset only when the unshipped `cli/src` TS dispatch layer and tooling stop importing it. |
+| `@runxhq/core` | Sunset in OSS. The package is private build-only legacy surface; root/workspace aliases no longer expose it, `core/src/policy` is deleted, and OSS CLI/tests/scripts no longer import it. Any remaining cloud importer belongs to the separate cloud cutover, not the trusted local runtime path. |
 | `@runxhq/create-skill` | Stays as a thin npm bootstrapper that wraps `runx new` through the CLI. |
 | `@runxhq/host-adapters` | Stays as thin host response adapters over the runx host protocol, retargeted to `@runxhq/contracts` types. It can shape host/client responses, not execute trusted local runtime behavior. |
 | `@runxhq/langchain` | Stays as an optional LangChain bridge that shells the `runx` CLI or uses documented external protocols for governed skill and tool invocation. |

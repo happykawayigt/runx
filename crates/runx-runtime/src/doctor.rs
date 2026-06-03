@@ -11,6 +11,7 @@ use serde::Deserialize;
 
 use crate::RuntimeError;
 use crate::runtime_fs::{read_dir_sorted, read_to_string};
+use crate::tool_catalogs::build::hash_tool_source;
 
 // rust-style-allow: large-file - this first doctor slice keeps parity checks and builders together until follow-up diagnostics add natural module boundaries.
 
@@ -35,7 +36,9 @@ struct DoctorFileBudget {
 }
 
 #[derive(Deserialize)]
-struct ToolManifestProbe {}
+struct ToolManifestProbe {
+    source_hash: Option<String>,
+}
 
 #[must_use]
 pub fn default_doctor_options() -> DoctorOptions {
@@ -214,6 +217,8 @@ fn discover_cross_package_reach_in_diagnostics(
     Ok(diagnostics)
 }
 
+// rust-style-allow: long-function - tool diagnostics keep manifest, fixture, and
+// generated repair evidence in one read-only pass.
 fn discover_tool_diagnostics(root: &Path) -> Result<Vec<DoctorDiagnostic>, RuntimeError> {
     let tools_root = root.join("tools");
     let mut diagnostics = Vec::new();
@@ -241,15 +246,32 @@ fn discover_tool_diagnostics(root: &Path) -> Result<Vec<DoctorDiagnostic>, Runti
                 continue;
             }
             let manifest_contents = read_to_string(&manifest_path)?;
-            serde_json::from_str::<ToolManifestProbe>(&manifest_contents).map_err(|source| {
-                RuntimeError::json(
-                    format!(
-                        "reading tool manifest {}",
-                        project_path(root, &manifest_path)
-                    ),
-                    source,
-                )
-            })?;
+            let manifest = serde_json::from_str::<ToolManifestProbe>(&manifest_contents).map_err(
+                |source| {
+                    RuntimeError::json(
+                        format!(
+                            "reading tool manifest {}",
+                            project_path(root, &manifest_path)
+                        ),
+                        source,
+                    )
+                },
+            )?;
+            if let Some(source_hash) = &manifest.source_hash {
+                let actual_source_hash = hash_tool_source(&tool_dir).map_err(|source| {
+                    RuntimeError::effect_state("checking tool manifest source hash", source)
+                })?;
+                if source_hash != &actual_source_hash {
+                    diagnostics.push(tool_manifest_stale_diagnostic(
+                        root,
+                        &tool_ref,
+                        &manifest_path,
+                        &tool_dir,
+                        &actual_source_hash,
+                        source_hash,
+                    ));
+                }
+            }
             let fixture_count = count_yaml_files(&tool_dir.join("fixtures"))?;
             if fixture_count == 0 {
                 diagnostics.push(tool_fixture_missing_diagnostic(
@@ -344,6 +366,56 @@ fn tool_fixture_missing_diagnostic(
         repairs: vec![manual_repair(
             "add_tool_fixture",
             DoctorRepairConfidence::Medium,
+            DoctorRepairRisk::Low,
+            false,
+        )],
+    })
+}
+
+fn tool_manifest_stale_diagnostic(
+    root: &Path,
+    tool_ref: &str,
+    manifest_path: &Path,
+    tool_dir: &Path,
+    expected_hash: &str,
+    actual_hash: &str,
+) -> DoctorDiagnostic {
+    let location_path = project_path(root, manifest_path);
+    let tool_path = project_path(root, tool_dir);
+    let target = object([
+        ("kind", string_value("tool")),
+        ("ref", string_value(tool_ref)),
+    ]);
+    let location = DoctorLocation {
+        path: location_path.clone(),
+        json_pointer: Some("/source_hash".to_owned()),
+    };
+    let evidence = object([
+        ("expected", string_value(expected_hash)),
+        ("actual", string_value(actual_hash)),
+    ]);
+    create_diagnostic(DiagnosticParts {
+        id: "runx.tool.manifest.stale",
+        severity: DoctorDiagnosticSeverity::Error,
+        title: "Tool manifest is stale",
+        message: format!("Tool {tool_ref} source_hash does not match current source files."),
+        target,
+        target_json: format!(r#"{{"kind":"tool","ref":{}}}"#, json_string(tool_ref)),
+        location,
+        location_json: format!(
+            r#"{{"path":{},"json_pointer":"/source_hash"}}"#,
+            json_string(&location_path)
+        ),
+        evidence: Some(evidence),
+        evidence_json: Some(format!(
+            r#"{{"expected":{},"actual":{}}}"#,
+            json_string(expected_hash),
+            json_string(actual_hash)
+        )),
+        repairs: vec![run_command_repair(
+            "rebuild_tool_manifest",
+            format!("runx tool build {tool_path}"),
+            DoctorRepairConfidence::High,
             DoctorRepairRisk::Low,
             false,
         )],
@@ -561,6 +633,27 @@ fn manual_repair(
         contents: None,
         patch: None,
         command: None,
+        requires_human_review,
+    }
+}
+
+fn run_command_repair(
+    id: &str,
+    command: String,
+    confidence: DoctorRepairConfidence,
+    risk: DoctorRepairRisk,
+    requires_human_review: bool,
+) -> DoctorRepair {
+    DoctorRepair {
+        id: id.to_owned(),
+        kind: DoctorRepairKind::RunCommand,
+        confidence,
+        risk,
+        path: None,
+        json_pointer: None,
+        contents: None,
+        patch: None,
+        command: Some(command),
         requires_human_review,
     }
 }

@@ -9,10 +9,10 @@ import {
   resolveRunxOfficialSkillsDir,
   resolveRunxProjectDir,
   resolveSkillInstallRoot,
-} from "@runxhq/core/config";
-import { type SkillSearchResult } from "@runxhq/core/registry";
+} from "./cli-config.js";
+import { type SkillSearchResult } from "./cli-registry.js";
 
-import { asRecord, errorMessage, firstNonEmpty, hashString, parsePositiveInt, readOptionalFile } from "@runxhq/core/util";
+import { asRecord, errorMessage, firstNonEmpty, hashString, parsePositiveInt, readOptionalFile } from "./cli-util.js";
 
 import { searchRegistryViaRustCli } from "./native-registry.js";
 import { runNativeRunx } from "./native-runx.js";

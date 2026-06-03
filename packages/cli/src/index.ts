@@ -6,7 +6,7 @@ import { realpathSync } from "node:fs";
 import { stdin as processStdin, stdout as processStdout } from "node:process";
 import { pathToFileURL } from "node:url";
 
-import { errorMessage } from "@runxhq/core/util";
+import { errorMessage } from "./cli-util.js";
 
 import { isSupportedCommand, parseArgs } from "./args.js";
 import { dispatchCli, writeCliError } from "./dispatch.js";

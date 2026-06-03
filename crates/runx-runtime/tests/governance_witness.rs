@@ -1,4 +1,5 @@
 #![cfg(feature = "cli-tool")]
+#![allow(clippy::expect_used, clippy::unwrap_used)]
 //! Conformance for the uniform-governance seal invariant.
 //!
 //! Every registered graph step is admitted centrally and its admission witness is

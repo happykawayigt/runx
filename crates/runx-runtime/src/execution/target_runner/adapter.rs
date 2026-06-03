@@ -1,5 +1,5 @@
 //! Adapter trait and error types for target-repo runner execution. The trait
-//! is implemented by both fixture-backed and live-HTTP backends; the error
+//! is implemented by fixture-backed and host/provider-backed lanes; the error
 //! enum is the runtime's single exit channel for execution errors.
 
 use std::fmt;

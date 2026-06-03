@@ -6,7 +6,9 @@ observations; it is not the source of truth.
 
 ## Current Shape
 
-The shared implementation lives in `@runxhq/core/knowledge` as typed helpers:
+The shared implementation for bundled tools is inlined in the tool-local story
+helpers (`tools/outbox/story.ts`, `tools/thread/story.ts`, and
+`tools/thread/handoff.ts`) as typed helpers:
 
 - `StoryMilestoneId`
 - `ThreadStorySectionId`
@@ -16,10 +18,10 @@ The shared implementation lives in `@runxhq/core/knowledge` as typed helpers:
 - `buildFeedStoryOutboxEntry`
 - `buildStoryOutboxIdempotencyMetadata`
 
-Source-command normalization lives one layer earlier in `@runxhq/core/source`.
-It supplies canonical source/thread locators, safe command summaries, target
-repo hints, and dedupe keys that story builders may reference. It does not own
-the durable reviewer projection, and it must not publish to Slack, GitHub, or
+Source-command normalization lives one layer earlier at the adapter edge. It
+supplies canonical source/thread locators, safe command summaries, target repo
+hints, and dedupe keys that story builders may reference. It does not own the
+durable reviewer projection, and it must not publish to Slack, GitHub, or
 Sentry directly.
 
 The thread outbox tools use those helpers to produce:
@@ -40,8 +42,8 @@ Provider publication is not owned by these helpers. Local file-thread outbox
 pushes are credential-free persistence for fixtures and local dogfood. GitHub,
 Slack, support-channel, or other provider mutations require the separate
 `thread-outbox-provider-protocol-v1` lane and Rust-supervised credential
-delivery; they must not be implemented as hidden `@runxhq/core` provider
-side effects.
+delivery; they must not be implemented as hidden provider side effects in a
+TypeScript helper package.
 
 The canonical v1 milestone ids are:
 

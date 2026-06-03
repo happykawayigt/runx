@@ -7,9 +7,9 @@ state, dedupe fingerprint, triage action, and source-thread locator.
 
 ## Source Command Normalization
 
-Use `@runxhq/core/source` at the adapter edge before calling `issue-intake`.
-It parses GitHub, Slack, Sentry, file, API, and manual source references into a
-provider-neutral command shape:
+Normalize source commands at the adapter edge before calling `issue-intake`.
+The adapter-local normalizer parses GitHub, Slack, Sentry, file, API, and
+manual source references into a provider-neutral command shape:
 
 - canonical `source_locator` and, when available, `thread_locator`
 - target repo hint from concrete GitHub URLs

@@ -26,7 +26,7 @@ fn tool_catalogs_build_scaffold_manifest() -> Result<(), Box<dyn std::error::Err
     let manifest = fs::read_to_string(temp_root.join("tools/docs/echo/manifest.json"))?;
     assert!(manifest.contains(r#""schema": "runx.tool.manifest.v1""#));
     assert!(manifest.contains(r#""toolkit_version": "0.1.4""#));
-    assert!(manifest.contains(r#""source_hash": "sha256:43323caad0616b9c0bf771663ac556a6aea2971d65c4e23a59d440d9b0b61229""#));
+    assert!(manifest.contains(r#""source_hash": "sha256:55f8c4e20a11308b1f8446d16413d4e09d88fc59721c7ebbe1cb18f13e5b1a11""#));
     assert!(manifest.contains(r#""schema_hash": "sha256:d5c0e413e7484e04bec267def5ecfe1f63fafb94d8cd96c7fab17d2608b0631a""#));
     Ok(())
 }

@@ -1,7 +1,8 @@
 # Rust parser parity fixtures
 
-Parser fixtures are the cross-language contract between the TypeScript parser
-in `packages/core/src/parser` and the Rust `runx-parser` crate.
+Parser fixtures are the cross-language contract between the CLI-local
+TypeScript parser in `packages/cli/src/cli-parser` and the Rust `runx-parser`
+crate.
 
 Fixture categories:
 

@@ -370,14 +370,19 @@ mod tests {
     }
 
     #[test]
-    fn path_template_substitutes_inputs_and_drops_them_from_the_query() -> Result<(), RuntimeError> {
+    fn path_template_substitutes_inputs_and_drops_them_from_the_query() -> Result<(), RuntimeError>
+    {
         let transport = stub(200, "{}");
         let call = HttpCall {
             method: HttpMethod::Get,
             url: "https://api.example.test/v1/pets/{id}".to_owned(),
             headers: Vec::new(),
         };
-        execute_http_call(&transport, &call, &inputs(&[("id", "p-7"), ("fields", "name")]))?;
+        execute_http_call(
+            &transport,
+            &call,
+            &inputs(&[("id", "p-7"), ("fields", "name")]),
+        )?;
         let sent = transport.requests.borrow();
         assert!(
             sent[0].url.contains("/v1/pets/p-7")

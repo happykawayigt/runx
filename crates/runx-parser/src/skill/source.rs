@@ -232,9 +232,9 @@ fn validate_http_headers(
     })?;
     let mut headers = std::collections::BTreeMap::new();
     for (name, value) in object {
-        let value = value.as_str().ok_or_else(|| {
-            validation_error(format!("source.headers.{name} must be a string."))
-        })?;
+        let value = value
+            .as_str()
+            .ok_or_else(|| validation_error(format!("source.headers.{name} must be a string.")))?;
         headers.insert(name.clone(), value.to_owned());
     }
     Ok(Some(headers))

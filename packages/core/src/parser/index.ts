@@ -1,7 +1,7 @@
 import { parseDocument } from "yaml";
 
 import { validateGraphDocument, type ExecutionGraph } from "./graph.js";
-import { normalizeSandboxDeclaration } from "../policy/sandbox.js";
+import { normalizeSandboxDeclaration } from "../sandbox.js";
 import { GOVERNED_DISPOSITIONS, type ExecutionSemantics } from "../execution-semantics.js";
 import { errorMessage, isRecord, readField } from "../util/types.js";
 

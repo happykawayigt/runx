@@ -8,9 +8,9 @@
 //! [`ModelCaller`] and tool execution behind [`ToolExecutor`], so a provider
 //! resolver supplies both and this loop stays provider- and transport-agnostic.
 //!
-//! It deliberately does not track spend. The per-run authority cap is enforced by
-//! the payment-authority reservation that each governed tool execution passes
-//! through; duplicating that accounting here would be a second source of truth.
+//! It deliberately does not track domain-specific usage. The per-run authority
+//! cap is enforced by the governed tool execution path; duplicating that
+//! accounting here would be a second source of truth.
 //!
 //! Output and telemetry reuse the existing agent contracts ([`AgentResolution`],
 //! [`AgentExecutionTelemetry`], [`AgentToolExecutionTrace`]) and tool execution
@@ -63,8 +63,7 @@ pub trait ModelCaller {
 
 /// Executes one chosen tool through the governed runtime, returning the standard
 /// [`SkillOutput`]. Production implementations delegate to skill execution (which
-/// passes through authority admission and the payment reservation); tests supply
-/// a fake.
+/// passes through authority admission); tests supply a fake.
 pub trait ToolExecutor {
     fn execute(&self, tool: &str, input: &JsonValue) -> Result<SkillOutput, RuntimeError>;
 }
@@ -221,7 +220,12 @@ mod tests {
             max_rounds: 8,
             final_result_tool: FINAL.to_owned(),
         };
-        let result = run_agent_loop(&config, &ScriptedModel, &OkExecutor, "buy a quota".to_owned());
+        let result = run_agent_loop(
+            &config,
+            &ScriptedModel,
+            &OkExecutor,
+            "buy a quota".to_owned(),
+        );
         assert!(
             matches!(
                 &result,
@@ -289,8 +293,8 @@ mod tests {
         fn execute(&self, _tool: &str, _input: &JsonValue) -> Result<SkillOutput, RuntimeError> {
             self.calls.set(self.calls.get() + 1);
             Err(RuntimeError::SkillFailed {
-                skill_name: "pay".to_owned(),
-                message: "rail down".to_owned(),
+                skill_name: "managed-tool".to_owned(),
+                message: "executor down".to_owned(),
             })
         }
     }
@@ -315,7 +319,7 @@ mod tests {
             "the executor must actually be invoked before its error can propagate"
         );
         assert!(
-            matches!(&result, Err(RuntimeError::SkillFailed { message, .. }) if message.contains("rail down")),
+            matches!(&result, Err(RuntimeError::SkillFailed { message, .. }) if message.contains("executor down")),
             "an executor error must propagate; got: {result:?}"
         );
     }

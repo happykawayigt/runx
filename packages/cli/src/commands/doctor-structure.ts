@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { parseRunnerManifestYaml, parseSkillMarkdown, validateRunnerManifest, validateSkill } from "@runxhq/core/parser";
+import { parseRunnerManifestYaml, parseSkillMarkdown, validateRunnerManifest, validateSkill } from "../cli-parser/index.js";
 
 import { safeReadDir, toProjectPath } from "../authoring-utils.js";
 

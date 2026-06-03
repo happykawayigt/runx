@@ -89,7 +89,10 @@ source:
     let http = skill.source.http.as_ref().ok_or("http config is present")?;
     assert_eq!(http.allow_private_network, Some(true));
     assert_eq!(
-        http.headers.as_ref().and_then(|h| h.get("authorization")).map(String::as_str),
+        http.headers
+            .as_ref()
+            .and_then(|h| h.get("authorization"))
+            .map(String::as_str),
         Some("Bearer ${secret:TOKEN}")
     );
     Ok(())

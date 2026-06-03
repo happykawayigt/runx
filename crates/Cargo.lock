@@ -1746,6 +1746,8 @@ dependencies = [
 name = "runx-pay"
 version = "0.1.0"
 dependencies = [
+ "base64",
+ "ring",
  "runx-contracts",
  "runx-core",
  "runx-parser",

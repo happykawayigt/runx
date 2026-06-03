@@ -2,7 +2,7 @@ import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 
 import { validateReceiptContract, type ReceiptContract } from "@runxhq/contracts";
-import { errorMessage, isNotFound } from "@runxhq/core/util";
+import { errorMessage, isNotFound } from "./cli-util.js";
 
 export const TRAINING_SCHEMA_REFS = {
   trainable_receipt_row: "https://runx.ai/spec/training/trainable-receipt-row.schema.json",

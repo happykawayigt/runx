@@ -6,12 +6,12 @@ import { readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { sha256Prefixed } from "@runxhq/contracts";
-import { resolvePathFromUserInput, resolveRunxWorkspaceBase } from "@runxhq/core/config";
-import { parseToolManifestJson, validateToolManifest } from "@runxhq/core/parser";
-import { errorMessage } from "@runxhq/core/util";
+import { resolvePathFromUserInput, resolveRunxWorkspaceBase } from "../cli-config.js";
+import { parseToolManifestJson, validateToolManifest } from "../cli-parser/index.js";
+import { errorMessage } from "../cli-util.js";
 
 import {
+  hashToolSource,
   isPlainRecord,
   safeReadDir,
   sha256Stable,
@@ -291,39 +291,18 @@ function normalizeToolOutput(raw: Readonly<Record<string, unknown>>): Readonly<R
   return {};
 }
 
-async function hashToolSource(toolDir: string): Promise<string> {
-  const candidates = [
-    path.join(toolDir, "src", "index.ts"),
-    path.join(toolDir, "run.mjs"),
-  ];
-  const chunks: Uint8Array[] = [];
-  let found = false;
-  for (const candidate of candidates) {
-    if (!existsSync(candidate)) {
-      continue;
-    }
-    found = true;
-    chunks.push(
-      Buffer.from(toProjectPath(toolDir, candidate)),
-      Buffer.from("\0"),
-      await readFile(candidate),
-      Buffer.from("\0"),
-    );
-  }
-  if (!found) {
-    chunks.push(Buffer.from("no-source"));
-  }
-  return sha256Prefixed(Buffer.concat(chunks));
-}
-
 export async function discoverToolDirectories(root: string): Promise<readonly string[]> {
   const toolsRoot = path.join(root, "tools");
   const directories: string[] = [];
   for (const namespaceEntry of await safeReadDir(toolsRoot)) {
     if (!namespaceEntry.isDirectory()) continue;
     for (const toolEntry of await safeReadDir(path.join(toolsRoot, namespaceEntry.name))) {
-      if (toolEntry.isDirectory()) {
-        directories.push(path.join(toolsRoot, namespaceEntry.name, toolEntry.name));
+      if (!toolEntry.isDirectory()) {
+        continue;
+      }
+      const toolDir = path.join(toolsRoot, namespaceEntry.name, toolEntry.name);
+      if (existsSync(path.join(toolDir, "manifest.json")) || existsSync(path.join(toolDir, "src", "index.ts"))) {
+        directories.push(toolDir);
       }
     }
   }

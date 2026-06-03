@@ -16,6 +16,8 @@ include = ["Cargo.toml", "README.md", "src/**/*.rs"]
 workspace = true
 
 [dependencies]
+base64 = "0.22.1"
+ring = "0.17.14"
 runx-contracts.workspace = true
 runx-core.workspace = true
 runx-parser.workspace = true

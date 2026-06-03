@@ -21,7 +21,7 @@ import {
 } from "../../github_adapter.mjs";
 import {
   assertStoryMilestoneId,
-} from "../../../../packages/core/src/knowledge/thread-story.ts";
+} from "../../story.js";
 
 const githubPublishEnvAllowlist = [
   "PATH",

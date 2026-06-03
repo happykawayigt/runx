@@ -1,4 +1,4 @@
-export { isRecord } from "@runxhq/core/util";
+export { isRecord } from "../cli-util.js";
 
 export function humanizeLabel(value: string): string {
   return value

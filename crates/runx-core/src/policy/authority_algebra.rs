@@ -161,8 +161,8 @@ mod tests {
     }
 
     #[test]
-    fn effect_guard_decision_is_generic_for_deployment_receipt_before_success()
-    -> Result<(), String> {
+    fn effect_guard_decision_is_generic_for_deployment_receipt_before_success() -> Result<(), String>
+    {
         let parent = term(
             "parent",
             AuthorityResourceFamily::Deployment,

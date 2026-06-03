@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { parseRunnerManifestYaml, parseSkillMarkdown, validateRunnerManifest, validateSkill } from "@runxhq/core/parser";
+import { parseRunnerManifestYaml, parseSkillMarkdown, validateRunnerManifest, validateSkill } from "../packages/cli/dist/src/cli-parser/index.js";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = path.resolve(scriptDir, "..");

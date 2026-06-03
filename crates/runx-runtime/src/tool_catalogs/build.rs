@@ -1,9 +1,8 @@
 // rust-style-allow: large-file because tool-manifest build keeps source/schema
 // hashing, raw payload normalization, output binding shape, and stable JSON
 // emission together so the TS doctor and the rust runtime agree byte-for-byte.
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use runx_contracts::sha256_prefixed;
@@ -251,27 +250,165 @@ fn tool_output_binding_payload(binding: &runx_contracts::tools::ToolOutputBindin
     JsonPayload::Object(object)
 }
 
-fn hash_tool_source(tool_dir: &Path) -> Result<String, ToolCatalogError> {
-    let candidates = [tool_dir.join("src/index.ts"), tool_dir.join("run.mjs")];
-    let mut found = false;
+pub(crate) fn hash_tool_source(tool_dir: &Path) -> Result<String, ToolCatalogError> {
+    let roots = [tool_dir.join("src/index.ts"), tool_dir.join("run.mjs")];
+    let files = tool_source_closure(&roots)?;
     let mut bytes = Vec::new();
-    for candidate in candidates {
-        if !candidate.exists() {
-            continue;
-        }
-        found = true;
-        bytes.extend(project_path(tool_dir, &candidate).as_bytes());
+    let hash_root = fs::canonicalize(tool_dir).unwrap_or_else(|_| tool_dir.to_path_buf());
+    for file_path in &files {
+        bytes.extend(source_hash_path(&hash_root, file_path).as_bytes());
         bytes.push(0);
-        let mut file = fs::File::open(&candidate)
-            .map_err(|error| ToolCatalogError::io("reading tool source", &candidate, error))?;
-        file.read_to_end(&mut bytes)
-            .map_err(|error| ToolCatalogError::io("reading tool source", &candidate, error))?;
+        bytes.extend(
+            fs::read(file_path)
+                .map_err(|error| ToolCatalogError::io("reading tool source", file_path, error))?,
+        );
         bytes.push(0);
     }
-    if !found {
+    if files.is_empty() {
         bytes.extend(b"no-source");
     }
     Ok(sha256_prefixed(&bytes))
+}
+
+fn tool_source_closure(roots: &[PathBuf]) -> Result<Vec<PathBuf>, ToolCatalogError> {
+    let mut pending = roots.to_vec();
+    let mut seen = BTreeSet::new();
+    let mut index = 0;
+    while index < pending.len() {
+        let source_path = pending[index].clone();
+        index += 1;
+        if !source_path.exists() {
+            continue;
+        }
+        let source_path = fs::canonicalize(&source_path)
+            .map_err(|error| ToolCatalogError::io("resolving tool source", &source_path, error))?;
+        if !seen.insert(source_path.clone()) {
+            continue;
+        }
+        let source = fs::read_to_string(&source_path)
+            .map_err(|error| ToolCatalogError::io("reading tool source", &source_path, error))?;
+        for specifier in local_import_specifiers(&source) {
+            if let Some(dependency) = resolve_local_source_import(&source_path, &specifier)? {
+                pending.push(dependency);
+            }
+        }
+    }
+    Ok(seen.into_iter().collect())
+}
+
+fn local_import_specifiers(source: &str) -> Vec<String> {
+    let mut specifiers = Vec::new();
+    let mut chars = source.char_indices().peekable();
+    while let Some((start, quote)) = chars.next() {
+        if quote != '"' && quote != '\'' {
+            continue;
+        }
+        let mut escaped = false;
+        let mut end = start + quote.len_utf8();
+        for (index, character) in chars.by_ref() {
+            end = index;
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            if character == '\\' {
+                escaped = true;
+                continue;
+            }
+            if character == quote {
+                break;
+            }
+        }
+        let value = &source[start + quote.len_utf8()..end];
+        if value.starts_with("./") || value.starts_with("../") {
+            specifiers.push(value.to_owned());
+        }
+    }
+    specifiers
+}
+
+fn resolve_local_source_import(
+    from_file: &Path,
+    specifier: &str,
+) -> Result<Option<PathBuf>, ToolCatalogError> {
+    let clean_specifier = specifier
+        .split(['?', '#'])
+        .next()
+        .filter(|value| !value.is_empty())
+        .unwrap_or(specifier);
+    let base = from_file
+        .parent()
+        .unwrap_or_else(|| Path::new(""))
+        .join(clean_specifier);
+    for candidate in source_import_candidates(&base) {
+        if candidate.exists() {
+            return fs::canonicalize(&candidate)
+                .map(Some)
+                .map_err(|error| ToolCatalogError::io("resolving tool source", &candidate, error));
+        }
+    }
+    Ok(None)
+}
+
+fn source_import_candidates(base: &Path) -> Vec<PathBuf> {
+    let Some(extension) = base.extension().and_then(|extension| extension.to_str()) else {
+        let extensions = [".ts", ".tsx", ".mts", ".cts", ".js", ".mjs", ".cjs"];
+        return extensions
+            .iter()
+            .map(|extension| PathBuf::from(format!("{}{}", base.display(), extension)))
+            .chain(
+                extensions
+                    .iter()
+                    .map(|extension| base.join(format!("index{extension}"))),
+            )
+            .collect();
+    };
+    let mut candidates = vec![base.to_path_buf()];
+    match extension {
+        "js" => {
+            candidates.push(base.with_extension("ts"));
+            candidates.push(base.with_extension("tsx"));
+        }
+        "mjs" => {
+            candidates.push(base.with_extension("mts"));
+            candidates.push(base.with_extension("ts"));
+        }
+        "cjs" => {
+            candidates.push(base.with_extension("cts"));
+            candidates.push(base.with_extension("ts"));
+        }
+        _ => {}
+    }
+    candidates
+}
+
+fn source_hash_path(root: &Path, file_path: &Path) -> String {
+    let root_components = path_component_strings(root);
+    let file_components = path_component_strings(file_path);
+    let common_len = root_components
+        .iter()
+        .zip(&file_components)
+        .take_while(|(left, right)| left == right)
+        .count();
+    if common_len == 0 {
+        return file_path.to_string_lossy().replace('\\', "/");
+    }
+    let mut parts = Vec::new();
+    for _ in common_len..root_components.len() {
+        parts.push("..".to_owned());
+    }
+    parts.extend(file_components[common_len..].iter().cloned());
+    if parts.is_empty() {
+        ".".to_owned()
+    } else {
+        parts.join("/")
+    }
+}
+
+fn path_component_strings(path: &Path) -> Vec<String> {
+    path.components()
+        .map(|component| component.as_os_str().to_string_lossy().into_owned())
+        .collect()
 }
 
 fn validate_manifest(manifest: &ToolManifest, path: &Path) -> Result<(), ToolCatalogError> {
@@ -304,7 +441,9 @@ fn discover_tool_directories(root: &Path) -> Result<Vec<PathBuf>, ToolCatalogErr
     let mut directories = Vec::new();
     for namespace in read_dirs(&tools_root)? {
         for tool in read_dirs(&namespace)? {
-            directories.push(tool);
+            if tool.join("manifest.json").exists() {
+                directories.push(tool);
+            }
         }
     }
     directories.sort();

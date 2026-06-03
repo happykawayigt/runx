@@ -776,7 +776,7 @@ mod tests {
             matches!(
                 decision,
                 Ok(ref decision)
-                    if decision.verb == None
+                    if decision.verb.is_none()
                         && decision.effect_family == Some("deployment")
                         && decision.receipt_before_success_required
                         && decision.non_replay_required

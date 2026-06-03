@@ -60,19 +60,17 @@ defines `pureCoreDomains = ["parser", "policy", "state-machine"]` and forbids
 those domains from importing `fs`, `child_process`, `http`, `net`, and the
 other node IO modules.
 
-By line count, the trusted-kernel surface under `packages/core/src/` is
-~11,300 lines across ten domains. Of those, only five are currently
-node-import-free:
+This document was written during the TypeScript-to-Rust kernel migration. The
+trusted-kernel TypeScript paths it describes are now historical; `runx-core`
+owns the active state-machine and policy behavior.
 
 - `executor` (369 lines)
 - `marketplaces` (245 lines)
 - `parser` (1658 lines)
 - `state-machine` (667 lines)
-- `policy` (1150 lines, after the `node:path` removal in
-  `rust-kernel-parity-fixtures`)
+- `policy` (retired from TypeScript and Rust-owned)
 
-Total pure surface: ~4,090 lines, or roughly 36% of trusted-kernel-by-LOC.
-This plan ports state-machine + policy (~1,820 lines), which is 100% of
+The plan ported state-machine + policy into Rust, which is 100% of
 what `pureCoreDomains` enforces today. The remaining pure-by-imports domains
 (`executor`, `marketplaces`, `parser`) are candidates for follow-up parity
 specs; their boundary status would need to be added to `pureCoreDomains`
@@ -349,10 +347,9 @@ values, so the rules are not just prose.
 
 ## 7. Platform-sensitive behavior
 
-The TypeScript policy module imports `node:path` for `path.basename()` in
-`normalizeExecutableName` ([packages/core/src/policy/index.ts:3](../packages/core/src/policy/index.ts#L3)).
-Node's path module is OS-aware: on Windows it treats `\` as a separator, on
-POSIX it does not.
+The retired TypeScript policy module used Node path semantics for executable
+normalization. Node's path module is OS-aware: on Windows it treats `\` as a
+separator, on POSIX it does not.
 
 Decision: fixtures use POSIX semantics only. Executable names that contain
 backslashes are normalized as if the separator were `/`, regardless of host
@@ -475,9 +472,8 @@ Once parity exists, the maintenance cost is real. The policy is staged:
   command is `pnpm rust:check`.
 - **Phase B (blocking)**: After 5 clean kernel-touching PRs land green in
   Phase A, Rust parity blocks merge. Every PR that touches
-  `packages/core/src/state-machine/` or `packages/core/src/policy/` must
-  either pass Rust parity or include an intentional fixture refresh
-  (regenerated via the parity script).
+  retired state-machine or policy fixture behavior must either pass Rust parity
+  or include an intentional fixture refresh (regenerated via the parity script).
 
 Calendar time is not the trigger. If the kernel doesn't churn for weeks, the
 soak proves nothing; if it churns daily, calendar time is too coarse. PR
@@ -500,9 +496,9 @@ matrix passes against a Rust runtime candidate, the cutover is triggered.
 Sunset order (each step is its own cutover spec, not implicit):
 
 1. Replace TS state-machine consumers with `runx-core::state_machine`.
-   Delete `packages/core/src/state-machine/`.
+   Completed; the TypeScript state-machine subtree is retired.
 2. Replace TS policy consumers with `runx-core::policy`.
-   Delete `packages/core/src/policy/`.
+   Completed; the TypeScript policy subtree is retired.
 3. Port and delete `parser`, `executor`, `marketplaces` (pure-by-imports
    trusted-kernel domains).
 4. Port impure trusted-kernel domains (`artifacts`, `config`, `knowledge`,
@@ -732,6 +728,6 @@ lints are required; style churn is not.
 - [docs/trusted-kernel-package-truth.md](../../docs/trusted-kernel-package-truth.md)
   (repo-root docs)
 - [oss/scripts/check-boundaries.mjs](../scripts/check-boundaries.mjs)
-- [oss/packages/core/src/state-machine/index.ts](../packages/core/src/state-machine/index.ts)
-- [oss/packages/core/src/policy/index.ts](../packages/core/src/policy/index.ts)
+- [oss/crates/runx-core/src/state_machine.rs](../crates/runx-core/src/state_machine.rs)
+- [oss/crates/runx-core/src/policy](../crates/runx-core/src/policy)
 - [oss/crates/runx-cli/src/main.rs](../crates/runx-cli/src/main.rs)

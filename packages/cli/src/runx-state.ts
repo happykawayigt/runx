@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { isNotFound, isRecord } from "@runxhq/core/util";
+import { isNotFound, isRecord } from "./cli-util.js";
 
 export interface RunxInstallState {
   readonly version: 1;

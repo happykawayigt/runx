@@ -1,10 +1,9 @@
 // rust-style-allow: large-file because post-merge observation, verification,
 // publication idempotency, and sealed projection still share one stateful
-// lifecycle boundary; provider HTTP and fixture adapters are split out.
+// lifecycle boundary; fixture adapters are split out.
 //! Runtime support for post-merge observer publication.
 
 mod fixture;
-mod github;
 
 use std::collections::BTreeSet;
 
@@ -28,11 +27,6 @@ use thiserror::Error;
 use crate::reference_match::same_reference;
 pub use fixture::{
     FixtureBackedGitHubPostMergeObservation, FixtureBackedGitHubPostMergeObserverAdapter,
-};
-pub use github::{
-    GithubPostMergePullRequestObserverAdapter, PostMergeObserverDefaultHttpTransport,
-    PostMergeObserverHttpError, PostMergeObserverHttpHeader, PostMergeObserverHttpMethod,
-    PostMergeObserverHttpRequest, PostMergeObserverHttpResponse, PostMergeObserverHttpTransport,
 };
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]

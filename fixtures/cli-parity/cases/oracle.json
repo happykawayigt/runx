@@ -61,7 +61,7 @@
       "mode": "execute",
       "argv": [
         "harness",
-        "fixtures/harness/echo-skill.yaml",
+        "fixtures/cli-parity/harness/echo-skill.yaml",
         "--json"
       ],
       "expectedExitCode": 0,
@@ -173,6 +173,15 @@
       "mode": "validate",
       "proves": [
         "policy",
+        "cli-presentation"
+      ]
+    },
+    {
+      "id": "payment.validate",
+      "commandId": "payment",
+      "mode": "validate",
+      "proves": [
+        "authority",
         "cli-presentation"
       ]
     },

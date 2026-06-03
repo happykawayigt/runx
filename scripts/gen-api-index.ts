@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 interface PackageManifest {
   readonly name?: string;
   readonly version?: string;
+  readonly private?: boolean;
   readonly description?: string;
   readonly exports?: unknown;
 }
@@ -32,7 +33,7 @@ for (const entry of packageDirs) {
     continue;
   }
   const manifest = JSON.parse(packageJson) as PackageManifest;
-  if (!manifest.name?.startsWith("@runxhq/")) {
+  if (!manifest.name?.startsWith("@runxhq/") || manifest.private === true) {
     continue;
   }
   packages.push({
@@ -58,12 +59,6 @@ for (const entry of packages) {
   lines.push("");
   if (entry.manifest.description) {
     lines.push(asAscii(entry.manifest.description));
-    lines.push("");
-  }
-  if (entry.manifest.name === "@runxhq/core") {
-    lines.push(
-      "Kernel parity fixtures under `fixtures/kernel/` provide conformance evidence for stable `@runxhq/core/policy` exports and Rust-owned state-machine behavior during the Rust port.",
-    );
     lines.push("");
   }
   lines.push(`Version: \`${entry.manifest.version ?? "unknown"}\``);

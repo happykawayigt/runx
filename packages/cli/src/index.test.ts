@@ -554,7 +554,7 @@ Return the provided task id.
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-cli-auto-agent-anthropic-"));
     tempDirs.push(tempDir);
     const env = { ...process.env, RUNX_HOME: path.join(tempDir, ".runx"), RUNX_CWD: process.cwd() };
-    await configureAnthropicAgent(env, "claude-test");
+    await configureAnthropicAgentWithoutKey(env, "claude-test");
     const skillDir = path.join(tempDir, "agent-task");
     await writeNativeAgentStepSkill(skillDir, {
       name: "agent-task",
@@ -1213,6 +1213,85 @@ describe("runx tool", () => {
 });
 
 describe("runx doctor", () => {
+  it("treats local tool helper changes as stale manifest source", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-doctor-tool-helper-"));
+    tempDirs.push(tempDir);
+    const toolDir = path.join(tempDir, "tools", "demo", "with_helper");
+    await mkdir(path.join(toolDir, "src"), { recursive: true });
+    await mkdir(path.join(toolDir, "fixtures"), { recursive: true });
+    await writeFile(
+      path.join(tempDir, "tools", "demo", "helper.ts"),
+      `export const suffix = "one";\n`,
+    );
+    await writeFile(
+      path.join(toolDir, "src", "index.ts"),
+      `import { suffix } from "../../helper.js";\nexport const helperSuffix = suffix;\n`,
+    );
+    await writeFile(
+      path.join(toolDir, "run.mjs"),
+      `process.stdout.write(JSON.stringify({ ok: true }));\n`,
+    );
+    await writeFile(
+      path.join(toolDir, "fixtures", "basic.yaml"),
+      `target:\n  kind: tool\n`,
+    );
+    await writeFile(
+      path.join(toolDir, "manifest.json"),
+      `${JSON.stringify({
+        name: "demo.with_helper",
+        description: "Tool with namespace helper.",
+        source: {
+          type: "cli-tool",
+          command: "node",
+          args: ["./run.mjs"],
+        },
+        inputs: {},
+        output: {},
+        scopes: [],
+      }, null, 2)}\n`,
+    );
+
+    const buildStdout = createMemoryStream();
+    const buildStderr = createMemoryStream();
+    const buildExitCode = await runCli(
+      ["tool", "build", "tools/demo/with_helper", "--json"],
+      { stdin: process.stdin, stdout: buildStdout, stderr: buildStderr },
+      { ...process.env, RUNX_CWD: tempDir },
+    );
+
+    expect(buildExitCode).toBe(0);
+    expect(buildStderr.contents()).toBe("");
+    expect(JSON.parse(buildStdout.contents())).toMatchObject({ status: "success" });
+
+    await writeFile(
+      path.join(tempDir, "tools", "demo", "helper.ts"),
+      `export const suffix = "two";\n`,
+    );
+
+    const doctorStdout = createMemoryStream();
+    const doctorStderr = createMemoryStream();
+    const doctorExitCode = await runCli(
+      ["doctor", "--json"],
+      { stdin: process.stdin, stdout: doctorStdout, stderr: doctorStderr },
+      { ...process.env, RUNX_CWD: tempDir },
+    );
+
+    expect(doctorExitCode).toBe(1);
+    expect(doctorStderr.contents()).toBe("");
+    expect(JSON.parse(doctorStdout.contents())).toMatchObject({
+      status: "failure",
+      diagnostics: [
+        expect.objectContaining({
+          id: "runx.tool.manifest.stale",
+          location: {
+            path: "tools/demo/with_helper/manifest.json",
+            json_pointer: "/source_hash",
+          },
+        }),
+      ],
+    });
+  });
+
   it("emits machine-actionable diagnostics for removed tool.yaml files", async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-doctor-"));
     tempDirs.push(tempDir);
@@ -2134,6 +2213,17 @@ async function configureAnthropicAgent(env: NodeJS.ProcessEnv, model: string): P
   stdout.clear();
   stderr.clear();
   await expect(runCli(["config", "set", "agent.api_key", "anthropic-test-secret", "--json"], { stdin: process.stdin, stdout, stderr }, env)).resolves.toBe(0);
+  stdout.clear();
+  stderr.clear();
+}
+
+async function configureAnthropicAgentWithoutKey(env: NodeJS.ProcessEnv, model: string): Promise<void> {
+  const stdout = createMemoryStream();
+  const stderr = createMemoryStream();
+  await expect(runCli(["config", "set", "agent.provider", "anthropic", "--json"], { stdin: process.stdin, stdout, stderr }, env)).resolves.toBe(0);
+  stdout.clear();
+  stderr.clear();
+  await expect(runCli(["config", "set", "agent.model", model, "--json"], { stdin: process.stdin, stdout, stderr }, env)).resolves.toBe(0);
   stdout.clear();
   stderr.clear();
 }

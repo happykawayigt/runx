@@ -3,13 +3,11 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { parseRunnerManifestYaml, validateRunnerManifest } from "@runxhq/core/parser";
+import { validateRunnerManifestYaml } from "./parser-eval.js";
 
 describe("scafld issue-to-PR skill contract", () => {
   it("parses as a composite skill with native scafld v2 lifecycle and handoff packaging", async () => {
-    const manifest = validateRunnerManifest(
-      parseRunnerManifestYaml(await readFile(path.resolve("skills/issue-to-pr/X.yaml"), "utf8")),
-    );
+    const manifest = validateRunnerManifestYaml(await readFile(path.resolve("skills/issue-to-pr/X.yaml"), "utf8"));
     const runner = manifest.runners["issue-to-pr"];
 
     expect(runner?.source.type).toBe("graph");

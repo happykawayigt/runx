@@ -1,3 +1,7 @@
+// Test oracle: asserting via expect_err is the intended failure mode for the
+// conflict branches under test, so the workspace expect ban is lifted here.
+#![allow(clippy::expect_used)]
+
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::process::Command;

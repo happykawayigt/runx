@@ -90,7 +90,7 @@ async function finalizePackage(directory) {
   }
 
   // Dev mode must also refresh dist/src because workspace consumers import
-  // package subpath exports (for example @runxhq/core/registry) directly from
+  // package subpath exports (for example @runxhq/cli/metadata) directly from
   // dist/src. Leaving those stale causes cross-workspace drift.
   await writeDevDist({
     directory,

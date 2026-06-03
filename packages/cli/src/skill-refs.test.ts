@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { parseRunnerManifestYaml, validateRunnerManifest } from "@runxhq/core/parser";
+import { parseRunnerManifestYaml, validateRunnerManifest } from "./cli-parser/index.js";
 
 import { officialSkillVisibleForCatalog } from "./skill-refs.js";
 

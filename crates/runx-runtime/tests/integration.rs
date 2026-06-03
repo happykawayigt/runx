@@ -29,7 +29,6 @@ mod local_credential_provision;
 mod mcp_adapter;
 mod mcp_server;
 mod parity;
-#[cfg(feature = "payment-rails")]
 mod payment_finality;
 mod post_merge_observer;
 mod receipt_paths;

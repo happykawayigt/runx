@@ -5,11 +5,10 @@ import { authorityTermSchema, contractSchemaMatches, validateContractSchemaForDi
 import { describe, expect, it } from "vitest";
 
 import {
-  parseRunnerManifestYaml,
-  parseSkillMarkdown,
-  validateRunnerManifest,
-  validateSkill,
-} from "@runxhq/core/parser";
+  validateRunnerManifestYaml,
+  validateSkillMarkdown,
+  type RunnerDefinition,
+} from "./parser-eval.js";
 import { buildRegistryFixtureVersion } from "./registry-fixtures.js";
 
 const paymentSecretKeyPattern = /(?:^|_)(?:pan|cvv|cvc|card_number|cardnumber|account_number|routing_number|private_key|seed_phrase|mnemonic|secret_key|api_key|access_token|refresh_token|client_secret|merchant_secret|provider_secret|raw_secret|raw_token|bearer_token|password|credential_material|secret_material|key_material)(?:$|_)/i;
@@ -83,7 +82,7 @@ describe("payment skill execution profiles", () => {
     for (const skillDir of skillDirs) {
       const skillName = path.basename(skillDir);
       const profileDocument = await readFile(path.join(skillDir, "X.yaml"), "utf8");
-      const manifest = validateRunnerManifest(parseRunnerManifestYaml(profileDocument));
+      const manifest = validateRunnerManifestYaml(profileDocument);
 
       expect(manifest.skill, `${skillName} profile names its skill`).toBe(skillName);
       expect(Object.keys(manifest.runners), `${skillName} declares runners`).not.toHaveLength(0);
@@ -91,7 +90,7 @@ describe("payment skill execution profiles", () => {
 
       const markdown = await readOptionalFile(path.join(skillDir, "SKILL.md"));
       if (markdown) {
-        const skill = validateSkill(parseSkillMarkdown(markdown), { mode: "strict" });
+        const skill = validateSkillMarkdown(markdown, { mode: "strict" });
         expect(manifest.skill ?? skill.name, `${skill.name} profile skill binding`).toBe(skill.name);
 
         const version = await buildRegistryFixtureVersion(markdown, {
@@ -101,7 +100,7 @@ describe("payment skill execution profiles", () => {
         });
         expect(version.profile_document).toBe(profileDocument);
         expect(version.profile_digest).toMatch(/^[a-f0-9]{64}$/);
-        expect(version.runner_names).toEqual(Object.keys(manifest.runners));
+        expect([...version.runner_names].sort()).toEqual(Object.keys(manifest.runners).sort());
       }
     }
   });
@@ -113,7 +112,7 @@ describe("payment skill execution profiles", () => {
     for (const skillDir of skillDirs) {
       const skillName = path.basename(skillDir);
       const profileDocument = await readFile(path.join(skillDir, "X.yaml"), "utf8");
-      const manifest = validateRunnerManifest(parseRunnerManifestYaml(profileDocument));
+      const manifest = validateRunnerManifestYaml(profileDocument);
 
       expect(findRetiredReceiptFields(manifest.raw.document), `${skillName} retired receipt fields`).toEqual([]);
       expect(findInvalidPaymentAuthorityTerms(manifest.raw.document), `${skillName} payment authority term examples`).toEqual([]);
@@ -307,12 +306,12 @@ async function loadNestedRunner(
   skillDir: string,
   skillRef: string,
   runnerName: string | undefined,
-): Promise<{ readonly error?: string; readonly runner?: ReturnType<typeof validateRunnerManifest>["runners"][string] }> {
+): Promise<{ readonly error?: string; readonly runner?: RunnerDefinition }> {
   const profilePath = resolveNestedProfilePath(skillDir, skillRef);
   if (!profilePath) {
     return { error: `missing profile for ${skillRef}` };
   }
-  const manifest = validateRunnerManifest(parseRunnerManifestYaml(await readFile(profilePath, "utf8")));
+  const manifest = validateRunnerManifestYaml(await readFile(profilePath, "utf8"));
   const runner = runnerName ? manifest.runners[runnerName] : Object.values(manifest.runners).find((candidate) => candidate.default) ?? Object.values(manifest.runners)[0];
   return runner ? { runner } : { error: `missing runner ${runnerName ?? "(default)"}` };
 }

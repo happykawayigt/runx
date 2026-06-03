@@ -1,5 +1,5 @@
-import { resolvePathFromUserInput } from "@runxhq/core/config";
-import { arrayValue, asRecord, stringValue } from "@runxhq/core/util";
+import { resolvePathFromUserInput } from "../cli-config.js";
+import { arrayValue, asRecord, stringValue } from "../cli-util.js";
 
 import { runNativeRunxJson } from "../native-runx.js";
 import { relativeTime, shortId, statusIcon, theme } from "../ui.js";

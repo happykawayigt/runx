@@ -2,7 +2,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { isRecord } from "@runxhq/core/util";
+import { isRecord } from "./cli-util.js";
 
 export const cliPackageName = "@runxhq/cli";
 

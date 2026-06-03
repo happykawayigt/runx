@@ -2,20 +2,20 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { sha256Prefixed } from "@runxhq/contracts";
-import { resolvePathFromUserInput, resolveRunxWorkspaceBase } from "@runxhq/core/config";
+import { resolvePathFromUserInput, resolveRunxWorkspaceBase } from "../cli-config.js";
 import {
   parseRunnerManifestYaml,
   parseToolManifestJson,
   validateRunnerManifest,
   validateToolManifest,
-} from "@runxhq/core/parser";
-import { errorMessage } from "@runxhq/core/util";
+} from "../cli-parser/index.js";
+import { errorMessage } from "../cli-util.js";
 
 import {
   buildLocalPacketIndex,
   countYamlFiles,
   discoverSkillProfilePaths,
+  hashToolSource,
   isPlainRecord,
   safeReadDir,
   sha256Stable,
@@ -690,31 +690,6 @@ function resolveJsonSchemaRef(schema: unknown, rootSchema: unknown): unknown {
     .split("/")
     .map((segment) => segment.replace(/~1/g, "/").replace(/~0/g, "~"))
     .reduce<unknown>((value, segment) => isPlainRecord(value) ? value[segment] : undefined, rootSchema) ?? schema;
-}
-
-async function hashToolSource(toolDir: string): Promise<string> {
-  const candidates = [
-    path.join(toolDir, "src", "index.ts"),
-    path.join(toolDir, "run.mjs"),
-  ];
-  const chunks: Uint8Array[] = [];
-  let found = false;
-  for (const candidate of candidates) {
-    if (!existsSync(candidate)) {
-      continue;
-    }
-    found = true;
-    chunks.push(
-      Buffer.from(toProjectPath(toolDir, candidate)),
-      Buffer.from("\0"),
-      await readFile(candidate),
-      Buffer.from("\0"),
-    );
-  }
-  if (!found) {
-    chunks.push(Buffer.from("no-source"));
-  }
-  return sha256Prefixed(Buffer.concat(chunks));
 }
 
 export function renderDoctorResult(result: DoctorReport, env: NodeJS.ProcessEnv = process.env): string {

@@ -75,8 +75,8 @@ pub enum RefundAdmissionError {
     #[error("refund admission fixture {name} expected {expected:?}, got {actual:?}")]
     FixtureMismatch {
         name: String,
-        expected: RefundAdmissionDecision,
-        actual: RefundAdmissionDecision,
+        expected: Box<RefundAdmissionDecision>,
+        actual: Box<RefundAdmissionDecision>,
     },
 }
 
@@ -134,8 +134,8 @@ pub fn verify_refund_admission_case(
     } else {
         Err(RefundAdmissionError::FixtureMismatch {
             name: case.name.clone(),
-            expected: case.expected.clone(),
-            actual,
+            expected: Box::new(case.expected.clone()),
+            actual: Box::new(actual),
         })
     }
 }

@@ -82,11 +82,6 @@ jobs:
           cargo fmt --all --check
           cargo clippy --workspace --all-targets --all-features -- -D warnings
           cargo nextest run --workspace --all-features
-          # The native x402 dogfoods seal through the deterministic payment
-          # supervisor, which is only wired in the default build (under
-          # payment-rails the real supervisor is intentionally inert), so they
-          # are scoped out of the --all-features lane and exercised here.
-          cargo nextest run -p runx-cli
           # nextest does not run doctests; keep this gated (currently zero doctests)
           # so an added doctest cannot slip through uncovered.
           cargo test --workspace --all-features --doc

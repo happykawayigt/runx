@@ -1,4 +1,4 @@
-import { fetchWithTimeout } from "@runxhq/core/util";
+import { fetchWithTimeout } from "../cli-util.js";
 
 export interface UrlAddIndexedListing {
   readonly owner: string;

@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { readOptionalFile } from "../packages/core/src/util/fs.js";
+import { readOptionalFile } from "../packages/cli/src/cli-util.js";
 
 describe("readOptionalFile only swallows ENOENT", () => {
   it("returns the file contents when the file exists", async () => {

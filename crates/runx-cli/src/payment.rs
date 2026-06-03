@@ -6,7 +6,7 @@ use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use runx_runtime::{
+use runx_pay::{
     PaymentAdmissionError, PaymentAdmissionIssueResponse, PaymentAdmissionRequest,
     PaymentAdmissionSigner,
 };

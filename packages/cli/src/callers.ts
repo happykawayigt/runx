@@ -6,7 +6,7 @@ import type {
   ResolutionRequestContract as ResolutionRequest,
   ResolutionResponseContract as ResolutionResponse,
 } from "@runxhq/contracts";
-import { isRecord } from "@runxhq/core/util";
+import { isRecord } from "./cli-util.js";
 
 import type { CliAgentRuntime } from "./agent-runtime.js";
 import { loadCliAgentRuntime } from "./agent-runtime.js";

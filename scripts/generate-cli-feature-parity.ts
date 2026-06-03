@@ -64,6 +64,7 @@ const commands: readonly CommandMatrixEntry[] = [
   command("config.list", "runx config list", [], ["--json"], "filesystem", ["config", "cli-presentation"], ["config.list.execute"]),
   command("policy.inspect", "runx policy inspect <policy.json>", [], ["--json"], "none", ["policy", "cli-presentation"], ["policy.inspect.validate"]),
   command("policy.lint", "runx policy lint <policy.json>", [], ["--json"], "none", ["policy", "cli-presentation"], ["policy.lint.validate"]),
+  command("payment", "runx payment admission issue --input <file|-> --json", [], ["--input", "--json"], "local-runtime", ["authority", "cli-presentation"], ["payment.validate"]),
   command("kernel", "runx kernel eval --input <file|-> --json", [], ["--input", "--json"], "local-runtime", ["graph-runtime", "cli-presentation"], ["kernel.validate"]),
   command("parser", "runx parser eval --input <file|-> --json", [], ["--input", "--json"], "local-runtime", ["parser", "cli-presentation"], ["parser.validate"]),
   command("doctor", "runx doctor [path]", [], ["--json"], "filesystem", ["doctor", "cli-presentation"], ["doctor.validate"]),
@@ -120,7 +121,7 @@ const cases: readonly OracleCase[] = [
   execute("help.top-level", "cli.help", ["--help"], 0, false, ["Usage:", "runx skill", "runx harness"], []),
   execute("usage.unsupported", "cli.help", ["not-a-command"], 64, false, [], ["unknown command not-a-command"]),
   execute("config.list.execute", "config.list", ["config", "list", "--json"], 0, true, [], []),
-  execute("harness.execute", "harness", ["harness", "fixtures/harness/echo-skill.yaml", "--json"], 0, true, [], []),
+  execute("harness.execute", "harness", ["harness", "fixtures/cli-parity/harness/echo-skill.yaml", "--json"], 0, true, [], []),
   {
     id: "history.execute",
     commandId: "history",

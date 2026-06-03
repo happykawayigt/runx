@@ -7,9 +7,9 @@ import {
   resolveRunxKnowledgeDir,
   resolveRunxRegistryTarget,
   resolveSkillInstallRoot,
-} from "@runxhq/core/config";
-import { createFileKnowledgeStore } from "@runxhq/core/knowledge";
-import { arrayValue, firstNonEmpty, isRecord, recordField, stringField } from "@runxhq/core/util";
+} from "./cli-config.js";
+import { createFileKnowledgeStore } from "./cli-knowledge.js";
+import { arrayValue, firstNonEmpty, isRecord, recordField, stringField } from "./cli-util.js";
 
 import type { ParsedArgs } from "./args.js";
 import type { CliIo, CliServices } from "./index.js";

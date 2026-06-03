@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use runx_contracts::{AuthorityVerb, JsonObject};
+use runx_contracts::{AuthorityVerb, JsonObject, Receipt};
 use runx_parser::GraphStep;
 
 use crate::RuntimeError;
@@ -85,55 +85,43 @@ pub(super) fn prepare_effect_output_before_gate(
 }
 
 pub(super) fn finalize_effect_output_before_success(
-    step: &GraphStep,
-    graph_dir: &Path,
-    authority: Option<&StepAuthorityContext>,
-    claim: &JsonObject,
-    output: &mut SkillOutput,
-    receipt: &runx_contracts::Receipt,
-    env: &BTreeMap<String, String>,
-    effects: &RuntimeEffectRegistry,
+    context: EffectReceiptContext<'_>,
 ) -> Result<(), RuntimeError> {
-    let Some(authority) = authority else {
+    let Some(authority) = context.authority else {
         return Ok(());
     };
-    effects
+    context
+        .effects
         .finalize_output(EffectReceiptRequest {
-            step,
-            graph_dir,
+            step: context.step,
+            graph_dir: context.graph_dir,
             admission: &authority.admission,
-            claim,
-            output,
-            receipt,
-            env,
+            claim: context.claim,
+            output: context.output,
+            receipt: context.receipt,
+            env: context.env,
         })
-        .map_err(|source| runtime_effect_error(step, source))
+        .map_err(|source| runtime_effect_error(context.step, source))
 }
 
 pub(super) fn persist_effect_state_for_step(
-    step: &GraphStep,
-    graph_dir: &Path,
-    authority: Option<&StepAuthorityContext>,
-    claim: &JsonObject,
-    output: &mut SkillOutput,
-    receipt: &runx_contracts::Receipt,
-    env: &BTreeMap<String, String>,
-    effects: &RuntimeEffectRegistry,
+    context: EffectReceiptContext<'_>,
 ) -> Result<(), RuntimeError> {
-    let Some(authority) = authority else {
+    let Some(authority) = context.authority else {
         return Ok(());
     };
-    effects
+    context
+        .effects
         .persist(EffectReceiptRequest {
-            step,
-            graph_dir,
+            step: context.step,
+            graph_dir: context.graph_dir,
             admission: &authority.admission,
-            claim,
-            output,
-            receipt,
-            env,
+            claim: context.claim,
+            output: context.output,
+            receipt: context.receipt,
+            env: context.env,
         })
-        .map_err(|source| runtime_effect_error(step, source))
+        .map_err(|source| runtime_effect_error(context.step, source))
 }
 
 pub(super) fn prepare_replay_output(
@@ -180,6 +168,17 @@ pub(super) fn authority_denied(
         step_id: step.id.clone(),
         reason,
     }
+}
+
+pub(super) struct EffectReceiptContext<'a> {
+    pub(super) step: &'a GraphStep,
+    pub(super) graph_dir: &'a Path,
+    pub(super) authority: Option<&'a StepAuthorityContext>,
+    pub(super) claim: &'a JsonObject,
+    pub(super) output: &'a mut SkillOutput,
+    pub(super) receipt: &'a Receipt,
+    pub(super) env: &'a BTreeMap<String, String>,
+    pub(super) effects: &'a RuntimeEffectRegistry,
 }
 
 fn runtime_effect_error(step: &GraphStep, source: RuntimeEffectError) -> RuntimeError {

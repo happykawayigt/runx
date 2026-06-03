@@ -1,5 +1,5 @@
-import type { SkillSearchResult } from "@runxhq/core/registry";
-import { asRecord, errorMessage, firstNonEmpty, parsePositiveInt, stringField } from "@runxhq/core/util";
+import type { SkillSearchResult } from "./cli-registry.js";
+import { asRecord, errorMessage, firstNonEmpty, parsePositiveInt, stringField } from "./cli-util.js";
 
 import { runNativeRunx } from "./native-runx.js";
 

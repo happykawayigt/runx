@@ -2,7 +2,7 @@ import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseDocument } from "../packages/core/node_modules/yaml/browser/dist/index.js";
+import { parseDocument } from "yaml";
 
 const workspaceRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const fixtureRoot = path.join(workspaceRoot, "fixtures", "runtime", "skills");

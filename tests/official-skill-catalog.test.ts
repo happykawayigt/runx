@@ -6,7 +6,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { parseSkillMarkdown, parseRunnerManifestYaml, validateRunnerManifest, validateSkill } from "@runxhq/core/parser";
+import { validateRunnerManifestYaml, validateSkillMarkdown } from "./parser-eval.js";
 import { resolveRunxBinary } from "./runx-binary.js";
 
 const officialSkillPackages = [
@@ -147,6 +147,12 @@ const harnessedShowcasePackages = [
 
 const workspaceRoot = process.cwd();
 const nativeRunx = resolveRunxBinary();
+const receiptSigningEnv = {
+  RUNX_RECEIPT_SIGN_KID: process.env.RUNX_RECEIPT_SIGN_KID ?? "official-skill-catalog-test-key",
+  RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64:
+    process.env.RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64 ?? "QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI=",
+  RUNX_RECEIPT_SIGN_ISSUER_TYPE: process.env.RUNX_RECEIPT_SIGN_ISSUER_TYPE ?? "hosted",
+};
 
 describe("official skill catalog", () => {
   it("ships official skills as portable packages plus checked-in execution profiles", async () => {
@@ -159,8 +165,8 @@ describe("official skill catalog", () => {
       expect(existsSync(skillMarkdownPath)).toBe(true);
       expect(existsSync(manifestPath)).toBe(true);
 
-      const skill = validateSkill(parseSkillMarkdown(await readFile(skillMarkdownPath, "utf8")));
-      const manifest = validateRunnerManifest(parseRunnerManifestYaml(await readFile(manifestPath, "utf8")));
+      const skill = validateSkillMarkdown(await readFile(skillMarkdownPath, "utf8"));
+      const manifest = validateRunnerManifestYaml(await readFile(manifestPath, "utf8"));
 
       expect(skill.name).toBe(skillName);
       expect(manifest.catalog).toBeDefined();
@@ -188,7 +194,7 @@ describe("official skill catalog", () => {
     try {
       for (const skillName of harnessedShowcasePackages) {
         const manifestPath = path.resolve("skills", skillName, "X.yaml");
-        const manifest = validateRunnerManifest(parseRunnerManifestYaml(await readFile(manifestPath, "utf8")));
+        const manifest = validateRunnerManifestYaml(await readFile(manifestPath, "utf8"));
         if (Object.values(manifest.runners).some((runner) => runner.source.graph)) {
           continue;
         }
@@ -210,7 +216,7 @@ describe("official skill catalog", () => {
           const result = spawnSync(nativeRunx, ["harness", fixturePath, "--json"], {
             cwd: workspaceRoot,
             encoding: "utf8",
-            env: { ...process.env, RUNX_KERNEL_EVAL_BIN: nativeRunx },
+            env: { ...process.env, ...receiptSigningEnv, RUNX_KERNEL_EVAL_BIN: nativeRunx },
             maxBuffer: 8 * 1024 * 1024,
           });
 

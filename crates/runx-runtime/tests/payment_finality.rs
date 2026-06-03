@@ -1,10 +1,9 @@
 use runx_contracts::{
-    EffectSettlementPhase, JsonObject, JsonValue, ProofKind, Reference, ReferenceType,
+    EffectSettlementPhase, EffectSettlementReceipt, EffectSettlementReceiptSchema, JsonObject,
+    JsonValue, ProofKind, Reference, ReferenceType,
 };
-use runx_runtime::adapters::payment_supervisor::{
-    EffectSettlementReceiptInput, STRIPE_SPT_RAIL, effect_settlement_receipt,
-    x402_tx_proof_reference,
-};
+
+const STRIPE_SPT_RAIL: &str = "stripe-spt";
 
 #[test]
 fn payment_finality_deferred_chain_reaches_sealed_at_threshold() {
@@ -14,6 +13,7 @@ fn payment_finality_deferred_chain_reaches_sealed_at_threshold() {
     );
 
     let provisional = effect_settlement_receipt(EffectSettlementReceiptInput {
+        id: "payment-finality-provisional",
         created_at: "2026-06-01T00:00:00Z".to_owned(),
         phase: EffectSettlementPhase::Provisional,
         original_receipt_ref: original.clone(),
@@ -24,6 +24,7 @@ fn payment_finality_deferred_chain_reaches_sealed_at_threshold() {
         payload: finality_payload("mpp-tempo", "submitted"),
     });
     let in_flight_1 = effect_settlement_receipt(EffectSettlementReceiptInput {
+        id: "payment-finality-in-flight-1",
         created_at: "2026-06-01T00:00:10Z".to_owned(),
         phase: EffectSettlementPhase::InFlight,
         original_receipt_ref: original.clone(),
@@ -34,6 +35,7 @@ fn payment_finality_deferred_chain_reaches_sealed_at_threshold() {
         payload: finality_payload("mpp-tempo", "confirming"),
     });
     let in_flight_2 = effect_settlement_receipt(EffectSettlementReceiptInput {
+        id: "payment-finality-in-flight-2",
         created_at: "2026-06-01T00:00:20Z".to_owned(),
         phase: EffectSettlementPhase::InFlight,
         original_receipt_ref: original.clone(),
@@ -44,6 +46,7 @@ fn payment_finality_deferred_chain_reaches_sealed_at_threshold() {
         payload: finality_payload("mpp-tempo", "confirming"),
     });
     let sealed = effect_settlement_receipt(EffectSettlementReceiptInput {
+        id: "payment-finality-sealed",
         created_at: "2026-06-01T00:00:30Z".to_owned(),
         phase: EffectSettlementPhase::Sealed,
         original_receipt_ref: original.clone(),
@@ -97,6 +100,7 @@ fn payment_finality_provider_event_seals_directly_without_confirmation_depth() {
     proof.provider = Some(STRIPE_SPT_RAIL.into());
 
     let sealed = effect_settlement_receipt(EffectSettlementReceiptInput {
+        id: "payment-finality-provider-sealed",
         created_at: "2026-06-01T00:00:05Z".to_owned(),
         phase: EffectSettlementPhase::Sealed,
         original_receipt_ref: original.clone(),
@@ -118,4 +122,39 @@ fn finality_payload(rail: &str, status: &str) -> JsonObject {
         ("rail".to_owned(), JsonValue::String(rail.to_owned())),
         ("status".to_owned(), JsonValue::String(status.to_owned())),
     ])
+}
+
+struct EffectSettlementReceiptInput {
+    id: &'static str,
+    created_at: String,
+    phase: EffectSettlementPhase,
+    original_receipt_ref: Reference,
+    criterion_id: String,
+    proof_ref: Option<Reference>,
+    evidence_refs: Vec<Reference>,
+    confirmation_depth: Option<u64>,
+    payload: JsonObject,
+}
+
+fn effect_settlement_receipt(input: EffectSettlementReceiptInput) -> EffectSettlementReceipt {
+    EffectSettlementReceipt {
+        schema: EffectSettlementReceiptSchema::V1,
+        id: input.id.into(),
+        created_at: input.created_at.into(),
+        family: "payment".into(),
+        phase: input.phase,
+        original_receipt_ref: input.original_receipt_ref,
+        criterion_id: input.criterion_id.into(),
+        proof_ref: input.proof_ref,
+        evidence_refs: input.evidence_refs,
+        confirmation_depth: input.confirmation_depth,
+        payload: input.payload,
+    }
+}
+
+fn x402_tx_proof_reference(tx_hash: &str) -> Reference {
+    let mut reference = Reference::with_uri(ReferenceType::Verification, tx_hash);
+    reference.proof_kind = Some(ProofKind::PaymentRail);
+    reference.provider = Some("x402".into());
+    reference
 }

@@ -96,7 +96,6 @@ const runtimeDisallowedDeps = [
   "async-std",
   "axum",
   "clap",
-  "hyper",
   "serde_yaml",
   "serde_yml",
   "ureq",
@@ -322,6 +321,9 @@ function checkRuntimeAsyncHttpContract(crateName, manifest) {
   if (!/^mcp\s*=\s*\["dep:rmcp", "dep:tokio", "tokio\/process", "tokio\/io-util", "tokio\/sync", "tokio\/rt-multi-thread"\]\s*$/mu.test(featuresBody)) {
     findings.push("runx-runtime mcp feature must be exactly [\"dep:rmcp\", \"dep:tokio\", \"tokio/process\", \"tokio/io-util\", \"tokio/sync\", \"tokio/rt-multi-thread\"]");
   }
+  if (!/^mcp-http-server\s*=\s*\["mcp", "rmcp\/transport-streamable-http-server", "dep:hyper", "dep:hyper-util"\]\s*$/mu.test(featuresBody)) {
+    findings.push("runx-runtime mcp-http-server feature must be exactly [\"mcp\", \"rmcp/transport-streamable-http-server\", \"dep:hyper\", \"dep:hyper-util\"]");
+  }
 
   const reqwest = dependencyInlineSpec(manifest, "dependencies", "reqwest");
   if (!reqwest) {
@@ -393,6 +395,44 @@ function checkRuntimeAsyncHttpContract(crateName, manifest) {
     const rmcpFeatures = dependencyInlineFeatures(rmcp);
     if (rmcpFeatures.join(",") !== "client,server") {
       findings.push("runx-runtime rmcp dependency must enable only the client and server features for the canonical MCP path");
+    }
+  }
+
+  const hyper = dependencyInlineSpec(manifest, "dependencies", "hyper");
+  if (!hyper) {
+    findings.push("runx-runtime must declare optional hyper for the approved MCP HTTP server edge");
+  } else {
+    if (!/version\s*=\s*"=[^"]+"/u.test(hyper)) {
+      findings.push("runx-runtime hyper dependency must use an exact version pin");
+    }
+    if (!/default-features\s*=\s*false/u.test(hyper)) {
+      findings.push("runx-runtime hyper dependency must disable default features");
+    }
+    if (!/optional\s*=\s*true/u.test(hyper)) {
+      findings.push("runx-runtime hyper dependency must stay optional");
+    }
+    const hyperFeatures = dependencyInlineFeatures(hyper);
+    if (hyperFeatures.join(",") !== "http1,server") {
+      findings.push("runx-runtime hyper dependency must enable only the http1 and server features for MCP HTTP");
+    }
+  }
+
+  const hyperUtil = dependencyInlineSpec(manifest, "dependencies", "hyper-util");
+  if (!hyperUtil) {
+    findings.push("runx-runtime must declare optional hyper-util for the approved MCP HTTP server edge");
+  } else {
+    if (!/version\s*=\s*"=[^"]+"/u.test(hyperUtil)) {
+      findings.push("runx-runtime hyper-util dependency must use an exact version pin");
+    }
+    if (!/default-features\s*=\s*false/u.test(hyperUtil)) {
+      findings.push("runx-runtime hyper-util dependency must disable default features");
+    }
+    if (!/optional\s*=\s*true/u.test(hyperUtil)) {
+      findings.push("runx-runtime hyper-util dependency must stay optional");
+    }
+    const hyperUtilFeatures = dependencyInlineFeatures(hyperUtil);
+    if (hyperUtilFeatures.join(",") !== "service,tokio") {
+      findings.push("runx-runtime hyper-util dependency must enable only the service and tokio features for MCP HTTP");
     }
   }
 }

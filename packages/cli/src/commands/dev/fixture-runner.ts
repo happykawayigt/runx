@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { parseToolManifestJson, validateToolManifest } from "@runxhq/core/parser";
+import { parseToolManifestJson, validateToolManifest } from "../../cli-parser/index.js";
 import { parse as parseYaml } from "yaml";
 
 import { isPlainRecord } from "../../authoring-utils.js";

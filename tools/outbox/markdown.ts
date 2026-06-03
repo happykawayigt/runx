@@ -1,14 +1,14 @@
 import {
   sanitizePublicMarkdown,
   summarizePublicHandoffMarkdown,
-} from "@runxhq/core/knowledge";
+} from "./story.js";
 
 export {
   buildFeedStoryOutboxEntry,
   renderFeedStoryMarkdown,
   sanitizePublicMarkdown,
   summarizePublicHandoffMarkdown,
-} from "@runxhq/core/knowledge";
+} from "./story.js";
 
 export function renderIssueToPrReviewerMarkdown(input: Record<string, unknown>): string {
   const title = clean(input.title) ?? clean(input.taskId) ?? "Issue-to-PR change";

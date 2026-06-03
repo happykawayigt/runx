@@ -1,0 +1,15 @@
+name: cli-parity-echo-skill
+kind: skill
+target: ../../skills/echo
+inputs:
+  message: hello from cli parity
+expect:
+  status: sealed
+  receipt:
+    schema: runx.receipt.v1
+    harness_id: hrn_cli-parity-echo-skill_echo
+    state: sealed
+    disposition: closed
+    reason_code: process_closed
+    act_ids:
+      - act_echo

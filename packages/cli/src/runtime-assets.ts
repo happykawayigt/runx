@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { pathExists } from "@runxhq/core/util";
+import { pathExists } from "./cli-util.js";
 
 const CLI_PACKAGE_NAME = "@runxhq/cli";
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));

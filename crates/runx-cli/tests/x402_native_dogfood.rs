@@ -4,12 +4,6 @@ use std::process::{Command, Output};
 
 use serde_json::Value;
 
-// The sealing dogfoods below settle through the DeterministicPaymentRailSupervisor,
-// which is only wired in the default build. Under `payment-rails` the real
-// supervisor is intentionally inert (RailSupervisor::default() = unavailable), so
-// these run in the default-feature CI lane; the refusal/negative tests stay
-// unconditional because they deny at admission, before any rail.
-#[cfg(not(feature = "payment-rails"))]
 #[test]
 fn native_x402_mock_dogfood_fixtures_run_without_typescript()
 -> Result<(), Box<dyn std::error::Error>> {
@@ -41,7 +35,6 @@ fn native_x402_mock_dogfood_fixtures_run_without_typescript()
     Ok(())
 }
 
-#[cfg(not(feature = "payment-rails"))]
 #[test]
 fn native_x402_paid_echo_fixture_passes_only_refs_downstream()
 -> Result<(), Box<dyn std::error::Error>> {
@@ -61,7 +54,6 @@ fn native_x402_paid_echo_fixture_passes_only_refs_downstream()
     Ok(())
 }
 
-#[cfg(not(feature = "payment-rails"))]
 #[test]
 fn native_x402_ledger_projection() -> Result<(), Box<dyn std::error::Error>> {
     let receipt_dir = isolated_receipt_dir()?;
@@ -186,7 +178,6 @@ fn native_x402_refusal_ledger_projection() -> Result<(), Box<dyn std::error::Err
     Ok(())
 }
 
-#[cfg(not(feature = "payment-rails"))]
 #[test]
 fn native_x402_stripe_spt_happy_path_runs_without_typescript()
 -> Result<(), Box<dyn std::error::Error>> {

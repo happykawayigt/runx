@@ -26,10 +26,9 @@ Package names carry trust claims:
 
 - contracts define portable schemas and generated validators.
 - Rust `runx-core` owns pure state-machine and policy decisions.
-- TypeScript `@runxhq/core` owns parser, policy-helper, registry, config,
-  source, knowledge, artifact, marketplace, and utility subpaths for client and
-  sunset surfaces. It must not own local execution, receipt sealing, or runtime
-  fallback behavior.
+- TypeScript `@runxhq/core` is private legacy build-only surface during sunset.
+  Do not add new imports to it, and do not restore local execution, policy,
+  receipt sealing, or runtime fallback behavior there.
 - `runx-runtime` coordinates local execution, adapters, sandbox planning,
   caller interaction, and receipts.
 - host adapters and protocol adapters touch external processes and protocols.

@@ -720,8 +720,7 @@ mod tests {
         let observation = delivery
             .public_observation()
             .ok_or_else(|| "expected a public observation".to_owned())?;
-        let serialized =
-            serde_json::to_string(observation).map_err(|error| error.to_string())?;
+        let serialized = serde_json::to_string(observation).map_err(|error| error.to_string())?;
         assert!(!serialized.contains("ghp_secret_value"));
         Ok(())
     }

@@ -5,8 +5,8 @@ import path from "node:path";
 
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { appendLedgerEntries, createRunEventEntry } from "../packages/core/src/artifacts/index.js";
 import { ensureRunxBinary, kernelTestEnv, runxBinary } from "./host-protocol-test-utils.js";
+import { appendLedgerEntries, createRunEventEntry } from "./ledger-fixtures.js";
 
 interface CommandMatrix {
   readonly exitCodes: readonly number[];

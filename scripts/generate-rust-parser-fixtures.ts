@@ -7,7 +7,7 @@ import {
   GraphValidationError,
   parseGraphYaml,
   validateGraph,
-} from "../packages/core/src/parser/graph.js";
+} from "../packages/cli/src/cli-parser/graph.js";
 import {
   SkillValidationError,
   parseRunnerManifestYaml,
@@ -18,7 +18,7 @@ import {
   validateSkill,
   validateSkillInstall,
   validateToolManifest,
-} from "../packages/core/src/parser/index.js";
+} from "../packages/cli/src/cli-parser/index.js";
 
 const workspaceRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const fixtureRoot = path.join(workspaceRoot, "fixtures", "parser");

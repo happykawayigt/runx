@@ -565,9 +565,9 @@ where
 {
     options.env.extend(fixture.env.clone());
     // Harness graph replays need a deterministic run_id so per-run governance
-    // (e.g. a payment authority's max_per_run_minor cap) can resolve one, mirroring
-    // the production graph runner. Derived from the graph so receipts stay
-    // reproducible; an explicit fixture env value still wins.
+    // can resolve one, mirroring the production graph runner. Derived from the
+    // graph so receipts stay reproducible; an explicit fixture env value still
+    // wins.
     options
         .env
         .entry(crate::execution::runner::RUNX_RUN_ID_ENV.to_owned())

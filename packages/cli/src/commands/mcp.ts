@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import process from "node:process";
 
-import { firstNonEmptyOrUndefined } from "@runxhq/core/util";
+import { firstNonEmptyOrUndefined } from "../cli-util.js";
 
 import type { CliIo } from "../index.js";
 

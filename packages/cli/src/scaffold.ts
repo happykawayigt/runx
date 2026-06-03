@@ -2,7 +2,7 @@ import { mkdir, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { sha256Prefixed } from "@runxhq/contracts";
-import { isNodeError } from "@runxhq/core/util";
+import { isNodeError } from "./cli-util.js";
 
 import { sha256Stable } from "./authoring-utils.js";
 import { readCliDependencyVersion, readCliPackageMetadata } from "./metadata.js";

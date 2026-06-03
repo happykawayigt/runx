@@ -2,7 +2,7 @@ import type {
   DevFixtureResultContract,
   DevReportContract,
 } from "@runxhq/contracts";
-import { resolvePathFromUserInput, resolveRunxWorkspaceBase } from "@runxhq/core/config";
+import { resolvePathFromUserInput, resolveRunxWorkspaceBase } from "../cli-config.js";
 
 import { statusIcon, theme } from "../ui.js";
 import { type DoctorCommandArgs, handleDoctorCommand } from "./doctor.js";

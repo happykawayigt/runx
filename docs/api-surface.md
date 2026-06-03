@@ -9,7 +9,7 @@ The package manifests are authoritative; regenerate this page with `pnpm docs:ap
 
 Runx authoring SDK - defineTool, definePacket, typed input parsers, harness runtime.
 
-Version: `0.1.4`
+Version: `0.2.0`
 
 | Import | Types | Runtime |
 | --- | --- | --- |
@@ -19,7 +19,7 @@ Version: `0.1.4`
 
 Runx CLI - native governed runtime for agent skills, tools, graphs, and packets.
 
-Version: `0.5.22`
+Version: `0.6.0`
 
 | Import | Types | Runtime |
 | --- | --- | --- |
@@ -28,38 +28,17 @@ Version: `0.5.22`
 
 Runx machine-facing JSON contracts: doctor, dev, list, receipt, fixture, tool manifest, packet index.
 
-Version: `0.2.5`
+Version: `0.3.0`
 
 | Import | Types | Runtime |
 | --- | --- | --- |
 | `@runxhq/contracts` | `./dist/index.d.ts` | `./dist/index.js` |
 
-## @runxhq/core
-
-Runx TypeScript client domains: parser, policy helpers, registry, config, knowledge, source, artifacts, marketplaces, and utilities.
-
-Kernel parity fixtures under `fixtures/kernel/` provide conformance evidence for stable `@runxhq/core/policy` exports and Rust-owned state-machine behavior during the Rust port.
-
-Version: `0.1.6`
-
-| Import | Types | Runtime |
-| --- | --- | --- |
-| `@runxhq/core` | `./dist/index.d.ts` | `./dist/index.js` |
-| `@runxhq/core/artifacts` | `./dist/src/artifacts/index.d.ts` | `./dist/src/artifacts/index.js` |
-| `@runxhq/core/config` | `./dist/src/config/index.d.ts` | `./dist/src/config/index.js` |
-| `@runxhq/core/knowledge` | `./dist/src/knowledge/index.d.ts` | `./dist/src/knowledge/index.js` |
-| `@runxhq/core/marketplaces` | `./dist/src/marketplaces/index.d.ts` | `./dist/src/marketplaces/index.js` |
-| `@runxhq/core/parser` | `./dist/src/parser/index.d.ts` | `./dist/src/parser/index.js` |
-| `@runxhq/core/policy` | `./dist/src/policy/index.d.ts` | `./dist/src/policy/index.js` |
-| `@runxhq/core/registry` | `./dist/src/registry/index.d.ts` | `./dist/src/registry/index.js` |
-| `@runxhq/core/source` | `./dist/src/source/index.d.ts` | `./dist/src/source/index.js` |
-| `@runxhq/core/util` | `./dist/src/util/index.d.ts` | `./dist/src/util/index.js` |
-
 ## @runxhq/create-skill
 
 Cold-start scaffolder for runx standalone skill packages.
 
-Version: `0.1.3`
+Version: `0.2.0`
 
 | Import | Types | Runtime |
 | --- | --- | --- |
@@ -69,7 +48,7 @@ Version: `0.1.3`
 
 Thin host response adapters over the runx host protocol.
 
-Version: `0.1.1`
+Version: `0.2.0`
 
 | Import | Types | Runtime |
 | --- | --- | --- |
@@ -79,7 +58,7 @@ Version: `0.1.1`
 
 Optional LangChain bridge for runx tool catalogs and governed workflow tools.
 
-Version: `0.1.2`
+Version: `0.2.0`
 
 | Import | Types | Runtime |
 | --- | --- | --- |

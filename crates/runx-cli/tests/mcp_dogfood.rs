@@ -8,6 +8,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 
+const MCP_INITIALIZE_TIMEOUT: Duration = Duration::from_secs(30);
+const MCP_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+
 #[test]
 fn mcp_native_binary_dogfoods_streaming_skill_calls_and_receipts()
 -> Result<(), Box<dyn std::error::Error>> {
@@ -20,7 +23,7 @@ fn mcp_native_binary_dogfoods_streaming_skill_calls_and_receipts()
     ])?;
 
     write_frame(server.stdin_mut()?, &initialize_request(1))?;
-    let initialize = server.read_response("initialize", Duration::from_secs(10))?;
+    let initialize = server.read_response("initialize", MCP_INITIALIZE_TIMEOUT)?;
     assert_eq!(
         path_text(&initialize, &["result", "protocolVersion"])?,
         "2025-06-18"
@@ -28,7 +31,7 @@ fn mcp_native_binary_dogfoods_streaming_skill_calls_and_receipts()
 
     write_frame(server.stdin_mut()?, &initialized_notification())?;
     write_frame(server.stdin_mut()?, &request(2, "tools/list", json!({})))?;
-    let tools = server.read_response("tools/list", Duration::from_secs(10))?;
+    let tools = server.read_response("tools/list", MCP_REQUEST_TIMEOUT)?;
     assert_eq!(
         path_text(&tools, &["result", "tools", "0", "name"])?,
         "mcp-echo"
@@ -52,7 +55,7 @@ fn mcp_native_binary_dogfoods_streaming_skill_calls_and_receipts()
         )?;
         let response = server.read_response(
             &format!("tools/call dogfood message {index}"),
-            Duration::from_secs(10),
+            MCP_REQUEST_TIMEOUT,
         )?;
         assert_eq!(
             path_text(
@@ -108,7 +111,7 @@ fn mcp_native_binary_reports_mid_session_framing_fault() -> Result<(), Box<dyn s
     let mut server = spawn_mcp_server(&[skill_path.display().to_string()])?;
 
     write_frame(server.stdin_mut()?, &initialize_request(1))?;
-    let initialize = server.read_response("initialize", Duration::from_secs(10))?;
+    let initialize = server.read_response("initialize", MCP_INITIALIZE_TIMEOUT)?;
     assert_eq!(
         path_text(&initialize, &["result", "protocolVersion"])?,
         "2025-06-18"

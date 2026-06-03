@@ -361,6 +361,7 @@ fn execute_agent_skill_run(
         None => match &request.answers_path {
             Some(answers_path) => read_answer(answers_path, &request_id)?,
             None => match try_inline_agent_resolution(&invocation)? {
+                #[cfg(feature = "agent")]
                 InlineAgentOutcome::Resolved(answer) => answer,
                 InlineAgentOutcome::HostDrives => {
                     return Ok(JsonValue::Object(needs_agent_output(
@@ -397,6 +398,7 @@ fn execute_agent_skill_run(
 /// Outcome of attempting the optional in-process managed-agent loop.
 enum InlineAgentOutcome {
     /// The in-kernel loop ran and produced the agent answer payload.
+    #[cfg(feature = "agent")]
     Resolved(JsonValue),
     /// No in-process provider is configured; yield to the host loop.
     HostDrives,
@@ -411,7 +413,9 @@ enum InlineAgentOutcome {
 fn try_inline_agent_resolution(
     invocation: &SkillInvocation,
 ) -> Result<InlineAgentOutcome, SkillRunError> {
-    use crate::adapters::agent::{AgentAdapterSourceType, AgentResolver, build_managed_agent_act_invocation};
+    use crate::adapters::agent::{
+        AgentAdapterSourceType, AgentResolver, build_managed_agent_act_invocation,
+    };
     use crate::adapters::agent_resolver::AnthropicAgentResolver;
     use crate::runtime_http::ReqwestHttpTransport;
     use runx_contracts::ResolutionRequest;
@@ -638,29 +642,28 @@ impl SourceAdapterRegistry {
 }
 
 fn builtin_source_handlers() -> Vec<SourceHandler> {
-    #[allow(unused_mut)]
-    let mut handlers: Vec<SourceHandler> = Vec::new();
-    #[cfg(feature = "cli-tool")]
-    handlers.push(SourceHandler {
-        source_type: "cli-tool",
-        handler: invoke_graph_cli_tool,
-    });
-    #[cfg(feature = "catalog")]
-    handlers.push(SourceHandler {
-        source_type: "catalog",
-        handler: invoke_graph_catalog_tool,
-    });
-    #[cfg(feature = "external-adapter")]
-    handlers.push(SourceHandler {
-        source_type: "external-adapter",
-        handler: invoke_graph_external_adapter,
-    });
-    #[cfg(feature = "http")]
-    handlers.push(SourceHandler {
-        source_type: "http",
-        handler: invoke_graph_http,
-    });
-    handlers
+    vec![
+        #[cfg(feature = "cli-tool")]
+        SourceHandler {
+            source_type: "cli-tool",
+            handler: invoke_graph_cli_tool,
+        },
+        #[cfg(feature = "catalog")]
+        SourceHandler {
+            source_type: "catalog",
+            handler: invoke_graph_catalog_tool,
+        },
+        #[cfg(feature = "external-adapter")]
+        SourceHandler {
+            source_type: "external-adapter",
+            handler: invoke_graph_external_adapter,
+        },
+        #[cfg(feature = "http")]
+        SourceHandler {
+            source_type: "http",
+            handler: invoke_graph_http,
+        },
+    ]
 }
 
 #[derive(Clone, Debug)]

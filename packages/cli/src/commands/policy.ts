@@ -6,7 +6,7 @@ import {
   type OperationalPolicyReadback,
   type OperationalPolicyValidationFinding,
 } from "@runxhq/contracts";
-import { resolvePathFromUserInput } from "@runxhq/core/config";
+import { resolvePathFromUserInput } from "../cli-config.js";
 
 import { renderRows, statusIcon, theme } from "../ui.js";
 

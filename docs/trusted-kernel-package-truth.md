@@ -43,13 +43,10 @@ CLI-tool inline-code admission consistent across POSIX and Windows runners;
 for example, `C:\Tools\node.exe -e ...` normalizes to `node` and is denied
 under the strict inline-code policy.
 
-The initial pure-kernel Rust parity surface is:
+The original pure-kernel Rust parity surface was:
 
 - Rust-owned state-machine kernel inputs
-- `@runxhq/core/policy`
-- `@runxhq/core/policy/sandbox`
-- authority-proof and scope-admission policy helpers
-- public-work policy helpers
+- retired TypeScript policy helpers now owned by Rust
 - graph-scope, retry, connected-auth, local-admission, and sandbox policy
   helpers
 

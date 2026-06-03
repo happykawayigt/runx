@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { resolveLocalSkillProfile } from "@runxhq/core/config";
+import { resolveLocalSkillProfile } from "../packages/cli/src/cli-config.js";
 
 const SKILL_MD = `---
 name: leaf

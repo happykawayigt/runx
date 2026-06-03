@@ -5,7 +5,7 @@ import {
   resolveRunxGlobalHomeDir,
   resolveRunxOfficialSkillsDir,
   resolveRunxProjectDir,
-} from "@runxhq/core/config";
+} from "../cli-config.js";
 
 import { ensureRunxInstallState, ensureRunxProjectState } from "../runx-state.js";
 

@@ -29,7 +29,9 @@ pub fn serve_mcp_http_server_blocking(
         .enable_time()
         .build()
         .map_err(|error| {
-            McpServerError::new(format!("MCP HTTP server runtime initialization failed: {error}"))
+            McpServerError::new(format!(
+                "MCP HTTP server runtime initialization failed: {error}"
+            ))
         })?
         .block_on(serve_mcp_http_server(listen_addr, options))
 }

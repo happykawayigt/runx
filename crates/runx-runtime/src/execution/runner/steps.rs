@@ -17,9 +17,10 @@ use runx_parser::{GraphStep, SkillSource, SourceKind};
 
 use super::super::graph::{LoadedStepSkill, load_step_skill};
 use super::authority::{
-    StepAuthorityContext, enforce_step_authority_admission, finalize_effect_output_before_success,
-    find_effect_replay, persist_effect_state_for_step, prepare_effect_output_before_gate,
-    prepare_replay_output, recover_pending_effects, validate_replayed_effect,
+    EffectReceiptContext, StepAuthorityContext, enforce_step_authority_admission,
+    finalize_effect_output_before_success, find_effect_replay, persist_effect_state_for_step,
+    prepare_effect_output_before_gate, prepare_replay_output, recover_pending_effects,
+    validate_replayed_effect,
 };
 use super::host_resolution::resolve_step_approval;
 use super::inputs::{optional_input_string, required_input_string, string_value, string_value_ref};
@@ -259,13 +260,12 @@ where
     A: SkillAdapter,
 {
     let authority = request.authority.as_ref();
-    let (skill_name, invocation) =
-        loaded_skill_invocation(
-            skill,
-            request.inputs,
-            &request.runtime.options.env,
-            &request.runtime.options.credential_delivery,
-        );
+    let (skill_name, invocation) = loaded_skill_invocation(
+        skill,
+        request.inputs,
+        &request.runtime.options.env,
+        &request.runtime.options.credential_delivery,
+    );
     if let Some(source_type) = agent_skill_source_type(invocation.source.source_type) {
         return run_agent_skill_step(
             request.runtime,
@@ -364,26 +364,26 @@ where
         &context.runtime.options.created_at,
         context.runtime.options.signature_policy(),
     )?;
-    finalize_effect_output_before_success(
-        context.step,
-        context.graph_dir,
-        context.authority,
-        &projection.claim,
-        &mut output,
-        &receipt,
-        &context.runtime.options.env,
-        &context.runtime.options.effects,
-    )?;
-    persist_effect_state_for_step(
-        context.step,
-        context.graph_dir,
-        context.authority,
-        &projection.claim,
-        &mut output,
-        &receipt,
-        &context.runtime.options.env,
-        &context.runtime.options.effects,
-    )?;
+    finalize_effect_output_before_success(EffectReceiptContext {
+        step: context.step,
+        graph_dir: context.graph_dir,
+        authority: context.authority,
+        claim: &projection.claim,
+        output: &mut output,
+        receipt: &receipt,
+        env: &context.runtime.options.env,
+        effects: &context.runtime.options.effects,
+    })?;
+    persist_effect_state_for_step(EffectReceiptContext {
+        step: context.step,
+        graph_dir: context.graph_dir,
+        authority: context.authority,
+        claim: &projection.claim,
+        output: &mut output,
+        receipt: &receipt,
+        env: &context.runtime.options.env,
+        effects: &context.runtime.options.effects,
+    })?;
     // The authority witness is sealed centrally in run_registered_step; the seal
     // path records a neutral witness and uses `authority` only for effect output
     // finalization above.
@@ -709,16 +709,7 @@ fn run_cli_tool_step_handler<A>(request: StepHandlerCtx<'_, A>) -> Result<StepRu
 where
     A: SkillAdapter,
 {
-    run_cli_tool_step(
-        request.runtime,
-        request.graph_dir,
-        request.graph_name,
-        request.step,
-        request.attempt,
-        request.inputs,
-        request.host,
-        request.authority.as_ref(),
-    )
+    run_cli_tool_step(request)
 }
 
 fn run_tool_step_handler<A>(request: StepHandlerCtx<'_, A>) -> Result<StepRun, RuntimeError>
@@ -746,19 +737,21 @@ where
 // An inline `run: { type: cli-tool, command, args }` step runs a local process
 // (e.g. `node ./script.mjs` relative to the graph directory) through the same
 // adapter + projection + sealing path as a subskill cli-tool step.
-fn run_cli_tool_step<A>(
-    runtime: &Runtime<A>,
-    graph_dir: &Path,
-    graph_name: &str,
-    step: &GraphStep,
-    attempt: u32,
-    inputs: JsonObject,
-    host: &mut dyn Host,
-    authority: Option<&StepAuthorityContext>,
-) -> Result<StepRun, RuntimeError>
+fn run_cli_tool_step<A>(request: StepHandlerCtx<'_, A>) -> Result<StepRun, RuntimeError>
 where
     A: SkillAdapter,
 {
+    let StepHandlerCtx {
+        runtime,
+        graph_dir,
+        graph_name,
+        step,
+        attempt,
+        inputs,
+        host,
+        authority,
+        loaded_skill: _,
+    } = request;
     let source = cli_tool_source(step)?;
     let invocation = SkillInvocation {
         skill_name: step.id.clone(),
@@ -769,7 +762,7 @@ where
         env: runtime.options.env.clone(),
         credential_delivery: runtime.options.credential_delivery.clone(),
     };
-    let regular = invoke_regular_skill_step(runtime, step, invocation, authority, host)?;
+    let regular = invoke_regular_skill_step(runtime, step, invocation, authority.as_ref(), host)?;
     seal_regular_skill_step(
         RegularSkillSeal {
             runtime,
@@ -778,7 +771,7 @@ where
             step,
             attempt,
             skill_name: step.id.clone(),
-            authority,
+            authority: authority.as_ref(),
         },
         regular,
     )

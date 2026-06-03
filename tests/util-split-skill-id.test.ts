@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { splitSkillId } from "../packages/core/src/registry/store.js";
+import { splitSkillId } from "./registry-fixtures.js";
 
 describe("splitSkillId enforces exactly two non-empty segments", () => {
   it("splits owner/name into [owner, name]", () => {

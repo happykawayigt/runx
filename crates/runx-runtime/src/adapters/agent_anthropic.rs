@@ -3,16 +3,19 @@
 //! Translates the provider-agnostic [`AgentTurn`] transcript into an Anthropic
 //! Messages API request and parses `tool_use` content blocks back into
 //! [`AgentToolUse`], reusing the runtime HTTP transport rather than adding a new
-//! HTTP client. Following the codebase convention (see the x402 facilitator and
-//! the registry client), the wire is built and parsed with `serde_json::Value`
-//! and converted to/from the runx `JsonValue` only at the domain boundary.
+//! HTTP client. Following the codebase convention for runtime HTTP call sites
+//! (for example, the registry client), the wire is built and parsed with
+//! `serde_json::Value` and converted to/from the runx `JsonValue` only at the
+//! domain boundary.
 
 use runx_contracts::JsonValue;
 use serde_json::{Value as WireValue, json};
 
 use super::agent_loop::{AgentToolUse, AgentTurn, ModelCaller};
 use crate::RuntimeError;
-use crate::runtime_http::{HttpMethod, RuntimeHttpHeader, RuntimeHttpRequest, RuntimeHttpTransport};
+use crate::runtime_http::{
+    HttpMethod, RuntimeHttpHeader, RuntimeHttpRequest, RuntimeHttpTransport,
+};
 
 const ANTHROPIC_MESSAGES_URL: &str = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
@@ -281,7 +284,7 @@ mod tests {
         };
         let result = caller(&stub).next_tool_uses(&[AgentTurn::User("go".to_owned())]);
         assert!(
-            matches!(&result, Err(_)),
+            result.is_err(),
             "a malformed body must error, not panic; got: {result:?}"
         );
     }

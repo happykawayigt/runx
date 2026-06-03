@@ -22,7 +22,6 @@ workspace = true
 
 [features]
 default = []
-payment-rails = ["runx-runtime/payment-rails"]
 
 [dependencies]
 runx-contracts.workspace = true
@@ -37,6 +36,8 @@ serde_norway.workspace = true
 [[bin]]
 name = "runx"
 path = "src/main.rs"
+test = false
+bench = false
 
 # Debian/Ubuntu packaging (cargo-deb). Built per-arch in CI with --target and
 # attached to the GitHub Release.

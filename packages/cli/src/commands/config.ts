@@ -8,7 +8,7 @@ import {
   updateRunxConfigValue,
   writeRunxConfigFile,
   type RunxConfigFile,
-} from "@runxhq/core/config";
+} from "../cli-config.js";
 
 export type ConfigAction = "set" | "get" | "list";
 

@@ -20,9 +20,9 @@ The lane exists to make the engineering story reviewable:
 
 runx owns reusable machinery:
 
-- source-command normalization through `@runxhq/core/source`, including
-  provider-neutral source locators, thread locators, dedupe keys, target repo
-  hints, and chat-safe command responses
+- source-command normalization at the adapter edge, including provider-neutral
+  source locators, thread locators, dedupe keys, target repo hints, and
+  chat-safe command responses
 - normalized source threads
 - provider-neutral evidence bundles
 - lifecycle story helpers
@@ -52,13 +52,13 @@ Sentry into a `runx.thread.v1` source and a redacted
 artifact refs and verification evidence, but runx core should not know that Nitrosend uses a
 particular channel, label, Sentry project, or owner map.
 
-For Slack/Sentry/GitHub command entrypoints, adapters should first call
-`normalizeRunxSourceCommand` from `@runxhq/core/source`. The resulting
-`source_event` feeds `issue-intake`, while `operationalPolicyRequest` feeds the
-policy gate before target-runner or provider mutation work begins. A blocked or
-unsupported response from this layer should be posted back to the originating
-thread by the adapter; it is never permission to post a new root message or to
-create a PR.
+For Slack/Sentry/GitHub command entrypoints, adapters should normalize source
+commands locally into the shared source-event and operational-policy packets.
+The resulting `source_event` feeds `issue-intake`, while the policy request
+feeds the Rust-owned policy gate before target-runner or provider mutation work
+begins. A blocked or unsupported response from this layer should be posted back
+to the originating thread by the adapter; it is never permission to post a new
+root message or to create a PR.
 
 Before PR packaging, callers may pass a `runx.operational_policy.v1` packet plus
 `source_id`, `target_repo`, `runner_id`, and source-thread locator. The

@@ -71,7 +71,7 @@
       "./run.mjs"
     ]
   },
-  "source_hash": "sha256:63fa2025d49280ac433e595c9b5cb3207520b7c2e2404239c9dd6b719c44474f",
+  "source_hash": "sha256:43627cd1653bb4e4f18ffb0fc4a3f93d0414637740afa8e2c277d5aa816509c1",
   "schema_hash": "sha256:975669ce4f792acc392b93ec9cc6010cb95a9dacff5dbdcc420e9b64448d8dd4",
-  "toolkit_version": "0.1.4"
+  "toolkit_version": "0.2.0"
 }

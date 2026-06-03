@@ -1,9 +1,9 @@
 import { existsSync } from "node:fs";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { canonicalJsonStringify, sha256Prefixed } from "@runxhq/contracts";
-import { errorMessage, isRecord as isPlainRecord, safeReadDir } from "@runxhq/core/util";
+import { errorMessage, isRecord as isPlainRecord, safeReadDir } from "./cli-util.js";
 
 export { isPlainRecord, safeReadDir };
 
@@ -190,6 +190,95 @@ export async function writeJsonFile(filePath: string, value: unknown): Promise<v
 
 export function sha256Stable(value: unknown): string {
   return sha256Prefixed(canonicalJsonStringify(value));
+}
+
+export async function hashToolSource(toolDir: string): Promise<string> {
+  const hashRoot = existsSync(toolDir) ? await realpath(toolDir) : path.resolve(toolDir);
+  const roots = [
+    path.join(hashRoot, "src", "index.ts"),
+    path.join(hashRoot, "run.mjs"),
+  ];
+  const files = await toolSourceClosure(roots);
+  const chunks: Uint8Array[] = [];
+  for (const filePath of files) {
+    chunks.push(
+      Buffer.from(toProjectPath(hashRoot, filePath)),
+      Buffer.from("\0"),
+      await readFile(filePath),
+      Buffer.from("\0"),
+    );
+  }
+  if (files.length === 0) {
+    chunks.push(Buffer.from("no-source"));
+  }
+  return sha256Prefixed(Buffer.concat(chunks));
+}
+
+async function toolSourceClosure(roots: readonly string[]): Promise<readonly string[]> {
+  const pending = roots.map((root) => path.resolve(root));
+  const seen = new Set<string>();
+  for (let index = 0; index < pending.length; index += 1) {
+    const pendingPath = pending[index];
+    if (!existsSync(pendingPath)) {
+      continue;
+    }
+    const filePath = await realpath(pendingPath);
+    if (seen.has(filePath)) {
+      continue;
+    }
+    seen.add(filePath);
+    const source = await readFile(filePath, "utf8");
+    for (const specifier of localImportSpecifiers(source)) {
+      const resolved = resolveLocalSourceImport(filePath, specifier);
+      if (resolved && !seen.has(resolved)) {
+        pending.push(resolved);
+      }
+    }
+  }
+  return [...seen].sort();
+}
+
+function localImportSpecifiers(source: string): readonly string[] {
+  const specifiers: string[] = [];
+  const quotedPattern = /["']([^"']+)["']/gu;
+  for (const match of source.matchAll(quotedPattern)) {
+    const specifier = match[1];
+    if (specifier.startsWith("./") || specifier.startsWith("../")) {
+      specifiers.push(specifier);
+    }
+  }
+  return specifiers;
+}
+
+function resolveLocalSourceImport(fromFile: string, specifier: string): string | undefined {
+  const base = path.resolve(path.dirname(fromFile), specifier.split(/[?#]/u)[0]);
+  for (const candidate of sourceImportCandidates(base)) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
+function sourceImportCandidates(base: string): readonly string[] {
+  const extension = path.extname(base);
+  if (extension) {
+    const withoutExtension = base.slice(0, -extension.length);
+    const candidates = [base];
+    if (extension === ".js") {
+      candidates.push(`${withoutExtension}.ts`, `${withoutExtension}.tsx`);
+    } else if (extension === ".mjs") {
+      candidates.push(`${withoutExtension}.mts`, `${withoutExtension}.ts`);
+    } else if (extension === ".cjs") {
+      candidates.push(`${withoutExtension}.cts`, `${withoutExtension}.ts`);
+    }
+    return candidates;
+  }
+  const extensions = [".ts", ".tsx", ".mts", ".cts", ".js", ".mjs", ".cjs"];
+  return [
+    ...extensions.map((candidateExtension) => `${base}${candidateExtension}`),
+    ...extensions.map((candidateExtension) => path.join(base, `index${candidateExtension}`)),
+  ];
 }
 
 

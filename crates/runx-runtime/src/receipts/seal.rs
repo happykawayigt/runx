@@ -964,23 +964,31 @@ mod tests {
     /// serialization errors a test exercises without erasing them behind a trait
     /// object.
     #[derive(Debug)]
-    struct TestError(String);
+    struct TestError {
+        _message: String,
+    }
 
     impl From<RuntimeError> for TestError {
         fn from(error: RuntimeError) -> Self {
-            Self(error.to_string())
+            Self {
+                _message: error.to_string(),
+            }
         }
     }
 
     impl From<runx_receipts::ReceiptError> for TestError {
         fn from(error: runx_receipts::ReceiptError) -> Self {
-            Self(error.to_string())
+            Self {
+                _message: error.to_string(),
+            }
         }
     }
 
     impl From<serde_json::Error> for TestError {
         fn from(error: serde_json::Error) -> Self {
-            Self(error.to_string())
+            Self {
+                _message: error.to_string(),
+            }
         }
     }
 

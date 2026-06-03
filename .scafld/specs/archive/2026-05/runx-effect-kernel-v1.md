@@ -3,7 +3,7 @@ spec_version: '2.0'
 task_id: runx-effect-kernel-v1
 created: '2026-05-31T00:00:00Z'
 updated: '2026-05-31T13:38:44Z'
-status: completed
+status: deferred
 harden_status: not_run
 size: large
 risk_level: high
@@ -13,14 +13,27 @@ risk_level: high
 
 ## Current State
 
-Status: completed
+Status: deferred Phase 4 bridge cleanup
 Current phase: final
-Next: done
-Reason: task completed
-Blockers: none
+Next: follow-up bridge cleanup
+Reason: generic effect registry/seal dispatch shipped; Phase 4's zero-payment-residue acceptance is deferred
+Blockers: remaining payment-specific bridge residue
 Allowed follow-up command: `none`
 Latest runner update: 2026-05-31T13:38:44Z
 Review gate: pass
+
+2026-06-03 reconciliation: the runtime seal/dispatch path is generic, but the
+Phase 4 acceptance below is not fully met. `payment_admission` has moved to
+`runx-pay`, and `check-runtime-cutover-legacy.mjs --final` now scans all
+`runx-runtime/src` plus `runx-core/src`, so the kernel-side domain-residue gate
+matches this spec. Live deferred residue remains: `runx-contracts` still exposes
+`PaymentAuthorityBounds`, `AuthorityBounds.payment`, `max_spend_usd`, and
+`ProofKind::PaymentRail`; `runx-pay` still has the payment-named
+`PaymentRailSupervisor` / `PaymentSupervisor*` proof helpers; and the
+deferred-evidence `EffectSettlementReceipt` / `EffectSettlementPhase` schema
+exists without a runtime path that emits follow-on settlement receipts. Treat
+that payment-specific residue as explicitly deferred bridge cleanup, not
+completed Phase 4 work.
 
 ## Summary
 
@@ -98,7 +111,7 @@ a separate `runx-governance` crate (generic governance lands in `runx-core`).
 - **`runx-core`** = generic governance: authority algebra, generic bound model,
   gate (approval generalized), receipt-before-success, act/decision/signal
   vocab, idempotency, maturity.
-- **`runx-pay`** (new, feature `payment`) = payment governance/evidence:
+- **`runx-pay`** (new crate; default/std only today) = payment governance/evidence:
   payment authority schema + bounds, evidence/proof domain payload,
   idempotency/recovery state, ledger, x402 sequence logic, and the deterministic
   **test** supervisor. Registers into the kernel. No rails, secrets, or network.
@@ -378,17 +391,24 @@ Dependencies: none
 
 ## Phase 4: Extract `runx-pay` (governance/evidence; no rails/secrets)
 
-Status: completed
+Status: deferred cleanup remaining
 Dependencies: none
 
-- Create `crates/runx-pay` (feature `payment`). Move: payment authority
+Reconciliation: the `runx-pay` crate and deterministic payment supervisor exist,
+and `runx-runtime` no longer depends on `runx-pay`, but this phase's
+domain-free-kernel acceptance is deferred. The remaining payment-specific bridge
+residue named in Current State must be removed or the acceptance/gate wording must
+stay scoped to the completed generic-effect facade.
+
+- Create `crates/runx-pay`. Move: payment authority
   schema + bounds, evidence/proof domain payload, idempotency/recovery state,
   ledger projection, packets, x402 sequence logic, and the supervisor split into
   a **test** supervisor (deterministic) registered for harness/local.
 - Payment **registers** its `EffectSupervisor`, its settlement step types into
   `StepTypeRegistry`, its authority schema/bounds, and its ledger hook.
 - Kernel (`runx-runtime` + `runx-core`) compiles `--no-default-features`
-  payment-free; `runx-cli` registers payment when the feature is on. No
+  payment-free; `runx-cli` depends on `runx-pay` directly to register the
+  deterministic payment effect while runtime keeps no normal `runx-pay` edge. No
   compatibility shim or in-tree fallback survives the move.
 - **Acceptance:** **after-Phase-4 no-dual-path gate** (extended
   `pnpm cutover:legacy-check`): zero identifier-boundary matches for
