@@ -18,7 +18,7 @@ use runx_pay::supervisor::{
     PAYMENT_RAIL_SUPERVISOR_VERIFIER_ID, PaymentSupervisorError,
     PaymentSupervisorSettlementEvidence, PaymentSupervisorSettlementRequest,
 };
-use runx_pay::{PaymentRailSupervisor, PaymentRuntimeEffect};
+use runx_pay::{EffectSupervisor, PaymentRuntimeEffect};
 use runx_receipts::ReceiptTreeConfig;
 use runx_runtime::effects::RuntimeEffectRegistry;
 use runx_runtime::{
@@ -1036,7 +1036,7 @@ impl ExpectedEffectSupervisor {
     }
 }
 
-impl PaymentRailSupervisor for ExpectedEffectSupervisor {
+impl EffectSupervisor for ExpectedEffectSupervisor {
     fn settlement_evidence(
         &self,
         request: PaymentSupervisorSettlementRequest<'_>,

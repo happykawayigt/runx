@@ -39,7 +39,7 @@ use crate::supervisor::{
 
 pub const PAYMENT_EFFECT_FAMILY: &str = "payment";
 
-pub trait PaymentRailSupervisor: Send + Sync {
+pub trait EffectSupervisor: Send + Sync {
     fn settlement_evidence(
         &self,
         request: PaymentSupervisorSettlementRequest<'_>,
@@ -48,13 +48,13 @@ pub trait PaymentRailSupervisor: Send + Sync {
 
 #[derive(Clone)]
 pub struct PaymentRuntimeEffect {
-    supervisor: Arc<dyn PaymentRailSupervisor>,
+    supervisor: Arc<dyn EffectSupervisor>,
 }
 
 impl PaymentRuntimeEffect {
     pub fn new<T>(supervisor: T) -> Self
     where
-        T: PaymentRailSupervisor + 'static,
+        T: EffectSupervisor + 'static,
     {
         Self {
             supervisor: Arc::new(supervisor),
@@ -63,9 +63,9 @@ impl PaymentRuntimeEffect {
 }
 
 #[derive(Clone, Copy, Debug, Default)]
-pub struct DeterministicPaymentRailSupervisor;
+pub struct DeterministicEffectSupervisor;
 
-impl PaymentRailSupervisor for DeterministicPaymentRailSupervisor {
+impl EffectSupervisor for DeterministicEffectSupervisor {
     fn settlement_evidence(
         &self,
         request: PaymentSupervisorSettlementRequest<'_>,
