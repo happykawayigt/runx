@@ -1,5 +1,5 @@
 // Local fixture endpoint for the OpenAPI front demo. Serves the pets API the
-// spec describes so the adapter makes a real governed call with no external
+// spec describes so the adapter makes a real local call with no external
 // network. Started by run.sh.
 import { createServer } from "node:http";
 

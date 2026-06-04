@@ -8,9 +8,9 @@
   "transport": { "kind": "process", "command": "node", "args": ["openapi-adapter.mjs"] },
   "timeouts": { "startup_ms": 5000, "invocation_ms": 30000 },
   "sandbox_intent": {
-    "profile": "readonly",
+    "profile": "network",
     "cwd_policy": "skill-directory",
-    "network": false,
+    "network": true,
     "writable_paths": []
   }
 }

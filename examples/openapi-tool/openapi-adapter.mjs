@@ -1,8 +1,8 @@
-// OpenAPI external adapter: turns one OpenAPI operation into a governed HTTP call.
+// OpenAPI external adapter: turns one OpenAPI operation into an adapter-owned HTTP call.
 // It loads the checked-in spec, resolves the requested operationId, validates the
 // required parameters, performs the call, and returns the response as the sealed
-// result. The network leg lives on the adapter (the supervised side of the
-// boundary). If the endpoint is unreachable (e.g. running the bare harness without
+// result. The network leg lives on the adapter side of the external-adapter
+// boundary. If the endpoint is unreachable (e.g. running the bare harness without
 // the fixture server), it falls back to resolving the request without calling it,
 // so the example stays runnable offline. The protocol frame is handled by the
 // shared adapter kit.
@@ -52,7 +52,10 @@ runAdapter(async ({ inputs }) => {
   const operation = resolveOperation(spec, wanted);
   const { path, query } = resolveRequest(operation, inputs);
 
-  const base = (spec.servers && spec.servers[0] && spec.servers[0].url) || "";
+  const base =
+    process.env.RUNX_OPENAPI_BASE_URL ||
+    (spec.servers && spec.servers[0] && spec.servers[0].url) ||
+    "";
   const resolvedUrl = base + path + (query.length ? `?${query.join("&")}` : "");
   const method = operation.method.toUpperCase();
   const resolved = {

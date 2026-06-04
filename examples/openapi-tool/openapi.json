@@ -10,7 +10,25 @@
         "parameters": [
           { "name": "petId", "in": "path", "required": true, "schema": { "type": "string" } },
           { "name": "fields", "in": "query", "required": false, "schema": { "type": "string" } }
-        ]
+        ],
+        "responses": {
+          "200": {
+            "description": "Pet response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["id", "name"],
+                  "properties": {
+                    "id": { "type": "string" },
+                    "name": { "type": "string" },
+                    "species": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     }
   }

@@ -16,6 +16,15 @@ harness:
         fields: name
       expect:
         status: sealed
+        output:
+          subset:
+            executed: true
+            method: GET
+            operation_id: getPet
+            status_code: 200
+            response:
+              id: p-42
+              name: pet-p-42
 
 runners:
   main:
