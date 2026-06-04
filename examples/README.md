@@ -5,6 +5,9 @@ not catalog entries: `runx list skills|graphs|tools` scans `skills/`, `graphs/`,
 and `tools/`, so the examples here are intentionally absent from that catalog.
 Run them directly instead.
 
+For a curated list of runnable proof demos and offline receipt verification, see
+`docs/demos.md`.
+
 Most need a receipt-signing identity (runx mandates signed receipts). A demo-only
 identity:
 

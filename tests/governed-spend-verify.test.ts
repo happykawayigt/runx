@@ -6,7 +6,8 @@ import { execFileSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const DEMO_SEED_B64 = "QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI=";
-const VERIFY = path.resolve("examples/governed-spend/verify.mjs");
+const VERIFY = path.resolve("tools/verify/verify.mjs");
+const EXAMPLE_VERIFY = path.resolve("examples/governed-spend/verify.mjs");
 
 let tempDir: string;
 
@@ -34,7 +35,14 @@ describe("governed-spend receipt verifier", () => {
     writeReceipt(resealedRoot);
     writeReceipt(resealedChild);
 
-    const output = execFileSync("node", [VERIFY, receiptPath(resealedRoot.id), "--walk-ancestry"], {
+    const jwksPath = writeJwks();
+    const output = execFileSync("node", [
+      VERIFY,
+      receiptPath(resealedRoot.id),
+      "--walk-ancestry",
+      "--jwks",
+      jwksPath,
+    ], {
       cwd: path.resolve("."),
       encoding: "utf8",
     });
@@ -91,6 +99,18 @@ describe("governed-spend receipt verifier", () => {
 
     expect(output).toContain("VERIFIED: runx signed this receipt tree");
     expect(output).toContain("lineage child 0 locator matches child digest");
+  });
+
+  it("keeps the governed-spend verifier path as a wrapper", () => {
+    const root = seal(receipt("root"));
+    writeReceipt(root);
+
+    const output = execFileSync("node", [EXAMPLE_VERIFY, receiptPath(root.id)], {
+      cwd: path.resolve("."),
+      encoding: "utf8",
+    });
+
+    expect(output).toContain("VERIFIED: runx signed exactly this receipt content");
   });
 });
 
@@ -161,6 +181,21 @@ function writeReceipt(r: any) {
   fs.writeFileSync(receiptPath(r.id), `${JSON.stringify(r)}\n`);
 }
 
+function writeJwks() {
+  const jwksPath = path.join(tempDir, "jwks.json");
+  fs.writeFileSync(jwksPath, `${JSON.stringify({
+    keys: [{
+      kty: "OKP",
+      crv: "Ed25519",
+      kid: "runx-demo-key",
+      alg: "EdDSA",
+      use: "sig",
+      x: publicKeyRaw().toString("base64url"),
+    }],
+  })}\n`);
+  return jwksPath;
+}
+
 function receiptPath(id: string) {
   return path.join(tempDir, `${id}.json`);
 }
@@ -207,7 +242,11 @@ function privateKey() {
 }
 
 function publicKeyHash() {
-  const publicKey = crypto.createPublicKey(privateKey());
-  const raw = publicKey.export({ format: "der", type: "spki" }).subarray(-32);
+  const raw = publicKeyRaw();
   return `sha256:${crypto.createHash("sha256").update(raw).digest("hex")}`;
+}
+
+function publicKeyRaw() {
+  const publicKey = crypto.createPublicKey(privateKey());
+  return publicKey.export({ format: "der", type: "spki" }).subarray(-32);
 }

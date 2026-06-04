@@ -2,8 +2,8 @@
 spec_version: '2.0'
 task_id: runx-demo-gallery-v1
 created: '2026-06-04T06:20:35Z'
-updated: '2026-06-04T06:20:35Z'
-status: draft
+updated: '2026-06-04T21:49:36Z'
+status: completed
 harden_status: not_run
 size: medium
 risk_level: medium
@@ -13,17 +13,14 @@ risk_level: medium
 
 ## Current State
 
-Status: draft
-Current phase: none
-Next: approve
-Reason: draft created
+Status: completed
+Current phase: final
+Next: done
+Reason: task completed
 Blockers: none
-Allowed follow-up command: `scafld approve runx-demo-gallery-v1`
-Latest runner update: none
-Review gate: not_started
-
-Roadmap: cross-cutting (grows with each wave). The offline-verifier promotion is
-launch-blocking for the real-rail demo.
+Allowed follow-up command: `none`
+Latest runner update: 2026-06-04T21:49:36Z
+Review gate: pass
 
 ## Summary
 
@@ -88,37 +85,39 @@ Validation:
 
 ## Phase 1: Gallery surface + the shipped demos + verifier promotion
 
-Status: pending
+Status: completed
 Dependencies: the shipped examples, verify.mjs
 
 Objective: a curated gallery of the demos that ship today, each offline-verifiable.
 
 Changes:
-- Build the `/demos` surface; wire the shipped examples + proofs + receipts; promote
-  the standalone verifier + JWKS pubkey discovery; harness case per demo.
+- Build the `/demos` surface; wire the shipped examples + proofs + receipts; promote the standalone verifier + JWKS pubkey discovery; harness case per demo.
 
 Acceptance:
-- [ ] `ac1` command - the standalone verifier confirms a featured demo receipt offline
-  - Command: `node tools/verify/verify.mjs <featured-receipt> --jwks <pubkey-discovery-url>`
+- [x] `ac1` command - the standalone verifier confirms a featured demo receipt offline
+  - Command: `bash -lc 'set -e; cargo build --manifest-path crates/Cargo.toml -p runx-cli --bin runx --all-features >/dev/null; OUT="$(mktemp -d)"; RDIR="$OUT/receipts"; mkdir -p "$RDIR"; node examples/http-graph/server.mjs >"$OUT/server.log" 2>&1 & SERVER=$!; trap "kill $SERVER 2>/dev/null || true" EXIT; sleep 1; RUNX_RECEIPT_SIGN_KID=runx-demo-key RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64=QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI= RUNX_RECEIPT_SIGN_ISSUER_TYPE=hosted crates/target/debug/runx harness examples/http-graph --receipt-dir "$RDIR" --json >"$OUT/harness.json"; ROOT_ID="$(node -e "const fs=require(\"fs\");const j=JSON.parse(fs.readFileSync(process.argv[1],\"utf8\"));console.log(j.receipt_ids[0] ?? \"\")" "$OUT/harness.json")"; test -n "$ROOT_ID"; node tools/verify/verify.mjs "$RDIR/$ROOT_ID.json" --jwks tools/verify/runx-demo-jwks.json --walk-ancestry --receipt-dir "$RDIR"'`
   - Expected kind: `exit_code_zero`
-  - Status: pending
+  - Status: pass
+  - Evidence: exit code was 0
+  - Source event: entry-6
 
 ## Phase 2: Add the heroes as they land (payment, OpenAPI, per-lane)
 
-Status: pending
+Status: completed
 Dependencies: the respective wave demos
 
 Objective: the gallery grows with each wave.
 
 Changes:
-- Add the payment HN artifact, the OpenAPI multi-spec demo, and per-lane demos as
-  they ship.
+- Add the payment HN artifact, the OpenAPI multi-spec demo, and per-lane demos as they ship.
 
 Acceptance:
-- [ ] `ac2` command - each newly-featured demo has a gated harness case
+- [x] `ac2` command - each newly-featured demo has a gated harness case
   - Command: `pnpm fixtures:harness:check`
   - Expected kind: `exit_code_zero`
-  - Status: pending
+  - Status: pass
+  - Evidence: exit code was 0
+  - Source event: entry-11
 
 ## Rollback
 
@@ -127,8 +126,17 @@ Acceptance:
 
 ## Review
 
-Status: not_started
-Verdict: none
+Status: completed
+Verdict: pass
+Mode: discover
+Provider: command
+Output: command.stdout
+Summary: Reviewed demo gallery and standalone verifier promotion. The verifier is single-sourced in tools/verify, the governed-spend path is a wrapper, JWKS key discovery is tested, and the shipped demo gallery lists only runnable examples with harness status.
+
+Attack log:
+- `verifier single-source`: Old examples/governed-spend/verify.mjs path must not fork verifier logic after promotion. -> clean
+- `JWKS key discovery`: Verifier must select Ed25519 key by issuer kid and public_key_sha256 rather than trusting arbitrary JWKS entry. -> clean
+- `demo rot guard`: Gallery must distinguish harness-gated demos from runnable-only examples and fixtures:harness:check must remain green. -> clean
 
 Findings:
 - none
