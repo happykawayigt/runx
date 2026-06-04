@@ -48,6 +48,15 @@ const fixtureUrl = new URL(
 
 const fixture = JSON.parse(readFileSync(fixtureUrl, "utf8")) as CanonicalJsonFixture;
 
+const numbersFixtureUrl = new URL(
+  "../../../fixtures/contracts/canonical-json/runx-stable-json-v1.numbers.cases.json",
+  import.meta.url,
+);
+
+const numbersFixture = JSON.parse(readFileSync(numbersFixtureUrl, "utf8")) as CanonicalJsonFixture;
+
+const canonicalJsonCases = [fixture, numbersFixture].flatMap((fixture) => fixture.cases);
+
 const receiptOracleUrl = new URL(
   "../../../fixtures/contracts/canonical-json/runx-receipt-c14n-v1.oracles.json",
   import.meta.url,
@@ -61,6 +70,7 @@ describe("runx.stable-json.v1 canonical JSON", () => {
   it("exports the canonicalization tag", () => {
     expect(RUNX_STABLE_JSON_V1).toBe("runx.stable-json.v1");
     expect(fixture.canonicalization).toBe(RUNX_STABLE_JSON_V1);
+    expect(numbersFixture.canonicalization).toBe(RUNX_STABLE_JSON_V1);
   });
 
   it("hashes strings and bytes with SHA-256", () => {
@@ -71,7 +81,7 @@ describe("runx.stable-json.v1 canonical JSON", () => {
     expect(sha256Prefixed("runx")).toBe(`sha256:${digest}`);
   });
 
-  it.each(fixture.cases.map((testCase) => [testCase.name, testCase] as const))(
+  it.each(canonicalJsonCases.map((testCase) => [testCase.name, testCase] as const))(
     "matches fixture bytes and digests for %s",
     (_name, testCase) => {
       const actual = canonicalJsonStringify(testCase.value);

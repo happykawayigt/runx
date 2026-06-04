@@ -165,6 +165,9 @@ mod tests {
     );
     const STABLE_JSON_ORACLE: &str =
         include_str!("../../../fixtures/contracts/canonical-json/runx-stable-json-v1.cases.json");
+    const STABLE_JSON_NUMBERS_ORACLE: &str = include_str!(
+        "../../../fixtures/contracts/canonical-json/runx-stable-json-v1.numbers.cases.json"
+    );
 
     #[derive(Debug, Deserialize)]
     struct Fixture {
@@ -333,11 +336,18 @@ mod tests {
 
     #[test]
     fn stable_json_oracle_matches_rust_canonical_json() -> Result<(), ReceiptError> {
+        stable_json_oracle_matches(STABLE_JSON_ORACLE)
+    }
+
+    #[test]
+    fn stable_json_numbers_oracle_matches_rust_canonical_json() -> Result<(), ReceiptError> {
+        stable_json_oracle_matches(STABLE_JSON_NUMBERS_ORACLE)
+    }
+
+    fn stable_json_oracle_matches(oracle_json: &str) -> Result<(), ReceiptError> {
         let oracle: StableJsonFixture =
-            serde_json::from_str(STABLE_JSON_ORACLE).map_err(|source| {
-                ReceiptError::Serialization {
-                    message: source.to_string(),
-                }
+            serde_json::from_str(oracle_json).map_err(|source| ReceiptError::Serialization {
+                message: source.to_string(),
             })?;
         assert_eq!(oracle.canonicalization, "runx.stable-json.v1");
 
