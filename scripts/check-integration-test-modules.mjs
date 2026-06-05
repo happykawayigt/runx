@@ -10,8 +10,9 @@
 // The risk of `autotests = false` is silent loss of coverage: someone adds
 // tests/new_thing.rs and forgets `mod new_thing;`, so Cargo never builds it and
 // nobody notices. This guard fails when a top-level tests/*.rs file is not
-// referenced by integration.rs, when integration.rs references a module with no
-// matching file or directory, and when a test mutates process-global state
+// referenced by integration.rs, when a directory-style tests/<name>/main.rs target
+// would be dropped by `autotests = false`, when integration.rs references a
+// module with no matching file or mod.rs, and when a test mutates process-global state
 // (which is unsafe across tests sharing one binary under `cargo test`).
 //
 // Usage: node scripts/check-integration-test-modules.mjs
@@ -60,13 +61,11 @@ function topLevelModNames(integrationSource) {
 }
 
 function moduleHasSource(testsDir, name) {
-  // A `mod name;` is satisfied by tests/name.rs, tests/name/mod.rs, or
-  // tests/name/name.rs (Rust resolves the first two; the third is our payment/act
-  // style where the file module owns a subdir of the same name).
+  // A `mod name;` in tests/integration.rs is satisfied by tests/name.rs or
+  // tests/name/mod.rs. A bare tests/name/ directory is not enough.
   return (
     existsSync(path.join(testsDir, `${name}.rs`)) ||
-    existsSync(path.join(testsDir, name, "mod.rs")) ||
-    existsSync(path.join(testsDir, name))
+    existsSync(path.join(testsDir, name, "mod.rs"))
   );
 }
 
@@ -102,6 +101,20 @@ for (const crate of crates) {
       errors.push(
         `${rel}/tests/${stem}.rs exists but is not declared in integration.rs ` +
           `(add \`mod ${stem};\`), so it is never compiled or run.`,
+      );
+    }
+  }
+
+  for (const entry of readdirSync(testsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const mainPath = path.join(testsDir, entry.name, "main.rs");
+    if (existsSync(mainPath)) {
+      errors.push(
+        `${rel}/tests/${entry.name}/main.rs is a directory-style integration ` +
+          `test target, but autotests = false disables Cargo's automatic target ` +
+          `discovery. Move it to tests/${entry.name}.rs or ` +
+          `tests/${entry.name}/mod.rs and declare \`mod ${entry.name};\` in ` +
+          `integration.rs.`,
       );
     }
   }

@@ -15,12 +15,12 @@ risk_level: medium
 
 Status: review
 Current phase: final
-Next: repair
-Reason: review gate fail: 1 finding(s), 1 completion blocker(s)
-Blockers: `ci-dry-run-missing` (branch CI dry-run evidence and warm-run timing)
-Allowed follow-up command: `scafld handoff test-surface-build-consolidation`
-Latest runner update: 2026-06-04T21:13:05Z
-Review gate: fail
+Next: complete
+Reason: review gate pass: 2 finding(s), 0 completion blocker(s)
+Blockers: none
+Allowed follow-up command: `scafld complete test-surface-build-consolidation`
+Latest runner update: 2026-06-05T00:37:11Z
+Review gate: pass
 
 ## Summary
 
@@ -85,10 +85,11 @@ each former test file kept intact as a module:
 - nextest validation: `cargo nextest run --workspace --all-features` runs 789
   tests, 778 pass, the same 11 runtime failures, nothing new. Process-per-test
   execution is green.
-- Two files needed structural fixes because they owned submodules: `payment.rs`
-  (runtime) and `act.rs` (sdk) had a redundant inline `mod {}` wrapper that, once
-  the file itself became a module, nested submodule paths one level too deep; the
-  wrapper was removed so submodules resolve under `tests/<name>/`. `runx-cli`'s
+- `act.rs` (sdk) needed a structural fix because it owned submodules: it had a
+  redundant inline `mod {}` wrapper that, once the file itself became a module,
+  nested submodule paths one level too deep; the wrapper was removed so
+  submodules resolve under `tests/<name>/`. `runx-pay/tests/payment.rs` remains
+  unconsolidated because it is already a single integration-test file. `runx-cli`'s
   shared `tests/support/` is declared once in integration.rs and the five files
   that used it now reference `crate::support`.
 - Every `--test <name>` invocation that targeted a now-removed standalone target
@@ -168,9 +169,17 @@ The forward standard for runx Rust testing:
   cargo-public-api; the `cargo install` step is removed.
 - [x] `dod5` Guard prevents silent coverage loss and bans process-global
   mutation. Evidence: `scripts/check-integration-test-modules.mjs` fails on an
-  orphaned `tests/*.rs` and on `env::set_var`; wired into verify-fast.
-- [ ] `dod6` Warm CI wall time materially reduced; before/after recorded from a
-  real CI run. Expected kind: manual.
+  orphaned `tests/*.rs`, directory-style `tests/<name>/main.rs` targets under
+  `autotests = false`, unresolved declared modules, and `env::set_var`; wired
+  into verify-fast.
+- [x] `dod6` Warm CI wall time materially reduced; before/after recorded from a
+  real CI run. Evidence: branch `codex/readiness-ci-dry-run` ran `ci`
+  workflow_dispatch successfully twice. First run
+  `26987384653` (`995dd53b`, checks job
+  <https://github.com/runxhq/runx/actions/runs/26987384653/job/79639879363>)
+  completed in 8m30s. Warm rerun `26987685828` (`905290f7`, checks job
+  <https://github.com/runxhq/runx/actions/runs/26987685828/job/79640782639>)
+  completed in 7m34s.
 
 ## Phase 2: CI caching and structure
 
@@ -212,11 +221,17 @@ Optional, lower priority:
   PR (it does a full isolated rebuild). Mildly reduces per-PR publish safety, so
   decide explicitly.
 
-- [ ] `p2_ac1` command - oss Cargo cache uses rust-cache.
+- [x] `p2_ac1` command - oss Cargo cache uses rust-cache.
   - Command: `rg -n "Swatinem/rust-cache" .github/workflows/ci.yml`
   - Expected kind: `reviewed_output`
-- [ ] `p2_ac2` manual - branch CI run green end to end under nextest; warm-run
+  - Status: pass
+  - Evidence: `.github/workflows/ci.yml:72` uses `Swatinem/rust-cache@v2`.
+- [x] `p2_ac2` manual - branch CI run green end to end under nextest; warm-run
   wall time recorded before/after.
+  - Status: pass
+  - Evidence: `ci` workflow_dispatch on branch `codex/readiness-ci-dry-run`
+    passed at run `26987384653` and warm rerun `26987685828`; both include the
+    Rust checks step with `cargo nextest run --workspace --all-features`.
 
 ## Rollback
 
@@ -230,20 +245,30 @@ Optional, lower priority:
 ## Review
 
 Status: completed
-Verdict: fail
-Mode: verify
-Provider: command
-Output: command.stdout
-Summary: Local implementation evidence is insufficient to complete this spec. The spec is in review state, but acceptance requires a real branch CI dry-run under nextest with before/after warm-run wall time; local checks cannot satisfy dod6 or p2_ac2.
+Verdict: pass
+Mode: discover
+Provider: claude:claude-opus-4-8
+Output: claude.mcp_submit_review
+Summary: Discover-mode review of the test-build consolidation. No task changes since the approval baseline; the implementation landed in prior commits and only the spec records CI evidence. Verified independently: all 7 crates the spec lists (runx-runtime/contracts/cli/core/receipts/parser/sdk) set autotests=false + [[test]] name="integration"; runtime's integration.rs declares all 42 sibling modules, sdk declares act/client_cli/host_protocol (act.rs structural fix holds), cli declares 13 modules plus shared support. The coverage/process-global guard (scripts/check-integration-test-modules.mjs) is correct — it fails on orphaned top-level tests/*.rs, on unresolved declared modules, and on env::set_var/remove_var/set_current_dir without allow-process-global — and is wired into verify:fast (line 45), which CI runs (ci.yml:52). A repo-wide grep found zero banned mutations, so the guard passes and CI is not silently red on that axis. CI implements the dod3/dod4/p2_ac1 gates: nextest + cargo --doc + heavy-graph, prebuilt advisory tools via taiki-e/install-action (no cargo install), and Swatinem/rust-cache@v2 workspaces: crates. The license-boundary retarget (ci.yml:95 --test integration -- license_boundary) maps to the license_boundary module. dod6/p2_ac2 cite workflow_dispatch runs 26987384653 (995dd53b) and 26987685828 (905290f7); both SHAs are real commits in this repo (905290f7 is HEAD). Two low/non-blocking findings: (1) the guard only enumerates top-level tests/*.rs, so a future directory-style test target (tests/<name>/main.rs) under autotests=false would be silently dropped without the guard noticing — not exploitable today because no such target exists; (2) the only evidence the suite is green and warm CI wall time dropped is external GitHub Actions runs a read-only reviewer cannot fetch — the operator should open the cited job URLs and confirm green before complete. No test assertions, fixtures, or coverage were removed; no regression introduced.
 
 Attack log:
-- `.scafld/specs/active/test-surface-build-consolidation.md:172`: verify manual CI acceptance items -> finding (dod6 and p2_ac2 require branch CI evidence)
-- `.github/workflows/ci.yml`: check whether local workflow inspection can replace branch CI -> finding (local-only evidence is insufficient for a dry-run gate)
-- `scafld status test-surface-build-consolidation --json`: verify lifecycle is review, not complete -> finding (blocked pending external CI dry-run)
+- `crates/*/Cargo.toml + tests/integration.rs (dod1)`: Confirm each consolidated crate emits exactly one integration binary (autotests=false + [[test]] name=integration) and integration.rs declares all sibling test files -> clean (7 crates set autotests=false matching the spec list. runtime integration.rs declares all 42 sibling modules; sdk declares act/client_cli/host_protocol; cli declares 13 modules + support. runtime Cargo.toml has [[test]] name=integration path=tests/integration.rs.)
+- `scripts/check-integration-test-modules.mjs (dod5)`: Verify guard fails on orphaned tests/*.rs, unresolved declared modules, and process-global mutation; confirm wiring into CI -> clean (Guard enforces both directions of the file<->module mapping and bans env::set_var/remove_var/set_current_dir with allow-process-global opt-out; wired via verify-fast.mjs:45 -> ci.yml:52.)
+- `crates/*/tests (regression: silent coverage drop)`: Grep all test sources for banned process-global mutations to confirm the guard currently passes (CI not silently red) -> clean (Repo-wide grep for set_var|remove_var|set_current_dir under crates/**/tests returned no matches; guard passes.)
+- `scripts/check-integration-test-modules.mjs (guard completeness)`: Probe for a layout the guard does not cover that could drop coverage under autotests=false -> finding (Guard only enumerates top-level tests/*.rs; directory-style tests/<name>/main.rs targets are a blind spot. Glob confirms none exist today, so no current coverage loss (low severity).)
+- `.github/workflows/ci.yml (dod3/dod4/p2_ac1)`: Confirm nextest + doctest + heavy-graph gates, prebuilt advisory tools (no cargo install), and Swatinem/rust-cache -> clean (ci.yml:62-66 taiki-e/install-action installs cargo-nextest,cargo-deny,cargo-public-api; 72-74 rust-cache workspaces: crates; 84 nextest --all-features; 87 cargo test --doc; 76-77 heavy graph. No cargo install step.)
+- `.github/workflows/ci.yml:95 (regression: --test retargeting)`: Confirm the license-boundary guard step still runs the same subset after consolidation -> clean (cargo test ... --test integration -- license_boundary substring-matches the license_boundary:: module tests in the consolidated binary; runtime integration.rs declares mod license_boundary.)
+- `dod6/p2_ac2 external CI evidence`: Cross-check cited CI run commit SHAs against repo git history; assess whether greenness is verifiable -> finding (SHAs 995dd53b and 905290f7 match real recent commits (905290f7 is HEAD). External run greenness not fetchable in read-only mode (low, residual).)
+- `workspace classification / spec mutation`: Confirm changes are limited to spec evidence recording with no out-of-scope drift or production test-logic -> clean (scafld reports baseline clean, task_changes none, ambient_drift none. Guard and ci.yml are CI tooling, not production code; test-logic-separation invariant preserved. Implementation landed in prior commits.)
 
 Findings:
-- [high/blocks completion] `ci-dry-run-missing` Missing branch CI dry-run evidence
-  - Location: `.scafld/specs/active/test-surface-build-consolidation.md:172`
-  - Evidence: dod6 requires warm CI wall time from a real CI run, and p2_ac2 requires a branch CI run green end to end under nextest with before/after warm-run timing. No branch CI run evidence is present in this local workspace.
-  - Impact: Completing the spec locally would bypass its only real validation for CI workflow behavior and cache timing.
-  - Validation: Push the branch, run CI, record the green nextest workflow and before/after warm-run wall time, then rerun scafld review and complete.
+- [low/non-blocking] `guard-directory-target-blindspot` Coverage guard only checks top-level tests/*.rs, not directory-style test targets.
+  - Location: `oss/scripts/check-integration-test-modules.mjs:97`
+  - Evidence: The guard enumerates fileStems via readdirSync(testsDir).filter(f => f.endsWith('.rs')) — only top-level *.rs files. A directory-style integration target (tests/<name>/main.rs), which Cargo would compile as its own binary under autotests=true, is not enumerated. Under autotests=false such a target would no longer be built, and if it is also not declared as `mod <name>;` in integration.rs the guard would not flag the lost coverage.
+  - Impact: dod5 promises the guard 'prevents silent coverage loss'. The guard fully covers the current tests/*.rs layout but has a blind spot for directory-style targets. Not exploitable today: a Glob for crates/*/tests/*/main.rs returns no files, so no coverage is currently dropped.
+  - Validation: Read scripts/check-integration-test-modules.mjs:97-107 and confirmed only top-level .rs stems are checked; Glob crates/*/tests/*/main.rs returned no files, so no current coverage loss.
+- [low/non-blocking] `dod6-external-run-unverifiable` dod6/p2_ac2 green-CI and warm-time evidence rests on external GitHub Actions runs not fetchable in read-only review.
+  - Location: `oss/.scafld/specs/active/test-surface-build-consolidation.md:172`
+  - Evidence: dod6 cites workflow_dispatch runs 26987384653 (995dd53b, 8m30s) and warm rerun 26987685828 (905290f7, 7m34s) under cargo nextest --workspace --all-features. Both commit SHAs match this repo's recent git history (905290f7 is HEAD), corroborating that the runs reference real commits, but a read-only reviewer cannot open the Actions job URLs to confirm the runs were actually green.
+  - Impact: The only criteria that depend on real CI behavior (suite green under nextest; warm wall time materially reduced) cannot be independently confirmed locally. SHAs and run IDs are internally consistent and real, lowering risk.
+  - Validation: Cross-checked cited SHAs against git history (905290f7 is HEAD, 995dd53b is a recent commit). External run greenness not fetchable in read-only mode.
