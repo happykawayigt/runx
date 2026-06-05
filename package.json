@@ -69,6 +69,7 @@
     "stress:runtime:fanout": "cargo test --manifest-path crates/Cargo.toml -p runx-runtime --features cli-tool,catalog,mcp --test integration -- fanout_parity fanout_proptest",
     "receipts:importer-audit": "tsx scripts/check-receipt-importers.ts",
     "receipts:canonical-check": "node scripts/check-receipt-canonical-production-path.mjs",
+    "demos:check": "node scripts/check-demos.mjs",
     "verify:fast": "node scripts/verify-fast.mjs",
     "verify:fast:plan-check": "node scripts/check-verify-fast-plan.mjs",
     "lint": "pnpm typecheck"

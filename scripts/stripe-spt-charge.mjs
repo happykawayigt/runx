@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { sha256Hex, sha256Prefixed, signedDemoReceipt } from "./lib/demo-receipts.mjs";
 
 const PREVIEW_VERSION = "2026-04-22.preview";
 const STRIPE_API = "https://api.stripe.com";
@@ -133,13 +134,13 @@ function governedRefusal() {
 
 function writeDemoReceipts(directory, settlement, refusal) {
   const railReceipt = signedDemoReceipt({
-    idSeed: `${settlement.money_movement_id}:settled:${settlement.charge_id}`,
+    name: "stripe-spt-charge",
     disposition: "sealed",
     reasonCode: "stripe_spt_settled",
     subject: settlement,
   });
   const refusalReceipt = signedDemoReceipt({
-    idSeed: `stripe-demo-refusal:${refusal.reason_code}:${refusal.attempted_amount_minor}`,
+    name: "stripe-spt-charge",
     disposition: "refused",
     reasonCode: refusal.reason_code,
     subject: {
@@ -273,50 +274,6 @@ function verifyStripeWebhookSignature(payload, header, secret, toleranceSeconds 
   return expectedBytes.length === actualBytes.length && crypto.timingSafeEqual(expectedBytes, actualBytes);
 }
 
-function signedDemoReceipt(input) {
-  const seed = Buffer.from(
-    process.env.RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64 ||
-      "QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI=",
-    "base64",
-  );
-  if (seed.length !== 32) {
-    fail("RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64 must decode to a 32-byte Ed25519 seed");
-  }
-  const privateKey = privateKeyFromSeed(seed);
-  const publicKey = crypto.createPublicKey(privateKey);
-  const publicKeyRaw = publicKey.export({ format: "der", type: "spki" }).subarray(-32);
-  const body = {
-    schema: "runx.receipt.v1",
-    created_at: new Date().toISOString(),
-    name: "stripe-spt-charge",
-    seal: {
-      disposition: input.disposition,
-      reason_code: input.reasonCode,
-    },
-    issuer: {
-      type: process.env.RUNX_RECEIPT_SIGN_ISSUER_TYPE || "hosted",
-      kid: process.env.RUNX_RECEIPT_SIGN_KID || "runx-demo-key",
-      public_key_sha256: sha256Prefixed(publicKeyRaw),
-    },
-    subject: input.subject,
-  };
-  const identifiedBody = {
-    id: sha256Prefixed(canon(body)),
-    ...body,
-  };
-  const digest = sha256Prefixed(canon(identifiedBody));
-  const signature = crypto.sign(null, Buffer.from(digest), privateKey).toString("base64url");
-  return {
-    ...identifiedBody,
-    digest,
-    signature: {
-      alg: "Ed25519",
-      kid: body.issuer.kid,
-      value: `base64:${signature}`,
-    },
-  };
-}
-
 function admissionFromEnv(defaults = {}) {
   const amount = numberEnv("RUNX_STRIPE_AMOUNT_MINOR", 125);
   return {
@@ -329,27 +286,6 @@ function admissionFromEnv(defaults = {}) {
     counterparty: envOr("RUNX_STRIPE_COUNTERPARTY", "acct_demo_counterparty"),
     idempotency_key: envOr("RUNX_STRIPE_IDEMPOTENCY_KEY", "stripe-spt-demo"),
   };
-}
-
-function privateKeyFromSeed(seed) {
-  const pkcs8 = Buffer.concat([Buffer.from("302e020100300506032b657004220420", "hex"), seed]);
-  return crypto.createPrivateKey({ key: pkcs8, format: "der", type: "pkcs8" });
-}
-
-function canon(value) {
-  if (value === null) return "null";
-  if (typeof value === "boolean") return value ? "true" : "false";
-  if (typeof value === "number" || typeof value === "string") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canon).join(",")}]`;
-  return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canon(value[key])}`).join(",")}}`;
-}
-
-function sha256Prefixed(value) {
-  return `sha256:${crypto.createHash("sha256").update(value).digest("hex")}`;
-}
-
-function sha256Hex(value) {
-  return crypto.createHash("sha256").update(value).digest("hex");
 }
 
 function stringField(object, field, required = true) {

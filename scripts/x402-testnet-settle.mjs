@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 
-import crypto from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { sha256Prefixed, signedDemoReceipt } from "./lib/demo-receipts.mjs";
 
 const TX_HASH = /^0x[0-9a-fA-F]{64}$/;
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
@@ -63,7 +63,16 @@ function inspect(moneyMovementId) {
 }
 
 async function demo(options) {
-  const mode = process.env.RUNX_X402_DEMO_MODE === "mock" ? "mock" : "live";
+  const requestedMode = envOr("RUNX_X402_DEMO_MODE", "auto");
+  if (requestedMode !== "auto" && requestedMode !== "mock" && requestedMode !== "live") {
+    fail("RUNX_X402_DEMO_MODE must be auto, mock, or live");
+  }
+  const liveReady = Boolean(envOr("RUNX_X402_FACILITATOR", "") && envOr("RUNX_X402_SIGNER", ""));
+  if (requestedMode === "live" && !liveReady) {
+    fail("live mode requires RUNX_X402_FACILITATOR and RUNX_X402_SIGNER");
+  }
+  const mode =
+    requestedMode === "mock" ? "mock" : requestedMode === "live" || liveReady ? "live" : "mock";
   const receiptDir = options.receiptDir || mkdtempSync(path.join(os.tmpdir(), "runx-x402-demo-"));
   mkdirSync(receiptDir, { recursive: true });
   const settlement = mode === "mock" ? mockSettlement() : await liveSettlement();
@@ -187,7 +196,7 @@ function governedRefusal(receiptDir) {
 
 function writeDemoReceipts(receiptDir, settlement, refusal) {
   const railReceipt = signedDemoReceipt({
-    idSeed: `${settlement.money_movement_id}:settled:${settlement.tx_hash}`,
+    name: "x402-testnet-settle",
     disposition: "sealed",
     reasonCode: "x402_settled",
     subject: {
@@ -199,7 +208,7 @@ function writeDemoReceipts(receiptDir, settlement, refusal) {
     },
   });
   const refusalReceipt = signedDemoReceipt({
-    idSeed: `x402-demo-refusal:${refusal.reason_code}:${refusal.attempted_amount_minor}`,
+    name: "x402-testnet-settle",
     disposition: "refused",
     reasonCode: refusal.reason_code,
     subject: {
@@ -220,52 +229,6 @@ function writeDemoReceipts(receiptDir, settlement, refusal) {
     verify_settlement: `node examples/governed-spend/verify.mjs ${settlementPath}`,
     verify_refusal: `node examples/governed-spend/verify.mjs ${refusalPath}`,
   };
-}
-
-function signedDemoReceipt(input) {
-  const seed = Buffer.from(
-    process.env.RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64 ||
-      "QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI=",
-    "base64",
-  );
-  if (seed.length !== 32) {
-    fail("RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64 must decode to a 32-byte Ed25519 seed");
-  }
-  const privateKey = privateKeyFromSeed(seed);
-  const publicKey = crypto.createPublicKey(privateKey);
-  const publicKeyRaw = publicKey.export({ format: "der", type: "spki" }).subarray(-32);
-  const body = {
-    schema: "runx.x402.demo_receipt.v1",
-    id: `x402_demo_${sha256Hex(input.idSeed).slice(0, 24)}`,
-    created_at: new Date().toISOString(),
-    name: "x402-testnet-settle",
-    seal: {
-      disposition: input.disposition,
-      reason_code: input.reasonCode,
-    },
-    issuer: {
-      type: process.env.RUNX_RECEIPT_SIGN_ISSUER_TYPE || "hosted",
-      kid: process.env.RUNX_RECEIPT_SIGN_KID || "runx-demo-key",
-      public_key_sha256: sha256Prefixed(publicKeyRaw),
-    },
-    subject: input.subject,
-  };
-  const digest = sha256Prefixed(canon(body));
-  const signature = crypto.sign(null, Buffer.from(digest), privateKey).toString("base64url");
-  return {
-    ...body,
-    digest,
-    signature: {
-      alg: "Ed25519",
-      kid: body.issuer.kid,
-      value: `base64:${signature}`,
-    },
-  };
-}
-
-function privateKeyFromSeed(seed) {
-  const pkcs8 = Buffer.concat([Buffer.from("302e020100300506032b657004220420", "hex"), seed]);
-  return crypto.createPrivateKey({ key: pkcs8, format: "der", type: "pkcs8" });
 }
 
 function runGovernedRefusalHarness(receiptDir) {
@@ -502,23 +465,9 @@ function requiredOrDefault(name, fallback) {
   return value;
 }
 
-function sha256Prefixed(value) {
-  return `sha256:${sha256Hex(value)}`;
-}
-
-function sha256Hex(value) {
-  return crypto.createHash("sha256").update(value).digest("hex");
-}
-
-function canon(value) {
-  if (value === null) return "null";
-  if (typeof value === "boolean") return value ? "true" : "false";
-  if (typeof value === "number" || typeof value === "string") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canon).join(",")}]`;
-  return `{${Object.keys(value)
-    .sort()
-    .map((key) => `${JSON.stringify(key)}:${canon(value[key])}`)
-    .join(",")}}`;
+function envOr(name, fallback) {
+  const value = process.env[name]?.trim();
+  return value || fallback;
 }
 
 function pruneUndefined(value) {
@@ -544,6 +493,7 @@ function usage(exitCode) {
       "  node scripts/x402-testnet-settle.mjs --inspect <money_movement_id>",
       "  RUNX_X402_FACILITATOR=<url> RUNX_X402_SIGNER=<url> node scripts/x402-testnet-settle.mjs --demo [--receipt-dir <dir>]",
       "  RUNX_X402_DEMO_MODE=mock node scripts/x402-testnet-settle.mjs --demo [--receipt-dir <dir>]",
+      "  RUNX_X402_DEMO_MODE=auto node scripts/x402-testnet-settle.mjs --demo [--receipt-dir <dir>]",
       "",
     ].join("\n"),
   );
