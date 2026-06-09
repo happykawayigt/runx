@@ -5,7 +5,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use runx_runtime::export::RunxExportLoadError;
+use runx_runtime::export::{RunxExportLoadError, RunxExportLoadOptions};
 use serde::Serialize;
 
 use crate::cli_args::{os_arg, split_flag};
@@ -188,9 +188,13 @@ pub fn run_export_command(
 ) -> Result<ExportReport, ExportError> {
     validate_export_plan(plan)?;
     let root = canonicalize(cwd, "canonicalizing export root")?;
-    let skills = runx_runtime::export::load_export_skills(&root, &plan.refs)?;
-    let skill_dir = target_skill_dir(plan.target, plan.project, cwd, env);
     let runx_bin = exported_runx_binary(env)?;
+    let skills = runx_runtime::export::load_export_skills_with_options(RunxExportLoadOptions {
+        root: &root,
+        refs: &plan.refs,
+        official_roots: official_skill_roots(env, cwd, &runx_bin),
+    })?;
+    let skill_dir = target_skill_dir(plan.target, plan.project, cwd, env);
     let files = shim::plan_files(
         plan.target,
         plan.project,
@@ -224,6 +228,50 @@ fn exported_runx_binary(env: &BTreeMap<String, String>) -> Result<PathBuf, Expor
         context: "resolving current runx binary for export shim".to_owned(),
         source,
     })
+}
+
+fn official_skill_roots(
+    env: &BTreeMap<String, String>,
+    cwd: &Path,
+    runx_bin: &Path,
+) -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    if let Some(value) = env
+        .get("RUNX_OFFICIAL_SKILLS_SOURCE_DIR")
+        .filter(|value| !value.trim().is_empty())
+    {
+        roots.push(resolve_user_path(value, env, cwd));
+    }
+    if let Some(value) = env
+        .get("RUNX_OFFICIAL_SKILLS_DIR")
+        .filter(|value| !value.trim().is_empty())
+    {
+        roots.push(resolve_user_path(value, env, cwd));
+    }
+    if let Some(root) = discover_checkout_official_skills_root(runx_bin) {
+        roots.push(root);
+    }
+    dedupe_paths(roots)
+}
+
+fn discover_checkout_official_skills_root(runx_bin: &Path) -> Option<PathBuf> {
+    for ancestor in runx_bin.ancestors() {
+        let candidate = ancestor.join("skills");
+        if candidate.join("send-as").join("SKILL.md").exists() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+fn dedupe_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
+    let mut deduped = Vec::new();
+    for path in paths {
+        if !deduped.iter().any(|existing| existing == &path) {
+            deduped.push(path);
+        }
+    }
+    deduped
 }
 
 fn validate_export_plan(plan: &ExportPlan) -> Result<(), ExportError> {
@@ -299,6 +347,28 @@ fn canonicalize(path: &Path, context: &str) -> Result<PathBuf, ExportError> {
 fn home_dir(env: &BTreeMap<String, String>, cwd: &Path) -> PathBuf {
     env.get("HOME")
         .map(PathBuf::from)
+        .unwrap_or_else(|| cwd.to_path_buf())
+}
+
+fn resolve_user_path(value: &str, env: &BTreeMap<String, String>, cwd: &Path) -> PathBuf {
+    let path = PathBuf::from(value);
+    if path.is_absolute() {
+        path
+    } else {
+        workspace_base(env, cwd).join(path)
+    }
+}
+
+fn workspace_base(env: &BTreeMap<String, String>, cwd: &Path) -> PathBuf {
+    env.get("RUNX_CWD")
+        .map(|value| {
+            let path = PathBuf::from(value);
+            if path.is_absolute() {
+                path
+            } else {
+                cwd.join(path)
+            }
+        })
         .unwrap_or_else(|| cwd.to_path_buf())
 }
 

@@ -200,6 +200,36 @@ fn exports_default_runner_inputs_when_skill_frontmatter_has_none()
 }
 
 #[test]
+fn explicit_ref_exports_official_source_skill() -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = ExportFixture::new("runx-export-official-ref")?;
+    let official_root = fixture.write_official_skill_with_runner_inputs("send-as")?;
+    let mut env = fixture.env.clone();
+    env.insert(
+        "RUNX_OFFICIAL_SKILLS_SOURCE_DIR".to_owned(),
+        path_string(&official_root)?,
+    );
+
+    let report = run_export_command(
+        &ExportPlan {
+            target: Target::Codex,
+            refs: vec!["send-as".to_owned()],
+            project: false,
+            json: false,
+        },
+        &fixture.project,
+        &env,
+    )?;
+
+    assert_eq!(report.exported.len(), 1);
+    assert_eq!(report.exported[0].skill, "send-as");
+    let shim = fixture.read_home_file(".codex/skills/send-as/SKILL.md")?;
+    assert!(shim.contains("skill "));
+    assert!(shim.contains("/official-skills/send-as"));
+    assert!(shim.contains("--objective \"<objective>\""));
+    Ok(())
+}
+
+#[test]
 fn reexport_prunes_only_marked_generated_files() -> Result<(), Box<dyn std::error::Error>> {
     let fixture = ExportFixture::new("runx-export-prune")?;
     fixture.write_skill("visible", None)?;
@@ -423,7 +453,23 @@ impl ExportFixture {
 
     fn write_skill_with_runner_inputs(&self, name: &str) -> Result<(), Box<dyn std::error::Error>> {
         let dir = self.project.join("skills").join(name);
-        fs::create_dir_all(&dir)?;
+        Self::write_runner_input_skill_at(&dir, name)
+    }
+
+    fn write_official_skill_with_runner_inputs(
+        &self,
+        name: &str,
+    ) -> Result<PathBuf, Box<dyn std::error::Error>> {
+        let root = self.root.join("official-skills");
+        Self::write_runner_input_skill_at(&root.join(name), name)?;
+        Ok(root)
+    }
+
+    fn write_runner_input_skill_at(
+        dir: &Path,
+        name: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        fs::create_dir_all(dir)?;
         fs::write(
             dir.join("SKILL.md"),
             format!("---\nname: {name}\ndescription: Export {name} through runx.\n---\n# {name}\n"),

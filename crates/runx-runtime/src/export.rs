@@ -21,6 +21,13 @@ pub struct RunxExportSkillInput {
     pub description: Option<String>,
 }
 
+#[derive(Clone, Debug)]
+pub struct RunxExportLoadOptions<'a> {
+    pub root: &'a Path,
+    pub refs: &'a [String],
+    pub official_roots: Vec<PathBuf>,
+}
+
 #[derive(Debug)]
 pub enum RunxExportLoadError {
     InvalidArgs(String),
@@ -46,13 +53,25 @@ pub fn load_export_skills(
     root: &Path,
     refs: &[String],
 ) -> Result<Vec<RunxExportSkill>, RunxExportLoadError> {
-    let explicit = !refs.is_empty();
+    load_export_skills_with_options(RunxExportLoadOptions {
+        root,
+        refs,
+        official_roots: Vec::new(),
+    })
+}
+
+pub fn load_export_skills_with_options(
+    options: RunxExportLoadOptions<'_>,
+) -> Result<Vec<RunxExportSkill>, RunxExportLoadError> {
+    let explicit = !options.refs.is_empty();
     let paths = if explicit {
-        refs.iter()
-            .map(|reference| resolve_skill_ref(root, reference))
+        options
+            .refs
+            .iter()
+            .map(|reference| resolve_skill_ref(options.root, reference, &options.official_roots))
             .collect::<Result<Vec<_>, _>>()?
     } else {
-        discover_skill_paths(root)?
+        discover_skill_paths(options.root)?
     };
 
     let mut skills = Vec::new();
@@ -195,7 +214,11 @@ fn discover_skill_paths(root: &Path) -> Result<Vec<PathBuf>, RunxExportLoadError
     Ok(paths)
 }
 
-fn resolve_skill_ref(root: &Path, reference: &str) -> Result<PathBuf, RunxExportLoadError> {
+fn resolve_skill_ref(
+    root: &Path,
+    reference: &str,
+    official_roots: &[PathBuf],
+) -> Result<PathBuf, RunxExportLoadError> {
     let reference_path = Path::new(reference);
     let candidates = if reference_path.is_absolute() {
         vec![reference_path.to_path_buf()]
@@ -206,25 +229,96 @@ fn resolve_skill_ref(root: &Path, reference: &str) -> Result<PathBuf, RunxExport
         ]
     };
     for candidate in candidates {
-        let skill_dir = if candidate
-            .file_name()
-            .and_then(|name| name.to_str())
-            .is_some_and(|name| name.eq_ignore_ascii_case("SKILL.md"))
-        {
-            candidate.parent().map(Path::to_path_buf)
-        } else {
-            Some(candidate)
-        };
-        let Some(skill_dir) = skill_dir else {
-            continue;
-        };
-        if skill_dir.join("SKILL.md").exists() {
+        if let Some(skill_dir) = skill_dir_if_exists(&candidate) {
             return canonicalize(&skill_dir, "canonicalizing skill reference");
         }
+    }
+    if let Some(skill_dir) = resolve_official_skill_ref(reference, official_roots)? {
+        return canonicalize(&skill_dir, "canonicalizing official skill reference");
     }
     Err(RunxExportLoadError::InvalidArgs(format!(
         "skill reference {reference} does not resolve to a SKILL.md package"
     )))
+}
+
+fn skill_dir_if_exists(candidate: &Path) -> Option<PathBuf> {
+    let skill_dir = if candidate
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.eq_ignore_ascii_case("SKILL.md"))
+    {
+        candidate.parent().map(Path::to_path_buf)
+    } else {
+        Some(candidate.to_path_buf())
+    }?;
+    skill_dir.join("SKILL.md").exists().then_some(skill_dir)
+}
+
+fn resolve_official_skill_ref(
+    reference: &str,
+    official_roots: &[PathBuf],
+) -> Result<Option<PathBuf>, RunxExportLoadError> {
+    let Some(name) = official_skill_name(reference) else {
+        return Ok(None);
+    };
+    for root in official_roots {
+        for candidate in [root.join(name), root.join("runx").join(name)] {
+            if let Some(skill_dir) = skill_dir_if_exists(&candidate) {
+                return Ok(Some(skill_dir));
+            }
+            let versioned = versioned_skill_dirs(&candidate)?;
+            if versioned.len() == 1 {
+                return Ok(versioned.into_iter().next());
+            }
+            if versioned.len() > 1 {
+                return Err(RunxExportLoadError::InvalidArgs(format!(
+                    "official skill reference {reference} is ambiguous in {}; use an explicit skill path",
+                    display_path(&candidate)
+                )));
+            }
+        }
+    }
+    Ok(None)
+}
+
+fn official_skill_name(reference: &str) -> Option<&str> {
+    if reference
+        .chars()
+        .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.'))
+    {
+        return Some(reference);
+    }
+    reference.strip_prefix("runx/").filter(|name| {
+        !name.is_empty()
+            && name.chars().all(|character| {
+                character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.')
+            })
+    })
+}
+
+fn versioned_skill_dirs(root: &Path) -> Result<Vec<PathBuf>, RunxExportLoadError> {
+    let entries = match fs::read_dir(root) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(source) => {
+            return Err(RunxExportLoadError::Io {
+                context: format!("reading {}", display_path(root)),
+                source,
+            });
+        }
+    };
+    let mut dirs = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|source| RunxExportLoadError::Io {
+            context: format!("reading {}", display_path(root)),
+            source,
+        })?;
+        if let Some(skill_dir) = skill_dir_if_exists(&entry.path()) {
+            dirs.push(skill_dir);
+        }
+    }
+    dirs.sort();
+    Ok(dirs)
 }
 
 fn read_validated_skill(
