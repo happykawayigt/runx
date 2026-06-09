@@ -16,6 +16,7 @@ use runx_core::state_machine::StepAdmissionWitness;
 use runx_parser::{GraphStep, SkillSource, SourceKind};
 
 use super::super::graph::{LoadedStepSkill, load_step_skill};
+use super::super::skill_context::load_context_skills;
 use super::authority::{
     EffectReceiptContext, StepAuthorityContext, enforce_step_authority_admission,
     finalize_effect_output_before_success, find_effect_replay, persist_effect_state_for_step,
@@ -262,10 +263,13 @@ where
     let authority = request.authority.as_ref();
     let (skill_name, invocation) = loaded_skill_invocation(
         skill,
+        request.graph_dir,
+        request.step,
         request.inputs,
+        &request.runtime.options.created_at,
         &request.runtime.options.env,
         &request.runtime.options.credential_delivery,
-    );
+    )?;
     if let Some(source_type) = agent_skill_source_type(invocation.source.source_type) {
         return run_agent_skill_step(
             request.runtime,
@@ -279,6 +283,12 @@ where
             },
             request.host,
         );
+    }
+    if !invocation.current_context.is_empty() {
+        return Err(RuntimeError::InvalidRunStep {
+            step_id: request.step.id.clone(),
+            reason: "context_skills is only supported for agent and agent-task steps".to_owned(),
+        });
     }
 
     let regular = invoke_regular_skill_step(
@@ -304,21 +314,31 @@ where
 
 fn loaded_skill_invocation(
     skill: LoadedStepSkill,
+    graph_dir: &Path,
+    step: &GraphStep,
     inputs: JsonObject,
+    created_at: &str,
     env: &std::collections::BTreeMap<String, String>,
     credential_delivery: &crate::credentials::CredentialDelivery,
-) -> (String, SkillInvocation) {
+) -> Result<(String, SkillInvocation), RuntimeError> {
     let skill_name = skill.name.clone();
     let invocation = SkillInvocation {
         skill_name: skill.name,
         source: skill.source,
         inputs,
         resolved_inputs: JsonObject::new(),
+        current_context: load_context_skills(
+            &step.id,
+            graph_dir,
+            &step.context_skills,
+            env,
+            created_at,
+        )?,
         skill_directory: skill.directory,
         env: env.clone(),
         credential_delivery: credential_delivery.clone(),
     };
-    (skill_name, invocation)
+    Ok((skill_name, invocation))
 }
 
 fn invoke_regular_skill_step<A>(
@@ -758,6 +778,7 @@ where
         source,
         inputs,
         resolved_inputs: JsonObject::new(),
+        current_context: Vec::new(),
         skill_directory: graph_dir.to_path_buf(),
         env: runtime.options.env.clone(),
         credential_delivery: runtime.options.credential_delivery.clone(),
@@ -843,6 +864,13 @@ where
         source,
         inputs,
         resolved_inputs: JsonObject::new(),
+        current_context: load_context_skills(
+            &step.id,
+            graph_dir,
+            &step.context_skills,
+            &runtime.options.env,
+            &runtime.options.created_at,
+        )?,
         skill_directory: graph_dir.to_path_buf(),
         env: runtime.options.env.clone(),
         credential_delivery: runtime.options.credential_delivery.clone(),
@@ -1065,6 +1093,7 @@ where
             source: catalog_source(tool_ref),
             inputs,
             resolved_inputs: JsonObject::new(),
+            current_context: Vec::new(),
             skill_directory: graph_dir.to_path_buf(),
             env: runtime.options.env.clone(),
             credential_delivery: runtime.options.credential_delivery.clone(),

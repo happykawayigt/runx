@@ -348,6 +348,7 @@ fn invocation(
         source,
         inputs,
         resolved_inputs: JsonObject::new(),
+        current_context: Vec::new(),
         skill_directory: "/tmp/skill".into(),
         env: BTreeMap::new(),
         credential_delivery: runx_runtime::CredentialDelivery::none(),

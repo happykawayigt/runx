@@ -26,6 +26,53 @@ first step's `stdout` and passes it as the next `message` input. The graph
 receipt links both step receipts, so inspection can show what ran and how the
 steps connected.
 
+## Skill Context For Agents
+
+Agent steps can also ask for whole skills as context without executing those
+skills. Use `context_skills` when a downstream agent should read a reusable
+capability, guideline, rubric, or operating procedure as part of its prompt
+context:
+
+```yaml
+steps:
+  - id: apply_taste
+    run:
+      type: agent-task
+      agent: builder
+      task: apply taste guidance
+      outputs:
+        summary: string
+    context_skills:
+      - ../taste-skill
+      - registry:sourcey/taste-skill@1.0.0
+```
+
+Each entry becomes a `runx.skill.context` artifact in the agent invocation's
+generic `current_context` array. The artifact carries the source ref, skill
+name, digest, and `SKILL.md` content. It does not create a domain schema for the
+skill; the skill remains an abstract context/capability document.
+
+Local path refs resolve relative to the graph directory. Registry refs use the
+local registry (`RUNX_REGISTRY_DIR`) and must be explicit (`registry:...`,
+`runx-registry:...`, or `runx://skill/...`). Graph execution does not fetch
+remote registry content implicitly; install or ingest the skill first, then
+reference the local registry.
+
+The gates are intentionally narrow:
+
+- `context_skills` is accepted only on direct `agent-task` steps or nested skills
+  that resolve to `agent`/`agent-task`.
+- Local refs must be relative paths and must contain a valid `SKILL.md`.
+- Registry refs resolve only from the configured local registry.
+- Each context skill is capped at 64 KiB, the step is capped at 12 context
+  skills, and total resolved skill context is capped at 256 KiB.
+- Duplicate context refs are rejected.
+- Every context artifact is digest-bound and labeled
+  `security_boundary: untrusted-agent-context`.
+- Native managed-agent execution passes the artifacts to the provider with an
+  explicit instruction that context artifacts are advisory data, not system
+  instructions or authority to change tools, reveal secrets, or bypass policy.
+
 ## Run The Harness
 
 Use the graph harness as the executable contract:

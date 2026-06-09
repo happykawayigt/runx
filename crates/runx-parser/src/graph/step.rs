@@ -28,6 +28,12 @@ pub fn validate_step(
     let runner = validate_runner(raw_step, field, &target)?;
     let context = optional_string_object(raw_step.get("context"), &format!("{field}.context"))?
         .unwrap_or_default();
+    let context_skills = optional_string_array(
+        raw_step.get("context_skills"),
+        &format!("{field}.context_skills"),
+    )?
+    .unwrap_or_default();
+    validate_context_skills(&context_skills, field, &target)?;
 
     Ok(GraphStep {
         id,
@@ -45,6 +51,7 @@ pub fn validate_step(
             .unwrap_or_default(),
         context_edges: context_edges(&context, previous_step_ids, field)?,
         context,
+        context_skills,
         scopes: optional_string_array(raw_step.get("scopes"), &format!("{field}.scopes"))?
             .unwrap_or_default(),
         allowed_tools: optional_string_array(
@@ -64,6 +71,24 @@ pub fn validate_step(
             &format!("{field}.idempotency_key"),
         )?,
     })
+}
+
+fn validate_context_skills(
+    context_skills: &[String],
+    field: &str,
+    target: &StepTarget,
+) -> Result<(), ValidationError> {
+    if context_skills.is_empty() || target.skill.is_some() {
+        return Ok(());
+    }
+    if let Some(run) = &target.run {
+        if matches!(run.get("type"), Some(JsonValue::String(value)) if value == "agent-task") {
+            return Ok(());
+        }
+    }
+    Err(validation_error(format!(
+        "{field}.context_skills is only valid for agent-task steps or nested agent skills."
+    )))
 }
 
 fn validate_step_id(

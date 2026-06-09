@@ -65,6 +65,7 @@ fn rust_matches_skill_author_runtime_fixtures() -> Result<(), Box<dyn std::error
             source: fixture_source(&fixture, &probe_path)?,
             inputs: fixture_inputs(&fixture, &sentinel_path)?,
             resolved_inputs: JsonObject::new(),
+            current_context: Vec::new(),
             skill_directory: skill_directory.clone(),
             env: fixture_env(&fixture_root, temp_dir.path(), &sentinel_path)?,
             credential_delivery: CredentialDelivery::none(),

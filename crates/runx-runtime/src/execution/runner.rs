@@ -112,6 +112,8 @@ fn safe_default_env_from(
         RUNX_RUN_ID_ENV,
         RUNX_PROJECT_DIR_ENV,
         RUNX_CWD_ENV,
+        "RUNX_REGISTRY_DIR",
+        "RUNX_REGISTRY_URL",
     ];
     allowed
         .into_iter()

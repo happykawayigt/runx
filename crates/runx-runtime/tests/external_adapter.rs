@@ -900,6 +900,7 @@ fn skill_invocation_with_source<const N: usize>(
         .into_iter()
         .collect(),
         resolved_inputs: JsonObject::new(),
+        current_context: Vec::new(),
         skill_directory: skill_dir.to_path_buf(),
         env: env
             .into_iter()

@@ -122,6 +122,8 @@ pub struct GraphStep {
     pub inputs: JsonObject,
     pub context: BTreeMap<String, String>,
     pub context_edges: Vec<GraphContextEdge>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub context_skills: Vec<String>,
     pub scopes: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub allowed_tools: Option<Vec<String>>,

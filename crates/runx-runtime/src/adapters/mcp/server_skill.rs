@@ -315,6 +315,7 @@ fn invoke_mcp_server_skill(
         source: execution.skill.source.clone(),
         inputs,
         resolved_inputs: JsonObject::new(),
+        current_context: Vec::new(),
         skill_directory: skill_directory_for_execution(&execution.skill_path),
         env: execution.env.clone(),
         credential_delivery: crate::credentials::CredentialDelivery::none(),

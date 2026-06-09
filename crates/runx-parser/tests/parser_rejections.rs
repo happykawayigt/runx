@@ -78,6 +78,60 @@ steps:
 }
 
 #[test]
+fn graph_agent_task_accepts_context_skills() -> Result<(), String> {
+    let graph = validate_graph(
+        parse_graph_yaml(
+            r#"
+name: context-skills
+steps:
+  - id: apply_taste
+    run:
+      type: agent-task
+      agent: builder
+      task: apply taste
+    context_skills:
+      - registry:sourcey/taste-skill@1.0.0
+"#,
+        )
+        .map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
+
+    assert_eq!(
+        graph.steps[0].context_skills,
+        vec!["registry:sourcey/taste-skill@1.0.0"]
+    );
+    Ok(())
+}
+
+#[test]
+fn graph_rejects_context_skills_on_non_agent_run_steps() -> Result<(), String> {
+    let error = validate_graph(
+        parse_graph_yaml(
+            r#"
+name: bad-context-skills
+steps:
+  - id: shell
+    run:
+      type: cli-tool
+      command: echo
+    context_skills:
+      - ../taste-skill
+"#,
+        )
+        .map_err(|error| error.to_string())?,
+    )
+    .err()
+    .ok_or_else(|| "expected context_skills validation rejection".to_owned())?;
+
+    assert!(
+        error.to_string().contains("context_skills is only valid"),
+        "{error}"
+    );
+    Ok(())
+}
+
+#[test]
 fn strict_skill_validation_matches_runx_object_error() -> Result<(), String> {
     let raw = parse_skill_markdown(
         r#"---

@@ -139,6 +139,7 @@ mod tests {
             inputs: JsonObject::new(),
             context: BTreeMap::new(),
             context_edges: Vec::new(),
+            context_skills: Vec::new(),
             scopes: Vec::new(),
             allowed_tools: None,
             retry: None,

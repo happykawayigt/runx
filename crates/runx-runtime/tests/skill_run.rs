@@ -3,6 +3,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use runx_contracts::JsonValue;
+use runx_runtime::registry::{
+    IngestSkillOptions, create_file_registry_store, ingest_skill_markdown,
+};
 use runx_runtime::{
     LocalOrchestrator, RUNX_RECEIPT_DIR_ENV, RunResult, RuntimeOptions, SkillRunRequest,
 };
@@ -768,6 +771,82 @@ fn native_graph_skill_run_pauses_and_resumes_nested_agent_task_skill()
     Ok(())
 }
 
+#[test]
+fn graph_agent_task_injects_registry_skill_as_current_context()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempdir()?;
+    let registry_dir = temp.path().join("registry");
+    let store = create_file_registry_store(&registry_dir);
+    ingest_skill_markdown(
+        &store,
+        r#"---
+name: taste-skill
+description: Portable taste guidance for downstream agents.
+source:
+  type: agent
+  agent: critic
+  task: apply taste judgement
+---
+# Taste Skill
+
+Prefer clear product taste over ornamental flourish. Flag incoherent hierarchy,
+weak contrast, and interaction states that feel bolted on.
+"#,
+        IngestSkillOptions {
+            owner: Some("sourcey".to_owned()),
+            version: Some("1.0.0".to_owned()),
+            created_at: Some(FIXTURE_CREATED_AT.to_owned()),
+            ..IngestSkillOptions::default()
+        },
+    )?;
+    let skill_dir = write_graph_agent_task_with_context_skill(
+        temp.path(),
+        "registry:sourcey/taste-skill@1.0.0",
+    )?;
+    let env = [(
+        "RUNX_REGISTRY_DIR".to_owned(),
+        registry_dir.to_string_lossy().into_owned(),
+    )]
+    .into_iter()
+    .collect::<BTreeMap<_, _>>();
+
+    let result = run_skill(SkillRunRequest {
+        skill_path: skill_dir,
+        receipt_dir: Some(temp.path().join("receipts")),
+        run_id: None,
+        answers_path: None,
+        inputs: BTreeMap::new(),
+        env,
+        cwd: temp.path().to_path_buf(),
+        local_credential: None,
+    })?;
+
+    let output = object(&result.output, "registry context graph result")?;
+    assert_eq!(string_field(output, "status"), Some("needs_agent"));
+    let requests = array_field(output, "requests").ok_or("missing requests")?;
+    assert_eq!(requests.len(), 1);
+    let request = object(&requests[0], "request")?;
+    let invocation = object_field(request, "invocation").ok_or("missing invocation")?;
+    let envelope = object_field(invocation, "envelope").ok_or("missing envelope")?;
+    let current_context =
+        array_field(envelope, "current_context").ok_or("missing current_context")?;
+    assert_eq!(current_context.len(), 1);
+    let context_entry = object(&current_context[0], "skill context entry")?;
+    assert_eq!(
+        string_field(context_entry, "type"),
+        Some("runx.skill.context")
+    );
+    let data = object_field(context_entry, "data").ok_or("missing context data")?;
+    assert_eq!(string_field(data, "source"), Some("runx-registry"));
+    assert_eq!(string_field(data, "skill_id"), Some("sourcey/taste-skill"));
+    assert_eq!(string_field(data, "version"), Some("1.0.0"));
+    assert!(string_field(data, "content").is_some_and(|content| content.contains("# Taste Skill")));
+    let meta = object_field(context_entry, "meta").ok_or("missing context meta")?;
+    assert!(string_field(meta, "hash").is_some_and(|hash| hash.starts_with("sha256:")));
+
+    Ok(())
+}
+
 #[cfg(feature = "catalog")]
 #[test]
 fn native_graph_skill_run_executes_local_tool_step() -> Result<(), Box<dyn std::error::Error>> {
@@ -1352,6 +1431,43 @@ runners:
               result: object
           instructions: Use the full issue context.
 "#,
+    )?;
+    Ok(skill_dir.to_path_buf())
+}
+
+fn write_graph_agent_task_with_context_skill(
+    root: &Path,
+    context_skill: &str,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let skill_dir = root.join("graph-agent-context-skill");
+    fs::create_dir_all(&skill_dir)?;
+    fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: graph-agent-context-skill\n---\n# Graph Agent Context Skill\n",
+    )?;
+    fs::write(
+        skill_dir.join("X.yaml"),
+        format!(
+            r#"
+skill: graph-agent-context-skill
+runners:
+  graph:
+    default: true
+    type: graph
+    graph:
+      name: graph-agent-context-skill
+      steps:
+        - id: apply_taste
+          run:
+            type: agent-task
+            agent: builder
+            task: apply taste guidance
+            outputs:
+              summary: string
+          context_skills:
+            - "{context_skill}"
+"#
+        ),
     )?;
     Ok(skill_dir.to_path_buf())
 }

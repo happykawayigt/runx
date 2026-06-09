@@ -401,6 +401,7 @@ fn skill_fixture_invocation(
         source,
         inputs: fixture.inputs.clone(),
         resolved_inputs: JsonObject::new(),
+        current_context: Vec::new(),
         skill_directory: skill_dir,
         env,
         credential_delivery: crate::credentials::CredentialDelivery::none(),

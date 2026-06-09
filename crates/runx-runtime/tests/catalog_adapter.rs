@@ -279,6 +279,7 @@ fn invocation_in_directory(
         },
         inputs,
         resolved_inputs: JsonObject::new(),
+        current_context: Vec::new(),
         skill_directory,
         env,
         credential_delivery: runx_runtime::CredentialDelivery::none(),

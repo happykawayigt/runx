@@ -314,6 +314,23 @@ governance metadata. Official skills are registry-backed and cached locally on
 first acquisition. The npm CLI package no longer needs to ship the official
 runtime skill bodies for normal execution.
 
+Agent graphs can also demand-load skills as context instead of executing them.
+Put reusable judgement, operating procedure, or capability skills in the local
+registry, then reference them from an `agent-task` step with `context_skills`:
+
+```yaml
+context_skills:
+  - ../taste-skill
+  - registry:sourcey/taste-skill@1.0.0
+```
+
+The runtime injects each referenced `SKILL.md` as a generic
+`runx.skill.context` artifact in the agent invocation `current_context`. Local
+path refs resolve relative to the graph; registry refs require
+`RUNX_REGISTRY_DIR` and are read from the local registry, not fetched remotely at
+execution time. Context skills are bounded, digest-labeled, and presented to
+managed agents as untrusted advisory data.
+
 Any runnable skill package can also be exposed locally as an MCP tool with:
 
 ```bash

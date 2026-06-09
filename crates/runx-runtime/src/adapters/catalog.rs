@@ -153,6 +153,7 @@ pub(crate) fn resolve_and_invoke_local_tool(
         source,
         inputs: request.inputs.clone(),
         resolved_inputs: request.resolved_inputs.clone(),
+        current_context: Vec::new(),
         skill_directory: tool_directory,
         env: request.env.clone(),
         credential_delivery: request.credential_delivery.clone(),

@@ -68,6 +68,7 @@ export interface GraphStep {
   readonly inputs: Readonly<Record<string, unknown>>;
   readonly context: Readonly<Record<string, string>>;
   readonly contextEdges: readonly GraphContextEdge[];
+  readonly contextSkills: readonly string[];
   readonly scopes: readonly string[];
   readonly allowedTools?: readonly string[];
   readonly retry?: GraphRetryPolicy;
@@ -179,6 +180,8 @@ function validateStep(
   }
   const inputs = optionalNullableRecord(rawStep.inputs, `${field}.inputs`) ?? {};
   const context = optionalStringRecord(rawStep.context, `${field}.context`) ?? {};
+  const contextSkills = optionalNullableStringArray(rawStep.context_skills, `${field}.context_skills`) ?? [];
+  validateContextSkills(contextSkills, field, { skill, tool, run });
   const scopes = optionalNullableStringArray(rawStep.scopes, `${field}.scopes`) ?? [];
   const allowedTools = optionalNullableStringArray(rawStep.allowed_tools, `${field}.allowed_tools`);
   const retry = validateRetry(rawStep.retry, `${field}.retry`);
@@ -204,6 +207,7 @@ function validateStep(
     inputs,
     context,
     contextEdges,
+    contextSkills,
     scopes,
     allowedTools,
     retry,
@@ -212,6 +216,16 @@ function validateStep(
     mutating,
     idempotencyKey,
   };
+}
+
+function validateContextSkills(
+  contextSkills: readonly string[],
+  field: string,
+  target: { skill?: string; tool?: string; run?: Readonly<Record<string, unknown>> },
+): void {
+  if (contextSkills.length === 0 || target.skill) return;
+  if (target.run?.type === "agent-task") return;
+  throw new GraphValidationError(`${field}.context_skills is only valid for agent-task steps or nested agent skills.`);
 }
 
 function rejectUnsupportedTopLevel(document: Readonly<Record<string, unknown>>): void {
@@ -595,4 +609,3 @@ function requiredConflictAction(value: unknown, field: string): FanoutConflictAc
   }
   throw new GraphValidationError(`${field} must be pause or escalate.`);
 }
-

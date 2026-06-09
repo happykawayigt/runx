@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use runx_contracts::JsonObject;
+use runx_contracts::{ContextEntry, JsonObject};
 use runx_parser::SkillSource;
 use serde::{Deserialize, Serialize};
 
@@ -24,6 +24,7 @@ pub struct SkillInvocation {
     pub source: SkillSource,
     pub inputs: JsonObject,
     pub resolved_inputs: JsonObject,
+    pub current_context: Vec<ContextEntry>,
     pub skill_directory: PathBuf,
     pub env: BTreeMap<String, String>,
     pub credential_delivery: CredentialDelivery,

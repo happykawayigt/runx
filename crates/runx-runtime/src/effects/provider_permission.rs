@@ -311,6 +311,7 @@ mod tests {
             inputs: JsonObject::new(),
             context: BTreeMap::new(),
             context_edges: Vec::new(),
+            context_skills: Vec::new(),
             scopes: required_scopes
                 .into_iter()
                 .map(str::to_owned)

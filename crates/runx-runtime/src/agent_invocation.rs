@@ -86,7 +86,7 @@ fn envelope(
         instructions: envelope_instructions(request).into(),
         inputs: request.inputs.clone(),
         allowed_tools: envelope_allowed_tools(request),
-        current_context: Vec::new(),
+        current_context: request.current_context.clone(),
         historical_context: Vec::new(),
         provenance: Vec::new(),
         context: None,
