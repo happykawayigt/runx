@@ -129,6 +129,12 @@ fn codex_global_writes_shim_and_idempotent_permission_block()
     assert!(!shim.contains("allowed-tools"));
     assert!(shim.contains("--objective \"<objective>\""));
     assert!(shim.contains("RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64"));
+    assert!(shim.contains("If runx returns `status` `needs_agent`"));
+    assert!(shim.contains("request.invocation.envelope"));
+    assert!(shim.contains("allowed_tools"));
+    assert!(shim.contains("\"answers\""));
+    assert!(shim.contains("--run-id \"<run_id>\""));
+    assert!(shim.contains("--answers \"<answers.json>\""));
     assert!(shim.contains("runx-export:codex"));
     let rules = fixture.read_home_file(".codex/rules/default.rules")?;
     assert!(rules.contains("# existing approval"));

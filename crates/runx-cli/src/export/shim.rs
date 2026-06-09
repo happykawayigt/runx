@@ -70,7 +70,11 @@ If they are absent, runx fails closed instead of creating an unverifiable receip
     ));
     output.push_str("\n```\n\n");
     output.push_str(&render_inputs(&skill.inputs));
-    output.push_str("\nThen surface the returned receipt id, status, and artifact ids. If runx pauses for approval or input, relay its prompt and resume with the printed run-id.\n\n");
+    output.push('\n');
+    output.push_str(&render_continuation(
+        command_target,
+        &display_path(runx_bin),
+    ));
     output.push_str(&format!(
         "<!-- {} source={} - generated, do not edit -->\n",
         target.marker(),
@@ -114,6 +118,41 @@ fn render_inputs(inputs: &BTreeMap<String, RunxExportSkillInput>) -> String {
         lines.push(format!("- {name} ({requirement}) - {description}"));
     }
     format!("{}\n", lines.join("\n"))
+}
+
+fn render_continuation(command_target: &str, runx_bin: &str) -> String {
+    format!(
+        "\
+Interpret the runx JSON result exactly:
+- If `status` is `sealed`, surface the receipt id, status, and artifact ids.
+- If runx returns `status` `needs_agent`, inspect `requests[]`. For each request with `kind` `agent_act`, treat `request.invocation.envelope` as the only task packet: use its `inputs`, `current_context`, `historical_context`, `instructions`, and `output` contract; do not use tools outside `allowed_tools`.
+- Write an answers JSON file outside the skill package with one key per request id:
+
+```json
+{{
+  \"answers\": {{
+    \"<request.id>\": {{
+      \"...\": \"object matching request.invocation.envelope.output\"
+    }}
+  }}
+}}
+```
+
+Then resume the same run with the `run_id` printed by runx:
+
+```bash
+{} skill {} \\
+  --run-id \"<run_id>\" \\
+  --answers \"<answers.json>\" \\
+  --json
+```
+
+Repeat this loop until the result is sealed or runx asks for operator approval/input. If approval or human input is required, relay the exact runx request instead of fabricating an answer. Never place signing seeds, provider tokens, or raw credentials in the answers file or response.
+
+",
+        shell_quote(runx_bin),
+        shell_quote(command_target)
+    )
 }
 
 fn indent_block(value: &str) -> String {
