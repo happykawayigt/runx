@@ -1,0 +1,100 @@
+{
+  "body": {
+    "schema_version": 1,
+    "task_id": "runx-demo-surface-prune-v1",
+    "session_id": "runx-demo-surface-prune-v1",
+    "verdict": "pass",
+    "snapshot_mode": "base_delta",
+    "base_ref": "1c7902b13e28ada2e4dd64ada26b875483b405e2",
+    "base_commit": "1c7902b13e28ada2e4dd64ada26b875483b405e2",
+    "head_commit": "1c7902b13e28ada2e4dd64ada26b875483b405e2",
+    "scope": [
+      "docs/demos.md",
+      "examples/**",
+      "examples/README.md"
+    ],
+    "tree_sha": "fd524e35668c01f5895187756d99997a834f9a71",
+    "file_digests": {
+      "docs/demos.md": "1275b94af7dda9ddb0418e33cd51e1f019ed1ed76906ed067f21ae89109738fb",
+      "examples/README.md": "df9822e0deb4ab82a3dda763688b61923917afcc01cdfa81bb338ce16e67e87d"
+    },
+    "ignored_unreviewed": [],
+    "reviewed_context_provenance": [
+      {
+        "kind": "evidence_file",
+        "path": "docs/demos.md",
+        "sha256": "1275b94af7dda9ddb0418e33cd51e1f019ed1ed76906ed067f21ae89109738fb",
+        "bytes": 4986
+      },
+      {
+        "kind": "evidence_file",
+        "path": "examples/README.md",
+        "sha256": "df9822e0deb4ab82a3dda763688b61923917afcc01cdfa81bb338ce16e67e87d",
+        "bytes": 3368
+      }
+    ],
+    "reviewer": {
+      "provider": "codex",
+      "model": "gpt-5.5",
+      "binary_sha256": "baefc109b871e73a7bab298ee19b8bf73c8b647c4f8649a9794fc5db01db17b9",
+      "endpoint_host": "api.openai.com"
+    },
+    "host_under_review": {
+      "agent": "codex",
+      "session_id": "runx-demo-surface-prune-v1"
+    },
+    "independence": {
+      "level": "isolation_only",
+      "distinct": false,
+      "downgraded": "same_vendor",
+      "reason": "isolation_only: reviewer \"codex\" matches host \"codex\"; the review is isolated but same-vendor, so correlated blind spots remain possible"
+    },
+    "spec_fingerprint": "ce6e0920320a0ca16d9890c1213781a3f85e03703012cd319548b353c81706cf",
+    "acceptance_declared": true,
+    "acceptance": [
+      {
+        "id": "p1_ac1",
+        "command": "node scripts/check-demo-inventory.mjs",
+        "expected_kind": "exit_code_zero",
+        "status": "pass",
+        "reason": "exit code was 0",
+        "output_sha256": "65c21a01980e20313cff028af7cd1c0087dd152c732ea602af217ac7510941d0",
+        "diagnostic": ".scafld/runs/runx-demo-surface-prune-v1/diagnostics/command-1781089785585789000.txt"
+      },
+      {
+        "id": "p2_ac1",
+        "command": "DEMO_RECEIPTS=\"$(mktemp -d)\" \u0026\u0026 CARGO_TARGET_DIR=crates/target/demo-gate cargo build --quiet --manifest-path crates/Cargo.toml -p runx-cli --bin runx \u0026\u0026 RUNX_BIN=crates/target/demo-gate/debug/runx sh examples/github-mcp-hero/run.sh \u0026\u0026 RUNX_BIN=crates/target/demo-gate/debug/runx sh examples/http-graph/run.sh \u0026\u0026 RUNX_BIN=crates/target/demo-gate/debug/runx sh examples/openapi-graph/run.sh \u0026\u0026 RUNX_RECEIPT_DIR=\"$DEMO_RECEIPTS/overspend\" RUNX_RECEIPT_SIGN_KID=runx-demo-key RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64=QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI= RUNX_RECEIPT_SIGN_ISSUER_TYPE=hosted crates/target/demo-gate/debug/runx harness examples/governed-spend/skills/overspend-refused --json \u0026\u0026 pnpm demos:check \u0026\u0026 pnpm x402:dogfood:local",
+        "expected_kind": "exit_code_zero",
+        "status": "pass",
+        "reason": "exit code was 0",
+        "output_sha256": "050be1f9681b056ec44dc7d3b695168059c25d1e92fc77f38ed34e99dbead221",
+        "diagnostic": ".scafld/runs/runx-demo-surface-prune-v1/diagnostics/command-1781089792932195000.txt"
+      },
+      {
+        "id": "p2_ac2",
+        "command": "pnpm verify:fast",
+        "expected_kind": "exit_code_zero",
+        "status": "pass",
+        "reason": "exit code was 0",
+        "output_sha256": "fb67ffb08f703b39fca8c2d11f7dd5b12e4811896d0de8d7d4903634cc8c6808",
+        "diagnostic": ".scafld/runs/runx-demo-surface-prune-v1/diagnostics/command-1781089830144995000.txt"
+      }
+    ],
+    "open_blockers": [],
+    "mutation_guard": {
+      "status": "clean",
+      "scope": [
+        "docs/demos.md",
+        "examples/**",
+        "examples/README.md"
+      ]
+    },
+    "ledger_head": "c58e4971f6cd3e655adcd8961f0b49d23fce77d754f8dc4fe3bee51a100b49a9",
+    "minted_at": "2026-06-10T11:09:45Z"
+  },
+  "signature": {
+    "alg": "ed25519",
+    "key_id": "ed25519:RGGe6gUQpsB6KGu0VcnMxGUL5IA1I1VDSKi3ecCzYOU",
+    "sig": "Xnz8ZrzZNP34ZE7P4/6j6QQhVxIJj8g2ZlGfKcs8UYe4loRwBJv4Yg/pUHnufF4IoplXRUgt6kjrj8kIu7uSAQ=="
+  }
+}

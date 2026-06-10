@@ -60,5 +60,14 @@ runx-answers.json
 !.scafld/prompts/**
 !.scafld/specs/
 !.scafld/specs/**
+!.scafld/trusted-keys.json
+!.scafld/receipts/
+.scafld/receipts/*
+!.scafld/receipts/*.json
 .scafld/config.local.yaml
+.scafld/keys/
+.scafld/private-keys/
+.scafld/**/*.key
+.scafld/**/*.pem
+.scafld/prompts/.manifest.json
 .scafld/runs/

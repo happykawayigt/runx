@@ -51,6 +51,17 @@ jobs:
       - name: Verify
         run: pnpm verify:fast
 
+      - name: Readiness structural guards
+        run: |
+          pnpm verify:fast:plan-check
+          node scripts/check-readiness-structural.mjs
+          node scripts/check-demo-inventory.mjs
+
+      - name: Demo and local payment dogfood
+        run: |
+          pnpm demos:check
+          pnpm x402:dogfood:local
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:

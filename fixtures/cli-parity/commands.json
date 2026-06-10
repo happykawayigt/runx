@@ -135,6 +135,36 @@
       ]
     },
     {
+      "id": "verify",
+      "usage": "runx verify [receipt-id]",
+      "aliases": [],
+      "requiredPositionals": [],
+      "flags": [
+        "--receipt-dir",
+        "--receipt",
+        "--json"
+      ],
+      "exitCodes": [
+        0,
+        1,
+        2,
+        64
+      ],
+      "parity": {
+        "humanOutput": "semantic",
+        "jsonOutput": "schema-exact",
+        "receipt": "schema-exact",
+        "sideEffect": "none",
+        "surfaces": [
+          "receipts",
+          "cli-presentation"
+        ]
+      },
+      "cases": [
+        "verify.validate"
+      ]
+    },
+    {
       "id": "list",
       "usage": "runx list [tools|skills|graphs|packets|overlays]",
       "aliases": [],

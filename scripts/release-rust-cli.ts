@@ -180,6 +180,9 @@ function run(command: string, args: readonly string[], options: { readonly cwd?:
     cwd: options.cwd ?? workspaceRoot,
     stdio: "inherit",
     env: process.env,
+    // Windows package-manager shims are .cmd files; spawnSync needs a shell to
+    // execute them reliably. Arguments here are fixed release-script literals.
+    shell: process.platform === "win32",
   });
   if (result.error) {
     throw result.error;

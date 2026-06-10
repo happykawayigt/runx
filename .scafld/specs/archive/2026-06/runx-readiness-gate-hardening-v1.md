@@ -2,8 +2,8 @@
 spec_version: '2.0'
 task_id: runx-readiness-gate-hardening-v1
 created: '2026-06-05T03:25:35Z'
-updated: '2026-06-05T03:51:17Z'
-status: active
+updated: '2026-06-10T11:45:55Z'
+status: completed
 harden_status: passed
 size: medium
 risk_level: high
@@ -13,13 +13,13 @@ risk_level: high
 
 ## Current State
 
-Status: active
+Status: completed
 Current phase: complete
-Next: finalize
-Reason: all readiness acceptance gates passed; final Rust proof ran with isolated Cargo target to avoid stale shared-target lock
+Next: done
+Reason: finalization receipt passed
 Blockers: none
-Allowed follow-up command: `scafld finalize runx-readiness-gate-hardening-v1`
-Latest runner update: 2026-06-05T04:10:00Z
+Allowed follow-up command: `none`
+Latest runner update: 2026-06-10T11:42:06Z
 Review gate: not_started
 
 ## Summary
@@ -110,7 +110,7 @@ Validation:
 
 ## Phase 1: Turn advisory gates into required gates
 
-Status: completed
+Status: pass
 Dependencies: none
 
 Objective: remove ambiguity from CI.
@@ -127,17 +127,17 @@ Acceptance:
   - Expected kind: `exit_code_zero`
   - Status: pass
   - Evidence: exit code was 0
-  - Source event: entry-6
+  - Source event: entry-46
 - [x] `p1_ac2` command - verify-fast plan still matches required ordering
   - Command: `pnpm verify:fast:plan-check && node scripts/check-readiness-structural.mjs && node scripts/check-demo-inventory.mjs`
   - Expected kind: `exit_code_zero`
   - Status: pass
   - Evidence: exit code was 0
-  - Source event: entry-7
+  - Source event: entry-47
 
 ## Phase 2: Add structural cleanup guards
 
-Status: completed
+Status: pass
 Dependencies: Phase 1
 
 Objective: prevent the debris ring from reappearing.
@@ -153,23 +153,23 @@ Acceptance:
   - Expected kind: `exit_code_zero`
   - Status: pass
   - Evidence: exit code was 0
-  - Source event: entry-12
+  - Source event: entry-48
 - [x] `p2_ac2` command - demo/local payment dogfood remains green
   - Command: `pnpm demos:check && pnpm x402:dogfood:local`
   - Expected kind: `exit_code_zero`
   - Status: pass
   - Evidence: exit code was 0
-  - Source event: entry-13
+  - Source event: entry-49
 - [x] `p2_ac3` command - focused-check wiring is machine-checked
   - Command: `node scripts/check-readiness-structural.mjs && pnpm verify:fast:plan-check`
   - Expected kind: `exit_code_zero`
   - Status: pass
   - Evidence: exit code was 0
-  - Source event: entry-14
+  - Source event: entry-50
 
 ## Phase 3: Final gate proof
 
-Status: completed
+Status: pass
 Dependencies: Phase 2
 
 Objective: prove the readiness gate set from a clean checkout.
@@ -179,11 +179,11 @@ Changes:
 
 Acceptance:
 - [x] `p3_ac1` command - full local readiness gate
-  - Command: `pnpm verify:fast && cargo fmt --all --check && cargo clippy --workspace --all-targets --all-features -- -D warnings && cargo nextest run --workspace --all-features && cargo test --workspace --all-features --doc`
+  - Command: `pnpm verify:fast && (cd crates && cargo fmt --all --check && cargo clippy --workspace --all-targets --all-features -- -D warnings && cargo nextest run --workspace --all-features && cargo test --workspace --all-features --doc)`
   - Expected kind: `exit_code_zero`
   - Status: pass
-  - Evidence: `pnpm verify:fast` passed in the default workspace target. The Rust gate passed with `CARGO_TARGET_DIR=target/readiness-gate CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0` to avoid a stale local shared-target Cargo lock: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, `cargo nextest run --workspace --all-features` (837 passed, 0 skipped), and `cargo test --workspace --all-features --doc` (5 doctests passed).
-  - Source event: manual-2026-06-05-readiness-final-rust-gate
+  - Evidence: exit code was 0
+  - Source event: entry-51
 
 ## Rollback
 

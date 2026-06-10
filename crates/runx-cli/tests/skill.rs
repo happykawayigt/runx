@@ -1,4 +1,5 @@
 use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -185,7 +186,7 @@ fn native_skill_exported_shim_resolves_to_source_skill() -> Result<(), Box<dyn s
 fn native_skill_resolves_trusted_registry_ref() -> Result<(), Box<dyn std::error::Error>> {
     let root = crate::support::temp_root("runx-skill-registry-ref");
     let registry_dir = publish_registry_echo_version(&root, "1.0.0", "# Echo\n", true)?;
-    let output = trusted_registry_runx_command(&root)
+    let output = trusted_registry_runx_command(&root)?
         .args([
             "skill",
             "acme/echo@1.0.0",
@@ -219,7 +220,7 @@ fn native_skill_resolves_registry_versions_side_by_side() -> Result<(), Box<dyn 
         true,
     )?;
 
-    let v1 = trusted_registry_runx_command(&root)
+    let v1 = trusted_registry_runx_command(&root)?
         .args([
             "skill",
             "acme/echo@1.0.0",
@@ -232,7 +233,7 @@ fn native_skill_resolves_registry_versions_side_by_side() -> Result<(), Box<dyn 
     let v1_json = assert_json(&v1, Some(2))?;
     let v1_dir = needs_agent_skill_directory(&v1_json)?;
 
-    let v2 = trusted_registry_runx_command(&root)
+    let v2 = trusted_registry_runx_command(&root)?
         .args([
             "skill",
             "acme/echo@1.1.0",
@@ -265,7 +266,7 @@ fn native_skill_rejects_untrusted_registry_refs() -> Result<(), Box<dyn std::err
     let unsigned_root = crate::support::temp_root("runx-skill-registry-unsigned");
     let unsigned_registry =
         publish_registry_echo_version(&unsigned_root, "1.0.0", "# Echo\n", false)?;
-    let unsigned = trusted_registry_runx_command(&unsigned_root)
+    let unsigned = trusted_registry_runx_command(&unsigned_root)?
         .args([
             "skill",
             "acme/echo@1.0.0",
@@ -282,7 +283,7 @@ fn native_skill_rejects_untrusted_registry_refs() -> Result<(), Box<dyn std::err
     let mismatch_root = crate::support::temp_root("runx-skill-registry-digest-mismatch");
     let mismatch_registry =
         publish_registry_echo_version(&mismatch_root, "1.0.0", "# Echo\n", true)?;
-    let mismatch = trusted_registry_runx_command(&mismatch_root)
+    let mismatch = trusted_registry_runx_command(&mismatch_root)?
         .args([
             "skill",
             "acme/echo@1.0.0",
@@ -421,9 +422,9 @@ fn runx_command() -> Command {
     crate::support::signed_runx_command("skill-test-key")
 }
 
-fn trusted_registry_runx_command(root: &Path) -> Command {
+fn trusted_registry_runx_command(root: &Path) -> Result<Command, Box<dyn std::error::Error>> {
     let mut command = crate::support::signed_runx_command("skill-test-key");
-    let key_pair = test_manifest_key_pair();
+    let key_pair = test_manifest_key_pair()?;
     command.env("RUNX_HOME", root.join("home"));
     command.env(
         runx_runtime::registry::RUNX_REGISTRY_MANIFEST_TRUST_KEY_ENV,
@@ -433,7 +434,7 @@ fn trusted_registry_runx_command(root: &Path) -> Command {
         runx_runtime::registry::RUNX_REGISTRY_MANIFEST_TRUST_KEY_ID_ENV,
         TEST_MANIFEST_KEY_ID,
     );
-    command
+    Ok(command)
 }
 
 fn assert_json(
@@ -546,7 +547,7 @@ fn publish_registry_echo_version_into(
         skill_dir.join("X.yaml"),
         include_str!("../../../fixtures/registry/install/echo-X.yaml"),
     )?;
-    let publish = trusted_registry_runx_command(root)
+    let publish = trusted_registry_runx_command(root)?
         .args([
             "registry",
             "publish",
@@ -602,7 +603,7 @@ fn signed_manifest(
     let digest = version_record["digest"].as_str().ok_or("missing digest")?;
     let profile_digest = version_record["profile_digest"].as_str();
     let payload = registry_manifest_payload(skill_id, version, digest, profile_digest);
-    let signature = test_manifest_key_pair().sign(payload.as_bytes());
+    let signature = test_manifest_key_pair()?.sign(payload.as_bytes());
     Ok(json!({
         "schema": runx_runtime::registry::REGISTRY_SIGNED_MANIFEST_SCHEMA,
         "skill_id": skill_id,
@@ -636,9 +637,10 @@ fn registry_manifest_payload(
     )
 }
 
-fn test_manifest_key_pair() -> ring::signature::Ed25519KeyPair {
-    ring::signature::Ed25519KeyPair::from_seed_unchecked(&TEST_MANIFEST_SEED)
-        .expect("static registry manifest seed should be valid")
+fn test_manifest_key_pair() -> Result<ring::signature::Ed25519KeyPair, io::Error> {
+    ring::signature::Ed25519KeyPair::from_seed_unchecked(&TEST_MANIFEST_SEED).map_err(|error| {
+        io::Error::other(format!("static registry manifest seed rejected: {error:?}"))
+    })
 }
 
 fn needs_agent_skill_directory(

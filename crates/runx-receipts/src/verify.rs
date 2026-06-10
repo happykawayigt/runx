@@ -1,3 +1,4 @@
+// rust-style-allow: large-file - receipt verification keeps structural and proof checks co-located for offline audit.
 use std::collections::BTreeSet;
 
 use runx_contracts::{

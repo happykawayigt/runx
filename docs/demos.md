@@ -29,24 +29,21 @@ export RUNX_RECEIPT_SIGN_ISSUER_TYPE=hosted
 
 ## Payment Demo Gate
 
-For a zero-funded local dogfood run:
+For the deterministic payment demo gate:
 
 ```sh
-pnpm x402:dogfood:local
+pnpm demos:check
 ```
 
-This runs the deterministic Runx payment receipt demos and then preflights the
-upstream x402, x402-rs, and CDP live lanes. The receipt demos must pass. The live
-preflights may report missing upstream checkouts, credentials, or funded testnet
-wallets; that is expected on a no-account machine and is not counted as a local
-dogfood failure. It does not run every featured non-payment demo; those remain
-listed above with their explicit commands.
+This runs the safe payment demo paths (`payments-demo.mjs`, x402 mock, and Stripe
+SPT mock) and verifies every emitted receipt with the standalone verifier. It is
+the featured demo command for `examples/governed-spend` because it has no funded
+wallet, hosted account, provider-key, or upstream checkout dependency.
 
 What this proves:
 
 - Runx admits bounded payment authority and refuses overspend before a rail call.
 - Settlement and refusal receipt artifacts are signed and verify offline.
-- The independent/live protocol lanes are documented and machine-discoverable.
 
 What this does not prove:
 
@@ -54,14 +51,10 @@ What this does not prove:
 - CDP or another hosted facilitator accepted a live settlement.
 - A real wallet/provider key was usable.
 
-For the stricter payment demo gate only:
-
-```sh
-pnpm demos:check
-```
-
-This runs the safe payment demo paths (`payments-demo.mjs`, x402 mock, and Stripe
-SPT mock) and verifies every emitted receipt with the standalone verifier.
+The broader zero-funded dogfood lane also preflights upstream x402, x402-rs, CDP,
+and Stripe SPT live readiness. Treat that lane as developer verification, not as
+a featured demo: it may report missing upstream checkouts, credentials, or funded
+testnet wallets on a no-account machine.
 
 For a real x402 protocol conformance run, use
 `node scripts/x402-upstream-conformance.mjs --check` and then

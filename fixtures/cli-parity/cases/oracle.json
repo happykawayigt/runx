@@ -141,6 +141,15 @@
       ]
     },
     {
+      "id": "verify.validate",
+      "commandId": "verify",
+      "mode": "validate",
+      "proves": [
+        "receipts",
+        "cli-presentation"
+      ]
+    },
+    {
       "id": "config.set.validate",
       "commandId": "config.set",
       "mode": "validate",

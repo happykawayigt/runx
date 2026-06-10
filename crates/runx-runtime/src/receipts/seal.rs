@@ -110,27 +110,42 @@ pub(crate) fn step_receipt_with_projection_and_signature_policy(
     signature_policy: RuntimeReceiptSignaturePolicy<'_>,
 ) -> Result<Receipt, RuntimeError> {
     step_receipt_with_projection_authority_and_signature_policy(
+        StepReceiptWithProjectionAuthority {
+            graph_name,
+            step_id,
+            attempt,
+            output,
+            projection,
+            authority_grant_refs: Vec::new(),
+            created_at,
+        },
+        signature_policy,
+    )
+}
+
+pub(crate) struct StepReceiptWithProjectionAuthority<'a> {
+    pub(crate) graph_name: &'a str,
+    pub(crate) step_id: &'a str,
+    pub(crate) attempt: u32,
+    pub(crate) output: &'a SkillOutput,
+    pub(crate) projection: &'a StepOutputProjection,
+    pub(crate) authority_grant_refs: Vec<Reference>,
+    pub(crate) created_at: &'a str,
+}
+
+pub(crate) fn step_receipt_with_projection_authority_and_signature_policy(
+    params: StepReceiptWithProjectionAuthority<'_>,
+    signature_policy: RuntimeReceiptSignaturePolicy<'_>,
+) -> Result<Receipt, RuntimeError> {
+    let StepReceiptWithProjectionAuthority {
         graph_name,
         step_id,
         attempt,
         output,
         projection,
-        Vec::new(),
+        authority_grant_refs,
         created_at,
-        signature_policy,
-    )
-}
-
-pub(crate) fn step_receipt_with_projection_authority_and_signature_policy(
-    graph_name: &str,
-    step_id: &str,
-    attempt: u32,
-    output: &SkillOutput,
-    projection: &StepOutputProjection,
-    authority_grant_refs: Vec<Reference>,
-    created_at: &str,
-    signature_policy: RuntimeReceiptSignaturePolicy<'_>,
-) -> Result<Receipt, RuntimeError> {
+    } = params;
     let disposition = disposition(output);
     step_receipt_with_disposition_projection_authority_and_policy(
         StepReceiptWithDisposition {

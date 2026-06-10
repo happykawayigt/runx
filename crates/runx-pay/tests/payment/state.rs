@@ -265,15 +265,16 @@ fn period_spend_pruning_preserves_out_of_order_active_window()
 }
 
 #[test]
-fn period_window_start_computes_calendar_windows() {
+fn period_window_start_computes_calendar_windows() -> Result<(), Box<dyn std::error::Error>> {
     // 2026-06-10T15:30:00Z, a Wednesday.
     let now = 1_781_105_400;
-    assert_eq!(period_window_start("daily", now).unwrap(), "2026-06-10");
-    assert_eq!(period_window_start("weekly", now).unwrap(), "2026-06-08");
-    assert_eq!(period_window_start("monthly", now).unwrap(), "2026-06-01");
+    assert_eq!(period_window_start("daily", now)?, "2026-06-10");
+    assert_eq!(period_window_start("weekly", now)?, "2026-06-08");
+    assert_eq!(period_window_start("monthly", now)?, "2026-06-01");
     let error =
         period_window_start("fortnightly", now).expect_err("unrecognized periods must fail closed");
     assert!(error.to_string().contains("not supported"));
+    Ok(())
 }
 
 #[test]

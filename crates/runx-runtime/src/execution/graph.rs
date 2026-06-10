@@ -1,3 +1,4 @@
+// rust-style-allow: large-file - graph loading keeps stage, registry, and local skill resolution together.
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -257,6 +258,7 @@ pub(crate) fn skill_dir(
     })
 }
 
+// rust-style-allow: long-function - registry step materialization owns cache, digest, and manifest restoration.
 fn materialize_registry_step_skill(
     graph_dir: &Path,
     step: &GraphStep,
@@ -316,8 +318,8 @@ fn materialize_registry_step_skill(
         .join(registry_source_fingerprint(registry_dir));
     let package_dir = materialization_cache_path(
         &cache_root,
-        &owner,
-        &name,
+        owner,
+        name,
         &resolution.version,
         &identity_digest,
     );

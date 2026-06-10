@@ -1,3 +1,4 @@
+// rust-style-allow: large-file - doctor aggregates path, registry, and authority diagnostics until those surfaces split.
 use std::collections::BTreeMap;
 use std::env;
 use std::io::{self, Write};
@@ -195,6 +196,7 @@ fn path_diagnostic(id: &str, title: &str, path: PathBuf, env_names: &[&str]) -> 
     }
 }
 
+// rust-style-allow: long-function - one diagnostic assembles the trust-key matrix and repair hints.
 fn registry_trust_key_diagnostic(env: &BTreeMap<String, String>) -> DoctorDiagnostic {
     let configured_key_id = env
         .get(runx_runtime::registry::RUNX_REGISTRY_MANIFEST_TRUST_KEY_ID_ENV)
@@ -365,6 +367,7 @@ fn run_authority_doctor(env: &BTreeMap<String, String>, cwd: &Path) -> DoctorRep
     }
 }
 
+// rust-style-allow: long-function - one diagnostic keeps effect-state path, evidence, and repairs together.
 fn effect_state_diagnostic(env: &BTreeMap<String, String>, cwd: &Path) -> DoctorDiagnostic {
     let configured = env_contains_non_empty(env, RUNX_EFFECT_STATE_PATH_ENV);
     let resolved_path = resolve_effect_state_path(env, cwd);

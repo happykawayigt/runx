@@ -505,6 +505,9 @@ function inspectPackList(packageDir: string, output: Finding[]): readonly string
       cwd: packageDir,
       encoding: "utf8",
       maxBuffer: 1024 * 1024,
+      // Windows package-manager shims are .cmd files; execFileSync needs a
+      // shell to execute them reliably. Arguments here are fixed literals.
+      shell: process.platform === "win32",
     });
     const [report] = JSON.parse(pack) as [{ readonly files?: readonly { readonly path: string }[] }];
     const files = (report.files ?? []).map((entry) => entry.path).sort();

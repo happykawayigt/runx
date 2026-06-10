@@ -2,8 +2,8 @@
 spec_version: '2.0'
 task_id: runx-release-readiness-v1
 created: '2026-06-05T03:25:35Z'
-updated: '2026-06-05T04:22:09Z'
-status: active
+updated: '2026-06-10T11:54:25Z'
+status: completed
 harden_status: passed
 size: medium
 risk_level: high
@@ -13,13 +13,13 @@ risk_level: high
 
 ## Current State
 
-Status: active
+Status: completed
 Current phase: complete
-Next: finalize
-Reason: fresh checkout, package/archive, docs, demo, zero-funded payment dogfood, and verify:fast gates all passed
+Next: done
+Reason: finalization receipt passed
 Blockers: none
-Allowed follow-up command: `scafld finalize runx-release-readiness-v1`
-Latest runner update: 2026-06-05T04:22:09Z
+Allowed follow-up command: `none`
+Latest runner update: 2026-06-10T11:51:39Z
 Review gate: not_started
 
 ## Summary
@@ -91,7 +91,7 @@ Validation:
 
 ## Phase 1: Fresh checkout smoke
 
-Status: completed
+Status: pass
 Dependencies: runx-readiness-gate-hardening-v1
 
 Objective: prove README commands.
@@ -104,50 +104,56 @@ Acceptance:
   - Command: `pnpm install --frozen-lockfile && pnpm build && cargo build --manifest-path crates/Cargo.toml -p runx-cli && RUNX_RECEIPT_DIR="$(mktemp -d)" RUNX_RECEIPT_SIGN_KID=runx-demo-key RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64=QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI= RUNX_RECEIPT_SIGN_ISSUER_TYPE=hosted crates/target/debug/runx skill examples/hello-world --message "release smoke" --non-interactive --json`
   - Expected kind: `exit_code_zero`
   - Status: pass
-  - Evidence: exit code was 0; command returned `schema: runx.skill_run.v1`, `skill_name: hello-world`, `status: sealed`, and receipt id `sha256:eb5ce0d1cc300d60f3c4a4034ae77242466c3b0d9e3ac83fb4532ef05b45b8a1`.
-  - Source event: local-shell-2026-06-05
+  - Evidence: exit code was 0
+  - Source event: entry-10
 
 ## Phase 2: Package and archive smoke
 
-Status: completed
+Status: pass
 Dependencies: Phase 1
 
 Objective: prove the shipped artifact shape.
+
+Changes:
+- none
 
 Acceptance:
 - [x] `p2_ac1` command - package contracts pass
   - Command: `node scripts/check-cli-package-contract.mjs && pnpm authoring:check-package-contract`
   - Expected kind: `exit_code_zero`
   - Status: pass
-  - Evidence: exit code was 0; source selector package contract and authoring package contract both passed.
-  - Source event: local-shell-2026-06-05
+  - Evidence: exit code was 0
+  - Source event: entry-11
 - [x] `p2_ac2` command - release artifact check passes
   - Command: `rm -rf .runx/rust-cli-artifacts .runx/release-readiness-signatures.json && mkdir -p .runx && PLATFORM="$(node -p "process.platform + '-' + process.arch")" && pnpm exec tsx scripts/make-signature-manifest.ts --binary crates/target/debug/runx --platform "$PLATFORM" --out .runx/release-readiness-signatures.json --identity local-release-readiness && pnpm exec tsx scripts/release-rust-cli.ts --binary crates/target/debug/runx --platform "$PLATFORM" --artifact-dir .runx/rust-cli-artifacts --signature-manifest .runx/release-readiness-signatures.json`
   - Expected kind: `exit_code_zero`
   - Status: pass
-  - Evidence: exit code was 0; generated darwin-arm64 artifact tree passed with `findings: []`, selector package `@runxhq/cli`, native package `@runxhq/cli-darwin-arm64`, and binary sha256 `f92e54b261ad49bd06aabc63c1d45de3167e256e835460811f6acea1045df710`.
-  - Source event: local-shell-2026-06-05
+  - Evidence: exit code was 0
+  - Source event: entry-12
 
 ## Phase 3: Docs and final gates
 
-Status: completed
+Status: pass
 Dependencies: Phase 2
 
 Objective: release docs and gates agree.
+
+Changes:
+- none
 
 Acceptance:
 - [x] `p3_ac1` command - full release readiness gate
   - Command: `pnpm verify:fast && node scripts/check-readiness-structural.mjs && pnpm demos:check && pnpm x402:dogfood:local`
   - Expected kind: `exit_code_zero`
   - Status: pass
-  - Evidence: exit code was 0. `verify:fast` passed all source, boundary, Rust structure, cutover, generated artifact, fixture, doctor, and Vitest fast checks; readiness structural guard passed; `demos:check` verified payment demo receipts; `x402:dogfood:local` passed zero-funded dogfood with live blockers reported as preflight information.
-  - Source event: local-shell-2026-06-05
+  - Evidence: exit code was 0
+  - Source event: entry-13
 - [x] `p3_ac2` command - no stale draft-prerequisite banner in public docs
   - Command: `! rg -n "Status: draft, prerequisite" docs README.md`
   - Expected kind: `exit_code_zero`
   - Status: pass
-  - Evidence: exit code was 0; no matches in public docs.
-  - Source event: local-shell-2026-06-05
+  - Evidence: exit code was 0
+  - Source event: entry-14
 
 ## Rollback
 

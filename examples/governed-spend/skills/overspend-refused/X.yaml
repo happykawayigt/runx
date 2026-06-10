@@ -229,7 +229,7 @@ harness:
             recovery_hint:
               status: sealed
         approvals:
-          overspend-refused.spend.approval: true
+          spend.x402.approval: true
       expect:
         status: policy_denied
 runners:

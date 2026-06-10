@@ -40,7 +40,8 @@ use crate::effects::EffectReplay;
 use crate::execution::output_projection::{StepOutputProjection, project_step_output};
 use crate::host::Host;
 use crate::receipts::{
-    StepReceiptWithDisposition, step_receipt_with_disposition_projection_and_policy,
+    StepReceiptWithDisposition, StepReceiptWithProjectionAuthority,
+    step_receipt_with_disposition_projection_and_policy,
     step_receipt_with_projection_and_signature_policy,
     step_receipt_with_projection_authority_and_signature_policy,
 };
@@ -485,6 +486,7 @@ where
     Ok(RegularSkillStepOutput { output, projection })
 }
 
+// rust-style-allow: long-function - sealing keeps claim projection, effect evidence, and receipt construction consistent.
 fn seal_regular_skill_step<A>(
     context: RegularSkillSeal<'_, A>,
     regular: RegularSkillStepOutput,
@@ -502,13 +504,15 @@ where
         .transpose()?
         .unwrap_or_default();
     let receipt = step_receipt_with_projection_authority_and_signature_policy(
-        context.graph_name,
-        &context.step.id,
-        context.attempt,
-        &output,
-        &projection,
-        authority_grant_refs,
-        &context.runtime.options.created_at,
+        StepReceiptWithProjectionAuthority {
+            graph_name: context.graph_name,
+            step_id: &context.step.id,
+            attempt: context.attempt,
+            output: &output,
+            projection: &projection,
+            authority_grant_refs,
+            created_at: &context.runtime.options.created_at,
+        },
         context.runtime.options.signature_policy(),
     )?;
     finalize_effect_output_before_success(EffectReceiptContext {
@@ -631,6 +635,7 @@ fn host_resolution_event_data(step: &GraphStep, payload: JsonValue) -> JsonObjec
     data
 }
 
+// rust-style-allow: long-function - replay execution keeps effect recovery, receipt validation, and final output in one audited path.
 fn run_replayed_effect_step(
     runtime: &Runtime<impl SkillAdapter>,
     graph_dir: &Path,
@@ -659,13 +664,15 @@ fn run_replayed_effect_step(
             message: source.to_string(),
         })?;
     let receipt = step_receipt_with_projection_authority_and_signature_policy(
-        graph_name,
-        &step.id,
-        attempt,
-        &output,
-        &projection,
-        authority_grant_refs,
-        replay.receipt_created_at(),
+        StepReceiptWithProjectionAuthority {
+            graph_name,
+            step_id: &step.id,
+            attempt,
+            output: &output,
+            projection: &projection,
+            authority_grant_refs,
+            created_at: replay.receipt_created_at(),
+        },
         runtime.options.signature_policy(),
     )?;
     validate_replayed_receipt_identity(step, &receipt, &replay)?;
@@ -1249,13 +1256,15 @@ where
             .transpose()?
             .unwrap_or_default();
         let receipt = step_receipt_with_projection_authority_and_signature_policy(
-            graph_name,
-            &step.id,
-            attempt,
-            &output,
-            &projection,
-            authority_grant_refs,
-            &runtime.options.created_at,
+            StepReceiptWithProjectionAuthority {
+                graph_name,
+                step_id: &step.id,
+                attempt,
+                output: &output,
+                projection: &projection,
+                authority_grant_refs,
+                created_at: &runtime.options.created_at,
+            },
             runtime.options.signature_policy(),
         )?;
         let admission_witness = StepAdmissionWitness::local_runtime(&step.id, receipt.id.as_str());

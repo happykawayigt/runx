@@ -39,7 +39,8 @@
       "coveredBy": [
         "skill.run",
         "harness",
-        "history"
+        "history",
+        "verify"
       ],
       "notes": "Receipt JSON and signature metadata are schema-exact parity surfaces."
     },

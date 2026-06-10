@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::env;
 use std::ffi::OsString;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use runx_contracts::JsonValue;
 use runx_runtime::orchestrator::LocalCredentialDescriptor;
@@ -151,7 +151,7 @@ fn finalize_local_credential(
 }
 
 fn reject_resolver_flags_for_skill_management_action(
-    skill_path: &PathBuf,
+    skill_path: &Path,
     state: &SkillParseState,
 ) -> Result<(), String> {
     if state.registry.is_none() && state.expected_digest.is_none() {
@@ -163,7 +163,7 @@ fn reject_resolver_flags_for_skill_management_action(
     Err("runx skill --registry and --digest are only supported when running a skill ref".to_owned())
 }
 
-fn is_skill_management_action(skill_path: &PathBuf) -> bool {
+fn is_skill_management_action(skill_path: &Path) -> bool {
     if skill_path.components().count() != 1 {
         return false;
     }

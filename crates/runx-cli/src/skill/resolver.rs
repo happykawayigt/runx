@@ -1,3 +1,4 @@
+// rust-style-allow: large-file - skill resolution centralizes local, official, installed, and registry paths.
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -157,13 +158,15 @@ fn resolve_official_skill(
     let registry_override = official_registry_override(options.env, options.registry);
     let expected_digest = options.expected_digest.unwrap_or(digest);
     materialize_trusted_registry_skill(
-        skill_id,
-        Some(version),
-        CacheRoot::Official,
-        Some(&registry_override),
-        Some(expected_digest),
-        SkillRefKind::Official,
-        cwd,
+        RegistryMaterializationRequest {
+            skill_id,
+            version: Some(version),
+            cache_root: CacheRoot::Official,
+            registry_override: Some(&registry_override),
+            expected_digest: Some(expected_digest),
+            kind: SkillRefKind::Official,
+            cwd,
+        },
         options,
     )
 }
@@ -175,27 +178,33 @@ fn resolve_registry_skill(
     options: SkillResolverOptions<'_>,
 ) -> Result<ResolvedSkillRef, String> {
     materialize_trusted_registry_skill(
-        skill_id,
-        version,
-        CacheRoot::Registry,
-        None,
-        options.expected_digest,
-        SkillRefKind::Registry,
-        cwd,
+        RegistryMaterializationRequest {
+            skill_id,
+            version,
+            cache_root: CacheRoot::Registry,
+            registry_override: None,
+            expected_digest: options.expected_digest,
+            kind: SkillRefKind::Registry,
+            cwd,
+        },
         options,
     )
 }
 
+// rust-style-allow: long-function - registry materialization is kept atomic around trust, cache, and digest checks.
 fn materialize_trusted_registry_skill(
-    skill_id: &str,
-    version: Option<&str>,
-    cache_root: CacheRoot,
-    registry_override: Option<&str>,
-    expected_digest: Option<&str>,
-    kind: SkillRefKind,
-    cwd: &Path,
+    request: RegistryMaterializationRequest<'_>,
     options: SkillResolverOptions<'_>,
 ) -> Result<ResolvedSkillRef, String> {
+    let RegistryMaterializationRequest {
+        skill_id,
+        version,
+        cache_root,
+        registry_override,
+        expected_digest,
+        kind,
+        cwd,
+    } = request;
     let env = options.env;
     let registry = registry_override.or(options.registry);
     let mut plan = RegistryPlan {
@@ -259,6 +268,16 @@ fn materialize_trusted_registry_skill(
     })
 }
 
+struct RegistryMaterializationRequest<'a> {
+    skill_id: &'a str,
+    version: Option<&'a str>,
+    cache_root: CacheRoot,
+    registry_override: Option<&'a str>,
+    expected_digest: Option<&'a str>,
+    kind: SkillRefKind,
+    cwd: &'a Path,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum CacheRoot {
     Official,
@@ -293,8 +312,8 @@ fn destination_root_for_cache(
     };
     Ok(materialization_cache_path(
         &root,
-        &owner,
-        &name,
+        owner,
+        name,
         version,
         &cache_identity_digest(digest, identity.profile_digest.as_deref()),
     ))
@@ -451,6 +470,7 @@ fn restore_runner_manifest_from_profile_state(skill_dir: &Path) -> Result<(), St
     })
 }
 
+// rust-style-allow: long-function - asset sync preserves packaged official-skill cache invariants in one pass.
 fn sync_packaged_official_skill_assets(
     target_skill_dir: &Path,
     skill_id: &str,
@@ -523,7 +543,7 @@ fn packaged_official_skill_dir(
     let (_owner, name) = split_skill_id(skill_id).map_err(|error| error.to_string())?;
     Ok(packaged_official_skill_roots(cwd, env)
         .into_iter()
-        .map(|root| root.join(&name))
+        .map(|root| root.join(name))
         .find(|candidate| candidate.exists()))
 }
 

@@ -190,7 +190,10 @@ mod tests {
 
     fn render(value: JsonObject) -> String {
         let mut output = Vec::new();
-        write_skill_text(&mut output, &JsonValue::Object(value)).expect("text output renders");
-        String::from_utf8(output).expect("text output is utf8")
+        let write_result = write_skill_text(&mut output, &JsonValue::Object(value));
+        assert!(write_result.is_ok(), "text output renders");
+        let rendered = String::from_utf8(output);
+        assert!(rendered.is_ok(), "text output is utf8");
+        rendered.unwrap_or_default()
     }
 }

@@ -2,8 +2,8 @@
 spec_version: '2.0'
 task_id: runx-demo-surface-prune-v1
 created: '2026-06-05T03:25:35Z'
-updated: '2026-06-05T03:59:10Z'
-status: active
+updated: '2026-06-10T11:10:58Z'
+status: completed
 harden_status: passed
 size: medium
 risk_level: medium
@@ -13,13 +13,13 @@ risk_level: medium
 
 ## Current State
 
-Status: active
+Status: completed
 Current phase: complete
-Next: finalize
-Reason: all demo-prune acceptance gates passed; featured demos run from an isolated native binary and the fast gate remains green
+Next: done
+Reason: finalization receipt passed
 Blockers: none
-Allowed follow-up command: `scafld finalize runx-demo-surface-prune-v1`
-Latest runner update: 2026-06-05T03:59:10Z
+Allowed follow-up command: `none`
+Latest runner update: 2026-06-10T11:09:45Z
 Review gate: not_started
 
 ## Summary
@@ -93,7 +93,7 @@ Validation:
 
 ## Phase 1: Inventory and classify examples
 
-Status: completed
+Status: pass
 Dependencies: runx-readiness-gate-hardening-v1
 
 Objective: create a single source of truth for demo classification.
@@ -109,11 +109,11 @@ Acceptance:
   - Expected kind: `exit_code_zero`
   - Status: pass
   - Evidence: exit code was 0
-  - Source event: entry-6
+  - Source event: entry-18
 
 ## Phase 2: Prune or promote non-featured material
 
-Status: completed
+Status: pass
 Dependencies: Phase 1
 
 Objective: no ambiguous example debris.
@@ -128,14 +128,14 @@ Acceptance:
   - Command: `DEMO_RECEIPTS="$(mktemp -d)" && CARGO_TARGET_DIR=crates/target/demo-gate cargo build --quiet --manifest-path crates/Cargo.toml -p runx-cli --bin runx && RUNX_BIN=crates/target/demo-gate/debug/runx sh examples/github-mcp-hero/run.sh && RUNX_BIN=crates/target/demo-gate/debug/runx sh examples/http-graph/run.sh && RUNX_BIN=crates/target/demo-gate/debug/runx sh examples/openapi-graph/run.sh && RUNX_RECEIPT_DIR="$DEMO_RECEIPTS/overspend" RUNX_RECEIPT_SIGN_KID=runx-demo-key RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64=QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI= RUNX_RECEIPT_SIGN_ISSUER_TYPE=hosted crates/target/demo-gate/debug/runx harness examples/governed-spend/skills/overspend-refused --json && pnpm demos:check && pnpm x402:dogfood:local`
   - Expected kind: `exit_code_zero`
   - Status: pass
-  - Evidence: exit code was 0; github-mcp-hero, http-graph, openapi-graph, governed-spend overspend refusal, demos:check, and zero-funded x402 dogfood all passed
-  - Source event: local-shell-2026-06-05
+  - Evidence: exit code was 0
+  - Source event: entry-19
 - [x] `p2_ac2` command - full fast gate remains green
   - Command: `pnpm verify:fast`
   - Expected kind: `exit_code_zero`
   - Status: pass
-  - Evidence: exit code was 0 after the readiness/demo guards were wired into verify:fast
-  - Source event: local-shell-2026-06-05
+  - Evidence: exit code was 0
+  - Source event: entry-20
 
 ## Rollback
 

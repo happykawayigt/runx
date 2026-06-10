@@ -29,7 +29,7 @@ The curated proof set is also machine-checked in
 | `http-graph` | http (governed local fixture call) | `sh examples/http-graph/run.sh` |
 | `openapi-graph` + `openapi-tool` | OpenAPI via external-adapter (an OpenAPI operation executed and sealed) | `sh examples/openapi-graph/run.sh` |
 | `nws-weather-openapi` + `nws-weather-points` | http against a real OpenAPI-described public provider | `sh examples/nws-weather-openapi/run.sh` |
-| `governed-spend` | payment authority, x402/Stripe dogfood receipts, and offline verification | `pnpm demos:check && pnpm x402:dogfood:local` |
+| `governed-spend` | payment authority, deterministic x402/Stripe receipt demos, and offline verification | `pnpm demos:check` |
 
 ## Runnable previews
 

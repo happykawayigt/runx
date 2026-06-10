@@ -1,0 +1,118 @@
+{
+  "body": {
+    "schema_version": 1,
+    "task_id": "runx-readiness-gate-hardening-v1",
+    "session_id": "runx-readiness-gate-hardening-v1",
+    "verdict": "pass",
+    "snapshot_mode": "base_delta",
+    "base_ref": "1c7902b13e28ada2e4dd64ada26b875483b405e2",
+    "base_commit": "1c7902b13e28ada2e4dd64ada26b875483b405e2",
+    "head_commit": "1c7902b13e28ada2e4dd64ada26b875483b405e2",
+    "scope": [
+      ".github/workflows/ci.yml",
+      ".github/workflows/release.yml."
+    ],
+    "tree_sha": "af6f1f2442cccb7369b7f235b19a0fa6d380db20",
+    "file_digests": {
+      ".github/workflows/ci.yml": "c31baf341d0886e63d673e61a08d2f3549905621585e5e60a8d33993d98a790d"
+    },
+    "ignored_unreviewed": [],
+    "reviewed_context_provenance": [
+      {
+        "kind": "evidence_file",
+        "path": ".github/workflows/ci.yml",
+        "sha256": "c31baf341d0886e63d673e61a08d2f3549905621585e5e60a8d33993d98a790d",
+        "bytes": 3379
+      }
+    ],
+    "reviewer": {
+      "provider": "codex",
+      "model": "gpt-5.5",
+      "binary_sha256": "baefc109b871e73a7bab298ee19b8bf73c8b647c4f8649a9794fc5db01db17b9",
+      "endpoint_host": "api.openai.com"
+    },
+    "host_under_review": {
+      "agent": "codex",
+      "session_id": "runx-readiness-gate-hardening-v1"
+    },
+    "independence": {
+      "level": "isolation_only",
+      "distinct": false,
+      "downgraded": "same_vendor",
+      "reason": "isolation_only: reviewer \"codex\" matches host \"codex\"; the review is isolated but same-vendor, so correlated blind spots remain possible"
+    },
+    "spec_fingerprint": "259cd903c680160423f578620ea69d2a9a37786db1d1315eeaffce034df96e7c",
+    "acceptance_declared": true,
+    "acceptance": [
+      {
+        "id": "p1_ac1",
+        "command": "! rg -n \"continue-on-error:\\\\s*true\" .github/workflows/ci.yml",
+        "expected_kind": "exit_code_zero",
+        "status": "pass",
+        "reason": "exit code was 0",
+        "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "diagnostic": ".scafld/runs/runx-readiness-gate-hardening-v1/diagnostics/command-1781091726706022000.txt"
+      },
+      {
+        "id": "p1_ac2",
+        "command": "pnpm verify:fast:plan-check \u0026\u0026 node scripts/check-readiness-structural.mjs \u0026\u0026 node scripts/check-demo-inventory.mjs",
+        "expected_kind": "exit_code_zero",
+        "status": "pass",
+        "reason": "exit code was 0",
+        "output_sha256": "7344d08ce6300482292e7a89a87b5ad48bf2f830877e302ea509ceeb489291c5",
+        "diagnostic": ".scafld/runs/runx-readiness-gate-hardening-v1/diagnostics/command-1781091727856880000.txt"
+      },
+      {
+        "id": "p2_ac1",
+        "command": "pnpm verify:fast",
+        "expected_kind": "exit_code_zero",
+        "status": "pass",
+        "reason": "exit code was 0",
+        "output_sha256": "3479c23badcbdae342ec64ad41d2d98dfd1e11a3849d4ea0c7318f57016c1edc",
+        "diagnostic": ".scafld/runs/runx-readiness-gate-hardening-v1/diagnostics/command-1781091787275461000.txt"
+      },
+      {
+        "id": "p2_ac2",
+        "command": "pnpm demos:check \u0026\u0026 pnpm x402:dogfood:local",
+        "expected_kind": "exit_code_zero",
+        "status": "pass",
+        "reason": "exit code was 0",
+        "output_sha256": "c80efed5fe8eed9bc9f9fe2d842f7492c5c300bfe460e65d860853b931c479d8",
+        "diagnostic": ".scafld/runs/runx-readiness-gate-hardening-v1/diagnostics/command-1781091793069171000.txt"
+      },
+      {
+        "id": "p2_ac3",
+        "command": "node scripts/check-readiness-structural.mjs \u0026\u0026 pnpm verify:fast:plan-check",
+        "expected_kind": "exit_code_zero",
+        "status": "pass",
+        "reason": "exit code was 0",
+        "output_sha256": "51dda0c82e641a402dab8f4fed1e16d75bb400c6f540812d7823831efbbc1715",
+        "diagnostic": ".scafld/runs/runx-readiness-gate-hardening-v1/diagnostics/command-1781091794684472000.txt"
+      },
+      {
+        "id": "p3_ac1",
+        "command": "pnpm verify:fast \u0026\u0026 (cd crates \u0026\u0026 cargo fmt --all --check \u0026\u0026 cargo clippy --workspace --all-targets --all-features -- -D warnings \u0026\u0026 cargo nextest run --workspace --all-features \u0026\u0026 cargo test --workspace --all-features --doc)",
+        "expected_kind": "exit_code_zero",
+        "status": "pass",
+        "reason": "exit code was 0",
+        "output_sha256": "bdd94b52ce20aa0c7b7a9a11644d3b99f529d9cbef5c6e2a0e86c440d1253d66",
+        "diagnostic": ".scafld/runs/runx-readiness-gate-hardening-v1/diagnostics/command-1781091884097260000.txt"
+      }
+    ],
+    "open_blockers": [],
+    "mutation_guard": {
+      "status": "clean",
+      "scope": [
+        ".github/workflows/ci.yml",
+        ".github/workflows/release.yml."
+      ]
+    },
+    "ledger_head": "b4e6679d40c671fe27b5d671821d15fc73df361e0533b3bd502949e32d5be93c",
+    "minted_at": "2026-06-10T11:42:06Z"
+  },
+  "signature": {
+    "alg": "ed25519",
+    "key_id": "ed25519:RGGe6gUQpsB6KGu0VcnMxGUL5IA1I1VDSKi3ecCzYOU",
+    "sig": "UROQZZcCXiZT5LQqXj1M2JPnFAy9VX4ODCSktycdBP7nGaGVZsRwoBa5FXQrTzIFmH1uD/hwy4eoCDxVE9uQCA=="
+  }
+}

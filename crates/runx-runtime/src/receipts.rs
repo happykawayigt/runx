@@ -15,8 +15,9 @@ pub mod tree;
 pub(crate) use issuer::local_runtime_issuer;
 pub(crate) use seal::{
     GraphClosure, RuntimeReceiptProofContextProvider, StepReceiptWithDisposition,
-    graph_receipt_with_disposition_and_policy, graph_receipt_with_effects_and_signature_policy,
-    step_receipt_with_disposition_and_policy, step_receipt_with_disposition_projection_and_policy,
+    StepReceiptWithProjectionAuthority, graph_receipt_with_disposition_and_policy,
+    graph_receipt_with_effects_and_signature_policy, step_receipt_with_disposition_and_policy,
+    step_receipt_with_disposition_projection_and_policy,
     step_receipt_with_projection_and_signature_policy,
     step_receipt_with_projection_authority_and_signature_policy,
 };

@@ -28,8 +28,8 @@
     },
     {
       "path": "examples/governed-spend",
-      "proof": "Payment authority, over-cap refusal, x402/Stripe dogfood receipts, and offline verification.",
-      "command": "pnpm demos:check && pnpm x402:dogfood:local"
+      "proof": "Payment authority, over-cap refusal, deterministic x402/Stripe receipt demos, and offline verification.",
+      "command": "pnpm demos:check"
     }
   ],
   "runnable_preview": [

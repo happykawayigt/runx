@@ -1,3 +1,4 @@
+// rust-style-allow: large-file - verify owns legacy receipt-tree checks plus the new single-receipt machine verdict.
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;
 use std::fmt;
@@ -104,6 +105,7 @@ pub fn run_verify_command(
     run_verify_command_with_stdin(args, env, cwd, io::empty())
 }
 
+// rust-style-allow: long-function - argument dispatch keeps tree and single-receipt modes mutually exclusive in one parser.
 pub fn run_verify_command_with_stdin<R: Read>(
     args: &[OsString],
     env: &BTreeMap<String, String>,
@@ -627,6 +629,9 @@ mod tests {
         Ed25519ReceiptSigner, InvocationStatus, LocalReceiptStore, RuntimeError, SkillOutput,
     };
     use serde::Deserialize;
+    use serde_json as test_json;
+
+    type JsonValue = test_json::Value;
 
     const CORPUS_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../fixtures/receipt-verify");
     const FIXTURE_KID: &str = "runx-cli-verify-fixture-key";
@@ -679,9 +684,8 @@ mod tests {
             "expected clean verification: {}",
             result.output
         );
-        let report: serde_json::Value =
-            serde_json::from_str(&result.output).map_err(io::Error::other)?;
-        assert_eq!(report["valid"], serde_json::Value::Bool(true));
+        let report: JsonValue = serde_json::from_str(&result.output).map_err(io::Error::other)?;
+        assert_eq!(report["valid"], JsonValue::Bool(true));
         assert_eq!(report["signature_mode"], "production");
         Ok(())
     }
@@ -733,7 +737,7 @@ mod tests {
         let temp = tempfile_dir()?;
         let receipt_dir = temp.join("receipts");
         fs::create_dir_all(&receipt_dir)?;
-        let error = run_verify_command(
+        let error = match run_verify_command(
             &[
                 "verify".into(),
                 "receipt_missing".into(),
@@ -742,8 +746,15 @@ mod tests {
             ],
             &BTreeMap::new(),
             &temp,
-        )
-        .expect_err("unknown receipt id must error");
+        ) {
+            Ok(result) => {
+                return Err(io::Error::other(format!(
+                    "unknown receipt id must error: {}",
+                    result.output
+                )));
+            }
+            Err(error) => error,
+        };
         assert!(matches!(error, VerifyCliError::InvalidArgs(_)));
         Ok(())
     }
@@ -777,13 +788,12 @@ mod tests {
             "expected clean single receipt verdict: {}",
             result.output
         );
-        let verdict: serde_json::Value =
-            serde_json::from_str(&result.output).map_err(io::Error::other)?;
+        let verdict: JsonValue = serde_json::from_str(&result.output).map_err(io::Error::other)?;
         assert_eq!(verdict["schema"], "runx.verify_verdict.v1");
-        assert_eq!(verdict["valid"], serde_json::Value::Bool(true));
+        assert_eq!(verdict["valid"], JsonValue::Bool(true));
         assert_eq!(
             verdict["receipt_id"],
-            serde_json::Value::String(receipt.id.to_string())
+            JsonValue::String(receipt.id.to_string())
         );
         assert_eq!(verdict["signature"]["mode"], "production");
         assert_eq!(verdict["signature"]["status"], "valid");
@@ -816,16 +826,16 @@ mod tests {
         .map_err(|error| io::Error::other(error.to_string()))?;
 
         assert!(!result.failed, "stdin verdict failed: {}", result.output);
-        let verdict: serde_json::Value =
-            serde_json::from_str(&result.output).map_err(io::Error::other)?;
+        let verdict: JsonValue = serde_json::from_str(&result.output).map_err(io::Error::other)?;
         assert_eq!(
             verdict["receipt_id"],
-            serde_json::Value::String(receipt.id.to_string())
+            JsonValue::String(receipt.id.to_string())
         );
-        assert_eq!(verdict["valid"], serde_json::Value::Bool(true));
+        assert_eq!(verdict["valid"], JsonValue::Bool(true));
         Ok(())
     }
 
+    // rust-style-allow: long-function - malformed receipt regression covers capped stdin, invalid JSON, and machine verdict fields together.
     #[test]
     fn malformed_single_receipt_returns_invalid_verdict() -> Result<(), io::Error> {
         let temp = tempfile_dir()?;
@@ -844,11 +854,10 @@ mod tests {
         .map_err(|error| io::Error::other(error.to_string()))?;
 
         assert!(result.failed, "malformed receipt must fail");
-        let verdict: serde_json::Value =
-            serde_json::from_str(&result.output).map_err(io::Error::other)?;
+        let verdict: JsonValue = serde_json::from_str(&result.output).map_err(io::Error::other)?;
         assert_eq!(verdict["schema"], "runx.verify_verdict.v1");
-        assert_eq!(verdict["valid"], serde_json::Value::Bool(false));
-        assert_eq!(verdict["receipt_id"], serde_json::Value::Null);
+        assert_eq!(verdict["valid"], JsonValue::Bool(false));
+        assert_eq!(verdict["receipt_id"], JsonValue::Null);
         assert_eq!(verdict["findings"][0]["code"], "receipt_parse_error");
         Ok(())
     }
@@ -856,7 +865,7 @@ mod tests {
     #[test]
     fn single_receipt_rejects_store_selection_flags() -> Result<(), io::Error> {
         let temp = tempfile_dir()?;
-        let error = run_verify_command(
+        let error = match run_verify_command(
             &[
                 "verify".into(),
                 "receipt_1".into(),
@@ -865,8 +874,15 @@ mod tests {
             ],
             &BTreeMap::new(),
             &temp,
-        )
-        .expect_err("--receipt must be mutually exclusive with receipt ids");
+        ) {
+            Ok(result) => {
+                return Err(io::Error::other(format!(
+                    "--receipt must be mutually exclusive with receipt ids: {}",
+                    result.output
+                )));
+            }
+            Err(error) => error,
+        };
         assert!(matches!(error, VerifyCliError::InvalidArgs(_)));
         Ok(())
     }
@@ -874,13 +890,20 @@ mod tests {
     #[test]
     fn single_receipt_stdin_is_size_capped() -> Result<(), io::Error> {
         let temp = tempfile_dir()?;
-        let error = run_verify_command_with_stdin(
+        let error = match run_verify_command_with_stdin(
             &["verify".into(), "--receipt".into(), "-".into()],
             &BTreeMap::new(),
             &temp,
             io::Cursor::new(vec![b' '; SINGLE_RECEIPT_MAX_BYTES + 1]),
-        )
-        .expect_err("oversized stdin must be a usage error");
+        ) {
+            Ok(result) => {
+                return Err(io::Error::other(format!(
+                    "oversized stdin must be a usage error: {}",
+                    result.output
+                )));
+            }
+            Err(error) => error,
+        };
         assert!(matches!(error, VerifyCliError::InvalidArgs(_)));
         Ok(())
     }
@@ -906,7 +929,7 @@ mod tests {
                 &root,
             )
             .map_err(|error| io::Error::other(error.to_string()))?;
-            let actual: serde_json::Value =
+            let actual: JsonValue =
                 serde_json::from_str(&result.output).map_err(io::Error::other)?;
             let expected = expected_verdict(&case_dir, &case)?;
 
@@ -953,10 +976,7 @@ mod tests {
         Ok(cases)
     }
 
-    fn expected_verdict(
-        case_dir: &Path,
-        case: &CorpusCase,
-    ) -> Result<serde_json::Value, io::Error> {
+    fn expected_verdict(case_dir: &Path, case: &CorpusCase) -> Result<JsonValue, io::Error> {
         serde_json::from_str(&fs::read_to_string(case_dir.join(&case.expected))?)
             .map_err(io::Error::other)
     }

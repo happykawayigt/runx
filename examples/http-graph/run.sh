@@ -18,6 +18,9 @@ RUNX="${RUNX_BIN:-$OSS/crates/target/debug/runx}"
 export RUNX_RECEIPT_SIGN_KID="${RUNX_RECEIPT_SIGN_KID:-runx-demo-key}"
 export RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64="${RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64:-QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI=}"
 export RUNX_RECEIPT_SIGN_ISSUER_TYPE="${RUNX_RECEIPT_SIGN_ISSUER_TYPE:-hosted}"
+# Operator grant for this demo's loopback-only fixture endpoint. The runtime
+# still blocks private-network HTTP by default outside this explicit demo grant.
+export RUNX_HTTP_ALLOW_PRIVATE_NETWORK="${RUNX_HTTP_ALLOW_PRIVATE_NETWORK:-1}"
 
 node "$HERE/server.mjs" &
 SERVER=$!
