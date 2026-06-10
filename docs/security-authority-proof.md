@@ -65,6 +65,12 @@ This is intentional. Older local runs that relied on an implicit grant id must
 set `RUNX_PROVIDER_PERMISSION_GRANT_ID` explicitly before executing
 provider-permission steps.
 
+When a provider-permission effect is admitted, the sealed step receipt records
+the operator grant as a typed `runx:grant:*` reference under
+`receipt.authority.grant_refs`. The grant id is evidence of the authority that
+admitted the effect; it is not a credential body and does not carry provider
+token material.
+
 ## Payment Aggregate Spend Caps
 
 Spend-class payment authority must carry an aggregate cap (`max_per_run_units`
@@ -84,6 +90,22 @@ is enforced only as the run-level clamp, and the period ledger only exists
 when an effect state path is configured — operators who want cross-run spend
 bounds must configure a stable state path.
 
+Period ledgers are bounded during the same locked state transaction that
+records the reservation. For each family/authority/currency/period tuple, the
+runtime retains at least the active reservation window and the immediately
+previous window, keeps any newer windows already present, and prunes older
+period-ledger rows. Idempotency entries, finality records, finality events,
+consumed capabilities, and run-spend ledgers are not pruned by this retention
+pass. Out-of-order reservations remain safe because retention is computed
+relative to the reservation being recorded, not relative to the newest window
+currently present in the file.
+
+When a payment effect is admitted, the sealed step receipt records authority
+evidence under `receipt.authority.grant_refs`: the admitted payment authority
+reference and the spend-capability reference. Replay receipts preserve those
+same authority references so a replayed sealed effect remains verifiable
+against the same admitted authority boundary.
+
 Payment supervisor proofs bind the original settlement evidence through
 `evidence_digest`. Rebinding a stored proof to a re-sealed receipt first
 re-verifies that the stored evidence still hashes to the sealed digest, so
@@ -93,10 +115,39 @@ evidence altered after issuance is rejected instead of silently re-blessed.
 
 `runx verify [receipt-id] [--receipt-dir dir] [--json]` re-checks sealed
 receipts from disk with no runtime or network dependency: canonical body
-digests, content-addressed ids, linked-tree parent/child integrity, and —
-when `RUNX_RECEIPT_VERIFY_KID` and
+digests, content-addressed ids, linked-tree parent/child integrity, scope
+adherence for privileged effects, and — when `RUNX_RECEIPT_VERIFY_KID` and
 `RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64` are set — production Ed25519
 signatures against the operator-trusted key. Receipts are grouped into trees
 by lineage; a chain that points at a receipt missing from the store is
 reported as incomplete and fails verification. The command exits non-zero on
 any finding, so it can gate automation.
+
+Scope adherence is intentionally pure and offline. Any act carrying typed
+`EffectEvidence` without corresponding `receipt.authority.grant_refs` produces
+`EffectGrantEvidenceMissing`, fails verification, and exits non-zero. This is
+the boundary between a signed activity log and a governance proof: the receipt
+must show both the privileged effect and the operator-granted authority that
+admitted it.
+
+## Operator Authority Diagnostics
+
+`runx doctor authority [--json]` gives operators a redacted authority readiness
+view before exercising privileged effects. It reports:
+
+- receipt signer readiness, naming `RUNX_RECEIPT_SIGN_KID`,
+  `RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64`, and
+  `RUNX_RECEIPT_SIGN_ISSUER_TYPE`
+- receipt verification readiness, naming `RUNX_RECEIPT_VERIFY_KID` and
+  `RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64`
+- the resolved effect-state path when configured
+- the consequence when `RUNX_EFFECT_STATE_PATH` is unset: cross-run spend caps,
+  payment idempotency, and effect replay recovery are not durable without a
+  configured state path
+- provider-permission grant readiness, naming
+  `RUNX_PROVIDER_PERMISSION_GRANT_ID` and
+  `RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES`
+
+The diagnostic may show key ids and resolved filesystem paths. It must not show
+signing seeds, public key material, provider scope values, grant ids, or
+credential bodies.

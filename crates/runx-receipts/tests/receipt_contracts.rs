@@ -7,8 +7,8 @@ use std::collections::BTreeSet;
 use serde::Deserialize;
 
 use runx_contracts::{
-    ClosureDisposition, Receipt, ReceiptCommitmentScope, ReceiptIssuer, ReceiptIssuerType,
-    ReceiptSignature, Reference, ReferenceType,
+    ClosureDisposition, ProofKind, Receipt, ReceiptCommitmentScope, ReceiptIssuer,
+    ReceiptIssuerType, ReceiptSignature, Reference, ReferenceType,
 };
 use runx_receipts::{
     ReceiptFindingCode, ReceiptProofContext, ReceiptProofStatusKind, ReceiptVerification,
@@ -118,6 +118,42 @@ fn payment_authority_bound_survives_in_body() -> Result<(), serde_json::Error> {
     assert!(json.contains("\"authority\""));
     assert!(json.contains("\"terms\""));
     assert!(json.contains("\"idempotency\""));
+    Ok(())
+}
+
+#[test]
+fn effect_evidence_requires_authority_grant_refs() -> Result<(), serde_json::Error> {
+    let mut receipt = fixture(SUCCESS_RECEIPT)?;
+    let mut evidence = Reference::runx(ReferenceType::Verification, "effect-proof-1");
+    evidence.proof_kind = Some(ProofKind::EffectEvidence);
+    receipt.acts[0].criterion_bindings[0]
+        .verification_refs
+        .push(evidence);
+    receipt.authority.grant_refs.clear();
+
+    let verification = verify_receipt(&receipt);
+
+    assert_finding(
+        &verification,
+        ReceiptFindingCode::EffectGrantEvidenceMissing,
+    );
+    Ok(())
+}
+
+#[test]
+fn effect_evidence_accepts_authority_grant_refs() -> Result<(), serde_json::Error> {
+    let mut receipt = fixture(SUCCESS_RECEIPT)?;
+    let mut evidence = Reference::runx(ReferenceType::Verification, "effect-proof-1");
+    evidence.proof_kind = Some(ProofKind::EffectEvidence);
+    receipt.acts[0].criterion_bindings[0]
+        .verification_refs
+        .push(evidence);
+    receipt
+        .authority
+        .grant_refs
+        .push(Reference::runx(ReferenceType::Grant, "operator-grant-1"));
+
+    assert!(validate_receipt(&receipt).is_ok());
     Ok(())
 }
 

@@ -184,6 +184,87 @@ fn period_spend_reservation_is_idempotent_for_same_key() -> Result<(), Box<dyn s
 }
 
 #[test]
+fn period_spend_prunes_old_windows_without_losing_replay_idempotency()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempfile::tempdir()?;
+    let state_path = temp.path().join("effect-state.json");
+    let env = BTreeMap::from([(
+        RUNX_EFFECT_STATE_PATH_ENV.to_owned(),
+        state_path.display().to_string(),
+    )]);
+
+    let first = period_spend_input("payment:period-prune-001", 100, 500, "2026-06-08");
+    let second = period_spend_input("payment:period-prune-002", 100, 500, "2026-06-09");
+    let third = period_spend_input("payment:period-prune-003", 100, 500, "2026-06-10");
+
+    record_effect_finality_intent(&env, temp.path(), &first)?;
+    let outputs = sealed_payment_outputs("proof:period-prune-001", first.amount_minor)?;
+    let receipt = receipt_for_outputs("period_prune", "fulfill", &outputs)?;
+    let proof = supervisor_proof_for_receipt(&first, "proof:period-prune-001", &receipt);
+    persist_effect_step_state(&env, temp.path(), &first, &outputs, &receipt, Some(&proof))?;
+    record_effect_finality_intent(&env, temp.path(), &second)?;
+    record_effect_finality_intent(&env, temp.path(), &third)?;
+
+    let state = std::fs::read_to_string(&state_path)?;
+    assert!(
+        !state.contains("\"window_start\": \"2026-06-08\""),
+        "oldest period ledger window should be pruned"
+    );
+    assert!(state.contains("\"window_start\": \"2026-06-09\""));
+    assert!(state.contains("\"window_start\": \"2026-06-10\""));
+    assert!(
+        lookup_effect_idempotency_entry(
+            &env,
+            temp.path(),
+            PAYMENT_EFFECT_FAMILY,
+            &first.idempotency_key
+        )?
+        .is_some(),
+        "sealed replay idempotency must survive period ledger pruning"
+    );
+
+    Ok(())
+}
+
+#[test]
+fn period_spend_pruning_preserves_out_of_order_active_window()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempfile::tempdir()?;
+    let state_path = temp.path().join("effect-state.json");
+    let env = BTreeMap::from([(
+        RUNX_EFFECT_STATE_PATH_ENV.to_owned(),
+        state_path.display().to_string(),
+    )]);
+
+    let newer = period_spend_input("payment:period-ooo-010", 100, 500, "2026-06-10");
+    let newest = period_spend_input("payment:period-ooo-011", 100, 500, "2026-06-11");
+    let active_late = period_spend_input("payment:period-ooo-009", 100, 500, "2026-06-09");
+    let over_cap = period_spend_input("payment:period-ooo-over", 401, 500, "2026-06-09");
+
+    record_effect_finality_intent(&env, temp.path(), &newer)?;
+    record_effect_finality_intent(&env, temp.path(), &newest)?;
+    record_effect_finality_intent(&env, temp.path(), &active_late)?;
+    let error = record_effect_finality_intent(&env, temp.path(), &over_cap)
+        .expect_err("out-of-order active reservation must still count toward the period cap");
+
+    let state = std::fs::read_to_string(&state_path)?;
+    assert!(
+        state.contains("\"window_start\": \"2026-06-09\""),
+        "out-of-order active reservation window must not be pruned"
+    );
+    assert!(state.contains("\"window_start\": \"2026-06-10\""));
+    assert!(state.contains("\"window_start\": \"2026-06-11\""));
+    assert!(
+        error
+            .to_string()
+            .contains("would exceed max_per_period_units"),
+        "unexpected error: {error}"
+    );
+
+    Ok(())
+}
+
+#[test]
 fn period_window_start_computes_calendar_windows() {
     // 2026-06-10T15:30:00Z, a Wednesday.
     let now = 1_781_105_400;

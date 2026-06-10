@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use runx_contracts::{
-    AuthorityVerb, ExecutionEvent, JsonNumber, JsonObject, JsonValue, ProofKind, ResolutionRequest,
-    ResolutionResponse, ResolutionResponseActor,
+    AuthorityVerb, ExecutionEvent, JsonNumber, JsonObject, JsonValue, ProofKind, ReferenceType,
+    ResolutionRequest, ResolutionResponse, ResolutionResponseActor,
 };
 use runx_core::state_machine::GraphStatus;
 use runx_pay::PAYMENT_EFFECT_FAMILY;
@@ -163,6 +163,24 @@ fn payment_graph_seals_with_strict_parent_child_receipt_proof()
         "payment graph receipt must validate through strict runtime proof acceptance"
     );
     let fulfill = step_run(&run.steps, "fulfill")?;
+    assert!(
+        fulfill
+            .receipt
+            .authority
+            .grant_refs
+            .iter()
+            .any(|reference| reference.reference_type == ReferenceType::Grant),
+        "payment receipt authority must cite the admitted payment authority ref"
+    );
+    assert!(
+        fulfill
+            .receipt
+            .authority
+            .grant_refs
+            .iter()
+            .any(|reference| reference.reference_type == ReferenceType::Credential),
+        "payment receipt authority must cite the admitted spend capability ref"
+    );
     assert!(
         fulfill.receipt.acts[0]
             .criterion_bindings

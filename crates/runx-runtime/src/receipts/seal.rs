@@ -73,6 +73,33 @@ pub fn step_receipt_with_signature_policy(
     )
 }
 
+pub fn step_receipt_with_authority_grant_refs(
+    graph_name: &str,
+    step_id: &str,
+    attempt: u32,
+    output: &SkillOutput,
+    authority_grant_refs: Vec<Reference>,
+    created_at: &str,
+) -> Result<Receipt, RuntimeError> {
+    let disposition = disposition(output);
+    let projection = project_step_output(output);
+    step_receipt_with_disposition_projection_authority_and_policy(
+        StepReceiptWithDisposition {
+            graph_name,
+            step_id,
+            attempt,
+            output,
+            created_at,
+            reason_code: process_reason_code(&disposition),
+            disposition,
+            summary: format!("step {step_id} completed"),
+        },
+        &projection,
+        authority_grant_refs,
+        RuntimeReceiptSignaturePolicy::local_development(),
+    )
+}
+
 pub(crate) fn step_receipt_with_projection_and_signature_policy(
     graph_name: &str,
     step_id: &str,
@@ -82,8 +109,30 @@ pub(crate) fn step_receipt_with_projection_and_signature_policy(
     created_at: &str,
     signature_policy: RuntimeReceiptSignaturePolicy<'_>,
 ) -> Result<Receipt, RuntimeError> {
+    step_receipt_with_projection_authority_and_signature_policy(
+        graph_name,
+        step_id,
+        attempt,
+        output,
+        projection,
+        Vec::new(),
+        created_at,
+        signature_policy,
+    )
+}
+
+pub(crate) fn step_receipt_with_projection_authority_and_signature_policy(
+    graph_name: &str,
+    step_id: &str,
+    attempt: u32,
+    output: &SkillOutput,
+    projection: &StepOutputProjection,
+    authority_grant_refs: Vec<Reference>,
+    created_at: &str,
+    signature_policy: RuntimeReceiptSignaturePolicy<'_>,
+) -> Result<Receipt, RuntimeError> {
     let disposition = disposition(output);
-    step_receipt_with_disposition_projection_and_policy(
+    step_receipt_with_disposition_projection_authority_and_policy(
         StepReceiptWithDisposition {
             graph_name,
             step_id,
@@ -95,6 +144,7 @@ pub(crate) fn step_receipt_with_projection_and_signature_policy(
             summary: format!("step {step_id} completed"),
         },
         projection,
+        authority_grant_refs,
         signature_policy,
     )
 }
@@ -130,6 +180,20 @@ pub(crate) fn step_receipt_with_disposition_and_policy(
 pub(crate) fn step_receipt_with_disposition_projection_and_policy(
     params: StepReceiptWithDisposition<'_>,
     projection: &StepOutputProjection,
+    signature_policy: RuntimeReceiptSignaturePolicy<'_>,
+) -> Result<Receipt, RuntimeError> {
+    step_receipt_with_disposition_projection_authority_and_policy(
+        params,
+        projection,
+        Vec::new(),
+        signature_policy,
+    )
+}
+
+fn step_receipt_with_disposition_projection_authority_and_policy(
+    params: StepReceiptWithDisposition<'_>,
+    projection: &StepOutputProjection,
+    authority_grant_refs: Vec<Reference>,
     signature_policy: RuntimeReceiptSignaturePolicy<'_>,
 ) -> Result<Receipt, RuntimeError> {
     let StepReceiptWithDisposition {
@@ -176,6 +240,7 @@ pub(crate) fn step_receipt_with_disposition_projection_and_policy(
         children: Vec::new(),
         sync_points: Vec::new(),
         signals: output_refs.signal_refs,
+        authority_grant_refs,
     });
     seal_receipt_unvalidated(&mut receipt, signature_policy)?;
     Ok(receipt)
@@ -357,6 +422,7 @@ fn build_graph_receipt(
         children,
         sync_points: sync_points.to_vec(),
         signals: Vec::new(),
+        authority_grant_refs: Vec::new(),
     })
 }
 
@@ -408,6 +474,7 @@ struct BuildReceipt<'a> {
     children: Vec<Reference>,
     sync_points: Vec<FanoutReceiptSyncPoint>,
     signals: Vec<Reference>,
+    authority_grant_refs: Vec<Reference>,
 }
 
 fn build_receipt(parts: BuildReceipt<'_>) -> Receipt {
@@ -423,6 +490,7 @@ fn build_receipt(parts: BuildReceipt<'_>) -> Receipt {
         children,
         sync_points,
         signals,
+        authority_grant_refs,
     } = parts;
     let lineage = Lineage {
         parent: None,
@@ -441,7 +509,7 @@ fn build_receipt(parts: BuildReceipt<'_>) -> Receipt {
         digest: "sha256:runtime-skeleton".into(),
         idempotency: idempotency(graph_name, node_id),
         subject: subject(graph_name, node_id, kind),
-        authority: authority(),
+        authority: authority(authority_grant_refs),
         signals,
         decisions,
         acts,
@@ -566,11 +634,11 @@ fn subject(graph_name: &str, node_id: &str, kind: NonEmptyString) -> Subject {
     }
 }
 
-fn authority() -> ReceiptAuthority {
+fn authority(grant_refs: Vec<Reference>) -> ReceiptAuthority {
     ReceiptAuthority {
         actor_ref: Reference::runx(ReferenceType::Principal, "local_runtime"),
         authority_proof_refs: Vec::new(),
-        grant_refs: Vec::new(),
+        grant_refs,
         scope_refs: Vec::new(),
         terms: Vec::new(),
         attenuation: AuthorityAttenuation {

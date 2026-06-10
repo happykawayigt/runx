@@ -30,6 +30,7 @@ use crate::receipts::{
     graph_receipt_with_disposition_and_policy, graph_receipt_with_effects_and_signature_policy,
 };
 use crate::services::ReceiptServices;
+use crate::{PROVIDER_PERMISSION_GRANT_ID_ENV, PROVIDER_PERMISSION_GRANTED_SCOPES_ENV};
 
 mod authority;
 mod execution;
@@ -114,6 +115,8 @@ fn safe_default_env_from(
         RUNX_RUN_ID_ENV,
         RUNX_PROJECT_DIR_ENV,
         RUNX_CWD_ENV,
+        PROVIDER_PERMISSION_GRANT_ID_ENV,
+        PROVIDER_PERMISSION_GRANTED_SCOPES_ENV,
         "RUNX_HTTP_ALLOW_PRIVATE_NETWORK",
         "RUNX_REGISTRY_DIR",
         "RUNX_REGISTRY_URL",

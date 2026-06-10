@@ -871,59 +871,109 @@ fn reserve_period_spend(
     };
     let ledger_key = period_spend_ledger_key(family, reservation, &intent.currency);
     let entry_key = intent.idempotency_key.index_key();
-    let ledger = state
-        .period_spend_ledger
-        .entry(ledger_key.clone())
-        .or_insert_with(|| EffectPeriodSpendLedgerEntry {
-            authority_ref: reservation.authority_ref.clone(),
-            currency: intent.currency.clone(),
-            max_per_period_units: reservation.max_per_period_units,
-            period: reservation.period.clone(),
-            window_start: reservation.window_start.clone(),
-            reserved_minor: 0,
-            sealed_minor: 0,
-            entries: BTreeMap::new(),
-        });
-
-    if ledger.authority_ref != reservation.authority_ref
-        || ledger.currency != intent.currency
-        || ledger.max_per_period_units != reservation.max_per_period_units
-        || ledger.period != reservation.period
-        || ledger.window_start != reservation.window_start
     {
-        return Err(EffectStateError::PeriodSpendLedgerConflict { ledger_key });
-    }
+        let ledger = state
+            .period_spend_ledger
+            .entry(ledger_key.clone())
+            .or_insert_with(|| EffectPeriodSpendLedgerEntry {
+                authority_ref: reservation.authority_ref.clone(),
+                currency: intent.currency.clone(),
+                max_per_period_units: reservation.max_per_period_units,
+                period: reservation.period.clone(),
+                window_start: reservation.window_start.clone(),
+                reserved_minor: 0,
+                sealed_minor: 0,
+                entries: BTreeMap::new(),
+            });
 
-    if let Some(existing) = ledger.entries.get(&entry_key) {
-        if existing.amount_minor == intent.amount_minor {
-            return Ok(());
+        if ledger.authority_ref != reservation.authority_ref
+            || ledger.currency != intent.currency
+            || ledger.max_per_period_units != reservation.max_per_period_units
+            || ledger.period != reservation.period
+            || ledger.window_start != reservation.window_start
+        {
+            return Err(EffectStateError::PeriodSpendLedgerConflict { ledger_key });
         }
-        return Err(EffectStateError::PeriodSpendLedgerConflict { ledger_key });
-    }
 
-    let attempted_minor = ledger.reserved_minor.saturating_add(intent.amount_minor);
-    if attempted_minor > ledger.max_per_period_units {
-        return Err(EffectStateError::PeriodSpendCapExceeded {
-            period: ledger.period.clone(),
-            window_start: ledger.window_start.clone(),
-            authority_ref: ledger.authority_ref.clone(),
-            currency: ledger.currency.clone(),
-            attempted_minor,
-            max_per_period_units: ledger.max_per_period_units,
-        });
-    }
+        if let Some(existing) = ledger.entries.get(&entry_key) {
+            if existing.amount_minor == intent.amount_minor {
+                return Ok(());
+            }
+            return Err(EffectStateError::PeriodSpendLedgerConflict { ledger_key });
+        }
 
-    ledger.reserved_minor = attempted_minor;
-    ledger.entries.insert(
-        entry_key,
-        EffectRunSpendLedgerItem {
-            idempotency_key: intent.idempotency_key.clone(),
-            amount_minor: intent.amount_minor,
-            status: EffectRunSpendStatus::Reserved,
-            receipt_ref: None,
-        },
-    );
+        let attempted_minor = ledger.reserved_minor.saturating_add(intent.amount_minor);
+        if attempted_minor > ledger.max_per_period_units {
+            return Err(EffectStateError::PeriodSpendCapExceeded {
+                period: ledger.period.clone(),
+                window_start: ledger.window_start.clone(),
+                authority_ref: ledger.authority_ref.clone(),
+                currency: ledger.currency.clone(),
+                attempted_minor,
+                max_per_period_units: ledger.max_per_period_units,
+            });
+        }
+
+        ledger.reserved_minor = attempted_minor;
+        ledger.entries.insert(
+            entry_key,
+            EffectRunSpendLedgerItem {
+                idempotency_key: intent.idempotency_key.clone(),
+                amount_minor: intent.amount_minor,
+                status: EffectRunSpendStatus::Reserved,
+                receipt_ref: None,
+            },
+        );
+    }
+    prune_period_spend_ledgers(state, family, reservation, &intent.currency);
     Ok(())
+}
+
+fn prune_period_spend_ledgers(
+    state: &mut EffectFamilyState,
+    family: &'static str,
+    reservation: &EffectPeriodSpendReservation,
+    currency: &str,
+) {
+    let Some(retention_floor) =
+        previous_period_window_start(&reservation.period, &reservation.window_start)
+    else {
+        return;
+    };
+    let prefix = format!(
+        "{}\u{1f}{}\u{1f}{}\u{1f}{}",
+        family, reservation.authority_ref, currency, reservation.period
+    );
+    state
+        .period_spend_ledger
+        .retain(|key, ledger| !key.starts_with(&prefix) || ledger.window_start >= retention_floor);
+}
+
+fn previous_period_window_start(period: &str, window_start: &str) -> Option<String> {
+    let (year, month, day) = parse_civil_date(window_start)?;
+    match period {
+        "daily" => Some(civil_date_string(days_from_civil(year, month, day) - 1)),
+        "weekly" => Some(civil_date_string(days_from_civil(year, month, day) - 7)),
+        "monthly" => {
+            if month == 1 {
+                Some(format!("{:04}-12-01", year - 1))
+            } else {
+                Some(format!("{year:04}-{:02}-01", month - 1))
+            }
+        }
+        _ => None,
+    }
+}
+
+fn parse_civil_date(value: &str) -> Option<(i64, u32, u32)> {
+    let mut parts = value.split('-');
+    let year = parts.next()?.parse::<i64>().ok()?;
+    let month = parts.next()?.parse::<u32>().ok()?;
+    let day = parts.next()?.parse::<u32>().ok()?;
+    if parts.next().is_some() || !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+        return None;
+    }
+    Some((year, month, day))
 }
 
 fn period_spend_ledger_key(
@@ -977,6 +1027,16 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
     let day = (doy - (153 * mp + 2) / 5 + 1) as u32;
     let month = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
     (if month <= 2 { year + 1 } else { year }, month, day)
+}
+
+fn days_from_civil(year: i64, month: u32, day: u32) -> i64 {
+    let year = year - i64::from(month <= 2);
+    let era = if year >= 0 { year } else { year - 399 } / 400;
+    let yoe = year - era * 400;
+    let month = i64::from(month);
+    let doy = (153 * (month + if month > 2 { -3 } else { 9 }) + 2) / 5 + i64::from(day) - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
 }
 
 fn load_effect_state(path: &Path) -> Result<EffectStateDocument, EffectStateError> {

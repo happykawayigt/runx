@@ -8,7 +8,8 @@ pub use error::RuntimeEffectError;
 pub(crate) use metadata::effect_verification_refs;
 pub use metadata::{EFFECT_VERIFICATION_REFS_METADATA, insert_effect_verification_ref};
 pub use provider_permission::{
-    PROVIDER_PERMISSION_EFFECT_FAMILY, ProviderPermissionAdmission, ProviderPermissionEffect,
+    PROVIDER_PERMISSION_EFFECT_FAMILY, PROVIDER_PERMISSION_GRANT_ID_ENV,
+    PROVIDER_PERMISSION_GRANTED_SCOPES_ENV, ProviderPermissionAdmission, ProviderPermissionEffect,
 };
 pub use registry::RuntimeEffectRegistry;
 pub use types::{

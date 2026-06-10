@@ -2,7 +2,7 @@
 // workspace expect/unwrap bans are lifted for this test target.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-use runx_contracts::{ClosureDisposition, JsonObject, Receipt};
+use runx_contracts::{ClosureDisposition, JsonObject, Receipt, Reference, ReferenceType};
 use runx_core::state_machine::StepAdmissionWitness;
 use runx_pay::ledger::{
     PaidToolEvidence, PaymentLedgerEvidence, PaymentLedgerEvidencePacket,
@@ -17,7 +17,7 @@ use runx_pay::supervisor::{
     insert_payment_supervisor_proof_metadata, payment_supervisor_evidence_metadata_value,
     payment_supervisor_evidence_reference,
 };
-use runx_runtime::receipts::{graph_receipt, step_receipt};
+use runx_runtime::receipts::{graph_receipt, step_receipt, step_receipt_with_authority_grant_refs};
 use runx_runtime::{InvocationStatus, SkillOutput, StepRun, insert_effect_verification_ref};
 use serde_json::Value;
 
@@ -482,7 +482,18 @@ fn step_run(
             payment_supervisor_evidence_reference(&evidence),
         )?;
     }
-    let receipt = step_receipt(graph_name, step_id, 1, &output, CREATED_AT)?;
+    let receipt = if step_id == "fulfill" {
+        step_receipt_with_authority_grant_refs(
+            graph_name,
+            step_id,
+            1,
+            &output,
+            paid_echo_authority_refs(),
+            CREATED_AT,
+        )?
+    } else {
+        step_receipt(graph_name, step_id, 1, &output, CREATED_AT)?
+    };
     let admission_witness = StepAdmissionWitness::local_runtime(step_id, receipt.id.as_str());
     let outputs = serde_json::from_str::<runx_contracts::JsonValue>(&output.stdout)
         .ok()
@@ -502,6 +513,16 @@ fn step_run(
         receipt,
         admission_witness,
     })
+}
+
+fn paid_echo_authority_refs() -> Vec<Reference> {
+    vec![
+        Reference::with_uri(ReferenceType::Grant, "runx:payment-grant:paid-echo"),
+        Reference::with_uri(
+            ReferenceType::Credential,
+            "runx:payment-capability:paid-echo-spend-1",
+        ),
+    ]
 }
 
 fn paid_echo_supervisor_evidence() -> PaymentSupervisorSettlementEvidence {

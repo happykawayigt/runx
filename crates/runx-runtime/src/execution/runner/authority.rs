@@ -207,4 +207,15 @@ impl StepAuthorityContext {
     pub(super) fn admission_witness(&self) -> &runx_core::state_machine::AuthorityAdmissionWitness {
         self.admission.witness()
     }
+
+    pub(super) fn authority_grant_refs(
+        &self,
+        effects: &RuntimeEffectRegistry,
+    ) -> Result<Vec<runx_contracts::Reference>, RuntimeError> {
+        effects
+            .authority_grant_refs(&self.admission)
+            .map_err(|source| RuntimeError::ReceiptInvalid {
+                message: source.to_string(),
+            })
+    }
 }

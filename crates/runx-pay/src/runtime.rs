@@ -295,7 +295,8 @@ impl RuntimeEffect for PaymentRuntimeEffect {
             PaymentReplayContext {
                 rail_proof_ref: entry.rail_proof_ref.clone(),
                 idempotency_key: entry.idempotency_key.clone(),
-                spend_capability_ref: entry.supervisor_proof.spend_capability_ref.clone(),
+                authority_ref: payment.authority_ref.clone(),
+                spend_capability_ref: payment.spend_capability_ref.clone(),
                 rail: entry.supervisor_proof.rail.clone(),
                 counterparty: entry.supervisor_proof.counterparty.clone(),
                 amount_minor: entry.supervisor_proof.amount_minor,
@@ -548,6 +549,19 @@ impl RuntimeEffect for PaymentRuntimeEffect {
         .map_err(|source| failed("persisting state", source))
     }
 
+    fn authority_grant_refs(
+        &self,
+        admission: &EffectAdmission,
+    ) -> Result<Vec<Reference>, RuntimeEffectError> {
+        let Some(payment) = payment_admission_context(admission)?.payment.as_ref() else {
+            return Ok(Vec::new());
+        };
+        Ok(vec![
+            payment.authority_ref.clone(),
+            payment.spend_capability_ref.clone(),
+        ])
+    }
+
     fn prepare_replay_output(
         &self,
         request: EffectReplayOutputRequest<'_>,
@@ -562,6 +576,17 @@ impl RuntimeEffect for PaymentRuntimeEffect {
             &mut request.output.metadata,
             payment_supervisor_proof_reference(&context.supervisor_proof),
         )
+    }
+
+    fn replay_authority_grant_refs(
+        &self,
+        replay: &EffectReplay,
+    ) -> Result<Vec<Reference>, RuntimeEffectError> {
+        let context = payment_replay_context(replay)?;
+        Ok(vec![
+            context.authority_ref.clone(),
+            context.spend_capability_ref.clone(),
+        ])
     }
 
     fn validate_replay(
@@ -584,7 +609,7 @@ impl RuntimeEffect for PaymentRuntimeEffect {
                 amount_minor: context.amount_minor,
                 currency: &context.currency,
                 idempotency_key: &context.idempotency_key.key,
-                spend_capability_ref: &context.spend_capability_ref,
+                spend_capability_ref: &context.spend_capability_ref.uri,
                 act_id: &context.act_id,
                 receipt_ref: &request.receipt.id,
                 receipt_digest: &request.receipt.digest,
@@ -771,6 +796,7 @@ fn payment_context(
         counterparty: binding.counterparty.clone(),
         amount_minor: binding.amount_minor,
         currency: binding.currency.clone(),
+        authority_ref: input.child_authority.resource_ref.clone(),
         run_spend,
         period_spend,
     }))
@@ -1163,6 +1189,7 @@ struct PaymentAdmissionContext {
 #[derive(Clone, Debug)]
 struct StepPaymentAuthorityContext {
     idempotency_key: EffectIdempotencyKey,
+    authority_ref: Reference,
     spend_capability_ref: Reference,
     rail: String,
     counterparty: String,
@@ -1176,7 +1203,8 @@ struct StepPaymentAuthorityContext {
 struct PaymentReplayContext {
     rail_proof_ref: String,
     idempotency_key: EffectIdempotencyKey,
-    spend_capability_ref: String,
+    authority_ref: Reference,
+    spend_capability_ref: Reference,
     rail: String,
     counterparty: String,
     amount_minor: u64,

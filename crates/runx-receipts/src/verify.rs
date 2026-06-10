@@ -1,8 +1,8 @@
 use std::collections::BTreeSet;
 
 use runx_contracts::{
-    ActForm, AuthorityAttenuation, Decision, Receipt, ReceiptAct, ReceiptCommitment, Reference,
-    ReferenceType, Seal,
+    ActForm, AuthorityAttenuation, Decision, ProofKind, Receipt, ReceiptAct, ReceiptCommitment,
+    Reference, ReferenceType, Seal,
 };
 
 mod finding;
@@ -64,6 +64,7 @@ impl Verifier {
         if let Some(lineage) = &receipt.lineage {
             self.check_child_receipt_refs("lineage.children", &lineage.children);
         }
+        self.check_effect_grant_evidence(receipt);
         self.check_acts(&receipt.acts);
         self.check_decisions(&receipt.decisions, &receipt.acts);
         self.check_seal_criteria(receipt, &receipt.seal);
@@ -121,6 +122,17 @@ impl Verifier {
                 );
             }
         }
+    }
+
+    fn check_effect_grant_evidence(&mut self, receipt: &Receipt) {
+        if !receipt_has_effect_evidence(receipt) || !receipt.authority.grant_refs.is_empty() {
+            return;
+        }
+        self.push(
+            ReceiptFindingCode::EffectGrantEvidenceMissing,
+            "authority.grant_refs",
+            "receipts carrying effect evidence must identify the grant or capability refs that admitted the effect",
+        );
     }
 
     fn check_acts(&mut self, acts: &[ReceiptAct]) {
@@ -254,4 +266,79 @@ fn act_criterion_ids(acts: &[ReceiptAct]) -> BTreeSet<String> {
 
 fn act_ids(acts: &[ReceiptAct]) -> BTreeSet<String> {
     acts.iter().map(|act| act.id.as_str().to_owned()).collect()
+}
+
+fn receipt_has_effect_evidence(receipt: &Receipt) -> bool {
+    receipt.signals.iter().any(reference_is_effect_evidence)
+        || receipt.decisions.iter().any(decision_has_effect_evidence)
+        || receipt.acts.iter().any(act_has_effect_evidence)
+}
+
+fn decision_has_effect_evidence(decision: &Decision) -> bool {
+    decision
+        .inputs
+        .signal_refs
+        .iter()
+        .any(reference_is_effect_evidence)
+        || decision
+            .inputs
+            .target_ref
+            .as_ref()
+            .is_some_and(reference_is_effect_evidence)
+        || decision
+            .inputs
+            .opportunity_refs
+            .iter()
+            .any(reference_is_effect_evidence)
+        || decision
+            .inputs
+            .selection_ref
+            .as_ref()
+            .is_some_and(reference_is_effect_evidence)
+        || decision
+            .proposed_intent
+            .derived_from
+            .iter()
+            .any(reference_is_effect_evidence)
+        || decision
+            .selected_harness_ref
+            .as_ref()
+            .is_some_and(reference_is_effect_evidence)
+        || decision
+            .justification
+            .evidence_refs
+            .iter()
+            .any(reference_is_effect_evidence)
+        || decision
+            .artifact_refs
+            .iter()
+            .any(reference_is_effect_evidence)
+}
+
+fn act_has_effect_evidence(act: &ReceiptAct) -> bool {
+    act.intent
+        .derived_from
+        .iter()
+        .any(reference_is_effect_evidence)
+        || act.source_refs.iter().any(reference_is_effect_evidence)
+        || act.target_refs.iter().any(reference_is_effect_evidence)
+        || act.artifact_refs.iter().any(reference_is_effect_evidence)
+        || act
+            .context_ref
+            .as_ref()
+            .is_some_and(reference_is_effect_evidence)
+        || act.criterion_bindings.iter().any(|binding| {
+            binding
+                .evidence_refs
+                .iter()
+                .any(reference_is_effect_evidence)
+                || binding
+                    .verification_refs
+                    .iter()
+                    .any(reference_is_effect_evidence)
+        })
+}
+
+fn reference_is_effect_evidence(reference: &Reference) -> bool {
+    reference.proof_kind.as_ref() == Some(&ProofKind::EffectEvidence)
 }

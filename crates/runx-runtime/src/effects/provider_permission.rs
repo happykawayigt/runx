@@ -3,14 +3,14 @@
 // self-attested scope grants remain audited in one place.
 use std::collections::{BTreeMap, BTreeSet};
 
-use runx_contracts::{AuthorityVerb, JsonObject, JsonValue};
+use runx_contracts::{AuthorityVerb, JsonObject, JsonValue, Reference, ReferenceType};
 use runx_core::state_machine::AuthorityAdmissionWitness;
 
 use super::{EffectAdmission, EffectStepRequest, RuntimeEffect, RuntimeEffectError};
 
 pub const PROVIDER_PERMISSION_EFFECT_FAMILY: &str = "provider_permission";
-const PROVIDER_PERMISSION_GRANT_ID_ENV: &str = "RUNX_PROVIDER_PERMISSION_GRANT_ID";
-const PROVIDER_PERMISSION_GRANTED_SCOPES_ENV: &str = "RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES";
+pub const PROVIDER_PERMISSION_GRANT_ID_ENV: &str = "RUNX_PROVIDER_PERMISSION_GRANT_ID";
+pub const PROVIDER_PERMISSION_GRANTED_SCOPES_ENV: &str = "RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES";
 
 #[derive(Clone, Debug, Default)]
 pub struct ProviderPermissionEffect;
@@ -52,6 +52,23 @@ impl RuntimeEffect for ProviderPermissionEffect {
                 granted_scopes: plan.granted_scopes,
             },
         )))
+    }
+
+    fn authority_grant_refs(
+        &self,
+        admission: &EffectAdmission,
+    ) -> Result<Vec<Reference>, RuntimeEffectError> {
+        let context = admission
+            .context::<ProviderPermissionAdmission>()
+            .ok_or_else(|| RuntimeEffectError::Failed {
+                family: PROVIDER_PERMISSION_EFFECT_FAMILY.to_owned(),
+                operation: "authority grant evidence",
+                message: "provider permission admission context is missing".to_owned(),
+            })?;
+        Ok(vec![Reference::runx(
+            ReferenceType::Grant,
+            &context.grant_id,
+        )])
     }
 }
 
@@ -234,7 +251,7 @@ mod tests {
     use std::io;
     use std::path::Path;
 
-    use runx_contracts::{JsonObject, JsonValue};
+    use runx_contracts::{JsonObject, JsonValue, ReferenceType};
     use runx_parser::GraphStep;
 
     use super::*;
@@ -273,6 +290,12 @@ mod tests {
         };
         assert_eq!(context.required_scopes, vec!["repo.read"]);
         assert_eq!(context.granted_scopes, vec!["repo.read"]);
+        let grant_refs = effect
+            .authority_grant_refs(&admission)
+            .map_err(|error| io::Error::other(error.to_string()))?;
+        assert_eq!(grant_refs.len(), 1);
+        assert_eq!(grant_refs[0].reference_type, ReferenceType::Grant);
+        assert_eq!(grant_refs[0].uri, "runx:grant:github-mcp-read");
         Ok(())
     }
 

@@ -42,6 +42,7 @@ use crate::host::Host;
 use crate::receipts::{
     StepReceiptWithDisposition, step_receipt_with_disposition_projection_and_policy,
     step_receipt_with_projection_and_signature_policy,
+    step_receipt_with_projection_authority_and_signature_policy,
 };
 
 const EXTERNAL_ADAPTER_HOST_RESOLUTION_REQUEST_METADATA: &str =
@@ -495,12 +496,18 @@ where
         mut output,
         projection,
     } = regular;
-    let receipt = step_receipt_with_projection_and_signature_policy(
+    let authority_grant_refs = context
+        .authority
+        .map(|authority| authority.authority_grant_refs(&context.runtime.options.effects))
+        .transpose()?
+        .unwrap_or_default();
+    let receipt = step_receipt_with_projection_authority_and_signature_policy(
         context.graph_name,
         &context.step.id,
         context.attempt,
         &output,
         &projection,
+        authority_grant_refs,
         &context.runtime.options.created_at,
         context.runtime.options.signature_policy(),
     )?;
@@ -644,12 +651,20 @@ fn run_replayed_effect_step(
     }
     prepare_replay_output(step, &replay, &mut output, &runtime.options.effects)?;
     let projection = step_output_projection(step, &output)?;
-    let receipt = step_receipt_with_projection_and_signature_policy(
+    let authority_grant_refs = runtime
+        .options
+        .effects
+        .replay_authority_grant_refs(&replay)
+        .map_err(|source| RuntimeError::ReceiptInvalid {
+            message: source.to_string(),
+        })?;
+    let receipt = step_receipt_with_projection_authority_and_signature_policy(
         graph_name,
         &step.id,
         attempt,
         &output,
         &projection,
+        authority_grant_refs,
         replay.receipt_created_at(),
         runtime.options.signature_policy(),
     )?;
@@ -860,14 +875,7 @@ fn run_tool_step_handler<A>(request: StepHandlerCtx<'_, A>) -> Result<StepRun, R
 where
     A: SkillAdapter,
 {
-    run_tool_step(
-        request.runtime,
-        request.graph_dir,
-        request.graph_name,
-        request.step,
-        request.attempt,
-        request.inputs,
-    )
+    run_tool_step(request)
 }
 
 fn run_subskill_step_handler<A>(mut request: StepHandlerCtx<'_, A>) -> Result<StepRun, RuntimeError>
@@ -1189,20 +1197,26 @@ fn agent_task_source(step: &GraphStep) -> Result<SkillSource, RuntimeError> {
 
 // rust-style-allow: long-function because tool execution keeps lookup,
 // invocation, and receipt sealing in one audited boundary.
-fn run_tool_step<A>(
-    runtime: &Runtime<A>,
-    graph_dir: &Path,
-    graph_name: &str,
-    step: &GraphStep,
-    attempt: u32,
-    inputs: JsonObject,
-) -> Result<StepRun, RuntimeError>
+fn run_tool_step<A>(request: StepHandlerCtx<'_, A>) -> Result<StepRun, RuntimeError>
 where
     A: SkillAdapter,
 {
+    let StepHandlerCtx {
+        runtime,
+        graph_dir,
+        graph_name,
+        step,
+        attempt,
+        inputs,
+        host: _,
+        authority,
+        loaded_skill: _,
+    } = request;
     #[cfg(not(feature = "catalog"))]
     {
-        let _ = (runtime, graph_dir, graph_name, step, attempt, inputs);
+        let _ = (
+            runtime, graph_dir, graph_name, step, attempt, inputs, authority,
+        );
         Err(RuntimeError::UnsupportedAdapter {
             adapter_type: "catalog".to_owned(),
         })
@@ -1229,12 +1243,18 @@ where
         };
         let output = CatalogAdapter::default().invoke(invocation)?;
         let projection = step_output_projection(step, &output)?;
-        let receipt = step_receipt_with_projection_and_signature_policy(
+        let authority_grant_refs = authority
+            .as_ref()
+            .map(|authority| authority.authority_grant_refs(&runtime.options.effects))
+            .transpose()?
+            .unwrap_or_default();
+        let receipt = step_receipt_with_projection_authority_and_signature_policy(
             graph_name,
             &step.id,
             attempt,
             &output,
             &projection,
+            authority_grant_refs,
             &runtime.options.created_at,
             runtime.options.signature_policy(),
         )?;

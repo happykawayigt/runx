@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::Arc;
 
-use runx_contracts::Receipt;
+use runx_contracts::{Receipt, Reference};
 use runx_parser::GraphStep;
 
 use crate::adapter::SkillOutput;
@@ -134,6 +134,22 @@ impl RuntimeEffectRegistry {
             effect.refresh_output_metadata(EffectMetadataRefreshRequest { output, receipt })?;
         }
         Ok(())
+    }
+
+    pub(crate) fn authority_grant_refs(
+        &self,
+        admission: &EffectAdmission,
+    ) -> Result<Vec<Reference>, RuntimeEffectError> {
+        self.require_effect(admission.family())?
+            .authority_grant_refs(admission)
+    }
+
+    pub(crate) fn replay_authority_grant_refs(
+        &self,
+        replay: &EffectReplay,
+    ) -> Result<Vec<Reference>, RuntimeEffectError> {
+        self.require_effect(replay.family())?
+            .replay_authority_grant_refs(replay)
     }
 
     pub(crate) fn allows_parallel_step(&self, step: &GraphStep) -> bool {

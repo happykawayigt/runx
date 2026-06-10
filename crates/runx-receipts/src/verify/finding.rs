@@ -27,6 +27,7 @@ pub enum ReceiptFindingCode {
     DuplicateChildReceipt,
     HashCommitmentInvalid,
     AuthorityAttenuationInvalid,
+    EffectGrantEvidenceMissing,
     SealDigestMismatch,
     SignatureVerifierMissing,
     SignatureInvalid,

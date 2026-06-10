@@ -4,7 +4,7 @@ use std::fmt;
 use std::path::Path;
 use std::sync::Arc;
 
-use runx_contracts::{AuthorityVerb, JsonObject, Receipt};
+use runx_contracts::{AuthorityVerb, JsonObject, Receipt, Reference};
 use runx_core::state_machine::AuthorityAdmissionWitness;
 use runx_parser::GraphStep;
 
@@ -78,6 +78,22 @@ pub trait RuntimeEffect: Send + Sync {
     ) -> Result<(), RuntimeEffectError> {
         let _ = request;
         Ok(())
+    }
+
+    fn authority_grant_refs(
+        &self,
+        admission: &EffectAdmission,
+    ) -> Result<Vec<Reference>, RuntimeEffectError> {
+        let _ = admission;
+        Ok(Vec::new())
+    }
+
+    fn replay_authority_grant_refs(
+        &self,
+        replay: &EffectReplay,
+    ) -> Result<Vec<Reference>, RuntimeEffectError> {
+        let _ = replay;
+        Ok(Vec::new())
     }
 }
 
