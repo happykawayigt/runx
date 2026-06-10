@@ -51,6 +51,14 @@ Operator rules:
   `--registry`; bare names stay local or locked first-party official shorthand.
   Unsigned or digest-mismatched registry packages are search/read metadata only
   and fail before execution.
+- `runx registry read`, `runx registry resolve`, and `runx registry install`
+  print a compact human view that names the selected source, skill id, version,
+  digest, trust tier, signature key id when present, and destination or next
+  action. Use `--json` for the full registry contract.
+- `runx doctor registry [--json]` reports the selected registry target,
+  official-skill cache root, global registry cache root, trusted manifest key
+  readiness by key id, and remote install identity readiness. It names the env
+  vars to set but never prints raw manifest public keys.
 
 ## Hosted Connector Contract
 

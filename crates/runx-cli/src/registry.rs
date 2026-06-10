@@ -10,10 +10,10 @@ use std::process::ExitCode;
 
 use runx_runtime::registry::{
     AcquireOptions, FileRegistryStore, IngestSkillOptions, InstallCandidate,
-    InstallLocalSkillOptions, LocalRegistryClient, PublishSkillMarkdownOptions, RegistryClient,
-    RegistryResolveOptions, RegistrySearchOptions, RegistrySkillResolution,
-    TrustedRegistryManifestKey, default_trusted_registry_manifest_keys, install_local_skill,
-    publish_skill_markdown, read_registry_skill, resolve_registry_skill,
+    InstallLocalSkillOptions, InstallStatus, LocalRegistryClient, PublishSkillMarkdownOptions,
+    RegistryClient, RegistryResolveOptions, RegistrySearchOptions, RegistrySkillResolution,
+    TrustTier, TrustedRegistryManifestKey, default_trusted_registry_manifest_keys,
+    install_local_skill, publish_skill_markdown, read_registry_skill, resolve_registry_skill,
     search_registry_with_options,
 };
 
@@ -128,6 +128,7 @@ fn run_read(
         )?
         .ok_or_else(|| not_found(&plan.subject))?,
     };
+    let human = render_read(source, &plan.subject, &skill);
     write_output(
         plan.json,
         &RegistryEnvelope {
@@ -138,7 +139,7 @@ fn run_read(
                 skill: Box::new(skill),
             },
         },
-        || "\n  registry read  success\n\n".to_owned(),
+        || human,
     )
 }
 
@@ -149,10 +150,14 @@ fn run_resolve(
     let source = target.label();
     let resolution = match target {
         RegistryTarget::Remote { registry_url } => {
-            let resolved = RegistryClient::new(&registry_url)?
+            let client = RegistryClient::new(&registry_url)?;
+            let resolved = client
                 .resolve_ref(&plan.subject, plan.version.as_deref())?
                 .ok_or_else(|| not_found(&plan.subject))?;
-            RemoteOrLocalResolution::Remote(Box::new(resolved))
+            let detail = client
+                .read(&resolved.skill_id, resolved.version.as_deref())?
+                .ok_or_else(|| not_found(&resolved.skill_id))?;
+            RemoteOrLocalResolution::Remote(Box::new(detail))
         }
         RegistryTarget::Local {
             registry_path,
@@ -170,6 +175,7 @@ fn run_resolve(
             .ok_or_else(|| not_found(&plan.subject))?,
         )),
     };
+    let human = render_resolve(source, &plan.subject, &resolution);
     write_output(
         plan.json,
         &RegistryEnvelope {
@@ -180,7 +186,7 @@ fn run_resolve(
                 resolution,
             },
         },
-        || "\n  registry resolve  success\n\n".to_owned(),
+        || human,
     )
 }
 
@@ -207,6 +213,12 @@ fn run_install(
             acquisition: acquisition.as_ref(),
         },
     );
+    let human = render_install(
+        source,
+        &plan.subject,
+        &install,
+        candidate.signed_manifest.as_ref(),
+    );
     write_output(
         plan.json,
         &RegistryEnvelope {
@@ -218,7 +230,7 @@ fn run_install(
                 receipt_metadata,
             },
         },
-        || "\n  registry install  success\n\n".to_owned(),
+        || human,
     )
 }
 
@@ -375,7 +387,10 @@ impl RegistryTarget {
     pub(crate) fn label(&self) -> &'static str {
         match self {
             Self::Remote { .. } => "remote",
-            Self::Local { .. } => "local",
+            Self::Local { source_kind, .. } => match source_kind {
+                LocalRegistrySourceKind::Local => "local",
+                LocalRegistrySourceKind::File => "file",
+            },
         }
     }
 
@@ -477,6 +492,34 @@ fn destination_root(plan: &RegistryPlan, env: &BTreeMap<String, String>, cwd: &P
         .unwrap_or_else(|| workspace_base(env, cwd).join("skills"))
 }
 
+pub(crate) fn official_skills_cache_root(env: &BTreeMap<String, String>, cwd: &Path) -> PathBuf {
+    env.get("RUNX_OFFICIAL_SKILLS_DIR")
+        .map(|value| runx_runtime::resolve_path_from_user_input(value, env, cwd, false))
+        .unwrap_or_else(|| {
+            runx_runtime::resolve_runx_global_home_dir(env, cwd).join("official-skills")
+        })
+}
+
+pub(crate) fn registry_skills_cache_root(env: &BTreeMap<String, String>, cwd: &Path) -> PathBuf {
+    runx_runtime::resolve_runx_global_home_dir(env, cwd).join("registry-skills")
+}
+
+pub(crate) fn registry_source_description(target: &RegistryTarget) -> String {
+    match target {
+        RegistryTarget::Remote { registry_url } => {
+            format!("remote {}", canonical_remote_registry_url(registry_url))
+        }
+        RegistryTarget::Local {
+            registry_path,
+            source_kind,
+            ..
+        } => match source_kind {
+            LocalRegistrySourceKind::Local => format!("local {}", registry_path.display()),
+            LocalRegistrySourceKind::File => format!("file {}", registry_path.display()),
+        },
+    }
+}
+
 fn read_skill_package(
     subject: &str,
     profile: Option<&Path>,
@@ -565,7 +608,7 @@ enum RegistryPayload {
 #[derive(serde::Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum RemoteOrLocalResolution {
-    Remote(Box<runx_runtime::registry::ResolvedRegistryRef>),
+    Remote(Box<runx_runtime::registry::RegistrySkillDetail>),
     Local(Box<RegistrySkillResolution>),
 }
 
@@ -589,6 +632,102 @@ fn write_output<T: serde::Serialize>(
 
 fn render_search(query: &str, source: &str) -> String {
     format!("\n  registry search  {query}\n  source           {source}\n\n")
+}
+
+fn render_read(
+    source: &str,
+    registry_ref: &str,
+    skill: &runx_runtime::registry::RegistrySkillDetail,
+) -> String {
+    format!(
+        "\n  registry read    {registry_ref}\n  source           {source}\n  skill            {}\n  version          {}\n  digest           {}\n  trust            {}\n  signed           {}\n  next             {}\n\n",
+        skill.skill_id,
+        skill.version,
+        digest_label(&skill.digest),
+        trust_tier_label(&skill.trust_tier),
+        signed_manifest_label(skill.signed_manifest.as_ref()),
+        skill.run_command,
+    )
+}
+
+fn render_resolve(
+    source: &str,
+    registry_ref: &str,
+    resolution: &RemoteOrLocalResolution,
+) -> String {
+    match resolution {
+        RemoteOrLocalResolution::Remote(resolved) => format!(
+            "\n  registry resolve {registry_ref}\n  source           {source}\n  skill            {}\n  version          {}\n  digest           {}\n  trust            {}\n  signed           {}\n  next             {}\n\n",
+            resolved.skill_id,
+            resolved.version,
+            digest_label(&resolved.digest),
+            trust_tier_label(&resolved.trust_tier),
+            signed_manifest_label(resolved.signed_manifest.as_ref()),
+            resolved.run_command,
+        ),
+        RemoteOrLocalResolution::Local(resolved) => format!(
+            "\n  registry resolve {registry_ref}\n  source           {source}\n  skill            {}\n  version          {}\n  digest           {}\n  trust            {}\n  signed           {}\n  next             {}\n\n",
+            resolved.skill_id,
+            resolved.version,
+            digest_label(&resolved.digest),
+            trust_tier_label(&resolved.trust_tier),
+            signed_manifest_label(resolved.signed_manifest.as_ref()),
+            resolved.run_command,
+        ),
+    }
+}
+
+fn render_install(
+    source: &str,
+    registry_ref: &str,
+    install: &runx_runtime::registry::InstallLocalSkillResult,
+    signed_manifest: Option<&runx_runtime::registry::RegistrySignedManifest>,
+) -> String {
+    format!(
+        "\n  registry install {registry_ref}\n  source           {source}\n  status           {}\n  skill            {}\n  version          {}\n  digest           {}\n  trust            {}\n  signed           {}\n  destination      {}\n\n",
+        install_status_label(&install.status),
+        install.skill_id.as_deref().unwrap_or(&install.skill_name),
+        install.version.as_deref().unwrap_or("unknown"),
+        digest_label(&install.digest),
+        install
+            .trust_tier
+            .as_ref()
+            .map_or("unknown", trust_tier_label),
+        signed_manifest_label(signed_manifest),
+        install.destination.display(),
+    )
+}
+
+fn signed_manifest_label(
+    manifest: Option<&runx_runtime::registry::RegistrySignedManifest>,
+) -> String {
+    manifest.map_or_else(
+        || "no".to_owned(),
+        |manifest| format!("yes ({})", manifest.signer.key_id),
+    )
+}
+
+fn digest_label(digest: &str) -> String {
+    if digest.starts_with("sha256:") {
+        digest.to_owned()
+    } else {
+        format!("sha256:{digest}")
+    }
+}
+
+fn trust_tier_label(tier: &TrustTier) -> &'static str {
+    match tier {
+        TrustTier::FirstParty => "first_party",
+        TrustTier::Verified => "verified",
+        TrustTier::Community => "community",
+    }
+}
+
+fn install_status_label(status: &InstallStatus) -> &'static str {
+    match status {
+        InstallStatus::Installed => "installed",
+        InstallStatus::Unchanged => "unchanged",
+    }
 }
 
 fn resolve_path(

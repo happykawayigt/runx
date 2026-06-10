@@ -4,10 +4,24 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use runx_contracts::{DoctorDiagnosticSeverity, DoctorReport, DoctorStatus};
-use runx_runtime::{RuntimeError, default_doctor_options, run_doctor};
+use runx_contracts::{
+    DoctorDiagnostic, DoctorDiagnosticSeverity, DoctorLocation, DoctorReport, DoctorReportSchema,
+    DoctorStatus, DoctorSummary, JsonObject, JsonValue,
+};
+use runx_pay::state::{RUNX_EFFECT_STATE_PATH_ENV, resolve_effect_state_path};
+use runx_runtime::{
+    PROVIDER_PERMISSION_GRANT_ID_ENV, PROVIDER_PERMISSION_GRANTED_SCOPES_ENV,
+    RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64_ENV, RUNX_RECEIPT_SIGN_ISSUER_TYPE_ENV,
+    RUNX_RECEIPT_SIGN_KID_ENV, RuntimeError, default_doctor_options, run_doctor,
+};
 
-use crate::launcher::DoctorPlan;
+use crate::history::{
+    RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV, RUNX_RECEIPT_VERIFY_KID_ENV,
+};
+use crate::launcher::{DoctorMode, DoctorPlan};
+use crate::registry::{self, RegistryAction, RegistryPlan};
+
+const OFFICIAL_SKILLS_DIR_ENV: &str = "RUNX_OFFICIAL_SKILLS_DIR";
 
 pub fn run_native_doctor(plan: DoctorPlan) -> ExitCode {
     let env = crate::history::env_map();
@@ -38,6 +52,23 @@ fn run_doctor_command(
     env: &BTreeMap<String, String>,
     cwd: &Path,
 ) -> Result<DoctorCliOutput, DoctorCliError> {
+    if plan.mode == DoctorMode::Authority || plan.mode == DoctorMode::Registry {
+        let report = if plan.mode == DoctorMode::Authority {
+            run_authority_doctor(env, cwd)
+        } else {
+            run_registry_doctor(env, cwd)
+        };
+        let stdout = if plan.json {
+            json_line(&report)?
+        } else {
+            render_doctor_report(&report)
+        };
+        return Ok(DoctorCliOutput {
+            stdout,
+            exit_code: 0,
+        });
+    }
+
     let root = resolve_doctor_root(plan, env, cwd);
     let report = run_doctor(&root, &default_doctor_options())?;
     let exit_code = match report.status {
@@ -50,6 +81,459 @@ fn run_doctor_command(
         render_doctor_report(&report)
     };
     Ok(DoctorCliOutput { stdout, exit_code })
+}
+
+fn run_registry_doctor(env: &BTreeMap<String, String>, cwd: &Path) -> DoctorReport {
+    let target = registry::resolve_registry_target(&registry_probe_plan(), env, cwd);
+    let diagnostics = vec![
+        registry_target_diagnostic(&target),
+        path_diagnostic(
+            "runx.registry.official_cache",
+            "Official skill cache",
+            registry::official_skills_cache_root(env, cwd),
+            &[OFFICIAL_SKILLS_DIR_ENV],
+        ),
+        path_diagnostic(
+            "runx.registry.global_cache",
+            "Registry skill cache",
+            registry::registry_skills_cache_root(env, cwd),
+            &["RUNX_HOME"],
+        ),
+        registry_trust_key_diagnostic(env),
+        registry_remote_install_diagnostic(&target, env),
+    ];
+    DoctorReport {
+        schema: DoctorReportSchema::V1,
+        status: DoctorStatus::Success,
+        summary: summary(&diagnostics),
+        diagnostics,
+    }
+}
+
+fn registry_probe_plan() -> RegistryPlan {
+    RegistryPlan {
+        action: RegistryAction::Resolve,
+        subject: "runx/registry-probe".to_owned(),
+        registry: None,
+        registry_dir: None,
+        version: None,
+        expected_digest: None,
+        destination: None,
+        installation_id: None,
+        owner: None,
+        profile: None,
+        limit: None,
+        upsert: false,
+        json: true,
+    }
+}
+
+fn registry_target_diagnostic(target: &registry::RegistryTarget) -> DoctorDiagnostic {
+    let mut evidence = JsonObject::new();
+    evidence.insert("source".to_owned(), string_value(target.label()));
+    evidence.insert(
+        "description".to_owned(),
+        JsonValue::String(registry::registry_source_description(target)),
+    );
+    evidence.insert(
+        "source_fingerprint".to_owned(),
+        JsonValue::String(target.fingerprint_source()),
+    );
+    DoctorDiagnostic {
+        id: "runx.registry.target".to_owned(),
+        instance_id: "runx:doctor-registry:runx.registry.target".to_owned(),
+        severity: DoctorDiagnosticSeverity::Info,
+        title: "Registry target".to_owned(),
+        message: format!(
+            "Registry target selected: {}.",
+            registry::registry_source_description(target)
+        ),
+        target: object([
+            ("kind", string_value("registry")),
+            ("ref", string_value("runx.registry.target")),
+        ]),
+        location: DoctorLocation {
+            path: "environment".to_owned(),
+            json_pointer: None,
+        },
+        evidence: Some(evidence),
+        repairs: Vec::new(),
+    }
+}
+
+fn path_diagnostic(id: &str, title: &str, path: PathBuf, env_names: &[&str]) -> DoctorDiagnostic {
+    let mut evidence = JsonObject::new();
+    evidence.insert(
+        "path".to_owned(),
+        JsonValue::String(path.display().to_string()),
+    );
+    evidence.insert(
+        "env_vars".to_owned(),
+        JsonValue::Array(
+            env_names
+                .iter()
+                .map(|name| JsonValue::String((*name).to_owned()))
+                .collect(),
+        ),
+    );
+    DoctorDiagnostic {
+        id: id.to_owned(),
+        instance_id: format!("runx:doctor-registry:{id}"),
+        severity: DoctorDiagnosticSeverity::Info,
+        title: title.to_owned(),
+        message: format!("{title} resolves to {}.", path.display()),
+        target: object([
+            ("kind", string_value("registry")),
+            ("ref", string_value(id)),
+        ]),
+        location: DoctorLocation {
+            path: "environment".to_owned(),
+            json_pointer: None,
+        },
+        evidence: Some(evidence),
+        repairs: Vec::new(),
+    }
+}
+
+fn registry_trust_key_diagnostic(env: &BTreeMap<String, String>) -> DoctorDiagnostic {
+    let configured_key_id = env
+        .get(runx_runtime::registry::RUNX_REGISTRY_MANIFEST_TRUST_KEY_ID_ENV)
+        .filter(|value| !value.trim().is_empty())
+        .cloned();
+    let key_material_configured = env_contains_non_empty(
+        env,
+        runx_runtime::registry::RUNX_REGISTRY_MANIFEST_TRUST_KEY_ENV,
+    );
+    let mut key_ids = runx_runtime::registry::default_trusted_registry_manifest_keys()
+        .map(|keys| keys.into_iter().map(|key| key.key_id).collect::<Vec<_>>())
+        .unwrap_or_default();
+    if let Some(key_id) = &configured_key_id {
+        key_ids.push(key_id.clone());
+    }
+    let configured = key_material_configured && configured_key_id.is_some();
+    let partial = key_material_configured != configured_key_id.is_some();
+    let mut evidence = JsonObject::new();
+    evidence.insert(
+        "key_ids".to_owned(),
+        JsonValue::Array(key_ids.into_iter().map(JsonValue::String).collect()),
+    );
+    evidence.insert(
+        "operator_key_configured".to_owned(),
+        JsonValue::Bool(configured),
+    );
+    evidence.insert(
+        "partial_operator_key_config".to_owned(),
+        JsonValue::Bool(partial),
+    );
+    evidence.insert(
+        "env_vars".to_owned(),
+        JsonValue::Array(
+            [
+                runx_runtime::registry::RUNX_REGISTRY_MANIFEST_TRUST_KEY_ID_ENV,
+                runx_runtime::registry::RUNX_REGISTRY_MANIFEST_TRUST_KEY_ENV,
+            ]
+            .into_iter()
+            .map(|name| JsonValue::String(name.to_owned()))
+            .collect(),
+        ),
+    );
+    DoctorDiagnostic {
+        id: "runx.registry.trust_keys".to_owned(),
+        instance_id: "runx:doctor-registry:runx.registry.trust_keys".to_owned(),
+        severity: if partial {
+            DoctorDiagnosticSeverity::Warning
+        } else {
+            DoctorDiagnosticSeverity::Info
+        },
+        title: "Registry trust keys".to_owned(),
+        message: if configured {
+            format!(
+                "Registry manifest trust key configured; key id: {}.",
+                configured_key_id.unwrap_or_default()
+            )
+        } else if partial {
+            format!(
+                "Registry manifest trust key is partially configured; set both {} and {}.",
+                runx_runtime::registry::RUNX_REGISTRY_MANIFEST_TRUST_KEY_ID_ENV,
+                runx_runtime::registry::RUNX_REGISTRY_MANIFEST_TRUST_KEY_ENV,
+            )
+        } else {
+            format!(
+                "Using built-in registry trust keys. Set {} and {} to add an operator key.",
+                runx_runtime::registry::RUNX_REGISTRY_MANIFEST_TRUST_KEY_ID_ENV,
+                runx_runtime::registry::RUNX_REGISTRY_MANIFEST_TRUST_KEY_ENV,
+            )
+        },
+        target: object([
+            ("kind", string_value("registry")),
+            ("ref", string_value("runx.registry.trust_keys")),
+        ]),
+        location: DoctorLocation {
+            path: "environment".to_owned(),
+            json_pointer: None,
+        },
+        evidence: Some(evidence),
+        repairs: Vec::new(),
+    }
+}
+
+fn registry_remote_install_diagnostic(
+    target: &registry::RegistryTarget,
+    env: &BTreeMap<String, String>,
+) -> DoctorDiagnostic {
+    let remote = matches!(target, registry::RegistryTarget::Remote { .. });
+    let configured = env_contains_non_empty(env, "RUNX_INSTALLATION_ID");
+    let severity = if remote && !configured {
+        DoctorDiagnosticSeverity::Warning
+    } else {
+        DoctorDiagnosticSeverity::Info
+    };
+    let message = if remote && configured {
+        "Remote registry install identity configured.".to_owned()
+    } else if remote {
+        "Remote registry install identity not configured; set RUNX_INSTALLATION_ID before remote registry install.".to_owned()
+    } else {
+        "Remote registry install identity is not required for the selected local registry target."
+            .to_owned()
+    };
+    let mut evidence = JsonObject::new();
+    evidence.insert("remote_target".to_owned(), JsonValue::Bool(remote));
+    evidence.insert("configured".to_owned(), JsonValue::Bool(configured));
+    evidence.insert(
+        "env_vars".to_owned(),
+        JsonValue::Array(vec![JsonValue::String("RUNX_INSTALLATION_ID".to_owned())]),
+    );
+    DoctorDiagnostic {
+        id: "runx.registry.installation_id".to_owned(),
+        instance_id: "runx:doctor-registry:runx.registry.installation_id".to_owned(),
+        severity,
+        title: "Registry install identity".to_owned(),
+        message,
+        target: object([
+            ("kind", string_value("registry")),
+            ("ref", string_value("runx.registry.installation_id")),
+        ]),
+        location: DoctorLocation {
+            path: "environment".to_owned(),
+            json_pointer: None,
+        },
+        evidence: Some(evidence),
+        repairs: Vec::new(),
+    }
+}
+
+fn run_authority_doctor(env: &BTreeMap<String, String>, cwd: &Path) -> DoctorReport {
+    let diagnostics = vec![
+        readiness_diagnostic(
+            "runx.authority.signer",
+            "Receipt signer",
+            &[
+                RUNX_RECEIPT_SIGN_KID_ENV,
+                RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64_ENV,
+                RUNX_RECEIPT_SIGN_ISSUER_TYPE_ENV,
+            ],
+            env,
+            Some(RUNX_RECEIPT_SIGN_KID_ENV),
+        ),
+        readiness_diagnostic(
+            "runx.authority.verify_key",
+            "Receipt verification key",
+            &[
+                RUNX_RECEIPT_VERIFY_KID_ENV,
+                RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV,
+            ],
+            env,
+            Some(RUNX_RECEIPT_VERIFY_KID_ENV),
+        ),
+        effect_state_diagnostic(env, cwd),
+        readiness_diagnostic(
+            "runx.authority.provider_grant",
+            "Provider permission grant",
+            &[
+                PROVIDER_PERMISSION_GRANT_ID_ENV,
+                PROVIDER_PERMISSION_GRANTED_SCOPES_ENV,
+            ],
+            env,
+            None,
+        ),
+    ];
+    DoctorReport {
+        schema: DoctorReportSchema::V1,
+        status: DoctorStatus::Success,
+        summary: summary(&diagnostics),
+        diagnostics,
+    }
+}
+
+fn effect_state_diagnostic(env: &BTreeMap<String, String>, cwd: &Path) -> DoctorDiagnostic {
+    let configured = env_contains_non_empty(env, RUNX_EFFECT_STATE_PATH_ENV);
+    let resolved_path = resolve_effect_state_path(env, cwd);
+    let mut evidence = authority_evidence(&[RUNX_EFFECT_STATE_PATH_ENV], configured, None);
+    let message = match resolved_path.as_ref() {
+        Some(path) if configured => {
+            let path = path.display();
+            evidence.insert(
+                "resolved_path".to_owned(),
+                JsonValue::String(path.to_string()),
+            );
+            format!("Effect state path configured; resolved path: {path}.")
+        }
+        Some(path) => {
+            let path = path.display();
+            evidence.insert(
+                "resolved_path".to_owned(),
+                JsonValue::String(path.to_string()),
+            );
+            evidence.insert(
+                "consequence".to_owned(),
+                JsonValue::String(effect_state_unset_consequence().to_owned()),
+            );
+            format!(
+                "Effect state path not configured; set {RUNX_EFFECT_STATE_PATH_ENV}. \
+                 {consequence} Current fallback resolves to: {path}.",
+                consequence = effect_state_unset_consequence()
+            )
+        }
+        None => {
+            evidence.insert(
+                "consequence".to_owned(),
+                JsonValue::String(effect_state_unset_consequence().to_owned()),
+            );
+            format!(
+                "Effect state path not configured; set {RUNX_EFFECT_STATE_PATH_ENV}. {}",
+                effect_state_unset_consequence()
+            )
+        }
+    };
+    DoctorDiagnostic {
+        id: "runx.authority.effect_state".to_owned(),
+        instance_id: "runx:doctor-authority:runx.authority.effect_state".to_owned(),
+        severity: if configured {
+            DoctorDiagnosticSeverity::Info
+        } else {
+            DoctorDiagnosticSeverity::Warning
+        },
+        title: "Effect state path".to_owned(),
+        message,
+        target: object([
+            ("kind", string_value("authority")),
+            ("ref", string_value("runx.authority.effect_state")),
+        ]),
+        location: DoctorLocation {
+            path: "environment".to_owned(),
+            json_pointer: None,
+        },
+        evidence: Some(evidence),
+        repairs: Vec::new(),
+    }
+}
+
+fn effect_state_unset_consequence() -> &'static str {
+    "Cross-run spend caps, payment idempotency, and effect replay recovery are not durable without a configured state path."
+}
+
+fn readiness_diagnostic(
+    id: &str,
+    title: &str,
+    env_names: &[&str],
+    env: &BTreeMap<String, String>,
+    key_id_env: Option<&str>,
+) -> DoctorDiagnostic {
+    let missing = env_names
+        .iter()
+        .filter(|name| !env_contains_non_empty(env, name))
+        .copied()
+        .collect::<Vec<_>>();
+    let configured = missing.is_empty();
+    let message = if configured {
+        match key_id_env
+            .and_then(|name| env.get(name))
+            .map(String::as_str)
+        {
+            Some(key_id) => format!("{title} configured; key id: {key_id}."),
+            None => format!("{title} configured."),
+        }
+    } else {
+        format!("{title} not configured; set {}.", missing.join(", "))
+    };
+    DoctorDiagnostic {
+        id: id.to_owned(),
+        instance_id: format!("runx:doctor-authority:{id}"),
+        severity: if configured {
+            DoctorDiagnosticSeverity::Info
+        } else {
+            DoctorDiagnosticSeverity::Warning
+        },
+        title: title.to_owned(),
+        message,
+        target: object([
+            ("kind", string_value("authority")),
+            ("ref", string_value(id)),
+        ]),
+        location: DoctorLocation {
+            path: "environment".to_owned(),
+            json_pointer: None,
+        },
+        evidence: Some(authority_evidence(env_names, configured, key_id_env)),
+        repairs: Vec::new(),
+    }
+}
+
+fn authority_evidence(
+    env_names: &[&str],
+    configured: bool,
+    key_id_env: Option<&str>,
+) -> JsonObject {
+    let mut evidence = JsonObject::new();
+    evidence.insert(
+        "env_vars".to_owned(),
+        JsonValue::Array(
+            env_names
+                .iter()
+                .map(|name| JsonValue::String((*name).to_owned()))
+                .collect(),
+        ),
+    );
+    evidence.insert("configured".to_owned(), JsonValue::Bool(configured));
+    if let Some(name) = key_id_env {
+        evidence.insert("key_id_env".to_owned(), JsonValue::String(name.to_owned()));
+    }
+    evidence
+}
+
+fn env_contains_non_empty(env: &BTreeMap<String, String>, name: &str) -> bool {
+    env.get(name)
+        .map(String::as_str)
+        .is_some_and(|value| !value.trim().is_empty())
+}
+
+fn object(entries: impl IntoIterator<Item = (&'static str, JsonValue)>) -> JsonObject {
+    entries
+        .into_iter()
+        .map(|(key, value)| (key.to_owned(), value))
+        .collect()
+}
+
+fn string_value(value: &str) -> JsonValue {
+    JsonValue::String(value.to_owned())
+}
+
+fn summary(diagnostics: &[DoctorDiagnostic]) -> DoctorSummary {
+    let mut errors = 0;
+    let mut warnings = 0;
+    let mut infos = 0;
+    for diagnostic in diagnostics {
+        match diagnostic.severity {
+            DoctorDiagnosticSeverity::Error => errors += 1,
+            DoctorDiagnosticSeverity::Warning => warnings += 1,
+            DoctorDiagnosticSeverity::Info => infos += 1,
+        }
+    }
+    DoctorSummary {
+        errors,
+        warnings,
+        infos,
+    }
 }
 
 fn resolve_doctor_root(plan: &DoctorPlan, env: &BTreeMap<String, String>, cwd: &Path) -> PathBuf {

@@ -76,8 +76,16 @@ pub struct VerifyPlan {
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct DoctorPlan {
+    pub mode: DoctorMode,
     pub path: Option<PathBuf>,
     pub json: bool,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum DoctorMode {
+    Workspace,
+    Authority,
+    Registry,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -275,7 +283,7 @@ Commands:
   runx kernel eval --input <file|-> --json
   runx payment admission issue --input <file|-> --json
   runx parser eval --input <file|-> --json
-  runx doctor [path] [--json]
+  runx doctor [path|authority|registry] [--json]
   runx dev [root] [--lane lane] [--json]
   runx export <claude|codex> [skill-ref...] [--project] [--json]
   runx mcp serve <skill-ref...> [--receipt-dir dir] [--http-listen [addr]] [--http-allow-non-loopback]
@@ -561,6 +569,7 @@ fn parse_dev_plan(args: &[OsString]) -> Result<DevPlan, String> {
 }
 
 fn parse_doctor_plan(args: &[OsString]) -> Result<DoctorPlan, String> {
+    let mut mode = DoctorMode::Workspace;
     let mut path = None;
     let mut json = false;
     let mut index = 1;
@@ -568,6 +577,24 @@ fn parse_doctor_plan(args: &[OsString]) -> Result<DoctorPlan, String> {
     while index < args.len() {
         let token = os_arg(args, index, "doctor")?;
         if !token.starts_with("--") {
+            if matches!(token, "authority" | "registry")
+                && path.is_none()
+                && mode == DoctorMode::Workspace
+            {
+                mode = if token == "authority" {
+                    DoctorMode::Authority
+                } else {
+                    DoctorMode::Registry
+                };
+                index += 1;
+                continue;
+            }
+            if mode != DoctorMode::Workspace {
+                return Err(format!(
+                    "runx doctor {} does not accept a path",
+                    doctor_mode_name(&mode)
+                ));
+            }
             if path.is_some() {
                 return Err("runx doctor accepts at most one path".to_owned());
             }
@@ -589,7 +616,15 @@ fn parse_doctor_plan(args: &[OsString]) -> Result<DoctorPlan, String> {
         }
     }
 
-    Ok(DoctorPlan { path, json })
+    Ok(DoctorPlan { mode, path, json })
+}
+
+fn doctor_mode_name(mode: &DoctorMode) -> &'static str {
+    match mode {
+        DoctorMode::Workspace => "workspace",
+        DoctorMode::Authority => "authority",
+        DoctorMode::Registry => "registry",
+    }
 }
 
 fn parse_list_plan(args: &[OsString]) -> Result<ListPlan, String> {

@@ -2,8 +2,8 @@ use runx_cli::config::{ConfigAction, ConfigPlan};
 use runx_cli::export::{ExportPlan, Target};
 use runx_cli::kernel::{KernelInputSource, KernelPlan};
 use runx_cli::launcher::{
-    DevPlan, DoctorPlan, FilterMode, HarnessPlan, HistoryPlan, InitPlan, LauncherAction, ListKind,
-    ListPlan, NewPlan, ToolAction, ToolPlan, help_text, plan_launcher,
+    DevPlan, DoctorMode, DoctorPlan, FilterMode, HarnessPlan, HistoryPlan, InitPlan,
+    LauncherAction, ListKind, ListPlan, NewPlan, ToolAction, ToolPlan, help_text, plan_launcher,
 };
 use runx_cli::mcp::McpPlan;
 use runx_cli::parser::{ParserInputSource, ParserPlan};
@@ -34,6 +34,7 @@ fn top_level_help_and_version_are_native() {
         &help,
         "runx harness <fixture.yaml...|skill-dir|SKILL.md> [--receipt-dir dir] [--json]",
     );
+    assert_help_line(&help, "runx doctor [path|authority|registry] [--json]");
     assert_help_line(
         &help,
         "runx export <claude|codex> [skill-ref...] [--project] [--json]",
@@ -45,6 +46,22 @@ fn top_level_help_and_version_are_native() {
     assert!(
         !help.contains("runx harness <fixture.yaml|skill-dir|SKILL.md>"),
         "native help must not advertise harness target forms that only the old TypeScript path handled"
+    );
+}
+
+#[test]
+fn routes_doctor_registry_to_native_plan() {
+    assert_eq!(
+        plan(&["doctor", "registry", "--json"]),
+        LauncherAction::RunDoctor(DoctorPlan {
+            mode: DoctorMode::Registry,
+            path: None,
+            json: true,
+        })
+    );
+    assert_eq!(
+        plan(&["doctor", "registry", "workspace"]),
+        LauncherAction::Error("runx doctor registry does not accept a path".to_owned())
     );
 }
 
@@ -362,7 +379,16 @@ fn routes_doctor_history_list_new_and_init_to_native_plans() {
             "--json"
         ]),
         LauncherAction::RunDoctor(DoctorPlan {
+            mode: DoctorMode::Workspace,
             path: Some(PathBuf::from("fixtures/doctor/empty-success/workspace")),
+            json: true,
+        })
+    );
+    assert_eq!(
+        plan(&["doctor", "authority", "--json"]),
+        LauncherAction::RunDoctor(DoctorPlan {
+            mode: DoctorMode::Authority,
+            path: None,
             json: true,
         })
     );
@@ -439,6 +465,10 @@ fn unsupported_doctor_and_list_shapes_fail_closed() {
     assert_eq!(
         plan(&["doctor", "--fix"]),
         LauncherAction::Error("unknown doctor flag --fix".to_owned())
+    );
+    assert_eq!(
+        plan(&["doctor", "authority", "workspace"]),
+        LauncherAction::Error("runx doctor authority does not accept a path".to_owned())
     );
     assert_eq!(
         plan(&["list", "skills", "--source", "registry"]),

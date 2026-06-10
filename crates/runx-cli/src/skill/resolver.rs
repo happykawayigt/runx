@@ -286,10 +286,10 @@ fn destination_root_for_cache(
         .as_deref()
         .ok_or_else(|| "registry skill is missing signed digest".to_owned())?;
     let root = match cache_root {
-        CacheRoot::Official => official_cache_root(env, cwd),
-        CacheRoot::Registry => runx_runtime::resolve_runx_global_home_dir(env, cwd)
-            .join("registry-skills")
-            .join(source_fingerprint),
+        CacheRoot::Official => registry::official_skills_cache_root(env, cwd),
+        CacheRoot::Registry => {
+            registry::registry_skills_cache_root(env, cwd).join(source_fingerprint)
+        }
     };
     Ok(materialization_cache_path(
         &root,
@@ -298,14 +298,6 @@ fn destination_root_for_cache(
         version,
         &cache_identity_digest(digest, identity.profile_digest.as_deref()),
     ))
-}
-
-fn official_cache_root(env: &BTreeMap<String, String>, cwd: &Path) -> PathBuf {
-    env.get("RUNX_OFFICIAL_SKILLS_DIR")
-        .map(|value| runx_runtime::resolve_path_from_user_input(value, env, cwd, false))
-        .unwrap_or_else(|| {
-            runx_runtime::resolve_runx_global_home_dir(env, cwd).join("official-skills")
-        })
 }
 
 fn registry_cache_identity(candidate: &InstallCandidate) -> Result<RegistryCacheIdentity, String> {

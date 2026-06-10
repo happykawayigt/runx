@@ -160,6 +160,99 @@ fn registry_install_reports_typed_trust_anchor_errors() -> Result<(), Box<dyn st
     Ok(())
 }
 
+#[test]
+fn registry_human_output_names_selected_version_and_digest()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = temp_root("registry-human");
+    let registry_dir = root.join("registry");
+    let install_dir = root.join("installed");
+    publish_fixture_version(&root, &registry_dir, "1.0.0", "Echo")?;
+    publish_fixture_version(&root, &registry_dir, "2.0.0", "Echo v2")?;
+    mutate_registry_version(&registry_dir, insert_signed_manifest)?;
+
+    let read_v1 = runx_command()?
+        .args([
+            "registry",
+            "read",
+            "acme/echo",
+            "--version",
+            "1.0.0",
+            "--registry-dir",
+            registry_dir.to_str().ok_or("non-utf8 registry dir")?,
+        ])
+        .output()?;
+    assert_success_contains(
+        &read_v1,
+        &[
+            "registry read    acme/echo",
+            "source           local",
+            "skill            acme/echo",
+            "version          1.0.0",
+            "digest           sha256:",
+            "trust            community",
+        ],
+    )?;
+
+    let resolve_v2 = runx_command()?
+        .args([
+            "registry",
+            "resolve",
+            "acme/echo@2.0.0",
+            "--registry-dir",
+            registry_dir.to_str().ok_or("non-utf8 registry dir")?,
+        ])
+        .output()?;
+    assert_success_contains(
+        &resolve_v2,
+        &[
+            "registry resolve acme/echo@2.0.0",
+            "version          2.0.0",
+            "digest           sha256:",
+            "trust            community",
+        ],
+    )?;
+
+    let install_v1 = runx_command()?
+        .args([
+            "registry",
+            "install",
+            "acme/echo@1.0.0",
+            "--registry-dir",
+            registry_dir.to_str().ok_or("non-utf8 registry dir")?,
+            "--to",
+            install_dir.to_str().ok_or("non-utf8 install dir")?,
+        ])
+        .output()?;
+    assert_success_contains(
+        &install_v1,
+        &[
+            "registry install acme/echo@1.0.0",
+            "status           installed",
+            "version          1.0.0",
+            "digest           sha256:",
+            "signed           yes (runx-registry-test-key)",
+            "destination      ",
+        ],
+    )?;
+
+    let file_registry = format!("file://{}", registry_dir.display());
+    let file_read = runx_command()?
+        .args([
+            "registry",
+            "read",
+            "acme/echo",
+            "--registry",
+            &file_registry,
+        ])
+        .output()?;
+    assert_success_contains(
+        &file_read,
+        &["registry read    acme/echo", "source           file"],
+    )?;
+
+    Ok(())
+}
+
 fn remove_signed_manifest(version: &mut serde_json::Value) {
     if let Some(object) = version.as_object_mut() {
         object.remove("signed_manifest");
@@ -196,6 +289,41 @@ fn publish_registry_fixture(root: &std::path::Path) -> Result<PathBuf, Box<dyn s
     assert_success_contains(&publish, &["\"action\": \"publish\""])?;
     mutate_registry_version(&registry_dir, insert_signed_manifest)?;
     Ok(registry_dir)
+}
+
+fn publish_fixture_version(
+    root: &std::path::Path,
+    registry_dir: &std::path::Path,
+    version: &str,
+    title: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let skill_dir = root.join(format!("skill-{}", version.replace('.', "-")));
+    fs::create_dir_all(&skill_dir)?;
+    fs::write(
+        skill_dir.join("SKILL.md"),
+        include_str!("../../../fixtures/registry/install/echo-SKILL.md")
+            .replace("# Echo", &format!("# {title}")),
+    )?;
+    fs::write(
+        skill_dir.join("X.yaml"),
+        include_str!("../../../fixtures/registry/install/echo-X.yaml"),
+    )?;
+    let publish = runx_command()?
+        .args([
+            "registry",
+            "publish",
+            skill_dir.to_str().ok_or("non-utf8 skill dir")?,
+            "--registry-dir",
+            registry_dir.to_str().ok_or("non-utf8 registry dir")?,
+            "--owner",
+            "acme",
+            "--version",
+            version,
+            "--json",
+        ])
+        .output()?;
+    assert_success_contains(&publish, &["\"action\": \"publish\""])?;
+    Ok(())
 }
 
 fn mutate_registry_version(

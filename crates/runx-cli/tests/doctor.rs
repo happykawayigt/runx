@@ -36,10 +36,169 @@ fn doctor_failure_json_exits_one_and_matches_fixture() -> Result<(), Box<dyn std
     Ok(())
 }
 
+#[test]
+fn doctor_authority_json_reports_missing_env_names() -> Result<(), Box<dyn std::error::Error>> {
+    let output = authority_doctor_command()
+        .args(["doctor", "authority", "--json"])
+        .output()?;
+
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8(output.stderr)?, "");
+    let report = serde_json::from_slice::<serde_json::Value>(&output.stdout)?;
+    assert_eq!(report["status"], "success");
+    assert_eq!(report["summary"]["warnings"], 4);
+    let rendered = serde_json::to_string(&report)?;
+    for env_name in AUTHORITY_ENV_NAMES {
+        assert!(
+            rendered.contains(env_name),
+            "authority doctor should name missing env var {env_name}"
+        );
+    }
+    assert!(rendered.contains("Cross-run spend caps"));
+    assert!(rendered.contains("payment idempotency"));
+    Ok(())
+}
+
+#[test]
+fn doctor_authority_json_redacts_secret_values_and_reports_state_path()
+-> Result<(), Box<dyn std::error::Error>> {
+    let output = authority_doctor_command()
+        .args(["doctor", "authority", "--json"])
+        .env("RUNX_RECEIPT_SIGN_KID", "kid_prod")
+        .env("RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64", "super-secret-seed")
+        .env("RUNX_RECEIPT_SIGN_ISSUER_TYPE", "hosted")
+        .env("RUNX_RECEIPT_VERIFY_KID", "kid_prod")
+        .env(
+            "RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64",
+            "public-key-material",
+        )
+        .env(
+            "RUNX_EFFECT_STATE_PATH",
+            "/Users/kam/private/effect-state.json",
+        )
+        .env("RUNX_PROVIDER_PERMISSION_GRANT_ID", "grant_prod")
+        .env(
+            "RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES",
+            "repo.read repo.write",
+        )
+        .output()?;
+
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8(output.stderr)?, "");
+    let report = serde_json::from_slice::<serde_json::Value>(&output.stdout)?;
+    assert_eq!(report["summary"]["infos"], 4);
+    let rendered = serde_json::to_string(&report)?;
+    assert!(rendered.contains("kid_prod"));
+    assert!(!rendered.contains("super-secret-seed"));
+    assert!(rendered.contains("/Users/kam/private/effect-state.json"));
+    assert!(!rendered.contains("repo.read"));
+    assert!(!rendered.contains("grant_prod"));
+    Ok(())
+}
+
+#[test]
+fn doctor_registry_json_reports_readiness_without_key_material()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = temp_root("doctor-registry");
+    let output = registry_doctor_command()
+        .args(["doctor", "registry", "--json"])
+        .env("RUNX_HOME", root.to_str().unwrap_or_default())
+        .env("RUNX_REGISTRY_URL", "https://registry.runx.test/api")
+        .env("RUNX_REGISTRY_MANIFEST_TRUST_KEY_ID", "operator-key-1")
+        .env(
+            "RUNX_REGISTRY_MANIFEST_TRUST_KEY_BASE64",
+            "raw-public-key-material",
+        )
+        .output()?;
+
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8(output.stderr)?, "");
+    let report = serde_json::from_slice::<serde_json::Value>(&output.stdout)?;
+    assert_eq!(report["status"], "success");
+    assert_eq!(report["summary"]["warnings"], 1);
+    let rendered = serde_json::to_string(&report)?;
+    assert!(rendered.contains("https://registry.runx.test/api"));
+    assert!(rendered.contains("official-skills"));
+    assert!(rendered.contains("registry-skills"));
+    assert!(rendered.contains("operator-key-1"));
+    assert!(rendered.contains("RUNX_INSTALLATION_ID"));
+    assert!(!rendered.contains("raw-public-key-material"));
+    Ok(())
+}
+
+#[test]
+fn doctor_registry_json_warns_on_partial_trust_key_config() -> Result<(), Box<dyn std::error::Error>>
+{
+    let root = temp_root("doctor-registry-partial");
+    let output = registry_doctor_command()
+        .args(["doctor", "registry", "--json"])
+        .env("RUNX_HOME", root.to_str().unwrap_or_default())
+        .env(
+            "RUNX_REGISTRY_MANIFEST_TRUST_KEY_BASE64",
+            "raw-public-key-material",
+        )
+        .output()?;
+
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8(output.stderr)?, "");
+    let report = serde_json::from_slice::<serde_json::Value>(&output.stdout)?;
+    assert_eq!(report["status"], "success");
+    assert_eq!(report["summary"]["warnings"], 1);
+    let rendered = serde_json::to_string(&report)?;
+    assert!(rendered.contains("partial_operator_key_config"));
+    assert!(rendered.contains("RUNX_REGISTRY_MANIFEST_TRUST_KEY_ID"));
+    assert!(!rendered.contains("raw-public-key-material"));
+    Ok(())
+}
+
 fn runx_command() -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_runx"));
     command.env("NO_COLOR", "1");
     command
+}
+
+fn authority_doctor_command() -> Command {
+    let mut command = runx_command();
+    for env_name in AUTHORITY_ENV_NAMES {
+        command.env_remove(env_name);
+    }
+    command
+}
+
+fn registry_doctor_command() -> Command {
+    let mut command = runx_command();
+    for env_name in REGISTRY_ENV_NAMES {
+        command.env_remove(env_name);
+    }
+    command
+}
+
+const AUTHORITY_ENV_NAMES: &[&str] = &[
+    "RUNX_RECEIPT_SIGN_KID",
+    "RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64",
+    "RUNX_RECEIPT_SIGN_ISSUER_TYPE",
+    "RUNX_RECEIPT_VERIFY_KID",
+    "RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64",
+    "RUNX_EFFECT_STATE_PATH",
+    "RUNX_PROVIDER_PERMISSION_GRANT_ID",
+    "RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES",
+];
+
+const REGISTRY_ENV_NAMES: &[&str] = &[
+    "RUNX_HOME",
+    "RUNX_REGISTRY_URL",
+    "RUNX_REGISTRY_DIR",
+    "RUNX_OFFICIAL_SKILLS_DIR",
+    "RUNX_INSTALLATION_ID",
+    "RUNX_REGISTRY_MANIFEST_TRUST_KEY_ID",
+    "RUNX_REGISTRY_MANIFEST_TRUST_KEY_BASE64",
+];
+
+fn temp_root(name: &str) -> PathBuf {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_nanos());
+    std::env::temp_dir().join(format!("{name}-{}-{nanos}", std::process::id()))
 }
 
 fn expected_report(fixture: &Path) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
