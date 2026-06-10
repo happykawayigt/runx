@@ -59,7 +59,7 @@ describe("skill-publish CLI", () => {
           case_count: 0,
         },
       });
-      expect(report.publish.link.install_command).toBe(`runx skill add acme/echo@1.0.0 --registry ${registryDir}`);
+      expect(report.publish.link.install_command).toBe(`runx add acme/echo@1.0.0 --registry ${registryDir}`);
       await expect(readRegistryVersion(registryDir, "acme/echo", "1.0.0")).resolves.toMatchObject({
         markdown: await readFile(path.resolve("fixtures/skills/echo/SKILL.md"), "utf8"),
       });

@@ -103,11 +103,11 @@ npm create @runxhq/skill@latest docs-demo
 runx list skills
 runx registry search sourcey --json
 runx skill sourcey/sourcey@1.0.0 --registry https://runx.example.test --project . --json
+runx add sourcey/sourcey@1.0.0 --registry https://runx.example.test --to ./skills --json
 runx skill issue-to-pr --fixture /path/to/repo --task-id task-123
 runx skill /path/to/skill --run-id <run-id> --answers answers.json
 runx history <receipt-id> --json
 runx history
-runx registry install sourcey/sourcey@1.0.0 --to ./skills --json
 runx mcp serve ./fixtures/skills/echo
 runx skill ./skills/design-skill --objective "build github review skill"
 runx harness ./fixtures/harness/echo-skill.yaml

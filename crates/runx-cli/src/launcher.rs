@@ -16,6 +16,7 @@ use crate::skill::SkillPlan;
 #[derive(Debug, PartialEq)]
 pub enum LauncherAction {
     Error(String),
+    JsonError(JsonErrorPlan),
     RunDev(DevPlan),
     RunDoctor(DoctorPlan),
     RunExport(ExportPlan),
@@ -36,10 +37,20 @@ pub enum LauncherAction {
     RunTool(ToolPlan),
     RunUrlAdd(UrlAddPlan),
     PrintHelp,
+    PrintHistoryHelp,
+    PrintSkillHelp,
+    PrintVerifyHelp,
     PrintVersion,
 }
 
-/// Arguments for `runx url-add <repo> [--ref <git-ref>] [--api-base-url <url>] [--json]`.
+#[derive(Debug, Eq, PartialEq)]
+pub struct JsonErrorPlan {
+    pub message: String,
+    pub code: String,
+    pub exit_code: u8,
+}
+
+/// Arguments for indexing a GitHub repository via `runx add <github-url>`.
 #[derive(Debug, Eq, PartialEq)]
 pub struct UrlAddPlan {
     pub repo: String,
@@ -219,10 +230,16 @@ pub fn plan_launcher(args: Vec<OsString>) -> LauncherAction {
     }
 
     if first_arg_is(&args, "history") {
+        if nested_help_requested(&args) {
+            return LauncherAction::PrintHistoryHelp;
+        }
         return LauncherAction::RunHistory(HistoryPlan { args });
     }
 
     if first_arg_is(&args, "verify") {
+        if nested_help_requested(&args) {
+            return LauncherAction::PrintVerifyHelp;
+        }
         return LauncherAction::RunVerify(VerifyPlan { args });
     }
 
@@ -241,18 +258,33 @@ pub fn plan_launcher(args: Vec<OsString>) -> LauncherAction {
     }
 
     if first_arg_is(&args, "registry") {
-        return parse_registry_plan(&args)
-            .map_or_else(LauncherAction::Error, LauncherAction::RunRegistry);
+        return parse_registry_plan(&args).map_or_else(
+            |message| json_or_human_error(&args, message),
+            LauncherAction::RunRegistry,
+        );
+    }
+
+    if first_arg_is(&args, "add") {
+        return parse_add_plan(&args).map_or_else(
+            |message| json_or_human_error(&args, message),
+            |action| action,
+        );
     }
 
     if first_arg_is(&args, "skill") {
-        return crate::skill::parse_skill_plan(&args)
-            .map_or_else(LauncherAction::Error, LauncherAction::RunSkill);
-    }
-
-    if first_arg_is(&args, "url-add") {
-        return parse_url_add_plan(&args)
-            .map_or_else(LauncherAction::Error, LauncherAction::RunUrlAdd);
+        if nested_help_requested(&args) {
+            return LauncherAction::PrintSkillHelp;
+        }
+        if second_arg_is(&args, "add") {
+            return json_or_human_error(
+                &args,
+                "runx skill add has been removed; use runx add <ref>".to_owned(),
+            );
+        }
+        return crate::skill::parse_skill_plan(&args).map_or_else(
+            |message| json_or_human_error(&args, message),
+            LauncherAction::RunSkill,
+        );
     }
 
     LauncherAction::Error(format!(
@@ -287,19 +319,120 @@ Commands:
   runx dev [root] [--lane lane] [--json]
   runx export <claude|codex> [skill-ref...] [--project] [--json]
   runx mcp serve <skill-ref...> [--receipt-dir dir] [--http-listen [addr]] [--http-allow-non-loopback]
-  runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md> [--registry url|path] [--digest sha256] [--runner name] [--input key=value] [--flag value] [--receipt-dir dir] [--run-id id --answers file] [--json]
+  runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md> [--registry url|path] [--digest sha256] [--input key=value] [--runner name] [--flag value] [--receipt-dir dir] [--run-id id --answers file] [--json]
+  runx add <skill-ref|github-url> [--registry url|path] [--version version] [--ref git-ref] [--digest sha256] [--to dir] [--installation-id id] [--api-base-url url] [--json]
   runx harness <fixture.yaml...|skill-dir|SKILL.md> [--receipt-dir dir] [--json]
   runx tool build <tool-dir>|--all [--json]
   runx tool search <query> [--source source] [--json]
   runx tool inspect <ref> [--source source] [--json]
   runx registry search|read|resolve|install|publish ... --json
-  runx url-add <repo> [--ref <git-ref>] [--api-base-url <url>] [--json]
 "
     .to_owned()
 }
 
+pub fn history_help_text() -> String {
+    "\
+runx history
+
+Usage:
+  runx history [query] [--skill s] [--status s] [--source s] [--actor a] [--artifact-type t] [--since iso] [--until iso] [--receipt-dir dir] [--json]
+
+Options:
+  --skill s
+  --status s
+  --source s
+  --actor a
+  --artifact-type t
+  --since iso
+  --until iso
+  --receipt-dir dir
+  --json
+"
+    .to_owned()
+}
+
+pub fn verify_help_text() -> String {
+    "\
+runx verify
+
+Usage:
+  runx verify [receipt-id] [--receipt-dir dir] [--receipt <path|->] [--json]
+
+Options:
+  --receipt-dir dir
+  --receipt <path|->
+  --json
+"
+    .to_owned()
+}
+
+pub fn skill_help_text() -> String {
+    "\
+runx skill
+
+Usage:
+  runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md> [--registry url|path] [--digest sha256] [--input key=value] [--runner name] [--flag value] [--receipt-dir dir] [--run-id id --answers file] [--json]
+
+Options:
+  --registry url|path
+  --digest sha256
+  --runner name
+  --input key=value
+  --flag value
+  --receipt-dir dir
+  --run-id id
+  --answers file
+  --json
+"
+    .to_owned()
+}
+
+pub fn json_failure_output(message: &str, code: &str) -> String {
+    let message = json_string(message, "failed to serialize error message");
+    let code = json_string(code, "runtime_error");
+    format!(
+        "{{\n  \"status\": \"failure\",\n  \"error\": {{\n    \"message\": {message},\n    \"code\": {code}\n  }}\n}}\n"
+    )
+}
+
+pub fn json_requested(args: &[OsString]) -> bool {
+    args.iter().any(|arg| {
+        arg.to_str()
+            .is_some_and(|token| token == "--json" || token.starts_with("--json="))
+    })
+}
+
 fn single_arg_is(args: &[OsString], expected: &str) -> bool {
     args.len() == 1 && first_arg_is(args, expected)
+}
+
+fn second_arg_is(args: &[OsString], expected: &str) -> bool {
+    args.get(1).is_some_and(|arg| arg == OsStr::new(expected))
+}
+
+fn json_or_human_error(args: &[OsString], message: String) -> LauncherAction {
+    if json_requested(args) {
+        LauncherAction::JsonError(JsonErrorPlan {
+            message,
+            code: "invalid_args".to_owned(),
+            exit_code: 64,
+        })
+    } else {
+        LauncherAction::Error(message)
+    }
+}
+
+fn json_string(value: &str, fallback: &str) -> String {
+    match serde_json::to_string(value) {
+        Ok(value) => value,
+        Err(_) => format!("\"{fallback}\""),
+    }
+}
+
+fn nested_help_requested(args: &[OsString]) -> bool {
+    args.iter()
+        .skip(1)
+        .any(|arg| matches!(arg.to_str(), Some("--help" | "-h")))
 }
 
 fn first_arg_is(args: &[OsString], expected: &str) -> bool {
@@ -422,55 +555,161 @@ fn parse_new_plan(args: &[OsString]) -> Result<NewPlan, String> {
     })
 }
 
-fn parse_url_add_plan(args: &[OsString]) -> Result<UrlAddPlan, String> {
-    let mut repo: Option<String> = None;
-    let mut repo_ref: Option<String> = None;
-    let mut api_base_url: Option<String> = None;
-    let mut json = false;
-    let mut index = 1;
+fn parse_add_plan(args: &[OsString]) -> Result<LauncherAction, String> {
+    let parsed = parse_add_args(args)?;
+    if is_github_repo_url_like(parsed.subject.as_deref().unwrap_or_default()) {
+        return add_url_plan(parsed).map(LauncherAction::RunUrlAdd);
+    }
+    add_registry_plan(parsed).map(LauncherAction::RunRegistry)
+}
 
+#[derive(Default)]
+struct AddParseState {
+    subject: Option<String>,
+    registry: Option<String>,
+    version: Option<String>,
+    repo_ref: Option<String>,
+    expected_digest: Option<String>,
+    destination: Option<PathBuf>,
+    installation_id: Option<String>,
+    api_base_url: Option<String>,
+    json: bool,
+}
+
+fn parse_add_args(args: &[OsString]) -> Result<AddParseState, String> {
+    let mut parsed = AddParseState::default();
+    let mut index = 1;
     while index < args.len() {
-        let token = os_arg(args, index, "url-add")?;
+        let token = os_arg(args, index, "add")?;
         if !token.starts_with("--") {
-            if repo.is_some() {
-                return Err("runx url-add accepts exactly one repository argument".to_owned());
+            if parsed.subject.is_some() {
+                return Err("runx add accepts exactly one ref or repository URL".to_owned());
             }
-            repo = Some(token.to_owned());
+            parsed.subject = Some(token.to_owned());
             index += 1;
             continue;
         }
 
         let (flag, inline_value) = split_flag(token);
-        match flag {
-            "--json" => {
-                if inline_value.is_some() {
-                    return Err("--json does not take a value".to_owned());
-                }
-                json = true;
-                index += 1;
-            }
-            "--ref" => {
-                let (value, next_index) = flag_value(args, index, flag, inline_value, "url-add")?;
-                repo_ref = Some(value);
-                index = next_index;
-            }
-            "--api-base-url" => {
-                let (value, next_index) = flag_value(args, index, flag, inline_value, "url-add")?;
-                api_base_url = Some(value);
-                index = next_index;
-            }
-            _ => return Err(format!("unknown url-add flag {flag}")),
-        }
+        index = parse_add_flag(&mut parsed, args, index, flag, inline_value)?;
     }
+    if parsed.subject.is_none() {
+        return Err("runx add requires a skill ref or repository URL".to_owned());
+    }
+    Ok(parsed)
+}
 
-    let repo = repo.ok_or_else(|| "runx url-add requires a repository URL argument".to_owned())?;
+fn parse_add_flag(
+    parsed: &mut AddParseState,
+    args: &[OsString],
+    index: usize,
+    flag: &str,
+    inline_value: Option<&str>,
+) -> Result<usize, String> {
+    match flag {
+        "--json" => {
+            if inline_value.is_some() {
+                return Err("--json does not take a value".to_owned());
+            }
+            parsed.json = true;
+            Ok(index + 1)
+        }
+        "--registry" => set_add_string(args, index, flag, inline_value, &mut parsed.registry),
+        "--version" => set_add_string(args, index, flag, inline_value, &mut parsed.version),
+        "--ref" => set_add_string(args, index, flag, inline_value, &mut parsed.repo_ref),
+        "--digest" => set_add_string(args, index, flag, inline_value, &mut parsed.expected_digest),
+        "--to" | "--destination" => {
+            let (value, next_index) = flag_value(args, index, flag, inline_value, "add")?;
+            parsed.destination = Some(PathBuf::from(value));
+            Ok(next_index)
+        }
+        "--installation-id" | "--installationId" => {
+            set_add_string(args, index, flag, inline_value, &mut parsed.installation_id)
+        }
+        "--api-base-url" | "--apiBaseUrl" => {
+            set_add_string(args, index, flag, inline_value, &mut parsed.api_base_url)
+        }
+        _ => Err(format!("unknown add flag {flag}")),
+    }
+}
 
+fn set_add_string(
+    args: &[OsString],
+    index: usize,
+    flag: &str,
+    inline_value: Option<&str>,
+    slot: &mut Option<String>,
+) -> Result<usize, String> {
+    let (value, next_index) = flag_value(args, index, flag, inline_value, "add")?;
+    *slot = Some(value);
+    Ok(next_index)
+}
+
+fn add_url_plan(parsed: AddParseState) -> Result<UrlAddPlan, String> {
+    if parsed.registry.is_some() {
+        return Err(
+            "runx add <github-url> uses --api-base-url for the hosted index API, not --registry"
+                .to_owned(),
+        );
+    }
+    if parsed.version.is_some() {
+        return Err("runx add <github-url> uses --ref for git refs, not --version".to_owned());
+    }
+    if parsed.expected_digest.is_some() || parsed.destination.is_some() {
+        return Err(
+            "runx add <github-url> indexes the repository and does not support --to or --digest"
+                .to_owned(),
+        );
+    }
+    if parsed.installation_id.is_some() {
+        return Err("runx add <github-url> does not accept --installation-id".to_owned());
+    }
     Ok(UrlAddPlan {
-        repo,
-        repo_ref,
-        api_base_url,
-        json,
+        repo: parsed.subject.unwrap_or_default(),
+        repo_ref: parsed.repo_ref,
+        api_base_url: parsed.api_base_url,
+        json: parsed.json,
     })
+}
+
+fn add_registry_plan(parsed: AddParseState) -> Result<RegistryPlan, String> {
+    if parsed.repo_ref.is_some() {
+        return Err(
+            "runx add <skill-ref> uses --version for registry versions, not --ref".to_owned(),
+        );
+    }
+    if parsed.api_base_url.is_some() {
+        return Err("runx add <skill-ref> does not accept --api-base-url".to_owned());
+    }
+    Ok(RegistryPlan {
+        action: RegistryAction::Install,
+        subject: parsed.subject.unwrap_or_default(),
+        registry: parsed.registry,
+        registry_dir: None,
+        version: parsed.version,
+        expected_digest: parsed.expected_digest,
+        destination: parsed.destination,
+        installation_id: parsed.installation_id,
+        owner: None,
+        profile: None,
+        trust_tier: None,
+        limit: None,
+        upsert: false,
+        json: parsed.json,
+    })
+}
+
+fn is_github_repo_url_like(value: &str) -> bool {
+    let value = value.trim();
+    let Some(path) = value
+        .strip_prefix("https://github.com/")
+        .or_else(|| value.strip_prefix("http://github.com/"))
+        .or_else(|| value.strip_prefix("github.com/"))
+    else {
+        return false;
+    };
+    let mut parts = path.split('/').filter(|part| !part.is_empty());
+    parts.next().is_some() && parts.next().is_some()
 }
 
 fn parse_init_plan(args: &[OsString]) -> Result<InitPlan, String> {
@@ -1040,6 +1279,7 @@ fn parse_registry_plan(args: &[OsString]) -> Result<RegistryPlan, String> {
         installation_id: state.installation_id,
         owner: state.owner,
         profile: state.profile,
+        trust_tier: state.trust_tier,
         limit: state.limit,
         upsert: state.upsert,
         json: state.json,
@@ -1058,6 +1298,7 @@ struct RegistryParseState {
     installation_id: Option<String>,
     owner: Option<String>,
     profile: Option<PathBuf>,
+    trust_tier: Option<runx_runtime::registry::TrustTier>,
     limit: Option<usize>,
     positionals: Vec<String>,
 }
@@ -1119,8 +1360,37 @@ fn parse_registry_flag(
         }
         "--owner" => set_registry_string_flag(args, index, flag, inline_value, &mut state.owner),
         "--profile" => set_registry_path_flag(args, index, flag, inline_value, &mut state.profile),
+        "--trust-tier" | "--trustTier" => {
+            set_registry_trust_tier_flag(args, index, flag, inline_value, state)
+        }
         "--limit" => set_registry_limit_flag(args, index, flag, inline_value, state),
         _ => Err(format!("unknown registry flag {flag}")),
+    }
+}
+
+fn set_registry_trust_tier_flag(
+    args: &[OsString],
+    index: usize,
+    flag: &str,
+    inline_value: Option<&str>,
+    state: &mut RegistryParseState,
+) -> Result<usize, String> {
+    if state.trust_tier.is_some() {
+        return Err(format!("{flag} was provided more than once"));
+    }
+    let (value, next_index) = flag_value(args, index, flag, inline_value, "registry")?;
+    state.trust_tier = Some(parse_registry_trust_tier(&value)?);
+    Ok(next_index)
+}
+
+fn parse_registry_trust_tier(value: &str) -> Result<runx_runtime::registry::TrustTier, String> {
+    match value {
+        "first_party" | "first-party" => Ok(runx_runtime::registry::TrustTier::FirstParty),
+        "verified" => Ok(runx_runtime::registry::TrustTier::Verified),
+        "community" => Ok(runx_runtime::registry::TrustTier::Community),
+        _ => Err(format!(
+            "invalid registry trust tier {value}; expected first_party, verified, or community"
+        )),
     }
 }
 

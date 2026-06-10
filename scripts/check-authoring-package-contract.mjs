@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -59,6 +59,8 @@ try {
   // tarball's dependency at that file so the install resolves offline.
   const contracts = await packTarball(contractsPackageRoot);
   contractsTarball = contracts.tarball;
+  const contractsDependencyPath = path.join(tempRoot, path.basename(contractsTarball));
+  await copyFile(contractsTarball, contractsDependencyPath);
 
   const authoringDir = path.join(tempRoot, "authoring");
   await mkdir(authoringDir);
@@ -68,7 +70,7 @@ try {
   if (typeof manifest.dependencies?.["@runxhq/contracts"] !== "string") {
     throw new Error("Authoring package is expected to depend on @runxhq/contracts.");
   }
-  manifest.dependencies["@runxhq/contracts"] = `file:${contractsTarball}`;
+  manifest.dependencies["@runxhq/contracts"] = `file:${contractsDependencyPath}`;
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
   // Re-pack the rewritten package so `npm install` copies it (a directory

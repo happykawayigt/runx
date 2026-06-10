@@ -393,12 +393,11 @@ pub(super) fn default_registry_publisher(owner: &str) -> RegistryPublisher {
     }
 }
 
-pub(super) fn derive_registry_trust_tier(owner: &str, trust_tier: Option<&TrustTier>) -> TrustTier {
-    trust_tier.cloned().unwrap_or(if owner == "runx" {
-        TrustTier::FirstParty
-    } else {
-        TrustTier::Community
-    })
+pub(super) fn derive_registry_trust_tier(
+    _owner: &str,
+    trust_tier: Option<&TrustTier>,
+) -> TrustTier {
+    trust_tier.cloned().unwrap_or(TrustTier::Community)
 }
 
 pub(super) fn extract_scopes(skill: &ValidatedSkill) -> Vec<String> {

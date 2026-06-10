@@ -33,7 +33,7 @@ describe("remote registry search", () => {
             tags: ["docs"],
             trust_tier: "community",
             trust_signals: [],
-            install_command: "runx skill add acme/sourcey@1.0.0 --registry https://runx.example.test",
+            install_command: "runx add acme/sourcey@1.0.0 --registry https://runx.example.test",
             run_command: "runx skill sourcey",
           },
         ],
@@ -63,7 +63,7 @@ describe("remote registry search", () => {
           trust_tier: "community",
           profile_mode: "profiled",
           runner_names: ["agent", "sourcey"],
-          add_command: "runx skill add acme/sourcey@1.0.0 --registry https://runx.example.test",
+          add_command: "runx add acme/sourcey@1.0.0 --registry https://runx.example.test",
         },
       ],
     });

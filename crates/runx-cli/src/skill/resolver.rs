@@ -41,20 +41,15 @@ pub(crate) struct ResolvedSkillRef {
     pub(crate) version: Option<String>,
     pub(crate) digest: Option<String>,
     pub(crate) profile_digest: Option<String>,
+    pub(crate) registry_source: Option<String>,
     pub(crate) registry_source_fingerprint: Option<String>,
     pub(crate) trust_state: Option<RegistryTrustState>,
+    pub(crate) trust_tier: Option<String>,
+    pub(crate) registry_key_id: Option<String>,
     pub(crate) runnable_path: PathBuf,
 }
 
-pub(super) fn resolve_skill_ref(
-    skill_ref: &Path,
-    cwd: &Path,
-    options: SkillResolverOptions<'_>,
-) -> Result<PathBuf, String> {
-    resolve_skill_ref_details(skill_ref, cwd, options).map(|resolved| resolved.runnable_path)
-}
-
-fn resolve_skill_ref_details(
+pub(crate) fn resolve_skill_ref_details(
     skill_ref: &Path,
     cwd: &Path,
     options: SkillResolverOptions<'_>,
@@ -218,14 +213,21 @@ fn materialize_trusted_registry_skill(
         installation_id: remote_installation_id(registry, env, cwd)?,
         owner: None,
         profile: None,
+        trust_tier: None,
         limit: None,
         upsert: false,
         json: true,
     };
     let target = registry::resolve_registry_target(&plan, env, cwd);
+    let source_description = registry::registry_source_description(&target);
     let source_fingerprint = registry_source_fingerprint(&target);
+    let source_authority = target.manifest_source_authority();
     let (mut candidate, _acquisition) =
         registry::install_candidate(&plan, target, env).map_err(|error| error.into_message())?;
+    if cache_root == CacheRoot::Official {
+        candidate.manifest_source_authority =
+            Some(runx_runtime::registry::RegistryManifestSourceAuthority::OfficialRunx);
+    }
     canonicalize_candidate_ref(&mut candidate);
     let identity = registry_cache_identity(&candidate)?;
     let destination_root =
@@ -236,8 +238,14 @@ fn materialize_trusted_registry_skill(
         &InstallLocalSkillOptions {
             destination_root: destination_root.to_path_buf(),
             expected_digest: plan.expected_digest,
-            trusted_manifest_keys: registry::trusted_manifest_keys_from_env(env)
-                .map_err(|error| error.into_message())?,
+            trusted_manifest_keys: registry::trusted_manifest_keys_from_env_for_source(
+                env,
+                candidate
+                    .manifest_source_authority
+                    .clone()
+                    .unwrap_or(source_authority),
+            )
+            .map_err(|error| error.into_message())?,
         },
     )
     .map_err(crate::registry::RegistryCliError::from)
@@ -262,8 +270,14 @@ fn materialize_trusted_registry_skill(
         version: identity.version,
         digest: Some(install.digest),
         profile_digest: install.profile_digest,
+        registry_source: Some(source_description),
         registry_source_fingerprint: Some(source_fingerprint),
         trust_state: Some(RegistryTrustState::Trusted),
+        trust_tier: install.trust_tier.as_ref().map(trust_tier_string),
+        registry_key_id: candidate
+            .signed_manifest
+            .as_ref()
+            .map(|manifest| manifest.signer.key_id.clone()),
         runnable_path,
     })
 }
@@ -383,6 +397,7 @@ fn remote_installation_id(
         installation_id: None,
         owner: None,
         profile: None,
+        trust_tier: None,
         limit: None,
         upsert: false,
         json: true,
@@ -629,10 +644,22 @@ fn local_resolved(kind: SkillRefKind, runnable_path: PathBuf) -> ResolvedSkillRe
         version: None,
         digest: None,
         profile_digest: None,
+        registry_source: None,
         registry_source_fingerprint: None,
         trust_state: None,
+        trust_tier: None,
+        registry_key_id: None,
         runnable_path,
     }
+}
+
+fn trust_tier_string(value: &runx_runtime::registry::TrustTier) -> String {
+    match value {
+        runx_runtime::registry::TrustTier::FirstParty => "first_party",
+        runx_runtime::registry::TrustTier::Verified => "verified",
+        runx_runtime::registry::TrustTier::Community => "community",
+    }
+    .to_owned()
 }
 
 fn resolve_exported_skill_shim(skill_ref: &Path) -> Result<PathBuf, String> {

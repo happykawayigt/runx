@@ -14,9 +14,11 @@ use runx_parser::{
 use serde_json::{Value, json};
 
 use super::refs::safe_skill_package_parts;
+use super::source_authority::RegistryManifestSourceAuthority;
 use super::trust_anchor::{
     RegistryManifestVerificationFailure, TrustedRegistryManifestKey,
-    default_trusted_registry_manifest_keys, verify_registry_signed_manifest,
+    default_trusted_registry_manifest_keys, registry_manifest_key_allows,
+    verify_registry_signed_manifest,
 };
 use super::types::{RegistrySignedManifest, TrustTier};
 
@@ -33,6 +35,7 @@ pub struct InstallCandidate {
     pub profile_digest: Option<String>,
     pub runner_names: Vec<String>,
     pub trust_tier: Option<TrustTier>,
+    pub manifest_source_authority: Option<RegistryManifestSourceAuthority>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -98,6 +101,10 @@ pub enum InstallError {
         ref_name: String,
         field: &'static str,
     },
+    #[error("registry signed manifest trust tier is required for {0}")]
+    ManifestTrustTierMissing(String),
+    #[error("registry signed manifest signer is out of scope for {ref_name}: {reason}")]
+    ManifestTrustScopeViolation { ref_name: String, reason: String },
     #[error("binding digest mismatch for {ref_name}: expected {expected}, received {actual}")]
     ProfileDigestMismatch {
         ref_name: String,
@@ -115,6 +122,8 @@ pub enum InstallError {
     ConflictingSkill(PathBuf),
     #[error("skill install profile state already exists with different content: {0}")]
     ConflictingProfile(PathBuf),
+    #[error("skill install runner manifest already exists with different content: {0}")]
+    ConflictingRunnerManifest(PathBuf),
     #[error("io error at {path}: {source}")]
     Io { path: PathBuf, source: io::Error },
     #[error("failed to serialize profile state: {0}")]
@@ -130,17 +139,22 @@ pub fn install_local_skill(
     let write_plan = prepare_install_write_plan(
         &paths,
         &validated.install.markdown,
+        candidate.profile_document.as_deref(),
         validated.next_profile_state.as_deref(),
     )?;
     commit_install_write_plan(
         &paths,
         &write_plan,
         &validated.install.markdown,
+        candidate.profile_document.as_deref(),
         validated.next_profile_state.as_deref(),
     )?;
 
     Ok(InstallLocalSkillResult {
-        status: if write_plan.writes_skill || write_plan.writes_profile_state {
+        status: if write_plan.writes_skill
+            || write_plan.writes_profile_state
+            || write_plan.writes_runner_manifest
+        {
             InstallStatus::Installed
         } else {
             InstallStatus::Unchanged
@@ -171,11 +185,13 @@ struct InstallPaths {
     package_root: PathBuf,
     destination: PathBuf,
     profile_state_path: Option<PathBuf>,
+    runner_manifest_path: Option<PathBuf>,
 }
 
 struct InstallWritePlan {
     writes_skill: bool,
     writes_profile_state: bool,
+    writes_runner_manifest: bool,
 }
 
 fn validate_install_candidate(
@@ -216,10 +232,11 @@ fn verify_signed_manifest_anchor(
         .as_ref()
         .ok_or_else(|| InstallError::UnsignedManifest(candidate.r#ref.clone()))?;
     let trusted_keys = trusted_manifest_keys(options)?;
-    verify_registry_signed_manifest(manifest, &trusted_keys).map_err(|failure| {
+    let key = verify_registry_signed_manifest(manifest, &trusted_keys).map_err(|failure| {
         manifest_verification_error(candidate.r#ref.clone(), &manifest.signer.key_id, failure)
     })?;
     validate_manifest_identity(candidate, manifest)?;
+    validate_manifest_trust_scope(candidate, key)?;
     let actual_digest = sha256_prefixed(candidate.markdown.as_bytes());
     if !digest_matches(&manifest.digest, &actual_digest) {
         return Err(InstallError::DigestMismatch {
@@ -240,6 +257,33 @@ fn verify_signed_manifest_anchor(
         });
     }
     Ok(actual_digest)
+}
+
+fn validate_manifest_trust_scope(
+    candidate: &InstallCandidate,
+    key: &TrustedRegistryManifestKey,
+) -> Result<(), InstallError> {
+    let skill_id = candidate
+        .skill_id
+        .as_deref()
+        .ok_or(InstallError::ManifestIdentityMissing {
+            ref_name: candidate.r#ref.clone(),
+            field: "skill_id",
+        })?;
+    let trust_tier = candidate
+        .trust_tier
+        .as_ref()
+        .ok_or_else(|| InstallError::ManifestTrustTierMissing(candidate.r#ref.clone()))?;
+    registry_manifest_key_allows(
+        key,
+        skill_id,
+        trust_tier,
+        candidate.manifest_source_authority.as_ref(),
+    )
+    .map_err(|reason| InstallError::ManifestTrustScopeViolation {
+        ref_name: candidate.r#ref.clone(),
+        reason,
+    })
 }
 
 fn trusted_manifest_keys(
@@ -420,7 +464,8 @@ fn install_paths(
     options: &InstallLocalSkillOptions,
     skill_name: &str,
 ) -> InstallPaths {
-    let package_parts = safe_skill_package_parts(&candidate.r#ref, skill_name);
+    let package_parts =
+        safe_skill_package_parts(&candidate.r#ref, skill_name, candidate.version.as_deref());
     let package_root = package_parts
         .iter()
         .fold(options.destination_root.clone(), |path, part| {
@@ -431,20 +476,30 @@ fn install_paths(
         .profile_document
         .as_ref()
         .map(|_| package_root.join(".runx").join("profile.json"));
+    let runner_manifest_path = candidate
+        .profile_document
+        .as_ref()
+        .map(|_| package_root.join("X.yaml"));
     InstallPaths {
         package_root,
         destination,
         profile_state_path,
+        runner_manifest_path,
     }
 }
 
 fn prepare_install_write_plan(
     paths: &InstallPaths,
     markdown: &str,
+    profile_document: Option<&str>,
     next_profile_state: Option<&str>,
 ) -> Result<InstallWritePlan, InstallError> {
     let existing = read_optional(&paths.destination)?;
     let existing_profile = match &paths.profile_state_path {
+        Some(path) => read_optional(path)?,
+        None => None,
+    };
+    let existing_runner_manifest = match &paths.runner_manifest_path {
         Some(path) => read_optional(path)?,
         None => None,
     };
@@ -462,9 +517,20 @@ fn prepare_install_write_plan(
             return Err(InstallError::ConflictingProfile(path.clone()));
         }
     }
+    if let (Some(path), Some(existing), Some(next)) = (
+        &paths.runner_manifest_path,
+        &existing_runner_manifest,
+        profile_document,
+    ) {
+        if existing != next {
+            return Err(InstallError::ConflictingRunnerManifest(path.clone()));
+        }
+    }
     Ok(InstallWritePlan {
         writes_skill: existing.is_none(),
         writes_profile_state: paths.profile_state_path.is_some() && existing_profile.is_none(),
+        writes_runner_manifest: paths.runner_manifest_path.is_some()
+            && existing_runner_manifest.is_none(),
     })
 }
 
@@ -472,6 +538,7 @@ fn commit_install_write_plan(
     paths: &InstallPaths,
     write_plan: &InstallWritePlan,
     markdown: &str,
+    profile_document: Option<&str>,
     next_profile_state: Option<&str>,
 ) -> Result<(), InstallError> {
     fs::create_dir_all(&paths.package_root).map_err(|source| InstallError::Io {
@@ -492,6 +559,13 @@ fn commit_install_write_plan(
             source,
         })?;
         write_atomic(path, next)?;
+    }
+    if let (Some(path), true, Some(document)) = (
+        &paths.runner_manifest_path,
+        write_plan.writes_runner_manifest,
+        profile_document,
+    ) {
+        write_atomic(path, document)?;
     }
     Ok(())
 }

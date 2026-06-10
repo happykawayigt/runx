@@ -125,7 +125,7 @@ export function renderUrlAddResult(result: UrlAddIndexResult): string {
     const registryRef = `${listing.skill_id}@${listing.version}`;
     lines.push(`  ${listing.skill_id}@${listing.version} · ${listing.trust_tier}${tag}`);
     lines.push(`    → ${listing.permalink}`);
-    lines.push(`    install: runx skill add ${registryRef}`);
+    lines.push(`    install: runx add ${registryRef}`);
     lines.push(`    run:     runx ${listing.name}`);
     lines.push("");
   }

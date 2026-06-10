@@ -24,10 +24,11 @@ export interface ParsedArgs {
   readonly listOkOnly: boolean;
   readonly listInvalidOnly: boolean;
   readonly exportAction?: "trainable";
-  readonly skillAction?: "search" | "add" | "publish" | "inspect";
+  readonly skillAction?: "search" | "publish" | "inspect";
+  readonly retiredSkillAdd: boolean;
   readonly knowledgeAction?: "show";
   readonly searchQuery?: string;
-  readonly skillRef?: string;
+  readonly addRef?: string;
   readonly publishPath?: string;
   readonly receiptId?: string;
   readonly runId?: string;
@@ -53,8 +54,11 @@ export interface ParsedArgs {
   readonly runner?: string;
   readonly knowledgeProject?: string;
   readonly sourceFilter?: string;
-  readonly installVersion?: string;
-  readonly installTo?: string;
+  readonly addVersion?: string;
+  readonly addGitRef?: string;
+  readonly addApiBaseUrl?: string;
+  readonly addTo?: string;
+  readonly addInstallationId?: string;
   readonly publishOwner?: string;
   readonly publishVersion?: string;
   readonly registryUrl?: string;
@@ -142,11 +146,12 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
 
   const adminOffset = command === "skill" ? 1 : 0;
   const isSkillSearch = command === "skill" && positionals[0] === "search";
-  const isSkillAdd = command === "skill" && positionals[0] === "add";
+  const isTopLevelAdd = command === "add";
+  const isRetiredSkillAdd = command === "skill" && positionals[0] === "add";
   const isSkillPublish = command === "skill" && positionals[0] === "publish";
   const isSkillInspect = command === "skill" && positionals[0] === "inspect";
   const isSkillRun =
-    command === "skill" && !isSkillSearch && !isSkillAdd && !isSkillPublish && !isSkillInspect;
+    command === "skill" && !isSkillSearch && !isRetiredSkillAdd && !isSkillPublish && !isSkillInspect;
   const isKnowledgeShow = command === "knowledge" && positionals[0] === "show";
   const isConfig = command === "config";
   const isPolicy = command === "policy";
@@ -164,16 +169,22 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
   const isExportReceipts = command === "export-receipts";
   const searchPositionals = positionals.slice(adminOffset);
   const toolSearchPositionals = isTool ? positionals.slice(1) : [];
-  const addPositionals = positionals.slice(adminOffset);
   const inspectPositionals = positionals.slice(adminOffset);
   const knowledgeProject = isKnowledgeShow && typeof inputs.project === "string" ? inputs.project : undefined;
   const sourceFilter = (isSkillSearch || isToolSearch || isToolInspect) && typeof inputs.source === "string" ? inputs.source : undefined;
-  const installVersion = isSkillAdd && typeof inputs.version === "string" ? inputs.version : undefined;
-  const installTo = isSkillAdd && typeof inputs.to === "string" ? inputs.to : undefined;
+  const addVersion = isTopLevelAdd && typeof inputs.version === "string" ? inputs.version : undefined;
+  const addGitRef = isTopLevelAdd && typeof inputs.ref === "string" ? inputs.ref : undefined;
+  const addApiBaseUrl = isTopLevelAdd && typeof (inputs.apiBaseUrl ?? inputs["api-base-url"]) === "string"
+    ? String(inputs.apiBaseUrl ?? inputs["api-base-url"])
+    : undefined;
+  const addTo = isTopLevelAdd && typeof inputs.to === "string" ? inputs.to : undefined;
+  const addInstallationId = isTopLevelAdd && typeof (inputs.installationId ?? inputs["installation-id"]) === "string"
+    ? String(inputs.installationId ?? inputs["installation-id"])
+    : undefined;
   const publishOwner = isSkillPublish && typeof inputs.owner === "string" ? inputs.owner : undefined;
   const publishVersion = isSkillPublish && typeof inputs.version === "string" ? inputs.version : undefined;
-  const registryUrl = (isSkillSearch || isSkillAdd || isSkillPublish || isSkillRun) && typeof inputs.registry === "string" ? inputs.registry : undefined;
-  const expectedDigest = (isSkillAdd || isSkillRun) && typeof inputs.digest === "string" ? normalizeDigest(inputs.digest) : undefined;
+  const registryUrl = (isSkillSearch || isTopLevelAdd || isSkillPublish || isSkillRun) && typeof inputs.registry === "string" ? inputs.registry : undefined;
+  const expectedDigest = (isTopLevelAdd || isSkillRun) && typeof inputs.digest === "string" ? normalizeDigest(inputs.digest) : undefined;
   const newDirectory = isNew && typeof inputs.directory === "string"
     ? inputs.directory
     : isNew && typeof inputs.dir === "string"
@@ -187,33 +198,35 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     && (inputs.prefetch === "official" || truthyFlag(inputs.prefetch) || truthyFlag(inputs.prefetchOfficial));
   const effectiveInputs = isSkillSearch
     ? omitInputs(inputs, ["source", "registry"])
-    : isSkillAdd
-      ? omitInputs(inputs, ["version", "to", "registry", "digest"])
-      : isSkillPublish
-        ? omitInputs(inputs, ["version", "owner", "registry"])
-        : isSkillRun
-          ? omitInputs(inputs, ["registry", "digest"])
-        : isConfig
-          ? {}
-          : isPolicy
-            ? {}
-            : isNew
-              ? omitInputs(inputs, ["directory", "dir"])
-              : isInit
-                ? omitInputs(inputs, ["global", "prefetch", "prefetchOfficial"])
-                : isDoctor
-                  ? omitInputs(inputs, ["fix", "explain", "listDiagnostics", "list-diagnostics"])
-                  : isTool
-                    ? omitInputs(inputs, ["all", "source"])
-                    : isDev
-                      ? omitInputs(inputs, ["lane", "record", "realAgents", "real-agents", "watch"])
-                      : isMcp
-                        ? inputs
-                        : isList
-                          ? omitInputs(inputs, ["okOnly", "ok-only", "invalidOnly", "invalid-only"])
-                          : isExportReceipts
-                            ? omitInputs(inputs, ["trainable", "since", "until", "status", "source"])
-                            : inputs;
+    : isTopLevelAdd
+      ? omitInputs(inputs, ["version", "ref", "apiBaseUrl", "api-base-url", "to", "registry", "digest", "installationId", "installation-id"])
+      : isRetiredSkillAdd
+        ? {}
+        : isSkillPublish
+          ? omitInputs(inputs, ["version", "owner", "registry"])
+          : isSkillRun
+            ? omitInputs(inputs, ["registry", "digest"])
+            : isConfig
+              ? {}
+              : isPolicy
+                ? {}
+                : isNew
+                  ? omitInputs(inputs, ["directory", "dir"])
+                  : isInit
+                    ? omitInputs(inputs, ["global", "prefetch", "prefetchOfficial"])
+                    : isDoctor
+                      ? omitInputs(inputs, ["fix", "explain", "listDiagnostics", "list-diagnostics"])
+                      : isTool
+                        ? omitInputs(inputs, ["all", "source"])
+                        : isDev
+                          ? omitInputs(inputs, ["lane", "record", "realAgents", "real-agents", "watch"])
+                          : isMcp
+                            ? inputs
+                            : isList
+                              ? omitInputs(inputs, ["okOnly", "ok-only", "invalidOnly", "invalid-only"])
+                              : isExportReceipts
+                                ? omitInputs(inputs, ["trainable", "since", "until", "status", "source"])
+                                : inputs;
   return {
     command,
     subcommand: positionals[0],
@@ -236,14 +249,15 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     listOkOnly: isList && truthyFlag(inputs.okOnly ?? inputs["ok-only"]),
     listInvalidOnly: isList && truthyFlag(inputs.invalidOnly ?? inputs["invalid-only"]),
     exportAction: isExportReceipts && truthyFlag(inputs.trainable) ? "trainable" : undefined,
-    skillAction: isSkillSearch ? "search" : isSkillAdd ? "add" : isSkillPublish ? "publish" : isSkillInspect ? "inspect" : undefined,
+    skillAction: isSkillSearch ? "search" : isSkillPublish ? "publish" : isSkillInspect ? "inspect" : undefined,
+    retiredSkillAdd: isRetiredSkillAdd,
     knowledgeAction: isKnowledgeShow ? "show" : undefined,
     searchQuery: isSkillSearch
       ? searchPositionals.join(" ") || undefined
       : isToolSearch
         ? toolSearchPositionals.join(" ") || undefined
         : undefined,
-    skillRef: isSkillAdd ? addPositionals.join(" ") || undefined : undefined,
+    addRef: isTopLevelAdd ? positionals.join(" ") || undefined : undefined,
     publishPath: isSkillPublish ? positionals[1] : undefined,
     receiptId: isSkillInspect ? inspectPositionals[0] : undefined,
     replayRef: isReplay ? positionals[0] : undefined,
@@ -261,7 +275,7 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     historySince: command === "history" && typeof inputs.since === "string" ? inputs.since : undefined,
     historyUntil: command === "history" && typeof inputs.until === "string" ? inputs.until : undefined,
     skillPath:
-      command === "skill" && !isSkillSearch && !isSkillAdd && !isSkillPublish && !isSkillInspect
+      command === "skill" && !isSkillSearch && !isRetiredSkillAdd && !isSkillPublish && !isSkillInspect
         ? positionals[0]
         : undefined,
     harnessPath: command === "harness" ? positionals[0] : undefined,
@@ -275,8 +289,11 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     runner,
     knowledgeProject,
     sourceFilter,
-    installVersion,
-    installTo,
+    addVersion,
+    addGitRef,
+    addApiBaseUrl,
+    addTo,
+    addInstallationId,
     publishOwner,
     publishVersion,
     registryUrl,
@@ -322,7 +339,10 @@ export function isSupportedCommand(parsed: ParsedArgs): boolean {
   if (parsed.command === "skill" && parsed.skillAction === "search" && parsed.searchQuery) {
     return true;
   }
-  if (parsed.command === "skill" && parsed.skillAction === "add" && parsed.skillRef) {
+  if (parsed.command === "add" && parsed.addRef) {
+    return true;
+  }
+  if (parsed.retiredSkillAdd) {
     return true;
   }
   if (parsed.command === "skill" && parsed.skillAction === "publish" && parsed.publishPath) {

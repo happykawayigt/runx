@@ -99,12 +99,26 @@ pub fn materialization_digest_marker(digest: &str, profile_digest: Option<&str>)
     format!("digest={digest}\nprofile_digest={profile_digest}\n")
 }
 
-pub fn safe_skill_package_parts(registry_ref: &str, skill_name: &str) -> Vec<String> {
+pub fn safe_skill_package_parts(
+    registry_ref: &str,
+    skill_name: &str,
+    resolved_version: Option<&str>,
+) -> Vec<String> {
     let normalized = normalize_install_ref(registry_ref);
+    let parsed = parse_registry_ref(registry_ref);
+    let version = parsed.version.as_deref().or(resolved_version);
     let raw_parts = if normalized.contains('/') {
-        normalized.split('/').collect::<Vec<_>>()
+        let mut parts = normalized.split('/').collect::<Vec<_>>();
+        if let Some(version) = version {
+            parts.push(version);
+        }
+        parts
     } else {
-        vec![skill_name]
+        let mut parts = vec![skill_name];
+        if let Some(version) = version {
+            parts.push(version);
+        }
+        parts
     };
     let parts = raw_parts
         .into_iter()

@@ -5,10 +5,10 @@ use runx_contracts::sha256_prefixed;
 use runx_runtime::registry::{
     AcquireOptions, HttpMethod, HttpRequest, HttpResponse, InstallCandidate, InstallError,
     InstallLocalSkillOptions, InstallStatus, RegistryClient, RegistryClientError,
-    RegistryManifestSignature, RegistryManifestSigner, RegistryResolveError,
-    RegistrySignedManifest, RuntimeHttpError, Transport, TrustTier, TrustedRegistryManifestKey,
-    install_local_skill, materialization_cache_path, materialization_digest_marker,
-    parse_registry_ref,
+    RegistryManifestSignature, RegistryManifestSigner, RegistryManifestSourceAuthority,
+    RegistryResolveError, RegistrySignedManifest, RuntimeHttpError, Transport, TrustTier,
+    TrustedRegistryManifestKey, install_local_skill, materialization_cache_path,
+    materialization_digest_marker, parse_registry_ref,
 };
 use serde_json::json;
 use tempfile::tempdir;
@@ -100,7 +100,7 @@ fn search_rejects_unknown_trust_tier_with_field_path() -> Result<(), Box<dyn std
             "required_scopes": [],
             "tags": [],
             "trust_tier": "owner_derived",
-            "install_command": "runx skill add acme/echo",
+            "install_command": "runx add acme/echo",
             "run_command": "runx run acme/echo"
         }]
     }));
@@ -421,7 +421,7 @@ fn search_skill(skill_id: &str, name: &str, version: &str) -> serde_json::Value 
         "required_scopes": [],
         "tags": [],
         "trust_tier": "community",
-        "install_command": format!("runx skill add {skill_id}"),
+        "install_command": format!("runx add {skill_id}"),
         "run_command": format!("runx run {skill_id}")
     })
 }
@@ -447,6 +447,9 @@ fn install_candidate() -> Result<InstallCandidate, Box<dyn std::error::Error>> {
         profile_digest: None,
         runner_names: vec!["default".to_owned()],
         trust_tier: Some(TrustTier::Community),
+        manifest_source_authority: Some(RegistryManifestSourceAuthority::RegistrySource(
+            "test-registry".to_owned(),
+        )),
     })
 }
 
@@ -462,6 +465,8 @@ fn trusted_manifest_keys() -> Result<Vec<TrustedRegistryManifestKey>, Box<dyn st
     Ok(vec![TrustedRegistryManifestKey::from_base64(
         TEST_MANIFEST_KEY_ID.to_owned(),
         TEST_MANIFEST_PUBLIC_KEY_BASE64,
+        "acme".to_owned(),
+        "test-registry".to_owned(),
     )?])
 }
 

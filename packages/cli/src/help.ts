@@ -51,6 +51,8 @@ export function writeUsage(stream: Writable, env: NodeJS.ProcessEnv = process.en
       "  runx doctor [path] [--json]",
       "  runx dev [root] [--lane lane] [--json]",
       "  runx mcp serve <skill-ref...> [--receipt-dir dir]",
+      "  runx add <skill-ref> [--registry url|path] [--version version] [--to dir] [--digest sha256] [--json]",
+      "  runx add <github-url> [--ref git-ref] [--api-base-url url] [--json]",
       "  runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md> [--registry url|path] [--digest sha256] [--runner name] [--input key=value] [--flag value] [--receipt-dir dir] [--run-id id --answers file] [--json]",
       "  runx harness <fixture.yaml> [--json]",
       "  runx tool build <tool-dir>|--all [--json]",

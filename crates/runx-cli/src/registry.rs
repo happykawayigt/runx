@@ -11,9 +11,9 @@ use std::process::ExitCode;
 use runx_runtime::registry::{
     AcquireOptions, FileRegistryStore, IngestSkillOptions, InstallCandidate,
     InstallLocalSkillOptions, InstallStatus, LocalRegistryClient, PublishSkillMarkdownOptions,
-    RegistryClient, RegistryResolveOptions, RegistrySearchOptions, RegistrySkillResolution,
-    TrustTier, TrustedRegistryManifestKey, default_trusted_registry_manifest_keys,
-    install_local_skill, publish_skill_markdown, read_registry_skill, resolve_registry_skill,
+    RegistryClient, RegistryManifestSourceAuthority, RegistryResolveOptions, RegistrySearchOptions,
+    RegistrySkillResolution, TrustTier, TrustedRegistryManifestKey, install_local_skill,
+    publish_skill_markdown, read_registry_skill, resolve_registry_skill,
     search_registry_with_options,
 };
 
@@ -38,15 +38,23 @@ pub struct RegistryPlan {
     pub installation_id: Option<String>,
     pub owner: Option<String>,
     pub profile: Option<PathBuf>,
+    pub trust_tier: Option<TrustTier>,
     pub limit: Option<usize>,
     pub upsert: bool,
     pub json: bool,
 }
 
 pub fn run_native_registry(plan: RegistryPlan) -> ExitCode {
+    let json = plan.json;
     match run_registry(plan) {
         Ok(output) => write_stdout(&output.stdout, output.exit_code),
         Err(error) => {
+            if json {
+                return write_stdout(
+                    &crate::launcher::json_failure_output(&error.message, error.code()),
+                    error.exit_code,
+                );
+            }
             let _ignored = write_stderr(&format!("\n  ✗  {}\n\n", error.message));
             ExitCode::from(error.exit_code)
         }
@@ -93,6 +101,7 @@ fn run_search(
             },
         )?,
     };
+    let human = render_search(&query, source, &results);
     write_output(
         plan.json,
         &RegistryEnvelope {
@@ -103,7 +112,7 @@ fn run_search(
                 results,
             },
         },
-        || render_search(&query, source),
+        || human,
     )
 }
 
@@ -197,13 +206,17 @@ fn run_install(
     cwd: &Path,
 ) -> Result<RegistryCliOutput, RegistryCliError> {
     let source = target.label();
+    let source_authority = target.manifest_source_authority();
     let (candidate, acquisition) = install_candidate(&plan, target, env)?;
     let install = install_local_skill(
         &candidate,
         &InstallLocalSkillOptions {
             destination_root: destination_root(&plan, env, cwd),
             expected_digest: plan.expected_digest,
-            trusted_manifest_keys: trusted_manifest_keys_from_env(env)?,
+            trusted_manifest_keys: trusted_manifest_keys_from_env_for_source(
+                env,
+                source_authority,
+            )?,
         },
     )?;
     let receipt_metadata = runx_runtime::registry_install_receipt_metadata(
@@ -259,6 +272,7 @@ fn run_publish(
                 owner: plan.owner,
                 version: plan.version,
                 profile_document: package.profile_document,
+                trust_tier: plan.trust_tier,
                 upsert: plan.upsert,
                 ..IngestSkillOptions::default()
             },
@@ -288,6 +302,7 @@ pub(crate) fn install_candidate(
     ),
     RegistryCliError,
 > {
+    let source_authority = target.manifest_source_authority();
     match target {
         RegistryTarget::Remote { registry_url } => {
             let installation_id = plan
@@ -304,7 +319,7 @@ pub(crate) fn install_candidate(
                 },
             )?;
             Ok((
-                candidate_from_acquired(&plan.subject, &acquired),
+                candidate_from_acquired(&plan.subject, &acquired, source_authority),
                 Some(acquired),
             ))
         }
@@ -322,7 +337,10 @@ pub(crate) fn install_candidate(
                 },
             )?
             .ok_or_else(|| not_found(&plan.subject))?;
-            Ok((candidate_from_resolution(&plan.subject, resolution), None))
+            Ok((
+                candidate_from_resolution(&plan.subject, resolution, source_authority),
+                None,
+            ))
         }
     }
 }
@@ -330,6 +348,7 @@ pub(crate) fn install_candidate(
 fn candidate_from_resolution(
     registry_ref: &str,
     resolution: RegistrySkillResolution,
+    source_authority: RegistryManifestSourceAuthority,
 ) -> InstallCandidate {
     InstallCandidate {
         markdown: resolution.markdown,
@@ -343,12 +362,14 @@ fn candidate_from_resolution(
         profile_digest: resolution.profile_digest,
         runner_names: resolution.runner_names,
         trust_tier: Some(resolution.trust_tier),
+        manifest_source_authority: Some(source_authority),
     }
 }
 
 fn candidate_from_acquired(
     registry_ref: &str,
     acquired: &runx_runtime::registry::AcquiredRegistrySkill,
+    source_authority: RegistryManifestSourceAuthority,
 ) -> InstallCandidate {
     InstallCandidate {
         markdown: acquired.markdown.clone(),
@@ -362,6 +383,7 @@ fn candidate_from_acquired(
         profile_digest: acquired.profile_digest.clone(),
         runner_names: acquired.runner_names.clone(),
         trust_tier: Some(acquired.trust_tier.clone()),
+        manifest_source_authority: Some(source_authority),
     }
 }
 
@@ -410,6 +432,33 @@ impl RegistryTarget {
                     LocalRegistrySourceKind::Local => format!("local:{}", absolute.display()),
                     LocalRegistrySourceKind::File => format!("file:{}", absolute.display()),
                 }
+            }
+        }
+    }
+
+    pub(crate) fn manifest_source_authority(&self) -> RegistryManifestSourceAuthority {
+        match self {
+            Self::Remote { registry_url } => {
+                runx_runtime::registry::registry_manifest_source_authority_from_registry_url(
+                    registry_url,
+                )
+            }
+            Self::Local {
+                registry_url: Some(registry_url),
+                ..
+            } if runx_runtime::registry::is_official_runx_registry_url(registry_url) => {
+                RegistryManifestSourceAuthority::OfficialRunx
+            }
+            Self::Local {
+                registry_url: Some(registry_url),
+                ..
+            } => runx_runtime::registry::registry_manifest_source_authority_from_registry_url(
+                registry_url,
+            ),
+            Self::Local { registry_path, .. } => {
+                runx_runtime::registry::registry_manifest_source_authority_from_registry_dir(
+                    &registry_path.to_string_lossy(),
+                )
             }
         }
     }
@@ -630,8 +679,31 @@ fn write_output<T: serde::Serialize>(
     })
 }
 
-fn render_search(query: &str, source: &str) -> String {
-    format!("\n  registry search  {query}\n  source           {source}\n\n")
+fn render_search(
+    query: &str,
+    source: &str,
+    results: &[runx_runtime::registry::RegistrySearchResult],
+) -> String {
+    let mut output = format!(
+        "\n  registry search  {query}\n  source           {source}\n  results          {}\n\n",
+        results.len()
+    );
+    for result in results {
+        output.push_str(&format!(
+            "  - {}@{}\n    digest   {}\n    trust    {}\n    install  {}\n    run      {}\n",
+            result.skill_id,
+            result.version.as_deref().unwrap_or("unknown"),
+            result
+                .digest
+                .as_deref()
+                .map_or("unknown".to_owned(), digest_label),
+            trust_tier_label(&result.trust_tier),
+            result.install_command,
+            result.run_command,
+        ));
+    }
+    output.push('\n');
+    output
 }
 
 fn render_read(
@@ -755,24 +827,34 @@ pub(crate) fn workspace_base(env: &BTreeMap<String, String>, cwd: &Path) -> Path
         .unwrap_or_else(|| cwd.to_path_buf())
 }
 
-pub(crate) fn trusted_manifest_keys_from_env(
+pub(crate) fn trusted_manifest_keys_from_env_for_source(
     env: &BTreeMap<String, String>,
+    source_authority: RegistryManifestSourceAuthority,
 ) -> Result<Vec<TrustedRegistryManifestKey>, RegistryCliError> {
-    let mut trusted_keys = default_trusted_registry_manifest_keys()
-        .map_err(|error| internal_error(error.to_string()))?;
-    let Some(public_key) = env.get(runx_runtime::registry::RUNX_REGISTRY_MANIFEST_TRUST_KEY_ENV)
-    else {
-        return Ok(trusted_keys);
-    };
-    let key_id = env
-        .get(runx_runtime::registry::RUNX_REGISTRY_MANIFEST_TRUST_KEY_ID_ENV)
-        .cloned()
-        .ok_or_else(|| usage_error("registry manifest trust key id is required"))?;
-    trusted_keys.push(
-        TrustedRegistryManifestKey::from_base64(key_id, public_key)
-            .map_err(|error| usage_error(error.to_string()))?,
-    );
-    Ok(trusted_keys)
+    runx_runtime::registry::trusted_registry_manifest_keys_from_env_with_source(
+        env,
+        Some(source_authority),
+    )
+    .map_err(trust_env_error)
+}
+
+fn trust_env_error(
+    error: runx_runtime::registry::RegistryManifestTrustEnvError,
+) -> RegistryCliError {
+    match error {
+        runx_runtime::registry::RegistryManifestTrustEnvError::InvalidKey => {
+            internal_error(error.to_string())
+        }
+        runx_runtime::registry::RegistryManifestTrustEnvError::MissingKeyId => {
+            usage_error(error.to_string())
+        }
+        runx_runtime::registry::RegistryManifestTrustEnvError::MissingOwner => {
+            usage_error(error.to_string())
+        }
+        runx_runtime::registry::RegistryManifestTrustEnvError::MissingSource => {
+            usage_error(error.to_string())
+        }
+    }
 }
 
 fn find_workspace_root(start: &Path) -> Option<PathBuf> {
@@ -835,6 +917,14 @@ pub(crate) struct RegistryCliError {
 impl RegistryCliError {
     pub(crate) fn into_message(self) -> String {
         self.message
+    }
+
+    fn code(&self) -> &'static str {
+        if self.exit_code == 64 {
+            "invalid_args"
+        } else {
+            "registry_error"
+        }
     }
 }
 

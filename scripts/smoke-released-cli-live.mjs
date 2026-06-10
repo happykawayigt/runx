@@ -55,7 +55,7 @@ try {
 
   const firstInstall = await runRunx(
     cliBin,
-    ["skill", "add", `${skillId}@${skillVersion}`, "--registry", registryBaseUrl, "--to", skillsDir, "--json"],
+    ["add", `${skillId}@${skillVersion}`, "--registry", registryBaseUrl, "--to", skillsDir, "--json"],
     tempDir,
     homeDir,
   );
@@ -68,7 +68,7 @@ try {
 
   const secondInstall = await runRunx(
     cliBin,
-    ["skill", "add", `${skillId}@${skillVersion}`, "--registry", registryBaseUrl, "--to", skillsDir, "--json"],
+    ["add", `${skillId}@${skillVersion}`, "--registry", registryBaseUrl, "--to", skillsDir, "--json"],
     tempDir,
     homeDir,
   );

@@ -3,13 +3,14 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use base64::Engine;
+use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
+use ring::signature::KeyPair;
 use serde_json::json;
 
 const TEST_MANIFEST_KEY_ID: &str = "runx-registry-test-key";
 const TEST_MANIFEST_SIGNER_ID: &str = "runx-registry-test-signer";
-const TEST_MANIFEST_PUBLIC_KEY_BASE64: &str = "K9U/1+6tuu9O5YfBO++MHrdr95NlPe1Okyg9XS7eWm0=";
-const TEST_MANIFEST_SIGNATURE: &str =
-    "base64:e-DzjjAZRv4inUscSd43cfT5287lIkvkM1YqgsFy1pZ9PkHEJCKp5Hm-zdlAY1D7ItVLNEw8HTM03lhgPk4hCg";
+const TEST_MANIFEST_SEED: [u8; 32] = [7; 32];
 
 #[test]
 fn registry_local_publish_search_resolve_install_json() -> Result<(), Box<dyn std::error::Error>> {
@@ -105,8 +106,76 @@ fn registry_local_publish_search_resolve_install_json() -> Result<(), Box<dyn st
         install_dir
             .join("acme")
             .join("echo")
+            .join("1.0.0")
             .join("SKILL.md")
             .exists()
+    );
+
+    Ok(())
+}
+
+#[test]
+fn registry_install_versions_are_side_by_side() -> Result<(), Box<dyn std::error::Error>> {
+    let root = temp_root("registry-side-by-side");
+    let registry_dir = root.join("registry");
+    let install_dir = root.join("installed");
+    publish_fixture_version(&root, &registry_dir, "1.0.0", "Echo")?;
+    publish_fixture_version(&root, &registry_dir, "2.0.0", "Echo v2")?;
+    sign_registry_version(&registry_dir, "1.0.0")?;
+    sign_registry_version(&registry_dir, "2.0.0")?;
+
+    for (subject, version_flag) in [("acme/echo@1.0.0", None), ("acme/echo", Some("2.0.0"))] {
+        let install = runx_command()?
+            .args([
+                "registry",
+                "install",
+                subject,
+                "--registry-dir",
+                registry_dir.to_str().ok_or("non-utf8 registry dir")?,
+                "--to",
+                install_dir.to_str().ok_or("non-utf8 install dir")?,
+            ])
+            .args(
+                version_flag
+                    .into_iter()
+                    .flat_map(|version| ["--version", version]),
+            )
+            .arg("--json")
+            .output()?;
+        assert_success_contains(&install, &["\"action\": \"install\""])?;
+    }
+
+    assert!(
+        install_dir
+            .join("acme")
+            .join("echo")
+            .join("1.0.0")
+            .join("SKILL.md")
+            .exists()
+    );
+    assert!(
+        install_dir
+            .join("acme")
+            .join("echo")
+            .join("2.0.0")
+            .join("SKILL.md")
+            .exists()
+    );
+    assert_ne!(
+        fs::read_to_string(
+            install_dir
+                .join("acme")
+                .join("echo")
+                .join("1.0.0")
+                .join("SKILL.md")
+        )?,
+        fs::read_to_string(
+            install_dir
+                .join("acme")
+                .join("echo")
+                .join("2.0.0")
+                .join("SKILL.md")
+        )?
     );
 
     Ok(())
@@ -150,13 +219,24 @@ fn registry_install_reports_typed_trust_anchor_errors() -> Result<(), Box<dyn st
             ])
             .output()?;
 
-        assert_failure_contains(&install, &format!("registry install {error_kind}:"))?;
+        assert_json_failure_contains(&install, &format!("registry install {error_kind}:"))?;
         assert!(
             !install_dir.exists(),
             "{error_kind} should leave no install dir"
         );
     }
 
+    Ok(())
+}
+
+#[test]
+fn registry_json_parse_failure_uses_failure_envelope() -> Result<(), Box<dyn std::error::Error>> {
+    let output = runx_command()?
+        .args(["registry", "search", "--json"])
+        .output()?;
+
+    assert_json_failure_contains(&output, "runx registry search requires a query")?;
+    assert_eq!(output.status.code(), Some(64));
     Ok(())
 }
 
@@ -253,6 +333,37 @@ fn registry_human_output_names_selected_version_and_digest()
     Ok(())
 }
 
+#[test]
+fn registry_human_output_names_search_results() -> Result<(), Box<dyn std::error::Error>> {
+    let root = temp_root("registry-search-human");
+    let registry_dir = root.join("registry");
+    publish_fixture_version(&root, &registry_dir, "1.0.0", "Echo")?;
+
+    let search = runx_command()?
+        .args([
+            "registry",
+            "search",
+            "echo",
+            "--registry-dir",
+            registry_dir.to_str().ok_or("non-utf8 registry dir")?,
+        ])
+        .output()?;
+    assert_success_contains(
+        &search,
+        &[
+            "registry search  echo",
+            "results          1",
+            "- acme/echo@1.0.0",
+            "digest   sha256:",
+            "trust    community",
+            "install  runx add acme/echo@1.0.0",
+            "run      runx skill acme/echo@1.0.0",
+        ],
+    )?;
+
+    Ok(())
+}
+
 fn remove_signed_manifest(version: &mut serde_json::Value) {
     if let Some(object) = version.as_object_mut() {
         object.remove("signed_manifest");
@@ -326,6 +437,24 @@ fn publish_fixture_version(
     Ok(())
 }
 
+fn sign_registry_version(
+    registry_dir: &std::path::Path,
+    version: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let version_path = registry_dir
+        .join("acme")
+        .join("echo")
+        .join(format!("{version}.json"));
+    let mut version_record =
+        serde_json::from_str::<serde_json::Value>(&fs::read_to_string(&version_path)?)?;
+    version_record["signed_manifest"] = signed_manifest(&version_record)?;
+    fs::write(
+        version_path,
+        format!("{}\n", serde_json::to_string_pretty(&version_record)?),
+    )?;
+    Ok(())
+}
+
 fn mutate_registry_version(
     registry_dir: &std::path::Path,
     mutate: fn(&mut serde_json::Value),
@@ -342,21 +471,60 @@ fn mutate_registry_version(
 }
 
 fn insert_signed_manifest(version: &mut serde_json::Value) {
-    version["signed_manifest"] = json!({
+    version["signed_manifest"] =
+        signed_manifest(version).expect("test registry version should sign");
+}
+
+fn signed_manifest(
+    version_record: &serde_json::Value,
+) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    let skill_id = version_record["skill_id"]
+        .as_str()
+        .ok_or("missing skill_id")?;
+    let version = version_record["version"]
+        .as_str()
+        .ok_or("missing version")?;
+    let digest = version_record["digest"].as_str().ok_or("missing digest")?;
+    let profile_digest = version_record["profile_digest"].as_str();
+    let payload = registry_manifest_payload(skill_id, version, digest, profile_digest);
+    let signature = test_manifest_key_pair()?.sign(payload.as_bytes());
+    Ok(json!({
         "schema": runx_runtime::registry::REGISTRY_SIGNED_MANIFEST_SCHEMA,
-        "skill_id": "acme/echo",
-        "version": "1.0.0",
-        "digest": "sha256:08261d83f4881a23ecc9a21cc014563d32c180efc7422ef4d65b4c06ae962c0a",
-        "profile_digest": "sha256:ccc77a7e047160ccbd5e8f2d45d4bce6dfe449facd1c246611d12ef40aa626e9",
+        "skill_id": skill_id,
+        "version": version,
+        "digest": digest,
+        "profile_digest": profile_digest,
         "signer": {
             "id": TEST_MANIFEST_SIGNER_ID,
             "key_id": TEST_MANIFEST_KEY_ID,
         },
         "signature": {
             "alg": "ed25519",
-            "value": TEST_MANIFEST_SIGNATURE,
+            "value": format!(
+                "base64:{}",
+                URL_SAFE_NO_PAD.encode(signature.as_ref())
+            ),
         },
-    });
+    }))
+}
+
+fn registry_manifest_payload(
+    skill_id: &str,
+    version: &str,
+    digest: &str,
+    profile_digest: Option<&str>,
+) -> String {
+    format!(
+        "{}\nskill_id={skill_id}\nversion={version}\ndigest={digest}\nprofile_digest={}\nsigner_id={TEST_MANIFEST_SIGNER_ID}\nkey_id={TEST_MANIFEST_KEY_ID}\n",
+        runx_runtime::registry::REGISTRY_SIGNED_MANIFEST_SCHEMA,
+        profile_digest.unwrap_or("")
+    )
+}
+
+fn test_manifest_key_pair() -> Result<ring::signature::Ed25519KeyPair, std::io::Error> {
+    ring::signature::Ed25519KeyPair::from_seed_unchecked(&TEST_MANIFEST_SEED).map_err(|error| {
+        std::io::Error::other(format!("static registry manifest seed rejected: {error:?}"))
+    })
 }
 
 fn runx_command() -> Result<Command, Box<dyn std::error::Error>> {
@@ -364,11 +532,15 @@ fn runx_command() -> Result<Command, Box<dyn std::error::Error>> {
     command.env("NO_COLOR", "1");
     command.env(
         runx_runtime::registry::RUNX_REGISTRY_MANIFEST_TRUST_KEY_ENV,
-        TEST_MANIFEST_PUBLIC_KEY_BASE64,
+        STANDARD.encode(test_manifest_key_pair()?.public_key().as_ref()),
     );
     command.env(
         runx_runtime::registry::RUNX_REGISTRY_MANIFEST_TRUST_KEY_ID_ENV,
         TEST_MANIFEST_KEY_ID,
+    );
+    command.env(
+        runx_runtime::registry::RUNX_REGISTRY_MANIFEST_TRUST_OWNER_ENV,
+        "acme",
     );
     Ok(command)
 }
@@ -395,7 +567,7 @@ fn assert_success_contains(
     Ok(())
 }
 
-fn assert_failure_contains(
+fn assert_json_failure_contains(
     output: &std::process::Output,
     needle: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -406,12 +578,17 @@ fn assert_failure_contains(
         String::from_utf8_lossy(&output.stderr),
         String::from_utf8_lossy(&output.stdout)
     );
-    let stderr = String::from_utf8(output.stderr.clone())?;
+    assert_eq!(String::from_utf8(output.stderr.clone())?, "");
+    let value = serde_json::from_slice::<serde_json::Value>(&output.stdout)?;
+    assert_eq!(value["status"], "failure");
+    let message = value["error"]["message"]
+        .as_str()
+        .ok_or("missing message")?;
     assert!(
-        stderr.contains(needle),
-        "missing {needle} in stderr:\n{stderr}"
+        message.contains(needle),
+        "missing {needle} in JSON error message:\n{message}"
     );
-    assert_eq!(String::from_utf8(output.stdout.clone())?, "");
+    assert!(value["error"]["code"].as_str().is_some());
     Ok(())
 }
 

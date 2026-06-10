@@ -1,13 +1,27 @@
 use std::io::{self, Write};
+use std::path::Path;
 use std::process::ExitCode;
 
 use runx_contracts::{JsonObject, JsonValue};
 
-pub(super) fn write_skill_output(value: &JsonValue, json: bool, exit_code: ExitCode) -> ExitCode {
+pub(super) fn write_skill_output(
+    value: &JsonValue,
+    json: bool,
+    exit_code: ExitCode,
+    resume: SkillOutputResume<'_>,
+) -> ExitCode {
     if !json {
-        return write_text_with_exit(value, exit_code);
+        return write_text_with_exit(value, exit_code, resume);
     }
     write_json_with_exit(value, exit_code)
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct SkillOutputResume<'a> {
+    pub(super) skill_ref: Option<&'a str>,
+    pub(super) selected_runner: Option<&'a str>,
+    pub(super) receipt_dir: Option<&'a Path>,
+    pub(super) answers_path: Option<&'a Path>,
 }
 
 pub(super) fn skill_result_exit_code(value: &JsonValue) -> ExitCode {
@@ -42,16 +56,24 @@ fn write_json_with_exit(value: &JsonValue, exit_code: ExitCode) -> ExitCode {
     }
 }
 
-fn write_text_with_exit(value: &JsonValue, exit_code: ExitCode) -> ExitCode {
+fn write_text_with_exit(
+    value: &JsonValue,
+    exit_code: ExitCode,
+    resume: SkillOutputResume<'_>,
+) -> ExitCode {
     let mut stdout = io::stdout().lock();
-    let result = write_skill_text(&mut stdout, value);
+    let result = write_skill_text(&mut stdout, value, resume);
     match result {
         Ok(()) => exit_code,
         Err(_) => ExitCode::from(1),
     }
 }
 
-fn write_skill_text(writer: &mut dyn Write, value: &JsonValue) -> io::Result<()> {
+fn write_skill_text(
+    writer: &mut dyn Write,
+    value: &JsonValue,
+    resume: SkillOutputResume<'_>,
+) -> io::Result<()> {
     let Some(object) = value.as_object() else {
         let text = serde_json::to_string(value).unwrap_or_else(|_| "null".to_owned());
         return writeln!(writer, "{text}");
@@ -70,6 +92,13 @@ fn write_skill_text(writer: &mut dyn Write, value: &JsonValue) -> io::Result<()>
     if let Some(receipt_id) = object_string(object, "receipt_id") {
         writeln!(writer, "receipt_id: {receipt_id}")?;
     }
+    if let Some(provenance) = object
+        .get("registry_provenance")
+        .and_then(JsonValue::as_object)
+    {
+        writeln!(writer, "registry:")?;
+        write_registry_provenance(writer, provenance)?;
+    }
     if let Some(summary) = summary_from_payload(object).or_else(|| closure_summary(object)) {
         writeln!(writer, "summary: {summary}")?;
     }
@@ -83,10 +112,36 @@ fn write_skill_text(writer: &mut dyn Write, value: &JsonValue) -> io::Result<()>
             }
         }
         if let Some(run_id) = object_string(object, "run_id") {
-            writeln!(
-                writer,
-                "next: resolve the request, then rerun with --run-id {run_id} --answers <answers.json>"
-            )?;
+            let command =
+                crate::resume::render_skill_resume_command(crate::resume::SkillResumeCommand {
+                    skill_ref: resume
+                        .skill_ref
+                        .or_else(|| object_string(object, "skill_name")),
+                    run_id,
+                    selected_runner: resume.selected_runner,
+                    receipt_dir: resume.receipt_dir,
+                    answers_path: resume.answers_path,
+                });
+            writeln!(writer, "next: resolve the request, then rerun: {command}")?;
+        }
+    }
+    Ok(())
+}
+
+fn write_registry_provenance(writer: &mut dyn Write, object: &JsonObject) -> io::Result<()> {
+    for key in [
+        "skill_id",
+        "version",
+        "digest",
+        "profile_digest",
+        "registry_source",
+        "registry_source_fingerprint",
+        "trust_tier",
+        "registry_key_id",
+        "trust_state",
+    ] {
+        if let Some(value) = object_string(object, key) {
+            writeln!(writer, "  {key}: {value}")?;
         }
     }
     Ok(())
@@ -129,9 +184,11 @@ fn object_string<'a>(object: &'a JsonObject, key: &str) -> Option<&'a str> {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use runx_contracts::{JsonObject, JsonValue};
 
-    use super::write_skill_text;
+    use super::{SkillOutputResume, write_skill_text};
 
     #[test]
     fn text_output_prefers_operator_payload_summary_over_receipt_closure() {
@@ -170,6 +227,36 @@ mod tests {
         assert!(output.contains("summary: graph nws-weather-forecast completed"));
     }
 
+    #[test]
+    fn text_output_includes_resume_metadata_for_pending_requests() {
+        let mut value = base_result();
+        value.insert(
+            "status".to_owned(),
+            JsonValue::String("needs_agent".to_owned()),
+        );
+        value.insert(
+            "requests".to_owned(),
+            JsonValue::Array(vec![JsonValue::Object(JsonObject::from([
+                ("id".to_owned(), JsonValue::String("request_1".to_owned())),
+                ("kind".to_owned(), JsonValue::String("agent_act".to_owned())),
+            ]))]),
+        );
+
+        let output = render_with_resume(
+            value,
+            SkillOutputResume {
+                skill_ref: Some("registry/weather"),
+                selected_runner: Some("operator runner"),
+                receipt_dir: Some(Path::new("custom receipts")),
+                answers_path: Some(Path::new("operator answers.json")),
+            },
+        );
+
+        assert!(output.contains(
+            "runx skill registry/weather --runner 'operator runner' --receipt-dir 'custom receipts' --run-id run_weather --answers 'operator answers.json'"
+        ));
+    }
+
     fn base_result() -> JsonObject {
         JsonObject::from([
             ("status".to_owned(), JsonValue::String("sealed".to_owned())),
@@ -189,8 +276,20 @@ mod tests {
     }
 
     fn render(value: JsonObject) -> String {
+        render_with_resume(
+            value,
+            SkillOutputResume {
+                skill_ref: None,
+                selected_runner: None,
+                receipt_dir: None,
+                answers_path: None,
+            },
+        )
+    }
+
+    fn render_with_resume(value: JsonObject, resume: SkillOutputResume<'_>) -> String {
         let mut output = Vec::new();
-        let write_result = write_skill_text(&mut output, &JsonValue::Object(value));
+        let write_result = write_skill_text(&mut output, &JsonValue::Object(value), resume);
         assert!(write_result.is_ok(), "text output renders");
         let rendered = String::from_utf8(output);
         assert!(rendered.is_ok(), "text output is utf8");

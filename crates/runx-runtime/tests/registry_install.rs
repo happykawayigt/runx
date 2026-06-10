@@ -1,14 +1,21 @@
+use std::collections::BTreeMap;
+
+use base64::Engine;
+use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
+use ring::signature::KeyPair;
 use runx_contracts::sha256_prefixed;
 use runx_runtime::registry::{
     InstallCandidate, InstallError, InstallLocalSkillOptions, RegistryManifestSignature,
-    RegistryManifestSigner, RegistrySignedManifest, TrustTier, TrustedRegistryManifestKey,
-    install_local_skill,
+    RegistryManifestSigner, RegistryManifestSourceAuthority, RegistryManifestTrustEnvError,
+    RegistrySignedManifest, TrustTier, TrustedRegistryManifestKey, install_local_skill,
+    trusted_registry_manifest_keys_from_env,
 };
 use tempfile::tempdir;
 
 const TEST_MANIFEST_KEY_ID: &str = "runx-registry-test-key";
 const TEST_MANIFEST_SIGNER_ID: &str = "runx-registry-test-signer";
 const TEST_MANIFEST_PUBLIC_KEY_BASE64: &str = "K9U/1+6tuu9O5YfBO++MHrdr95NlPe1Okyg9XS7eWm0=";
+const DYNAMIC_MANIFEST_SEED: [u8; 32] = [7; 32];
 const TEST_MANIFEST_SIGNATURE: &str =
     "base64:e-DzjjAZRv4inUscSd43cfT5287lIkvkM1YqgsFy1pZ9PkHEJCKp5Hm-zdlAY1D7ItVLNEw8HTM03lhgPk4hCg";
 const TEST_MANIFEST_OTHER_SKILL_SIGNATURE: &str =
@@ -161,6 +168,156 @@ fn malformed_signed_manifest_payload_fails_closed() -> Result<(), Box<dyn std::e
     Ok(())
 }
 
+#[test]
+fn registry_install_rejects_out_of_scope_manifest_key() -> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempdir()?;
+    let candidate = install_candidate()?;
+    let error = match install_local_skill(
+        &candidate,
+        &InstallLocalSkillOptions {
+            destination_root: temp.path().join("skills"),
+            expected_digest: None,
+            trusted_manifest_keys: vec![TrustedRegistryManifestKey::official_from_base64(
+                TEST_MANIFEST_KEY_ID.to_owned(),
+                TEST_MANIFEST_PUBLIC_KEY_BASE64,
+            )?],
+        },
+    ) {
+        Ok(_) => return Err("install should fail".into()),
+        Err(error) => error,
+    };
+
+    assert!(matches!(
+        error,
+        InstallError::ManifestTrustScopeViolation { .. }
+    ));
+    assert!(!temp.path().join("skills").exists());
+    Ok(())
+}
+
+#[test]
+fn registry_install_rejects_official_key_from_non_official_source()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempdir()?;
+    let mut candidate = install_candidate()?;
+    candidate.r#ref = "runx/echo@1.0.0".to_owned();
+    candidate.skill_id = Some("runx/echo".to_owned());
+    candidate.trust_tier = Some(TrustTier::FirstParty);
+    candidate.signed_manifest = Some(signed_manifest_with_dynamic_key(
+        "runx/echo",
+        "1.0.0",
+        &skill_digest(),
+        Some(&profile_digest()),
+    )?);
+    let key_pair = dynamic_manifest_key_pair()?;
+    let error = match install_local_skill(
+        &candidate,
+        &InstallLocalSkillOptions {
+            destination_root: temp.path().join("skills"),
+            expected_digest: None,
+            trusted_manifest_keys: vec![TrustedRegistryManifestKey::official_from_base64(
+                TEST_MANIFEST_KEY_ID.to_owned(),
+                &STANDARD.encode(key_pair.public_key().as_ref()),
+            )?],
+        },
+    ) {
+        Ok(_) => return Err("install should fail".into()),
+        Err(error) => error,
+    };
+
+    assert!(matches!(
+        error,
+        InstallError::ManifestTrustScopeViolation { reason, .. }
+            if reason.contains("official runx registry source")
+    ));
+    assert!(!temp.path().join("skills").exists());
+    Ok(())
+}
+
+#[test]
+fn registry_install_rejects_third_party_key_outside_owner_namespace()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempdir()?;
+    let candidate = install_candidate()?;
+    let error = match install_local_skill(
+        &candidate,
+        &InstallLocalSkillOptions {
+            destination_root: temp.path().join("skills"),
+            expected_digest: None,
+            trusted_manifest_keys: vec![TrustedRegistryManifestKey::from_base64(
+                TEST_MANIFEST_KEY_ID.to_owned(),
+                TEST_MANIFEST_PUBLIC_KEY_BASE64,
+                "other".to_owned(),
+                "test-registry".to_owned(),
+            )?],
+        },
+    ) {
+        Ok(_) => return Err("install should fail".into()),
+        Err(error) => error,
+    };
+
+    assert!(matches!(
+        error,
+        InstallError::ManifestTrustScopeViolation { reason, .. }
+            if reason.contains("other/*")
+    ));
+    assert!(!temp.path().join("skills").exists());
+    Ok(())
+}
+
+#[test]
+fn registry_manifest_env_key_cannot_self_promote_to_official()
+-> Result<(), Box<dyn std::error::Error>> {
+    let key_pair = dynamic_manifest_key_pair()?;
+    let env = [
+        (
+            runx_runtime::registry::RUNX_REGISTRY_MANIFEST_TRUST_KEY_ID_ENV.to_owned(),
+            TEST_MANIFEST_KEY_ID.to_owned(),
+        ),
+        (
+            runx_runtime::registry::RUNX_REGISTRY_MANIFEST_TRUST_KEY_ENV.to_owned(),
+            STANDARD.encode(key_pair.public_key().as_ref()),
+        ),
+        (
+            runx_runtime::registry::RUNX_REGISTRY_MANIFEST_TRUST_OWNER_ENV.to_owned(),
+            "runx".to_owned(),
+        ),
+        (
+            runx_runtime::registry::RUNX_REGISTRY_SOURCE_AUTHORITY_ENV.to_owned(),
+            "official_runx".to_owned(),
+        ),
+    ]
+    .into_iter()
+    .collect::<BTreeMap<_, _>>();
+
+    assert!(matches!(
+        trusted_registry_manifest_keys_from_env(&env),
+        Err(RegistryManifestTrustEnvError::InvalidKey)
+    ));
+    Ok(())
+}
+
+#[test]
+fn registry_install_rejects_unsigned_or_mismatched_trust_tier()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempdir()?;
+    let mut unsigned = install_candidate()?;
+    unsigned.signed_manifest = None;
+    let unsigned_error = install_error(&unsigned, temp.path())?;
+    assert!(matches!(unsigned_error, InstallError::UnsignedManifest(_)));
+
+    let temp = tempdir()?;
+    let mut first_party = install_candidate()?;
+    first_party.trust_tier = Some(TrustTier::FirstParty);
+    let tier_error = install_error(&first_party, temp.path())?;
+    assert!(matches!(
+        tier_error,
+        InstallError::ManifestTrustScopeViolation { .. }
+    ));
+    assert!(!temp.path().join("skills").exists());
+    Ok(())
+}
+
 fn install_error(
     candidate: &InstallCandidate,
     temp_path: &std::path::Path,
@@ -199,6 +356,9 @@ fn install_candidate() -> Result<InstallCandidate, Box<dyn std::error::Error>> {
         profile_digest: None,
         runner_names: vec!["default".to_owned()],
         trust_tier: Some(TrustTier::Community),
+        manifest_source_authority: Some(RegistryManifestSourceAuthority::RegistrySource(
+            "test-registry".to_owned(),
+        )),
     })
 }
 
@@ -214,6 +374,8 @@ fn trusted_manifest_keys() -> Result<Vec<TrustedRegistryManifestKey>, Box<dyn st
     Ok(vec![TrustedRegistryManifestKey::from_base64(
         TEST_MANIFEST_KEY_ID.to_owned(),
         TEST_MANIFEST_PUBLIC_KEY_BASE64,
+        "acme".to_owned(),
+        "test-registry".to_owned(),
     )?])
 }
 
@@ -239,4 +401,42 @@ fn signed_manifest(
             value: signature.to_owned(),
         },
     }
+}
+
+fn signed_manifest_with_dynamic_key(
+    skill_id: &str,
+    version: &str,
+    digest: &str,
+    profile_digest: Option<&str>,
+) -> Result<RegistrySignedManifest, Box<dyn std::error::Error>> {
+    let payload = registry_manifest_payload(skill_id, version, digest, profile_digest);
+    let signature = dynamic_manifest_key_pair()?.sign(payload.as_bytes());
+    Ok(signed_manifest(
+        skill_id,
+        version,
+        digest,
+        profile_digest,
+        &format!("base64:{}", URL_SAFE_NO_PAD.encode(signature.as_ref())),
+    ))
+}
+
+fn registry_manifest_payload(
+    skill_id: &str,
+    version: &str,
+    digest: &str,
+    profile_digest: Option<&str>,
+) -> String {
+    format!(
+        "{}\nskill_id={skill_id}\nversion={version}\ndigest={digest}\nprofile_digest={}\nsigner_id={TEST_MANIFEST_SIGNER_ID}\nkey_id={TEST_MANIFEST_KEY_ID}\n",
+        runx_runtime::registry::REGISTRY_SIGNED_MANIFEST_SCHEMA,
+        profile_digest.unwrap_or("")
+    )
+}
+
+fn dynamic_manifest_key_pair() -> Result<ring::signature::Ed25519KeyPair, std::io::Error> {
+    ring::signature::Ed25519KeyPair::from_seed_unchecked(&DYNAMIC_MANIFEST_SEED).map_err(|error| {
+        std::io::Error::other(format!(
+            "dynamic registry manifest seed rejected: {error:?}"
+        ))
+    })
 }

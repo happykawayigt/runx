@@ -107,8 +107,9 @@ fn doctor_registry_json_reports_readiness_without_key_material()
         .env("RUNX_REGISTRY_MANIFEST_TRUST_KEY_ID", "operator-key-1")
         .env(
             "RUNX_REGISTRY_MANIFEST_TRUST_KEY_BASE64",
-            "raw-public-key-material",
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
         )
+        .env("RUNX_REGISTRY_MANIFEST_TRUST_OWNER", "acme")
         .output()?;
 
     assert!(output.status.success());
@@ -121,8 +122,34 @@ fn doctor_registry_json_reports_readiness_without_key_material()
     assert!(rendered.contains("official-skills"));
     assert!(rendered.contains("registry-skills"));
     assert!(rendered.contains("operator-key-1"));
+    assert!(rendered.contains("acme/*"));
     assert!(rendered.contains("RUNX_INSTALLATION_ID"));
-    assert!(!rendered.contains("raw-public-key-material"));
+    assert!(!rendered.contains("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="));
+    assert!(diagnostic_has_repair(
+        &report,
+        "runx.registry.installation_id"
+    ));
+    Ok(())
+}
+
+#[test]
+fn doctor_registry_json_reports_trust_policy_scope_without_key_material()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = temp_root("doctor-registry-trust-policy");
+    let output = registry_doctor_command()
+        .args(["doctor", "registry", "--json"])
+        .env("RUNX_HOME", root.to_str().unwrap_or_default())
+        .output()?;
+
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8(output.stderr)?, "");
+    let report = serde_json::from_slice::<serde_json::Value>(&output.stdout)?;
+    let rendered = serde_json::to_string(&report)?;
+    assert!(rendered.contains("trust_policy"));
+    assert!(rendered.contains("official_runx"));
+    assert!(rendered.contains("runx/*"));
+    assert!(rendered.contains("can_grant_first_party"));
+    assert!(!rendered.contains("RUNX_REGISTRY_MANIFEST_PUBLIC_KEY"));
     Ok(())
 }
 
@@ -147,8 +174,23 @@ fn doctor_registry_json_warns_on_partial_trust_key_config() -> Result<(), Box<dy
     let rendered = serde_json::to_string(&report)?;
     assert!(rendered.contains("partial_operator_key_config"));
     assert!(rendered.contains("RUNX_REGISTRY_MANIFEST_TRUST_KEY_ID"));
+    assert!(rendered.contains("RUNX_REGISTRY_MANIFEST_TRUST_OWNER"));
     assert!(!rendered.contains("raw-public-key-material"));
+    assert!(diagnostic_has_repair(&report, "runx.registry.trust_keys"));
     Ok(())
+}
+
+fn diagnostic_has_repair(report: &serde_json::Value, id: &str) -> bool {
+    report["diagnostics"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .any(|diagnostic| {
+            diagnostic["id"] == id
+                && diagnostic["repairs"]
+                    .as_array()
+                    .is_some_and(|repairs| !repairs.is_empty())
+        })
 }
 
 fn runx_command() -> Command {
@@ -192,6 +234,7 @@ const REGISTRY_ENV_NAMES: &[&str] = &[
     "RUNX_INSTALLATION_ID",
     "RUNX_REGISTRY_MANIFEST_TRUST_KEY_ID",
     "RUNX_REGISTRY_MANIFEST_TRUST_KEY_BASE64",
+    "RUNX_REGISTRY_MANIFEST_TRUST_OWNER",
 ];
 
 fn temp_root(name: &str) -> PathBuf {

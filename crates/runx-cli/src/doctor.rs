@@ -6,7 +6,8 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use runx_contracts::{
-    DoctorDiagnostic, DoctorDiagnosticSeverity, DoctorLocation, DoctorReport, DoctorReportSchema,
+    DoctorDiagnostic, DoctorDiagnosticSeverity, DoctorLocation, DoctorRepair,
+    DoctorRepairConfidence, DoctorRepairKind, DoctorRepairRisk, DoctorReport, DoctorReportSchema,
     DoctorStatus, DoctorSummary, JsonObject, JsonValue,
 };
 use runx_pay::state::{RUNX_EFFECT_STATE_PATH_ENV, resolve_effect_state_path};
@@ -123,6 +124,7 @@ fn registry_probe_plan() -> RegistryPlan {
         installation_id: None,
         owner: None,
         profile: None,
+        trust_tier: None,
         limit: None,
         upsert: false,
         json: true,
@@ -202,22 +204,46 @@ fn registry_trust_key_diagnostic(env: &BTreeMap<String, String>) -> DoctorDiagno
         .get(runx_runtime::registry::RUNX_REGISTRY_MANIFEST_TRUST_KEY_ID_ENV)
         .filter(|value| !value.trim().is_empty())
         .cloned();
+    let configured_owner = env
+        .get(runx_runtime::registry::RUNX_REGISTRY_MANIFEST_TRUST_OWNER_ENV)
+        .filter(|value| !value.trim().is_empty())
+        .cloned();
+    let configured_source =
+        runx_runtime::registry::registry_manifest_source_authority_from_env(env)
+            .map(|source| runx_runtime::registry::registry_manifest_source_key(&source));
     let key_material_configured = env_contains_non_empty(
         env,
         runx_runtime::registry::RUNX_REGISTRY_MANIFEST_TRUST_KEY_ENV,
     );
-    let mut key_ids = runx_runtime::registry::default_trusted_registry_manifest_keys()
-        .map(|keys| keys.into_iter().map(|key| key.key_id).collect::<Vec<_>>())
-        .unwrap_or_default();
-    if let Some(key_id) = &configured_key_id {
-        key_ids.push(key_id.clone());
+    let mut keys =
+        runx_runtime::registry::default_trusted_registry_manifest_keys().unwrap_or_default();
+    let configured = key_material_configured
+        && configured_key_id.is_some()
+        && configured_owner.is_some()
+        && configured_source.is_some();
+    if configured
+        && let Ok(configured_keys) =
+            runx_runtime::registry::trusted_registry_manifest_keys_from_env(env)
+    {
+        keys = configured_keys;
     }
-    let configured = key_material_configured && configured_key_id.is_some();
-    let partial = key_material_configured != configured_key_id.is_some();
+    let partial = !configured
+        && (key_material_configured
+            || configured_key_id.is_some()
+            || configured_owner.is_some()
+            || configured_source.is_some());
     let mut evidence = JsonObject::new();
     evidence.insert(
         "key_ids".to_owned(),
-        JsonValue::Array(key_ids.into_iter().map(JsonValue::String).collect()),
+        JsonValue::Array(
+            keys.iter()
+                .map(|key| JsonValue::String(key.key_id.clone()))
+                .collect(),
+        ),
+    );
+    evidence.insert(
+        "trust_policy".to_owned(),
+        JsonValue::Array(keys.iter().map(registry_trust_policy_evidence).collect()),
     );
     evidence.insert(
         "operator_key_configured".to_owned(),
@@ -233,6 +259,9 @@ fn registry_trust_key_diagnostic(env: &BTreeMap<String, String>) -> DoctorDiagno
             [
                 runx_runtime::registry::RUNX_REGISTRY_MANIFEST_TRUST_KEY_ID_ENV,
                 runx_runtime::registry::RUNX_REGISTRY_MANIFEST_TRUST_KEY_ENV,
+                runx_runtime::registry::RUNX_REGISTRY_MANIFEST_TRUST_OWNER_ENV,
+                "RUNX_REGISTRY_URL",
+                "RUNX_REGISTRY_DIR",
             ]
             .into_iter()
             .map(|name| JsonValue::String(name.to_owned()))
@@ -255,15 +284,17 @@ fn registry_trust_key_diagnostic(env: &BTreeMap<String, String>) -> DoctorDiagno
             )
         } else if partial {
             format!(
-                "Registry manifest trust key is partially configured; set both {} and {}.",
+                "Registry manifest trust key is partially configured; set {}, {}, {}, and a registry source.",
                 runx_runtime::registry::RUNX_REGISTRY_MANIFEST_TRUST_KEY_ID_ENV,
                 runx_runtime::registry::RUNX_REGISTRY_MANIFEST_TRUST_KEY_ENV,
+                runx_runtime::registry::RUNX_REGISTRY_MANIFEST_TRUST_OWNER_ENV,
             )
         } else {
             format!(
-                "Using built-in registry trust keys. Set {} and {} to add an operator key.",
+                "Using built-in registry trust keys. Set {}, {}, {}, and a registry source to add an operator key.",
                 runx_runtime::registry::RUNX_REGISTRY_MANIFEST_TRUST_KEY_ID_ENV,
                 runx_runtime::registry::RUNX_REGISTRY_MANIFEST_TRUST_KEY_ENV,
+                runx_runtime::registry::RUNX_REGISTRY_MANIFEST_TRUST_OWNER_ENV,
             )
         },
         target: object([
@@ -275,8 +306,55 @@ fn registry_trust_key_diagnostic(env: &BTreeMap<String, String>) -> DoctorDiagno
             json_pointer: None,
         },
         evidence: Some(evidence),
-        repairs: Vec::new(),
+        repairs: if partial {
+            vec![manual_env_repair(
+                "runx.registry.trust_keys.configure_env",
+                &[
+                    runx_runtime::registry::RUNX_REGISTRY_MANIFEST_TRUST_KEY_ID_ENV,
+                    runx_runtime::registry::RUNX_REGISTRY_MANIFEST_TRUST_KEY_ENV,
+                    runx_runtime::registry::RUNX_REGISTRY_MANIFEST_TRUST_OWNER_ENV,
+                    "RUNX_REGISTRY_URL",
+                    "RUNX_REGISTRY_DIR",
+                ],
+                "Set the registry manifest trust key id, public key, allowed owner namespace, and registry source together.",
+                DoctorRepairRisk::Sensitive,
+            )]
+        } else {
+            Vec::new()
+        },
     }
+}
+
+fn registry_trust_policy_evidence(
+    key: &runx_runtime::registry::TrustedRegistryManifestKey,
+) -> JsonValue {
+    let (scope, allowed_namespace, allowed_source, can_grant_first_party) = match &key.scope {
+        runx_runtime::registry::RegistryManifestTrustScope::OfficialRunx => (
+            "official_runx",
+            "runx/*".to_owned(),
+            "official_runx".to_owned(),
+            true,
+        ),
+        runx_runtime::registry::RegistryManifestTrustScope::ThirdParty {
+            allowed_owner,
+            allowed_source,
+        } => (
+            "third_party",
+            format!("{allowed_owner}/*"),
+            allowed_source.clone(),
+            false,
+        ),
+    };
+    JsonValue::Object(object([
+        ("key_id", JsonValue::String(key.key_id.clone())),
+        ("scope", string_value(scope)),
+        ("allowed_namespace", JsonValue::String(allowed_namespace)),
+        ("allowed_source", JsonValue::String(allowed_source)),
+        (
+            "can_grant_first_party",
+            JsonValue::Bool(can_grant_first_party),
+        ),
+    ]))
 }
 
 fn registry_remote_install_diagnostic(
@@ -320,7 +398,16 @@ fn registry_remote_install_diagnostic(
             json_pointer: None,
         },
         evidence: Some(evidence),
-        repairs: Vec::new(),
+        repairs: if remote && !configured {
+            vec![manual_env_repair(
+                "runx.registry.installation_id.configure_env",
+                &["RUNX_INSTALLATION_ID"],
+                "Set RUNX_INSTALLATION_ID before remote registry install so acquisition is bound to an installation principal.",
+                DoctorRepairRisk::Low,
+            )]
+        } else {
+            Vec::new()
+        },
     }
 }
 
@@ -427,7 +514,16 @@ fn effect_state_diagnostic(env: &BTreeMap<String, String>, cwd: &Path) -> Doctor
             json_pointer: None,
         },
         evidence: Some(evidence),
-        repairs: Vec::new(),
+        repairs: if configured {
+            Vec::new()
+        } else {
+            vec![manual_env_repair(
+                "runx.authority.effect_state.configure_env",
+                &[RUNX_EFFECT_STATE_PATH_ENV],
+                "Set RUNX_EFFECT_STATE_PATH to a durable writable state file for cross-run effect accounting.",
+                DoctorRepairRisk::Low,
+            )]
+        },
     }
 }
 
@@ -478,7 +574,39 @@ fn readiness_diagnostic(
             json_pointer: None,
         },
         evidence: Some(authority_evidence(env_names, configured, key_id_env)),
-        repairs: Vec::new(),
+        repairs: if configured {
+            Vec::new()
+        } else {
+            vec![manual_env_repair(
+                &format!("{id}.configure_env"),
+                &missing,
+                &format!("Set {} in the operator environment.", missing.join(", ")),
+                DoctorRepairRisk::Sensitive,
+            )]
+        },
+    }
+}
+
+fn manual_env_repair(
+    id: &str,
+    env_names: &[&str],
+    contents: &str,
+    risk: DoctorRepairRisk,
+) -> DoctorRepair {
+    DoctorRepair {
+        id: id.to_owned(),
+        kind: DoctorRepairKind::Manual,
+        confidence: DoctorRepairConfidence::High,
+        risk,
+        path: Some("environment".to_owned()),
+        json_pointer: None,
+        contents: Some(format!(
+            "{contents} Required env vars: {}.",
+            env_names.join(", ")
+        )),
+        patch: None,
+        command: None,
+        requires_human_review: true,
     }
 }
 

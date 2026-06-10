@@ -1,8 +1,8 @@
 //! Cloud registry index endpoint (`POST /v1/index`).
 //!
 //! This module is the canonical client for indexing a GitHub repository into
-//! the hosted runx registry. It is consumed by the `runx url-add` CLI command
-//! and by any future flow that needs to publish a remote repo through the
+//! the hosted runx registry. It is consumed by the `runx add <github-url>` CLI
+//! path and by any future flow that needs to publish a remote repo through the
 //! hosted index. Single responsibility: parse a GitHub ref, POST it, return a
 //! typed envelope; presentation and arg parsing live in the CLI.
 

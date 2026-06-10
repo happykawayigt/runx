@@ -2,8 +2,9 @@ use runx_cli::config::{ConfigAction, ConfigPlan};
 use runx_cli::export::{ExportPlan, Target};
 use runx_cli::kernel::{KernelInputSource, KernelPlan};
 use runx_cli::launcher::{
-    DevPlan, DoctorMode, DoctorPlan, FilterMode, HarnessPlan, HistoryPlan, InitPlan,
-    LauncherAction, ListKind, ListPlan, NewPlan, ToolAction, ToolPlan, help_text, plan_launcher,
+    DevPlan, DoctorMode, DoctorPlan, FilterMode, HarnessPlan, HistoryPlan, InitPlan, JsonErrorPlan,
+    LauncherAction, ListKind, ListPlan, NewPlan, ToolAction, ToolPlan, UrlAddPlan, help_text,
+    history_help_text, plan_launcher, skill_help_text, verify_help_text,
 };
 use runx_cli::mcp::McpPlan;
 use runx_cli::parser::{ParserInputSource, ParserPlan};
@@ -31,7 +32,11 @@ fn top_level_help_and_version_are_native() {
     );
     assert_help_line(
         &help,
-        "runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md> [--registry url|path] [--digest sha256] [--runner name] [--input key=value] [--flag value] [--receipt-dir dir] [--run-id id --answers file] [--json]",
+        "runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md> [--registry url|path] [--digest sha256] [--input key=value] [--runner name] [--flag value] [--receipt-dir dir] [--run-id id --answers file] [--json]",
+    );
+    assert_help_line(
+        &help,
+        "runx add <skill-ref|github-url> [--registry url|path] [--version version] [--ref git-ref] [--digest sha256] [--to dir] [--installation-id id] [--api-base-url url] [--json]",
     );
     assert_help_line(&help, "runx parser eval --input <file|-> --json");
     assert_help_line(
@@ -50,6 +55,48 @@ fn top_level_help_and_version_are_native() {
     assert!(
         !help.contains("runx harness <fixture.yaml|skill-dir|SKILL.md>"),
         "native help must not advertise harness target forms that only the old TypeScript path handled"
+    );
+    assert!(
+        !help.contains("runx url-add"),
+        "native help must not advertise the internal URL index command"
+    );
+}
+
+#[test]
+fn nested_skill_history_and_verify_help_are_native() {
+    assert_eq!(plan(&["skill", "--help"]), LauncherAction::PrintSkillHelp);
+    assert_eq!(plan(&["skill", "-h"]), LauncherAction::PrintSkillHelp);
+    assert_eq!(
+        plan(&["skill", "SKILL.md", "--help"]),
+        LauncherAction::PrintSkillHelp
+    );
+    assert_eq!(
+        plan(&["history", "--help"]),
+        LauncherAction::PrintHistoryHelp
+    );
+    assert_eq!(plan(&["history", "-h"]), LauncherAction::PrintHistoryHelp);
+    assert_eq!(
+        plan(&["history", "sourcey", "--help"]),
+        LauncherAction::PrintHistoryHelp
+    );
+    assert_eq!(plan(&["verify", "--help"]), LauncherAction::PrintVerifyHelp);
+    assert_eq!(plan(&["verify", "-h"]), LauncherAction::PrintVerifyHelp);
+    assert_eq!(
+        plan(&["verify", "receipt-123", "--help"]),
+        LauncherAction::PrintVerifyHelp
+    );
+
+    assert_help_line(
+        &skill_help_text(),
+        "runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md> [--registry url|path] [--digest sha256] [--input key=value] [--runner name] [--flag value] [--receipt-dir dir] [--run-id id --answers file] [--json]",
+    );
+    assert_help_line(
+        &history_help_text(),
+        "runx history [query] [--skill s] [--status s] [--source s] [--actor a] [--artifact-type t] [--since iso] [--until iso] [--receipt-dir dir] [--json]",
+    );
+    assert_help_line(
+        &verify_help_text(),
+        "runx verify [receipt-id] [--receipt-dir dir] [--receipt <path|->] [--json]",
     );
 }
 
@@ -248,7 +295,7 @@ fn skill_rejects_partial_continuation_shape() {
 
 #[test]
 fn skill_rejects_resolver_flags_for_management_actions() {
-    for action in ["add", "inspect", "publish", "search", "validate"] {
+    for action in ["inspect", "publish", "search", "validate"] {
         assert_eq!(
             plan(&["skill", action, "--registry", "fixtures/registry"]),
             LauncherAction::Error(
@@ -269,10 +316,30 @@ fn skill_rejects_resolver_flags_for_management_actions() {
 }
 
 #[test]
+fn rejects_legacy_skill_add_shape() {
+    assert_eq!(
+        plan(&["skill", "add", "acme/sourcey@1.0.0"]),
+        LauncherAction::Error("runx skill add has been removed; use runx add <ref>".to_owned())
+    );
+    assert_eq!(
+        plan(&["skill", "add", "acme/sourcey@1.0.0", "--json"]),
+        LauncherAction::JsonError(JsonErrorPlan {
+            message: "runx skill add has been removed; use runx add <ref>".to_owned(),
+            code: "invalid_args".to_owned(),
+            exit_code: 64,
+        })
+    );
+}
+
+#[test]
 fn connect_surface_is_removed_from_oss_launcher() {
     assert_eq!(
         plan(&["connect", "--json"]),
         LauncherAction::Error("unknown command connect".to_owned())
+    );
+    assert_eq!(
+        plan(&["url-add", "github.com/kam/skills"]),
+        LauncherAction::Error("unknown command url-add".to_owned())
     );
 }
 
@@ -504,9 +571,82 @@ fn routes_registry_to_native_plan() {
             installation_id: None,
             owner: None,
             profile: None,
+            trust_tier: None,
             limit: Some(10),
             upsert: false,
             json: true,
+        })
+    );
+}
+
+#[test]
+fn routes_add_to_native_plan() {
+    assert_eq!(
+        plan(&[
+            "add",
+            "acme/sourcey@1.0.0",
+            "--registry",
+            "https://runx.example.test",
+            "--to",
+            "skills",
+            "--digest",
+            "sha256:abc",
+            "--installation-id",
+            "inst_123",
+            "--json",
+        ]),
+        LauncherAction::RunRegistry(RegistryPlan {
+            action: RegistryAction::Install,
+            subject: "acme/sourcey@1.0.0".to_owned(),
+            registry: Some("https://runx.example.test".to_owned()),
+            registry_dir: None,
+            version: None,
+            expected_digest: Some("sha256:abc".to_owned()),
+            destination: Some(PathBuf::from("skills")),
+            installation_id: Some("inst_123".to_owned()),
+            owner: None,
+            profile: None,
+            trust_tier: None,
+            limit: None,
+            upsert: false,
+            json: true,
+        })
+    );
+    assert_eq!(
+        plan(&[
+            "add",
+            "github.com/kam/skills",
+            "--ref",
+            "main",
+            "--api-base-url",
+            "https://api.runx.test",
+            "--json",
+        ]),
+        LauncherAction::RunUrlAdd(UrlAddPlan {
+            repo: "github.com/kam/skills".to_owned(),
+            repo_ref: Some("main".to_owned()),
+            api_base_url: Some("https://api.runx.test".to_owned()),
+            json: true,
+        })
+    );
+    assert_eq!(
+        plan(&["add", "github.com/kam/skills", "--version", "main"]),
+        LauncherAction::Error(
+            "runx add <github-url> uses --ref for git refs, not --version".to_owned()
+        )
+    );
+    assert_eq!(
+        plan(&[
+            "add",
+            "github.com/kam/skills",
+            "--version",
+            "main",
+            "--json"
+        ]),
+        LauncherAction::JsonError(JsonErrorPlan {
+            message: "runx add <github-url> uses --ref for git refs, not --version".to_owned(),
+            code: "invalid_args".to_owned(),
+            exit_code: 64,
         })
     );
 }

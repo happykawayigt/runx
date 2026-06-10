@@ -89,7 +89,11 @@ pub fn run_history_command(
             serde_json::to_string_pretty(&history).map_err(HistoryCliError::Serialize)?
         )
     } else {
-        render_history(&history, parsed.query.as_deref())
+        render_history(
+            &history,
+            parsed.query.as_deref(),
+            parsed.receipt_dir.as_deref(),
+        )
     };
     Ok(HistoryCliResult {
         output,
@@ -242,6 +246,7 @@ fn parse_history_args(args: &[OsString]) -> Result<ParsedHistoryArgs, HistoryCli
 fn render_history(
     history: &runx_runtime::journal::LocalHistoryProjection,
     query: Option<&str>,
+    receipt_dir: Option<&Path>,
 ) -> String {
     let total = history.receipts.len() + history.pending_runs.len();
     if total == 0 {
@@ -255,48 +260,91 @@ fn render_history(
     }
     let mut lines = Vec::new();
     lines.push(String::new());
+    lines.push(history_header(history));
+    lines.push(String::new());
+    for pending in &history.pending_runs {
+        push_pending_run_lines(&mut lines, pending, receipt_dir);
+    }
+    for receipt in &history.receipts {
+        push_receipt_line(&mut lines, receipt);
+    }
+    lines.push(String::new());
+    lines.push(history_next_line(history));
+    lines.push(String::new());
+    lines.join("\n")
+}
+
+fn history_header(history: &runx_runtime::journal::LocalHistoryProjection) -> String {
     if history.pending_runs.is_empty() {
-        lines.push(format!("  history  {} receipt(s)", history.receipts.len()));
+        format!("  history  {} receipt(s)", history.receipts.len())
     } else {
-        lines.push(format!(
+        format!(
             "  history  {} receipt(s), {} needs_agent",
             history.receipts.len(),
             history.pending_runs.len()
-        ));
+        )
     }
-    lines.push(String::new());
-    for pending in &history.pending_runs {
-        let step = pending
-            .step_labels
-            .first()
-            .or_else(|| pending.step_ids.first())
-            .map_or("", String::as_str);
-        lines.push(format!(
-            "  *  {}  needs_agent  {}  {}",
-            pending.name,
-            step,
-            short_id(&pending.id)
-        ));
-    }
-    for receipt in &history.receipts {
-        lines.push(format!(
-            "  {}  {}  {}  {}",
-            receipt.status,
-            receipt.name,
-            receipt.verification.status,
-            short_id(&receipt.id)
-        ));
-    }
-    lines.push(String::new());
-    if history.pending_runs.is_empty() {
-        lines.push("  next  runx history <receipt-id> --json".to_owned());
+}
+
+fn push_pending_run_lines(
+    lines: &mut Vec<String>,
+    pending: &runx_runtime::journal::PausedRunSummary,
+    receipt_dir: Option<&Path>,
+) {
+    let step = pending
+        .step_labels
+        .first()
+        .or_else(|| pending.step_ids.first())
+        .map_or("", String::as_str);
+    lines.push(format!(
+        "  *  {}  needs_agent  {}  {}",
+        pending.name,
+        step,
+        short_id(&pending.id)
+    ));
+    if let Some(resume_skill_ref) = pending.resume_skill_ref.as_deref() {
+        let resume_command =
+            crate::resume::render_skill_resume_command(crate::resume::SkillResumeCommand {
+                skill_ref: Some(resume_skill_ref),
+                run_id: &pending.id,
+                selected_runner: pending.selected_runner.as_deref(),
+                receipt_dir,
+                answers_path: None,
+            });
+        lines.push(format!("     next  {resume_command}"));
     } else {
-        lines.push(
-            "  next  rerun the same runx skill <path> with --run-id and --answers".to_owned(),
-        );
+        lines.push(format!(
+            "     next  write answers.json, then rerun the original skill with --run-id {} --answers answers.json",
+            pending.id
+        ));
     }
-    lines.push(String::new());
-    lines.join("\n")
+}
+
+fn push_receipt_line(
+    lines: &mut Vec<String>,
+    receipt: &runx_runtime::journal::LocalHistoryReceipt,
+) {
+    lines.push(format!(
+        "  {}  {}  {}  {}",
+        receipt.status,
+        receipt.name,
+        receipt.verification.status,
+        short_id(&receipt.id)
+    ));
+}
+
+fn history_next_line(history: &runx_runtime::journal::LocalHistoryProjection) -> String {
+    if history.pending_runs.is_empty() {
+        "  next  runx history <receipt-id> --json".to_owned()
+    } else if history
+        .pending_runs
+        .iter()
+        .any(|run| run.resume_skill_ref.is_some())
+    {
+        "  next  write answers.json, then rerun one of the commands above".to_owned()
+    } else {
+        "  next  write answers.json, then rerun the original skill with the shown run id".to_owned()
+    }
 }
 
 fn short_id(value: &str) -> &str {
@@ -346,17 +394,7 @@ mod tests {
     fn executes_history_json_against_cli_parity_oracle() -> Result<(), io::Error> {
         let temp = tempfile_dir()?;
         let receipt_dir = temp.join("receipts");
-        fs::create_dir_all(receipt_dir.join("ledgers"))?;
-        fs::write(
-            receipt_dir
-                .join("ledgers")
-                .join("gx_needs_agent_oracle.jsonl"),
-            format!(
-                "{}\n{}\n",
-                r#"{"entry":{"type":"run_event","version":"1","data":{"kind":"run_started","status":"started","step_id":null,"detail":{}},"meta":{"artifact_id":"ax_start","run_id":"gx_needs_agent_oracle","step_id":null,"producer":{"skill":"sourcey","runner":"graph"},"created_at":"2026-04-28T01:00:00.000Z","hash":"sha256:start","size_bytes":2,"parent_artifact_id":null,"receipt_id":null,"redacted":false}}}"#,
-                r#"{"entry":{"type":"run_event","version":"1","data":{"kind":"step_waiting_resolution","status":"waiting","step_id":"discover","detail":{"request_ids":["agent_task.test-step.output"],"resolution_kinds":["agent_act"],"step_ids":["discover"],"step_labels":["inspect repo"],"inputs":{},"selected_runner":"agent-task"}},"meta":{"artifact_id":"ax_wait","run_id":"gx_needs_agent_oracle","step_id":"discover","producer":{"skill":"sourcey","runner":"graph"},"created_at":"2026-04-28T01:00:00.000Z","hash":"sha256:wait","size_bytes":2,"parent_artifact_id":null,"receipt_id":null,"redacted":false}}}"#
-            ),
-        )?;
+        write_needs_agent_ledger(&receipt_dir)?;
         let oracle: CliParityOracle = serde_json::from_str(include_str!(
             "../../../fixtures/cli-parity/cases/oracle.json"
         ))
@@ -409,6 +447,113 @@ mod tests {
         assert_eq!(
             first_pending_run.selected_runner,
             Some("agent-task".to_owned())
+        );
+        assert_eq!(
+            first_pending_run.resume_skill_ref,
+            Some("../skills/sourcey".to_owned())
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn history_human_pending_run_includes_resume_command() -> Result<(), io::Error> {
+        let temp = tempfile_dir()?;
+        let receipt_dir = temp.join("receipts");
+        write_needs_agent_ledger(&receipt_dir)?;
+
+        let mut env = BTreeMap::new();
+        env.insert("RUNX_CWD".to_owned(), temp.to_string_lossy().to_string());
+        let result = run_history_command(
+            &[
+                "history".into(),
+                "--receipt-dir".into(),
+                receipt_dir.clone().into_os_string(),
+            ],
+            &env,
+            &temp,
+        )
+        .map_err(|error| io::Error::other(error.to_string()))?;
+
+        let receipt_dir_arg = receipt_dir.to_string_lossy();
+        assert!(
+            result
+                .output
+                .contains("next  runx skill ../skills/sourcey --runner agent-task")
+        );
+        assert!(
+            result
+                .output
+                .contains(&format!("--receipt-dir {}", receipt_dir_arg))
+        );
+        assert!(
+            result
+                .output
+                .contains("--run-id gx_needs_agent_oracle --answers answers.json")
+        );
+        assert!(
+            result
+                .output
+                .contains("write answers.json, then rerun one of the commands above")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn history_human_pending_run_omits_default_receipt_dir_from_resume_command()
+    -> Result<(), io::Error> {
+        let temp = tempfile_dir()?;
+        let receipt_dir = temp.join(".runx").join("receipts");
+        write_needs_agent_ledger(&receipt_dir)?;
+
+        let mut env = BTreeMap::new();
+        env.insert("RUNX_CWD".to_owned(), temp.to_string_lossy().to_string());
+        let result = run_history_command(&["history".into()], &env, &temp)
+            .map_err(|error| io::Error::other(error.to_string()))?;
+
+        assert!(
+            result
+                .output
+                .contains("next  runx skill ../skills/sourcey --runner agent-task")
+        );
+        assert!(
+            !result.output.contains("--receipt-dir"),
+            "default receipt dir must not be echoed into resume commands:\n{}",
+            result.output
+        );
+        assert!(
+            result
+                .output
+                .contains("--run-id gx_needs_agent_oracle --answers answers.json")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn history_human_pending_run_does_not_invent_resume_command() -> Result<(), io::Error> {
+        let temp = tempfile_dir()?;
+        let receipt_dir = temp.join("receipts");
+        write_needs_agent_ledger_with_resume(&receipt_dir, None)?;
+
+        let mut env = BTreeMap::new();
+        env.insert("RUNX_CWD".to_owned(), temp.to_string_lossy().to_string());
+        let result = run_history_command(
+            &[
+                "history".into(),
+                "--receipt-dir".into(),
+                receipt_dir.into_os_string(),
+            ],
+            &env,
+            &temp,
+        )
+        .map_err(|error| io::Error::other(error.to_string()))?;
+
+        assert!(!result.output.contains("runx skill sourcey"));
+        assert!(
+            result
+                .output
+                .contains("with --run-id gx_needs_agent_oracle"),
+            "history output should give non-fabricated continuation guidance:\n{}",
+            result.output
         );
         Ok(())
     }
@@ -510,7 +655,46 @@ mod tests {
     struct HistoryPendingRun {
         id: String,
         status: String,
+        resume_skill_ref: Option<String>,
         selected_runner: Option<String>,
+    }
+
+    fn write_needs_agent_ledger(receipt_dir: &Path) -> Result<(), io::Error> {
+        write_needs_agent_ledger_with_resume(receipt_dir, Some("../skills/sourcey"))
+    }
+
+    fn write_needs_agent_ledger_with_resume(
+        receipt_dir: &Path,
+        resume_skill_ref: Option<&str>,
+    ) -> Result<(), io::Error> {
+        fs::create_dir_all(receipt_dir.join("ledgers"))?;
+        fs::write(
+            receipt_dir
+                .join("ledgers")
+                .join("gx_needs_agent_oracle.jsonl"),
+            format!(
+                "{}\n{}\n",
+                needs_agent_started_record(),
+                needs_agent_waiting_record(resume_skill_ref)
+            ),
+        )
+    }
+
+    fn needs_agent_started_record() -> &'static str {
+        r#"{"entry":{"type":"run_event","version":"1","data":{"kind":"run_started","status":"started","step_id":null,"detail":{}},"meta":{"artifact_id":"ax_start","run_id":"gx_needs_agent_oracle","step_id":null,"producer":{"skill":"sourcey","runner":"graph"},"created_at":"2026-04-28T01:00:00.000Z","hash":"sha256:start","size_bytes":2,"parent_artifact_id":null,"receipt_id":null,"redacted":false}}}"#
+    }
+
+    fn needs_agent_waiting_record(resume_skill_ref: Option<&str>) -> String {
+        format!(
+            r#"{{"entry":{{"type":"run_event","version":"1","data":{{"kind":"step_waiting_resolution","status":"waiting","step_id":"discover","detail":{{"request_ids":["agent_task.test-step.output"],"resolution_kinds":["agent_act"],"step_ids":["discover"],"step_labels":["inspect repo"],"inputs":{{}},"selected_runner":"agent-task"{}}}}},"meta":{{"artifact_id":"ax_wait","run_id":"gx_needs_agent_oracle","step_id":"discover","producer":{{"skill":"sourcey","runner":"graph"}},"created_at":"2026-04-28T01:00:00.000Z","hash":"sha256:wait","size_bytes":2,"parent_artifact_id":null,"receipt_id":null,"redacted":false}}}}}}"#,
+            resume_skill_ref_fragment(resume_skill_ref)
+        )
+    }
+
+    fn resume_skill_ref_fragment(resume_skill_ref: Option<&str>) -> String {
+        resume_skill_ref
+            .map(|value| format!(r#","resume_skill_ref":"{value}""#))
+            .unwrap_or_default()
     }
 
     fn tempfile_dir() -> Result<PathBuf, io::Error> {

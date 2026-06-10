@@ -13,6 +13,7 @@ pub mod parser;
 pub mod payment;
 pub mod policy;
 pub mod registry;
+pub(crate) mod resume;
 pub mod runtime;
 pub mod scaffold;
 pub mod skill;

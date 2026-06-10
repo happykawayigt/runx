@@ -207,6 +207,104 @@ fn native_skill_resolves_trusted_registry_ref() -> Result<(), Box<dyn std::error
 }
 
 #[test]
+fn native_skill_registry_run_reports_provenance() -> Result<(), Box<dyn std::error::Error>> {
+    let root = crate::support::temp_root("runx-skill-registry-provenance");
+    let registry_dir = publish_registry_echo_version(&root, "1.0.0", "# Echo\n", true)?;
+
+    let json_output = trusted_registry_runx_command(&root)?
+        .args([
+            "skill",
+            "acme/echo@1.0.0",
+            "--registry",
+            registry_dir.to_str().ok_or("non-utf8 registry dir")?,
+            "--json",
+            "--non-interactive",
+        ])
+        .output()?;
+    let output_json = assert_json(&json_output, Some(2))?;
+    let provenance = output_json["registry_provenance"]
+        .as_object()
+        .ok_or("missing registry provenance")?;
+    assert_eq!(provenance["skill_id"], "acme/echo");
+    assert_eq!(provenance["version"], "1.0.0");
+    assert_eq!(provenance["trust_tier"], "community");
+    assert_eq!(provenance["registry_key_id"], TEST_MANIFEST_KEY_ID);
+    assert_eq!(provenance["trust_state"], "trusted");
+    assert_eq!(
+        provenance["registry_source"],
+        format!("local {}", registry_dir.display())
+    );
+    assert!(
+        provenance["digest"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("sha256:"))
+    );
+    assert!(
+        provenance["profile_digest"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("sha256:"))
+    );
+    assert!(
+        provenance["registry_source_fingerprint"]
+            .as_str()
+            .is_some_and(|value| value.len() == 16)
+    );
+
+    let text_output = trusted_registry_runx_command(&root)?
+        .args([
+            "skill",
+            "acme/echo@1.0.0",
+            "--registry",
+            registry_dir.to_str().ok_or("non-utf8 registry dir")?,
+            "--non-interactive",
+        ])
+        .output()?;
+    assert_eq!(text_output.status.code(), Some(2));
+    let stdout = String::from_utf8(text_output.stdout)?;
+    assert!(stdout.contains("registry:"));
+    assert!(stdout.contains("  skill_id: acme/echo"));
+    assert!(stdout.contains("  version: 1.0.0"));
+    assert!(stdout.contains(&format!(
+        "  registry_source: local {}",
+        registry_dir.display()
+    )));
+    assert!(stdout.contains("  trust_tier: community"));
+    assert!(stdout.contains("  registry_key_id: runx-registry-skill-test-key"));
+
+    Ok(())
+}
+
+#[test]
+fn native_skill_registry_run_reports_provenance_on_execution_error()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = crate::support::temp_root("runx-skill-registry-error-provenance");
+    let registry_dir = publish_registry_echo_version(&root, "1.0.0", "# Echo\n", true)?;
+
+    let json_output = trusted_registry_runx_command(&root)?
+        .args([
+            "skill",
+            "acme/echo@1.0.0",
+            "--registry",
+            registry_dir.to_str().ok_or("non-utf8 registry dir")?,
+            "--runner",
+            "missing-runner",
+            "--json",
+            "--non-interactive",
+        ])
+        .output()?;
+    let output_json = assert_json(&json_output, Some(1))?;
+    assert_eq!(output_json["status"], "failure");
+    let provenance = output_json["registry_provenance"]
+        .as_object()
+        .ok_or("missing registry provenance")?;
+    assert_eq!(provenance["skill_id"], "acme/echo");
+    assert_eq!(provenance["version"], "1.0.0");
+    assert_eq!(provenance["trust_state"], "trusted");
+
+    Ok(())
+}
+
+#[test]
 fn native_skill_resolves_registry_versions_side_by_side() -> Result<(), Box<dyn std::error::Error>>
 {
     let root = crate::support::temp_root("runx-skill-registry-versions");
@@ -276,8 +374,14 @@ fn native_skill_rejects_untrusted_registry_refs() -> Result<(), Box<dyn std::err
             "--non-interactive",
         ])
         .output()?;
-    assert_eq!(unsigned.status.code(), Some(1));
-    assert!(String::from_utf8(unsigned.stderr)?.contains("registry signed manifest is required"));
+    let unsigned_json = assert_json(&unsigned, Some(1))?;
+    assert_eq!(unsigned_json["status"], "failure");
+    assert_eq!(unsigned_json["error"]["code"], "skill_error");
+    assert!(
+        unsigned_json["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("registry signed manifest is required"))
+    );
     assert!(!unsigned_root.join("home").join("registry-skills").exists());
 
     let mismatch_root = crate::support::temp_root("runx-skill-registry-digest-mismatch");
@@ -295,9 +399,32 @@ fn native_skill_rejects_untrusted_registry_refs() -> Result<(), Box<dyn std::err
             "--non-interactive",
         ])
         .output()?;
-    assert_eq!(mismatch.status.code(), Some(1));
-    assert!(String::from_utf8(mismatch.stderr)?.contains("digest mismatch"));
+    let mismatch_json = assert_json(&mismatch, Some(1))?;
+    assert_eq!(mismatch_json["status"], "failure");
+    assert_eq!(mismatch_json["error"]["code"], "skill_error");
+    assert!(
+        mismatch_json["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("digest mismatch"))
+    );
     assert!(!mismatch_root.join("home").join("registry-skills").exists());
+
+    Ok(())
+}
+
+#[test]
+fn native_skill_json_parse_failure_uses_failure_envelope() -> Result<(), Box<dyn std::error::Error>>
+{
+    let output = runx_command().args(["skill", "--json"]).output()?;
+
+    let value = assert_json(&output, Some(64))?;
+    assert_eq!(value["status"], "failure");
+    assert_eq!(value["error"]["code"], "invalid_args");
+    assert!(
+        value["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("runx skill requires a skill package path"))
+    );
 
     Ok(())
 }
@@ -324,9 +451,18 @@ fn native_skill_text_output_is_concise_for_pending_agent_request()
     assert!(stdout.contains("status: needs_agent"));
     assert!(stdout.contains("pending_requests: 1"));
     assert!(stdout.contains("agent_task.issue-intake.output"));
+    assert!(stdout.contains(skill_dir.to_str().ok_or("non-utf8 skill dir")?));
+    assert!(stdout.contains("--run-id run_agent_task-issue-intake-output --answers answers.json"));
+    assert!(!stdout.contains("<answers.json>"));
     assert!(!stdout.trim_start().starts_with('{'));
 
     Ok(())
+}
+
+#[test]
+fn native_skill_text_output_includes_copy_paste_resume_command()
+-> Result<(), Box<dyn std::error::Error>> {
+    native_skill_text_output_is_concise_for_pending_agent_request()
 }
 
 #[test]
@@ -433,6 +569,10 @@ fn trusted_registry_runx_command(root: &Path) -> Result<Command, Box<dyn std::er
     command.env(
         runx_runtime::registry::RUNX_REGISTRY_MANIFEST_TRUST_KEY_ID_ENV,
         TEST_MANIFEST_KEY_ID,
+    );
+    command.env(
+        runx_runtime::registry::RUNX_REGISTRY_MANIFEST_TRUST_OWNER_ENV,
+        "acme",
     );
     Ok(command)
 }

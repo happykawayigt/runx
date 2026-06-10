@@ -210,6 +210,60 @@ Return the provided task id.
     expect(parsed.inputs).toEqual({});
   });
 
+  it("parses top-level add flags without leaking them as inputs", () => {
+    const parsed = parseArgs([
+      "add",
+      "acme/sourcey",
+      "--version",
+      "1.0.0",
+      "--registry",
+      "https://runx.example.test",
+      "--to",
+      "skills",
+      "--installation-id",
+      "inst_user",
+      "--digest",
+      "sha256:abc123",
+    ]);
+
+    expect(parsed.command).toBe("add");
+    expect(parsed.addRef).toBe("acme/sourcey");
+    expect(parsed.addVersion).toBe("1.0.0");
+    expect(parsed.addTo).toBe("skills");
+    expect(parsed.addInstallationId).toBe("inst_user");
+    expect(parsed.registryUrl).toBe("https://runx.example.test");
+    expect(parsed.expectedDigest).toBe("abc123");
+    expect(parsed.inputs).toEqual({});
+  });
+
+  it("parses GitHub add refs through --ref instead of skill-add state", () => {
+    const parsed = parseArgs([
+      "add",
+      "github.com/kam/skills",
+      "--ref",
+      "main",
+      "--api-base-url",
+      "https://api.runx.test",
+    ]);
+
+    expect(parsed.command).toBe("add");
+    expect(parsed.addRef).toBe("github.com/kam/skills");
+    expect(parsed.addGitRef).toBe("main");
+    expect(parsed.addApiBaseUrl).toBe("https://api.runx.test");
+    expect(parsed.skillAction).toBeUndefined();
+    expect(parsed.skillPath).toBeUndefined();
+    expect(parsed.inputs).toEqual({});
+  });
+
+  it("marks legacy skill add without treating it as a direct skill run", () => {
+    const parsed = parseArgs(["skill", "add", "acme/sourcey@1.0.0"]);
+
+    expect(parsed.retiredSkillAdd).toBe(true);
+    expect(parsed.skillAction).toBeUndefined();
+    expect(parsed.skillPath).toBeUndefined();
+    expect(parsed.addRef).toBeUndefined();
+  });
+
   it("parses trainable export filters without leaking them into skill inputs", () => {
     const parsed = parseArgs([
       "export-receipts",
@@ -888,7 +942,7 @@ Answer the prompt directly.
     expect(stdout.contents()).toContain("runx registry");
     expect(stdout.contents()).toContain("run  ");
     expect(stdout.contents()).toContain("add  ");
-    expect(stdout.contents()).toContain("runx skill add acme/receipt-auditor@1.0.0 --registry https://runx.example.test");
+    expect(stdout.contents()).toContain("runx add acme/receipt-auditor@1.0.0 --registry https://runx.example.test");
     expect(stdout.contents()).toContain("runx skill acme/receipt-auditor@1.0.0 --registry https://runx.example.test");
   });
 
@@ -908,7 +962,7 @@ Answer the prompt directly.
     }) as typeof fetch;
 
     const exitCode = await runCli(
-      ["skill", "add", "acme/sourcey@1.0.0", "--registry", "https://runx.example.test", "--to", installDir],
+      ["add", "acme/sourcey@1.0.0", "--registry", "https://runx.example.test", "--to", installDir],
       { stdin: process.stdin, stdout, stderr },
       {
         ...process.env,
@@ -918,11 +972,55 @@ Answer the prompt directly.
     );
 
     expect(exitCode).toBe(1);
-    expect(stdout.contents()).toBe("");
-    expect(stderr.contents()).toContain("runtime HTTP transport failed");
-    expect(stderr.contents()).toContain("https://runx.example.test/v1/skills/acme/sourcey%401%2E0%2E0/acquire");
+    expect(stderr.contents()).toBe("");
+    const output = JSON.parse(stdout.contents()) as { readonly error?: { readonly message?: string } };
+    expect(output.error?.message).toContain("runtime HTTP transport failed");
+    expect(output.error?.message).toContain("https://runx.example.test/v1/skills/acme/sourcey%401%2E0%2E0/acquire");
     expect(globalThis.fetch).not.toHaveBeenCalled();
     await expect(readFile(path.join(installDir, "acme", "sourcey", "SKILL.md"), "utf8")).rejects.toThrow();
+  });
+
+  it("forwards explicit add installation ids to the native subprocess", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-cli-add-installation-id-"));
+    tempDirs.push(tempDir);
+    const nativeBin = path.join(tempDir, "fake-runx.js");
+    await writeFile(
+      nativeBin,
+      "#!/usr/bin/env node\nprocess.stdout.write(JSON.stringify({ argv: process.argv.slice(2) }));\n",
+    );
+    await chmod(nativeBin, 0o755);
+
+    const stdout = createMemoryStream();
+    const stderr = createMemoryStream();
+    const exitCode = await runCli(
+      [
+        "add",
+        "acme/sourcey@1.0.0",
+        "--registry",
+        "https://runx.example.test",
+        "--to",
+        path.join(tempDir, "skills"),
+        "--installation-id",
+        "inst_user",
+        "--json",
+      ],
+      { stdin: process.stdin, stdout, stderr },
+      {
+        ...process.env,
+        RUNX_CWD: process.cwd(),
+        RUNX_HOME: path.join(tempDir, "home"),
+        RUNX_DEV_RUST_CLI_BIN: nativeBin,
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(stderr.contents()).toBe("");
+    const argv = JSON.parse(stdout.contents()).argv as string[];
+    expect(argv).toEqual(expect.arrayContaining(["registry", "install", "acme/sourcey@1.0.0"]));
+    expect(argv.slice(argv.indexOf("--installation-id"), argv.indexOf("--installation-id") + 2)).toEqual([
+      "--installation-id",
+      "inst_user",
+    ]);
   });
 
   it("indexes GitHub URL adds through the configured API endpoint", async () => {
@@ -952,7 +1050,7 @@ Answer the prompt directly.
     }) as typeof fetch;
 
     const exitCode = await runCli(
-      ["skill", "add", "github.com/kam/skills", "--version", "main", "--registry", "https://api.runx.test", "--json"],
+      ["add", "github.com/kam/skills", "--ref", "main", "--api-base-url", "https://api.runx.test", "--json"],
       { stdin: process.stdin, stdout, stderr },
       { ...process.env, RUNX_CWD: process.cwd() },
     );
@@ -973,7 +1071,7 @@ Answer the prompt directly.
     globalThis.fetch = vi.fn() as typeof fetch;
 
     const exitCode = await runCli(
-      ["skill", "add", "github.com/kam/skills", "--to", "skills"],
+      ["add", "github.com/kam/skills", "--to", "skills"],
       { stdin: process.stdin, stdout, stderr },
       { ...process.env, RUNX_CWD: process.cwd() },
     );
@@ -981,6 +1079,65 @@ Answer the prompt directly.
     expect(exitCode).toBe(1);
     expect(stdout.contents()).toBe("");
     expect(stderr.contents()).toContain("does not support --to or --digest");
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it("rejects --registry for GitHub URL add with api-base-url guidance", async () => {
+    const stdout = createMemoryStream();
+    const stderr = createMemoryStream();
+    globalThis.fetch = vi.fn() as typeof fetch;
+
+    const exitCode = await runCli(
+      ["add", "github.com/kam/skills", "--registry", "https://api.runx.test"],
+      { stdin: process.stdin, stdout, stderr },
+      { ...process.env, RUNX_CWD: process.cwd() },
+    );
+
+    expect(exitCode).toBe(1);
+    expect(stdout.contents()).toBe("");
+    expect(stderr.contents()).toContain("uses --api-base-url");
+    expect(stderr.contents()).toContain("not --registry");
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it("renders add validation failures as JSON when requested", async () => {
+    const stdout = createMemoryStream();
+    const stderr = createMemoryStream();
+    globalThis.fetch = vi.fn() as typeof fetch;
+
+    const exitCode = await runCli(
+      ["add", "github.com/kam/skills", "--registry", "https://api.runx.test", "--json"],
+      { stdin: process.stdin, stdout, stderr },
+      { ...process.env, RUNX_CWD: process.cwd() },
+    );
+
+    expect(exitCode).toBe(1);
+    expect(stderr.contents()).toBe("");
+    expect(JSON.parse(stdout.contents())).toMatchObject({
+      status: "failure",
+      error: {
+        code: "invalid_args",
+        message: expect.stringContaining("uses --api-base-url"),
+      },
+    });
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it("rejects --version for GitHub URL add with --ref guidance", async () => {
+    const stdout = createMemoryStream();
+    const stderr = createMemoryStream();
+    globalThis.fetch = vi.fn() as typeof fetch;
+
+    const exitCode = await runCli(
+      ["add", "github.com/kam/skills", "--version", "main"],
+      { stdin: process.stdin, stdout, stderr },
+      { ...process.env, RUNX_CWD: process.cwd() },
+    );
+
+    expect(exitCode).toBe(1);
+    expect(stdout.contents()).toBe("");
+    expect(stderr.contents()).toContain("uses --ref <git-ref>, not --version");
+    expect(stderr.contents()).toContain("runx add <github-url> --ref <git-ref>");
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
@@ -994,6 +1151,8 @@ Answer the prompt directly.
     expect(stderr.contents()).toBe("");
     expect(stdout.contents()).toContain("Commands:");
     expect(stdout.contents()).toContain("runx history [query]");
+    expect(stdout.contents()).toContain("runx add <skill-ref>");
+    expect(stdout.contents()).toContain("runx add <github-url> [--ref git-ref] [--api-base-url url]");
     expect(stdout.contents()).toContain("runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md>");
     expect(stdout.contents()).toContain("runx harness <fixture.yaml>");
     expect(stdout.contents()).toContain("runx tool inspect <ref>");
@@ -1005,7 +1164,6 @@ Answer the prompt directly.
   it("rejects retired command aliases and TS-only history helpers", async () => {
     for (const argv of [
       ["search", "docs"],
-      ["add", "acme/sourcey@1.0.0"],
       ["inspect", "rx_123"],
       ["skill", "inspect", "rx_123"],
       ["replay", "rx_123"],
@@ -1020,6 +1178,22 @@ Answer the prompt directly.
       expect(stdout.contents()).toBe("");
       expect(stderr.contents()).toContain("Usage:");
     }
+  });
+
+  it("rejects legacy skill add with canonical add guidance", async () => {
+    const stdout = createMemoryStream();
+    const stderr = createMemoryStream();
+
+    const exitCode = await runCli(
+      ["skill", "add", "acme/sourcey@1.0.0"],
+      { stdin: process.stdin, stdout, stderr },
+      { ...process.env, RUNX_CWD: process.cwd() },
+    );
+
+    expect(exitCode).toBe(64);
+    expect(stdout.contents()).toBe("");
+    expect(stderr.contents()).toContain("runx skill add is no longer supported");
+    expect(stderr.contents()).toContain("runx add <skill-ref|github-url>");
   });
 
   it("renders a neutral empty history state", async () => {

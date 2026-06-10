@@ -24,7 +24,7 @@
     "owner": "nilstate",
     "trust_tier": "verified",
     "version": "upstream-ee9aa1c",
-    "install_command": "runx skill add nilstate/icey-server-operator@upstream-ee9aa1c --registry https://runx.ai",
+    "install_command": "runx add nilstate/icey-server-operator@upstream-ee9aa1c --registry https://runx.ai",
     "run_command": "runx icey-server-operator",
     "profile_path": "bindings/nilstate/icey-server-operator/X.yaml",
     "materialized_package_is_registry_artifact": true

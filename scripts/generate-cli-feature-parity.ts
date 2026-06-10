@@ -78,7 +78,7 @@ const commands: readonly CommandMatrixEntry[] = [
   command("tool.search", "runx tool search <query>", [], ["--source", "--json"], "external-stub", ["tool-catalog", "adapter-catalog"], ["tool.search.validate"]),
   command("tool.inspect", "runx tool inspect <ref>", [], ["--source", "--json"], "external-stub", ["tool-catalog", "adapter-catalog"], ["tool.inspect.validate"]),
   command("registry", "runx registry search|read|resolve|install|publish ... --json", [], ["--registry", "--registry-dir", "--version", "--digest", "--to", "--owner", "--profile", "--limit", "--upsert", "--json"], "external-stub", ["registry", "cli-presentation"], ["registry.validate"]),
-  command("url-add", "runx url-add <repo> [--ref <git-ref>] [--api-base-url <url>] [--json]", [], ["--ref", "--api-base-url", "--json"], "external-stub", ["registry", "cli-presentation"], ["url-add.validate"]),
+  command("add", "runx add <skill-ref|github-url>", [], ["--registry", "--version", "--ref", "--digest", "--to", "--installation-id", "--api-base-url", "--json"], "external-stub", ["registry", "cli-presentation"], ["add.validate"]),
 ];
 
 const surfaces: readonly RuntimeSurface[] = [

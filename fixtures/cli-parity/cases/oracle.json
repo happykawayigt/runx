@@ -302,8 +302,8 @@
       ]
     },
     {
-      "id": "url-add.validate",
-      "commandId": "url-add",
+      "id": "add.validate",
+      "commandId": "add",
       "mode": "validate",
       "proves": [
         "registry",

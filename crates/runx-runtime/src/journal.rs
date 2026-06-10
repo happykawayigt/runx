@@ -96,6 +96,8 @@ pub struct PausedRunSummary {
     pub kind: String,
     pub status: String,
     pub started_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resume_skill_ref: Option<String>,
     pub selected_runner: Option<String>,
     pub step_ids: Vec<String>,
     pub step_labels: Vec<String>,
@@ -115,6 +117,7 @@ pub struct PausedRunCheckpoint {
     pub name: String,
     pub kind: String,
     pub started_at: Option<String>,
+    pub resume_skill_ref: Option<String>,
     pub selected_runner: Option<String>,
     pub step_ids: Vec<String>,
     pub step_labels: Vec<String>,
@@ -772,6 +775,7 @@ fn paused_run_from_checkpoint(checkpoint: &PausedRunCheckpoint) -> PausedRunSumm
         kind: checkpoint.kind.clone(),
         status: "paused".to_owned(),
         started_at: checkpoint.started_at.clone(),
+        resume_skill_ref: checkpoint.resume_skill_ref.clone(),
         selected_runner: checkpoint.selected_runner.clone(),
         step_ids: checkpoint.step_ids.clone(),
         step_labels: checkpoint.step_labels.clone(),
@@ -847,6 +851,8 @@ struct LedgerEventData {
 #[derive(Clone, Debug, Default, Deserialize)]
 struct LedgerEventDetail {
     #[serde(default)]
+    resume_skill_ref: Option<String>,
+    #[serde(default)]
     selected_runner: Option<String>,
     #[serde(default)]
     step_ids: Vec<String>,
@@ -876,6 +882,7 @@ struct LedgerRunEvent {
     created_at: Option<String>,
     skill_name: Option<String>,
     runner: Option<String>,
+    resume_skill_ref: Option<String>,
     selected_runner: Option<String>,
     step_ids: Vec<String>,
     step_labels: Vec<String>,
@@ -894,6 +901,7 @@ fn ledger_event(value: LedgerLine) -> Option<LedgerRunEvent> {
         created_at: entry.meta.created_at,
         skill_name: producer.as_ref().and_then(|value| value.skill.clone()),
         runner: producer.and_then(|value| value.runner),
+        resume_skill_ref: entry.data.detail.resume_skill_ref,
         selected_runner: entry.data.detail.selected_runner,
         step_ids: clean_string_array(entry.data.detail.step_ids),
         step_labels: clean_string_array(entry.data.detail.step_labels),
@@ -927,6 +935,7 @@ fn paused_run_from_events(run_id: &str, events: &[LedgerRunEvent]) -> Option<Pau
                 kind: run_kind(run_id),
                 status: "paused".to_owned(),
                 started_at: started_at.or_else(|| event.created_at.clone()),
+                resume_skill_ref: event.resume_skill_ref.clone(),
                 selected_runner: event
                     .selected_runner
                     .clone()
@@ -950,6 +959,7 @@ fn invalid_paused_run(run_id: &str, reason: String) -> PausedRunSummary {
         kind: run_kind(run_id),
         status: "paused".to_owned(),
         started_at: None,
+        resume_skill_ref: None,
         selected_runner: None,
         step_ids: Vec::new(),
         step_labels: Vec::new(),

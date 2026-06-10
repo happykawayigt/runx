@@ -145,7 +145,7 @@ fn file_registry_store_covers_profiled_skill_surface() -> Result<(), Box<dyn std
     assert_eq!(search_results[0].profile_digest, version.profile_digest);
     assert_eq!(
         search_results[0].install_command,
-        "runx skill add acme/sourcey@1.0.0 --registry https://runx.example.test"
+        "runx add acme/sourcey@1.0.0 --registry https://runx.example.test"
     );
     assert!(
         search_results[0]
@@ -178,6 +178,29 @@ fn file_registry_store_covers_profiled_skill_surface() -> Result<(), Box<dyn std
     );
     assert_eq!(resolved.runner_names, vec!["sourcey"]);
 
+    Ok(())
+}
+
+#[test]
+fn local_registry_owner_runx_defaults_to_community_trust() -> Result<(), Box<dyn std::error::Error>>
+{
+    let temp = tempdir()?;
+    let store = FileRegistryStore::new(temp.path());
+    let version = ingest_skill_markdown(
+        &store,
+        include_str!("../../../skills/sourcey/SKILL.md"),
+        IngestSkillOptions {
+            owner: Some("runx".to_owned()),
+            version: Some("1.0.0".to_owned()),
+            ..IngestSkillOptions::default()
+        },
+    )?;
+
+    assert_eq!(version.skill_id, "runx/sourcey");
+    assert_eq!(version.trust_tier, TrustTier::Community);
+    let results =
+        search_registry_with_options(&store, "sourcey", RegistrySearchOptions::default())?;
+    assert_eq!(results[0].trust_tier, TrustTier::Community);
     Ok(())
 }
 
@@ -286,7 +309,7 @@ fn local_registry_publish_rejects_changed_duplicate() -> Result<(), Box<dyn std:
     assert_eq!(first.digest.len(), 64);
     assert_eq!(
         first.link.install_command,
-        "runx skill add acme/echo@1.0.0 --registry https://runx.example.test"
+        "runx add acme/echo@1.0.0 --registry https://runx.example.test"
     );
     assert_eq!(
         first.link.run_command,
@@ -360,6 +383,7 @@ fn install_candidate() -> Result<InstallCandidate, Box<dyn std::error::Error>> {
         profile_digest: None,
         runner_names: Vec::new(),
         trust_tier: Some(TrustTier::Verified),
+        manifest_source_authority: None,
     })
 }
 

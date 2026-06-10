@@ -56,14 +56,21 @@ export async function runSkillSearch(
   const normalizedSource = sourceFilter?.trim().toLowerCase();
 
   if (!normalizedSource || normalizedSource === "registry" || normalizedSource === "runx-registry") {
-    results.push(...(await searchRegistryViaRustCli(query, { env, registryOverride })));
+    results.push(...(await searchRegistryViaRustCli(query, { env, registryOverride })).map(canonicalizeSearchAddCommand));
   }
 
   if (!normalizedSource || normalizedSource === "bundled" || normalizedSource === "builtin") {
-    results.push(...(await searchBundledSkills(query, env)));
+    results.push(...(await searchBundledSkills(query, env)).map(canonicalizeSearchAddCommand));
   }
 
   return results;
+}
+
+function canonicalizeSearchAddCommand(result: SkillSearchResult): SkillSearchResult {
+  const addCommand = result.add_command
+    .replace(/^runx registry install\b/, "runx add")
+    .replace(/^runx skill add\b/, "runx add");
+  return addCommand === result.add_command ? result : { ...result, add_command: addCommand };
 }
 
 export function resolveSkillReference(ref: string, env: NodeJS.ProcessEnv): string {
@@ -352,7 +359,7 @@ async function searchBundledSkills(query: string, env: NodeJS.ProcessEnv): Promi
       tags: [],
       profile_mode: hasProfile ? "profiled" : "portable",
       runner_names: [],
-      add_command: `runx skill add runx/${name}`,
+      add_command: `runx add runx/${name}`,
       run_command: preferredRunCommand(name),
     });
   }

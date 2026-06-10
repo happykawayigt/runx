@@ -95,7 +95,8 @@ describe("official skill native fetch", () => {
         "--non-interactive",
       ]);
       expect(result.status).toBe(1);
-      expect(result.stderr).toContain("digest mismatch");
+      expect(result.stderr).toBe("");
+      expect((JSON.parse(result.stdout) as { error?: { message?: string } }).error?.message).toContain("digest mismatch");
       expect(existsSync(path.join(globalHomeDir, "official-skills", "runx", "sourcey", "SKILL.md"))).toBe(false);
     } finally {
       await rm(tempDir, { recursive: true, force: true });
@@ -275,10 +276,15 @@ function publishLocalRegistrySkill(input: {
   readonly version: string;
   readonly env: NodeJS.ProcessEnv;
   readonly profile?: string;
+  readonly trustTier?: "verified" | "community";
 }): void {
   const signingKey = testManifestSigningKey();
   input.env.RUNX_REGISTRY_MANIFEST_TRUST_KEY_ID = signingKey.keyId;
   input.env.RUNX_REGISTRY_MANIFEST_TRUST_KEY_BASE64 = signingKey.publicKeyBase64;
+  input.env.RUNX_REGISTRY_MANIFEST_TRUST_OWNER = input.owner;
+  if (input.owner === "runx") {
+    input.env.RUNX_REGISTRY_SOURCE_AUTHORITY = "official_runx";
+  }
   const args = [
     "registry",
     "publish",
@@ -289,6 +295,8 @@ function publishLocalRegistrySkill(input: {
     input.owner,
     "--version",
     input.version,
+    "--trust-tier",
+    input.trustTier ?? "community",
     "--upsert",
     "--json",
   ];

@@ -4,7 +4,9 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use runx_cli::launcher::{HarnessPlan, LauncherAction, help_text};
+use runx_cli::launcher::{
+    HarnessPlan, LauncherAction, help_text, history_help_text, skill_help_text, verify_help_text,
+};
 
 fn main() -> ExitCode {
     let args: Vec<OsString> = env::args_os().skip(1).collect();
@@ -14,7 +16,13 @@ fn main() -> ExitCode {
             let _ignored = write_stderr_line(&format!("runx: {message}"));
             ExitCode::from(64)
         }
+        LauncherAction::JsonError(plan) => {
+            write_json_failure(&plan.message, &plan.code, plan.exit_code)
+        }
         LauncherAction::PrintHelp => write_stdout(&help_text()),
+        LauncherAction::PrintHistoryHelp => write_stdout(&history_help_text()),
+        LauncherAction::PrintSkillHelp => write_stdout(&skill_help_text()),
+        LauncherAction::PrintVerifyHelp => write_stdout(&verify_help_text()),
         LauncherAction::PrintVersion => {
             write_stdout_line(&format!("runx-cli {}", env!("CARGO_PKG_VERSION")))
         }
@@ -62,6 +70,7 @@ fn run_native_history(args: Vec<OsString>) -> ExitCode {
 }
 
 fn run_native_verify(args: Vec<OsString>) -> ExitCode {
+    let json = runx_cli::launcher::json_requested(&args);
     let cwd = match env::current_dir() {
         Ok(cwd) => cwd,
         Err(error) => {
@@ -84,10 +93,16 @@ fn run_native_verify(args: Vec<OsString>) -> ExitCode {
             }
         }
         Err(runx_cli::verify::VerifyCliError::InvalidArgs(message)) => {
+            if json {
+                return write_json_failure(&message, "invalid_args", 64);
+            }
             let _ignored = write_stderr_line(&format!("runx: {message}"));
             ExitCode::from(64)
         }
         Err(error) => {
+            if json {
+                return write_json_failure(&error.to_string(), "runtime_error", 1);
+            }
             let _ignored = write_stderr_line(&format!("runx: {error}"));
             ExitCode::from(1)
         }
@@ -259,6 +274,16 @@ fn write_stdout(message: &str) -> ExitCode {
     let mut stdout = io::stdout().lock();
     if stdout.write_all(message.as_bytes()).is_ok() {
         ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    }
+}
+
+fn write_json_failure(message: &str, code: &str, exit_code: u8) -> ExitCode {
+    let output = runx_cli::launcher::json_failure_output(message, code);
+    let mut stdout = io::stdout().lock();
+    if stdout.write_all(output.as_bytes()).is_ok() {
+        ExitCode::from(exit_code)
     } else {
         ExitCode::from(1)
     }

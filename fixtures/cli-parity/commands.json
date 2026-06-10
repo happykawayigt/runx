@@ -765,16 +765,19 @@
       ]
     },
     {
-      "id": "url-add",
-      "usage": "runx url-add <repo> [--ref <git-ref>] [--api-base-url <url>] [--json]",
+      "id": "add",
+      "usage": "runx add <skill-ref|github-url>",
       "aliases": [],
       "requiredPositionals": [
-        "<repo>",
-        "<git-ref>",
-        "<url>"
+        "<skill-ref|github-url>"
       ],
       "flags": [
+        "--registry",
+        "--version",
         "--ref",
+        "--digest",
+        "--to",
+        "--installation-id",
         "--api-base-url",
         "--json"
       ],
@@ -795,7 +798,7 @@
         ]
       },
       "cases": [
-        "url-add.validate"
+        "add.validate"
       ]
     }
   ]

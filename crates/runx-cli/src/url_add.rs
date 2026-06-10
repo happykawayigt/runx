@@ -1,4 +1,4 @@
-//! `runx url-add <repo>`: thin CLI orchestrator over the runtime's `/v1/index`
+//! GitHub repository indexing CLI: thin orchestrator over the runtime's `/v1/index`
 //! client. This module owns argument resolution (env + plan defaults) and
 //! presentation (human text vs JSON envelope); it owns no parsing, HTTP, or
 //! response shaping logic — those live in `runx_runtime::registry::index`.
@@ -71,7 +71,7 @@ fn render_result(json: bool, repo_ref: &GithubRepoRef, response: &IndexResponse)
         };
         match serde_json::to_string_pretty(&envelope) {
             Ok(serialized) => write_stdout(&format!("{serialized}\n")),
-            Err(error) => fail(&format!("failed to serialize url-add result: {error}")),
+            Err(error) => fail(&format!("failed to serialize add result: {error}")),
         }
     } else {
         write_stdout(&render_text(response))
@@ -104,7 +104,7 @@ fn render_text(response: &IndexResponse) -> String {
         ));
         out.push_str(&format!("    → {}\n", listing.permalink));
         out.push_str(&format!(
-            "    install: runx skill add {}@{}\n",
+            "    install: runx add {}@{}\n",
             listing.skill_id, listing.version,
         ));
         out.push_str(&format!("    run:     runx {}\n\n", listing.name));
@@ -201,7 +201,7 @@ mod tests {
         let text = render_text(&response);
         assert!(text.starts_with("indexed 1 skill from runxhq/runx@abcdef012345\n"));
         assert!(text.contains("(new)"));
-        assert!(text.contains("install: runx skill add runxhq/demo@sha-1"));
+        assert!(text.contains("install: runx add runxhq/demo@sha-1"));
     }
 
     #[test]

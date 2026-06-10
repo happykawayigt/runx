@@ -4,6 +4,7 @@ mod install;
 mod local;
 mod payload;
 mod refs;
+mod source_authority;
 mod trust_anchor;
 mod types;
 
@@ -34,11 +35,20 @@ pub use refs::{
     ParsedRegistryRef, RegistryResolveError, materialization_cache_path,
     materialization_digest_marker, parse_registry_ref, safe_skill_package_parts,
 };
+pub use source_authority::{
+    RUNX_REGISTRY_SOURCE_AUTHORITY_ENV, RegistryManifestSourceAuthority,
+    is_official_runx_registry_url, registry_manifest_source_authority_from_env,
+    registry_manifest_source_authority_from_registry_dir,
+    registry_manifest_source_authority_from_registry_url, registry_manifest_source_key,
+};
 pub use trust_anchor::{
     REGISTRY_SIGNED_MANIFEST_SCHEMA, RUNX_REGISTRY_MANIFEST_TRUST_KEY_ENV,
-    RUNX_REGISTRY_MANIFEST_TRUST_KEY_ID_ENV, RegistryManifestKeyError,
+    RUNX_REGISTRY_MANIFEST_TRUST_KEY_ID_ENV, RUNX_REGISTRY_MANIFEST_TRUST_OWNER_ENV,
+    RegistryManifestKeyError, RegistryManifestTrustEnvError, RegistryManifestTrustScope,
     RegistryManifestVerificationFailure, TrustedRegistryManifestKey,
-    default_trusted_registry_manifest_keys, verify_registry_signed_manifest,
+    default_trusted_registry_manifest_keys, registry_manifest_key_allows,
+    trusted_registry_manifest_keys_from_env, trusted_registry_manifest_keys_from_env_with_source,
+    verify_registry_signed_manifest,
 };
 pub use types::{
     AcquiredRegistrySkill, ProfileMode, PublishSkillMarkdownResult, PublishStatus,

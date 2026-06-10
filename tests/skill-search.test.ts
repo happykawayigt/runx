@@ -69,7 +69,7 @@ describe("skill-search CLI", () => {
             trust_tier: "community",
             profile_mode: "portable",
             runner_names: [],
-            add_command: "runx skill add acme/sourcey@1.0.0 --registry https://runx.example.test",
+            add_command: "runx add acme/sourcey@1.0.0 --registry https://runx.example.test",
           }),
         ]),
       );
@@ -154,7 +154,7 @@ process.stdout.write(JSON.stringify({
       tags: [],
       profile_mode: "portable",
       runner_names: [],
-      install_command: "runx skill add rust/sourcey@1.0.0",
+      install_command: "runx add rust/sourcey@1.0.0",
       run_command: "runx skill sourcey",
       version: "1.0.0"
     }]

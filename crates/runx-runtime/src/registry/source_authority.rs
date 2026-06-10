@@ -1,0 +1,87 @@
+use std::collections::BTreeMap;
+use std::fs;
+use std::path::Path;
+
+pub const RUNX_REGISTRY_SOURCE_AUTHORITY_ENV: &str = "RUNX_REGISTRY_SOURCE_AUTHORITY";
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RegistryManifestSourceAuthority {
+    OfficialRunx,
+    RegistrySource(String),
+}
+
+pub fn registry_manifest_source_authority_from_env(
+    env: &BTreeMap<String, String>,
+) -> Option<RegistryManifestSourceAuthority> {
+    if env
+        .get(RUNX_REGISTRY_SOURCE_AUTHORITY_ENV)
+        .map(String::as_str)
+        .map(str::trim)
+        .is_some_and(|value| value == "official_runx")
+    {
+        return Some(RegistryManifestSourceAuthority::OfficialRunx);
+    }
+    if let Some(registry_url) = env.get("RUNX_REGISTRY_URL") {
+        return Some(registry_manifest_source_authority_from_registry_url(
+            registry_url,
+        ));
+    }
+    env.get("RUNX_REGISTRY_DIR")
+        .map(|value| registry_manifest_source_authority_from_registry_dir(value))
+}
+
+pub fn registry_manifest_source_authority_from_registry_url(
+    value: &str,
+) -> RegistryManifestSourceAuthority {
+    if is_official_runx_registry_url(value) {
+        RegistryManifestSourceAuthority::OfficialRunx
+    } else {
+        RegistryManifestSourceAuthority::RegistrySource(format!(
+            "remote:{}",
+            canonical_registry_url(value)
+        ))
+    }
+}
+
+pub fn registry_manifest_source_authority_from_registry_dir(
+    value: &str,
+) -> RegistryManifestSourceAuthority {
+    let path = Path::new(value);
+    let canonical = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    RegistryManifestSourceAuthority::RegistrySource(format!("local:{}", canonical.display()))
+}
+
+pub fn registry_manifest_source_key(source: &RegistryManifestSourceAuthority) -> String {
+    match source {
+        RegistryManifestSourceAuthority::OfficialRunx => "official_runx".to_owned(),
+        RegistryManifestSourceAuthority::RegistrySource(value) => value.clone(),
+    }
+}
+
+pub fn is_official_runx_registry_url(value: &str) -> bool {
+    matches!(
+        canonical_registry_url(value).as_str(),
+        "https://runx.ai" | "https://api.runx.ai"
+    )
+}
+
+fn canonical_registry_url(value: &str) -> String {
+    let without_fragment = value.split_once('#').map_or(value, |(prefix, _)| prefix);
+    let without_query = without_fragment
+        .split_once('?')
+        .map_or(without_fragment, |(prefix, _)| prefix);
+    let Some((scheme, rest)) = without_query.split_once("://") else {
+        return without_query.trim_end_matches('/').to_owned();
+    };
+    let (authority, path) = rest
+        .split_once('/')
+        .map_or((rest, ""), |(authority, path)| (authority, path));
+    let authority = authority
+        .rsplit_once('@')
+        .map_or(authority, |(_, host)| host);
+    if path.is_empty() {
+        format!("{scheme}://{authority}")
+    } else {
+        format!("{scheme}://{authority}/{}", path.trim_end_matches('/'))
+    }
+}

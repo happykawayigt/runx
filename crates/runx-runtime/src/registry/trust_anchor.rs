@@ -1,12 +1,18 @@
 use base64::Engine;
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 use ring::signature::{ED25519, UnparsedPublicKey};
+use std::collections::BTreeMap;
 
-use super::types::RegistrySignedManifest;
+use super::source_authority::{
+    RegistryManifestSourceAuthority, registry_manifest_source_authority_from_env,
+    registry_manifest_source_key,
+};
+use super::types::{RegistrySignedManifest, TrustTier};
 
 pub const REGISTRY_SIGNED_MANIFEST_SCHEMA: &str = "runx.registry.signed_manifest.v1";
 pub const RUNX_REGISTRY_MANIFEST_TRUST_KEY_ENV: &str = "RUNX_REGISTRY_MANIFEST_TRUST_KEY_BASE64";
 pub const RUNX_REGISTRY_MANIFEST_TRUST_KEY_ID_ENV: &str = "RUNX_REGISTRY_MANIFEST_TRUST_KEY_ID";
+pub const RUNX_REGISTRY_MANIFEST_TRUST_OWNER_ENV: &str = "RUNX_REGISTRY_MANIFEST_TRUST_OWNER";
 
 const RUNX_REGISTRY_MANIFEST_KEY_ID: &str = "runx-registry-ed25519-v1";
 const RUNX_REGISTRY_MANIFEST_PUBLIC_KEY_BASE64: &str =
@@ -17,15 +23,58 @@ const REGISTRY_MANIFEST_SIGNATURE_BASE64_PREFIX: &str = "base64:";
 pub struct TrustedRegistryManifestKey {
     pub key_id: String,
     pub public_key: Vec<u8>,
+    pub scope: RegistryManifestTrustScope,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RegistryManifestTrustScope {
+    OfficialRunx,
+    ThirdParty {
+        allowed_owner: String,
+        allowed_source: String,
+    },
 }
 
 impl TrustedRegistryManifestKey {
-    pub fn from_base64(key_id: String, public_key: &str) -> Result<Self, RegistryManifestKeyError> {
+    pub fn from_base64(
+        key_id: String,
+        public_key: &str,
+        allowed_owner: String,
+        allowed_source: String,
+    ) -> Result<Self, RegistryManifestKeyError> {
+        let allowed_owner = validate_owner_namespace(allowed_owner)?;
+        let allowed_source = validate_registry_source(allowed_source)?;
+        Self::from_base64_with_scope(
+            key_id,
+            public_key,
+            RegistryManifestTrustScope::ThirdParty {
+                allowed_owner,
+                allowed_source,
+            },
+        )
+    }
+
+    pub fn official_from_base64(
+        key_id: String,
+        public_key: &str,
+    ) -> Result<Self, RegistryManifestKeyError> {
+        Self::from_base64_with_scope(key_id, public_key, RegistryManifestTrustScope::OfficialRunx)
+    }
+
+    fn from_base64_with_scope(
+        key_id: String,
+        public_key: &str,
+        scope: RegistryManifestTrustScope,
+    ) -> Result<Self, RegistryManifestKeyError> {
         let public_key = decode_base64(public_key).map_err(|_| RegistryManifestKeyError)?;
         if public_key.len() != 32 {
             return Err(RegistryManifestKeyError);
         }
-        Ok(Self { key_id, public_key })
+        Ok(Self {
+            key_id,
+            public_key,
+            scope,
+        })
     }
 
     #[must_use]
@@ -49,10 +98,10 @@ pub enum RegistryManifestVerificationFailure {
     SignatureMismatch,
 }
 
-pub fn verify_registry_signed_manifest(
+pub fn verify_registry_signed_manifest<'a>(
     manifest: &RegistrySignedManifest,
-    trusted_keys: &[TrustedRegistryManifestKey],
-) -> Result<(), RegistryManifestVerificationFailure> {
+    trusted_keys: &'a [TrustedRegistryManifestKey],
+) -> Result<&'a TrustedRegistryManifestKey, RegistryManifestVerificationFailure> {
     if manifest.schema != REGISTRY_SIGNED_MANIFEST_SCHEMA {
         return Err(RegistryManifestVerificationFailure::UnsupportedSchema);
     }
@@ -81,15 +130,144 @@ pub fn verify_registry_signed_manifest(
     );
     UnparsedPublicKey::new(&ED25519, &key.public_key)
         .verify(payload.as_bytes(), &signature)
-        .map_err(|_| RegistryManifestVerificationFailure::SignatureMismatch)
+        .map_err(|_| RegistryManifestVerificationFailure::SignatureMismatch)?;
+    Ok(key)
 }
 
 pub fn default_trusted_registry_manifest_keys()
 -> Result<Vec<TrustedRegistryManifestKey>, RegistryManifestKeyError> {
-    Ok(vec![TrustedRegistryManifestKey::from_base64(
+    Ok(vec![TrustedRegistryManifestKey::official_from_base64(
         RUNX_REGISTRY_MANIFEST_KEY_ID.to_owned(),
         RUNX_REGISTRY_MANIFEST_PUBLIC_KEY_BASE64,
     )?])
+}
+
+#[derive(Clone, Debug, thiserror::Error, PartialEq, Eq)]
+pub enum RegistryManifestTrustEnvError {
+    #[error("registry manifest trust key is invalid")]
+    InvalidKey,
+    #[error("registry manifest trust key id is required")]
+    MissingKeyId,
+    #[error("registry manifest trust owner is required")]
+    MissingOwner,
+    #[error("registry manifest trust source is required")]
+    MissingSource,
+}
+
+pub fn trusted_registry_manifest_keys_from_env(
+    env: &BTreeMap<String, String>,
+) -> Result<Vec<TrustedRegistryManifestKey>, RegistryManifestTrustEnvError> {
+    trusted_registry_manifest_keys_from_env_with_source(
+        env,
+        registry_manifest_source_authority_from_env(env),
+    )
+}
+
+pub fn trusted_registry_manifest_keys_from_env_with_source(
+    env: &BTreeMap<String, String>,
+    source_authority: Option<RegistryManifestSourceAuthority>,
+) -> Result<Vec<TrustedRegistryManifestKey>, RegistryManifestTrustEnvError> {
+    let mut trusted_keys = default_trusted_registry_manifest_keys()
+        .map_err(|_| RegistryManifestTrustEnvError::InvalidKey)?;
+    let Some(public_key) = env.get(RUNX_REGISTRY_MANIFEST_TRUST_KEY_ENV) else {
+        return Ok(trusted_keys);
+    };
+    let key_id = env
+        .get(RUNX_REGISTRY_MANIFEST_TRUST_KEY_ID_ENV)
+        .cloned()
+        .ok_or(RegistryManifestTrustEnvError::MissingKeyId)?;
+    let allowed_owner = env
+        .get(RUNX_REGISTRY_MANIFEST_TRUST_OWNER_ENV)
+        .cloned()
+        .ok_or(RegistryManifestTrustEnvError::MissingOwner)?;
+    let allowed_source = source_authority
+        .as_ref()
+        .map(registry_manifest_source_key)
+        .ok_or(RegistryManifestTrustEnvError::MissingSource)?;
+    let key =
+        TrustedRegistryManifestKey::from_base64(key_id, public_key, allowed_owner, allowed_source)
+            .map_err(|_| RegistryManifestTrustEnvError::InvalidKey)?;
+    trusted_keys.push(key);
+    Ok(trusted_keys)
+}
+
+pub fn registry_manifest_key_allows(
+    key: &TrustedRegistryManifestKey,
+    skill_id: &str,
+    trust_tier: &TrustTier,
+    source_authority: Option<&RegistryManifestSourceAuthority>,
+) -> Result<(), String> {
+    match &key.scope {
+        RegistryManifestTrustScope::OfficialRunx => {
+            if !skill_id.starts_with("runx/") {
+                return Err("official key may only sign runx/* skills".to_owned());
+            }
+            if !matches!(
+                source_authority,
+                Some(RegistryManifestSourceAuthority::OfficialRunx)
+            ) {
+                return Err(
+                    "official key may only grant trust for the official runx registry source"
+                        .to_owned(),
+                );
+            }
+            Ok(())
+        }
+        RegistryManifestTrustScope::ThirdParty {
+            allowed_owner,
+            allowed_source,
+        } => {
+            if matches!(trust_tier, TrustTier::FirstParty) {
+                return Err("third-party keys may not grant first_party trust".to_owned());
+            }
+            let actual_source = source_authority
+                .map(registry_manifest_source_key)
+                .ok_or_else(|| "third-party key requires a registry source".to_owned())?;
+            if actual_source != *allowed_source {
+                return Err(format!(
+                    "third-party key may only sign from registry source {allowed_source}"
+                ));
+            }
+            let Some((owner, _name)) = skill_id.split_once('/') else {
+                return Err("skill id must include an owner namespace".to_owned());
+            };
+            if owner == "runx" {
+                return Err("third-party keys may not sign runx/* skills".to_owned());
+            }
+            if owner != allowed_owner {
+                return Err(format!(
+                    "third-party key may only sign {allowed_owner}/* skills"
+                ));
+            }
+            Ok(())
+        }
+    }
+}
+
+fn validate_owner_namespace(value: String) -> Result<String, RegistryManifestKeyError> {
+    let owner = value.trim();
+    if owner.is_empty()
+        || owner == "runx"
+        || owner.contains('/')
+        || owner
+            .bytes()
+            .any(|byte| matches!(byte, b'\n' | b'\r' | b'=' | 0))
+    {
+        return Err(RegistryManifestKeyError);
+    }
+    Ok(owner.to_owned())
+}
+
+fn validate_registry_source(value: String) -> Result<String, RegistryManifestKeyError> {
+    let source = value.trim();
+    if source.is_empty()
+        || source
+            .bytes()
+            .any(|byte| matches!(byte, b'\n' | b'\r' | b'=' | 0))
+    {
+        return Err(RegistryManifestKeyError);
+    }
+    Ok(source.to_owned())
 }
 
 fn registry_manifest_payload(

@@ -209,16 +209,41 @@ export async function dispatchCli(
     return 0;
   }
 
-  if (parsed.command === "skill" && parsed.skillAction === "add" && parsed.skillRef && isGithubRepoUrl(parsed.skillRef)) {
-    if (parsed.installTo || parsed.expectedDigest) {
-      io.stderr.write("runx skill add: GitHub URL indexing does not support --to or --digest. Index the URL, then install the emitted registry ref.\n");
-      return 1;
+  if (parsed.retiredSkillAdd) {
+    return writeAddValidationError(
+      io,
+      parsed,
+      "runx skill add is no longer supported. Use `runx add <skill-ref|github-url>` instead.",
+      64,
+    );
+  }
+
+  if (parsed.command === "add" && parsed.addRef && isGithubRepoUrl(parsed.addRef)) {
+    if (parsed.registryUrl) {
+      return writeAddValidationError(io, parsed, "GitHub URL indexing uses --api-base-url for the hosted index API, not --registry.");
+    }
+    if (parsed.addVersion) {
+      return writeAddValidationError(
+        io,
+        parsed,
+        "GitHub URL indexing uses --ref <git-ref>, not --version. Try `runx add <github-url> --ref <git-ref>`.",
+      );
+    }
+    if (parsed.addTo || parsed.expectedDigest) {
+      return writeAddValidationError(
+        io,
+        parsed,
+        "GitHub URL indexing does not support --to or --digest. Index the URL, then install the emitted registry ref with `runx add <skill-ref>`.",
+      );
+    }
+    if (parsed.addInstallationId) {
+      return writeAddValidationError(io, parsed, "GitHub URL indexing does not accept --installation-id.");
     }
     try {
       const result = await publishUrlSkill({
-        repoUrl: parsed.skillRef,
-        ref: parsed.installVersion,
-        apiBaseUrl: parsed.registryUrl ?? resolveUrlAddApiBaseUrl(env),
+        repoUrl: parsed.addRef,
+        ref: parsed.addGitRef,
+        apiBaseUrl: parsed.addApiBaseUrl ?? resolveUrlAddApiBaseUrl(env),
       });
       if (parsed.json) {
         io.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
@@ -229,14 +254,17 @@ export async function dispatchCli(
     } catch (error) {
       if (error instanceof UrlAddCliError) {
         const detail = error.payload.hint ? `${error.payload.detail}\n  hint: ${error.payload.hint}` : error.payload.detail;
-        io.stderr.write(`runx skill add: ${detail}\n`);
+        io.stderr.write(`runx add: ${detail}\n`);
         return 1;
       }
       throw error;
     }
   }
 
-  if (parsed.command === "skill" && parsed.skillAction === "add" && parsed.skillRef) {
+  if (parsed.command === "add" && parsed.addRef) {
+    if (parsed.addGitRef) {
+      return writeAddValidationError(io, parsed, "--ref is only valid for GitHub repository URLs. Use --version for registry skill refs.");
+    }
     const registryTarget = resolveRunxRegistryTarget(env, { registry: parsed.registryUrl });
     const installState = registryTarget.mode === "remote"
       ? await ensureRunxInstallState(resolveRunxGlobalHomeDir(env))
@@ -244,15 +272,15 @@ export async function dispatchCli(
     const args = [
       "registry",
       "install",
-      parsed.skillRef,
+      parsed.addRef,
       "--json",
       "--to",
-      resolveSkillInstallRoot(env, parsed.installTo),
+      resolveSkillInstallRoot(env, parsed.addTo),
     ];
     pushOptionalFlag(args, "--registry", parsed.registryUrl);
-    pushOptionalFlag(args, "--version", parsed.installVersion);
+    pushOptionalFlag(args, "--version", parsed.addVersion);
     pushOptionalFlag(args, "--digest", parsed.expectedDigest);
-    pushOptionalFlag(args, "--installation-id", installState?.state.installation_id);
+    pushOptionalFlag(args, "--installation-id", parsed.addInstallationId ?? installState?.state.installation_id);
     return await streamNativeRunxToIo(io, args, env);
   }
 
@@ -339,6 +367,20 @@ export async function dispatchCli(
 export function writeCliError(io: CliIo, message: string): number {
   io.stderr.write(renderCliError(message));
   return 1;
+}
+
+function writeAddValidationError(
+  io: CliIo,
+  parsed: ParsedArgs,
+  message: string,
+  exitCode = 1,
+): number {
+  if (parsed.json) {
+    io.stdout.write(`${JSON.stringify({ status: "failure", error: { message, code: "invalid_args" } }, null, 2)}\n`);
+    return exitCode;
+  }
+  io.stderr.write(`runx add: ${message}\n`);
+  return exitCode;
 }
 
 async function executeLocalSkillCommand(options: {

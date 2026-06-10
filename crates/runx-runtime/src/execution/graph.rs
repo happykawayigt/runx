@@ -13,8 +13,9 @@ use runx_parser::{
 
 use crate::receipts::paths::RUNX_CWD_ENV;
 use crate::registry::{
-    RegistryResolveOptions, create_file_registry_store, materialization_cache_path,
-    materialization_digest_marker, resolve_registry_skill, split_skill_id,
+    InstallCandidate, InstallLocalSkillOptions, RegistryResolveOptions, create_file_registry_store,
+    install_local_skill, materialization_cache_path, materialization_digest_marker,
+    resolve_registry_skill, split_skill_id, trusted_registry_manifest_keys_from_env,
 };
 use crate::{RuntimeError, StepRun};
 
@@ -316,74 +317,60 @@ fn materialize_registry_step_skill(
         .join(".runx")
         .join("registry-step-skills")
         .join(registry_source_fingerprint(registry_dir));
-    let package_dir = materialization_cache_path(
+    let destination_root = materialization_cache_path(
         &cache_root,
         owner,
         name,
         &resolution.version,
         &identity_digest,
     );
-    write_registry_step_skill_package(
-        step,
-        reference,
-        &package_dir,
-        &resolution.markdown,
-        resolution.profile_document.as_deref(),
-    )?;
-    Ok(package_dir)
-}
-
-fn write_registry_step_skill_package(
-    step: &GraphStep,
-    reference: &str,
-    package_dir: &Path,
-    markdown: &str,
-    profile_document: Option<&str>,
-) -> Result<(), RuntimeError> {
-    fs::create_dir_all(package_dir).map_err(|source| {
-        RuntimeError::io(format!("creating {}", package_dir.display()), source)
-    })?;
-    write_registry_cache_file(step, reference, &package_dir.join("SKILL.md"), markdown)?;
-    if let Some(profile_document) = profile_document {
-        write_registry_cache_file(
-            step,
-            reference,
-            &package_dir.join("X.yaml"),
-            profile_document,
-        )?;
-    }
-    Ok(())
-}
-
-fn write_registry_cache_file(
-    step: &GraphStep,
-    reference: &str,
-    path: &Path,
-    contents: &str,
-) -> Result<(), RuntimeError> {
-    if let Some(existing) = fs::read_to_string(path).map(Some).or_else(|source| {
-        if source.kind() == std::io::ErrorKind::NotFound {
-            Ok(None)
-        } else {
-            Err(RuntimeError::io(
-                format!("reading {}", path.display()),
-                source,
-            ))
-        }
-    })? {
-        if sha256_prefixed(existing.as_bytes()) == sha256_prefixed(contents.as_bytes()) {
-            return Ok(());
-        }
-        return Err(RuntimeError::InvalidRunStep {
+    let candidate = InstallCandidate {
+        markdown: resolution.markdown,
+        profile_document: resolution.profile_document,
+        source: resolution.source,
+        source_label: resolution.source_label,
+        r#ref: format!("{}@{}", resolution.skill_id, resolution.version),
+        skill_id: Some(resolution.skill_id),
+        version: Some(resolution.version),
+        signed_manifest: resolution.signed_manifest,
+        profile_digest: resolution.profile_digest,
+        runner_names: resolution.runner_names,
+        trust_tier: Some(resolution.trust_tier),
+        manifest_source_authority: crate::registry::registry_manifest_source_authority_from_env(
+            &options.env,
+        ),
+    };
+    let trusted_manifest_keys = trusted_registry_manifest_keys_from_env(options.env).map_err(
+        |source| RuntimeError::InvalidRunStep {
             step_id: step.id.clone(),
             reason: format!(
-                "registry cache file {} for nested skill '{reference}' already exists with different content",
-                path.display()
+                "nested skill registry ref '{reference}' trust configuration is invalid: {source}"
             ),
-        });
-    }
-    fs::write(path, contents)
-        .map_err(|source| RuntimeError::io(format!("writing {}", path.display()), source))
+        },
+    )?;
+    let install = install_local_skill(
+        &candidate,
+        &InstallLocalSkillOptions {
+            destination_root,
+            expected_digest: None,
+            trusted_manifest_keys,
+        },
+    )
+    .map_err(|source| RuntimeError::InvalidRunStep {
+        step_id: step.id.clone(),
+        reason: format!("nested skill registry ref '{reference}' failed admission: {source}"),
+    })?;
+    install
+        .destination
+        .parent()
+        .map(Path::to_path_buf)
+        .ok_or_else(|| RuntimeError::InvalidRunStep {
+            step_id: step.id.clone(),
+            reason: format!(
+                "nested skill registry ref '{reference}' installed to invalid path {}",
+                install.destination.display()
+            ),
+        })
 }
 
 fn runtime_cwd(env: &BTreeMap<String, String>, graph_dir: &Path) -> PathBuf {

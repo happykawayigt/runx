@@ -54,7 +54,7 @@ describe("CLI skill registry execution profile", () => {
       const addErr = createMemoryStream();
       await expect(
         runCli(
-          ["skill", "add", "acme/sourcey@1.0.0", "--to", skillsDir, "--json"],
+          ["add", "acme/sourcey@1.0.0", "--to", skillsDir, "--json"],
           { stdin: process.stdin, stdout: addOut, stderr: addErr },
           { ...process.env, RUNX_CWD: process.cwd(), RUNX_REGISTRY_DIR: registryDir },
         ),
