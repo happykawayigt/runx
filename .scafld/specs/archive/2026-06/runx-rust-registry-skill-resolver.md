@@ -2,8 +2,8 @@
 spec_version: '2.0'
 task_id: runx-rust-registry-skill-resolver
 created: '2026-06-09T16:40:56Z'
-updated: '2026-06-10T00:56:47Z'
-status: review
+updated: '2026-06-10T01:02:53Z'
+status: completed
 harden_status: passed
 size: medium
 risk_level: medium
@@ -13,14 +13,14 @@ risk_level: medium
 
 ## Current State
 
-Status: review
+Status: completed
 Current phase: final
-Next: review
-Reason: build completed; ready for review
+Next: done
+Reason: task completed
 Blockers: none
-Allowed follow-up command: `scafld review runx-rust-registry-skill-resolver`
-Latest runner update: 2026-06-10T00:56:47Z
-Review gate: not_started
+Allowed follow-up command: `none`
+Latest runner update: 2026-06-10T01:02:53Z
+Review gate: pass
 
 ## Summary
 
@@ -369,43 +369,24 @@ Acceptance:
 ## Review
 
 Status: completed
-Verdict: fail
-Mode: discover
+Verdict: pass
+Mode: verify
 Provider: claude:claude-opus-4-7
 Output: claude.mcp_submit_review
-Summary: Resolver, trust boundary, and cache layout match the spec — install path verifies signed anchors, digests, and profile shape before any rename, and fingerprint canonicalization avoids cache collisions across URL variants. However, the TS shrink shipped without removing legacy tests that exercise the deleted official-fetch path, so `pnpm --dir oss test` fails (F-001, blocking). Three lower-severity issues round out the review: native `runx skill` help and the parity fixture omit `--registry`/`--digest` (F-002); the `--registry-resolver` dogfood lane only runs cargo tests rather than driving the native binary (F-003); and the parser silently accepts the new flags for subcommands that never consume them (F-004). Verdict: fail in discover, gated on F-001.
+Summary: Verify-mode review of all four prior findings against current workspace. F-001 (blocker): the legacy `tests/official-skill-resolution.test.ts` and `tests/official-skill-fetch.test.ts` have been rewritten to exercise the native runx binary end-to-end — resolution asserts local override + bare-name passthrough through the new shim, fetch asserts the cached path under `<RUNX_HOME>/official-skills/runx/<name>` driven by a signed local registry fixture and includes a digest-mismatch negative path. The shrunken `resolveRunnableSkillReference` in `packages/cli/src/skill-refs.ts:77-83` is now a thin local-or-passthrough shim that matches the rewritten test contract. F-002 fixed: native `runx skill` help (`crates/runx-cli/src/launcher.rs:271`), TS launcher help (`packages/cli/src/help.ts:54`), and `fixtures/cli-parity/commands.json:536-537` all list `--registry`/`--digest`. F-003 fixed: `scripts/dogfood-core-skills.mjs:111-191` under `--registry-resolver` now builds the native binary, publishes a signed local-registry fixture, runs `runx skill acme/echo@1.0.0 --registry <fixture>`, and asserts the materialized SKILL.md lives under `registry-skills/<fingerprint>/...`. F-004 fixed: `crates/runx-cli/src/skill/parser.rs:153-174` rejects `--registry`/`--digest` when the first positional matches a skill management subcommand (`add|inspect|publish|search|validate`). Spot-checked trust boundary (`install_local_skill` still requires signed manifest, anchors, markdown+profile digest, and atomic temp+rename), cache fingerprint canonicalization (`canonical_remote_registry_url` strips userinfo/query/fragment), and multi-version path differentiation (`materialization_cache_path` includes owner/name/version/digest); none regressed. No new blockers found; acceptance evidence in spec is consistent with workspace state.
 
 Attack log:
-- `TS resolveRunnableSkillReference shim`: Hunt callers/tests that still depend on official-fetch behavior; cross-check vitest.config.ts include globs -> finding (F-001: tests under tests/official-skill-*.test.ts exercise the removed TS fetch path and now fail.)
-- `install_local_skill trust boundary`: Look for code paths that bypass verify_signed_manifest_anchor (e.g., untrusted registry, allow_untrusted env var, soft-fail on digest mismatch) -> clean (Resolver always routes registry installs through materialize_trusted_registry_skill; untrusted registries are rejected before install.)
-- `Cache fingerprint canonicalization`: Try collisions across hosts via userinfo/query/fragment, case-different hosts, trailing slash differences -> clean (fingerprint_source strips userinfo/query/fragment for remote URLs and lowercases the host before hashing.)
-- `materialization_cache_path`: Path traversal via owner/name/version containing '..', leading '/', or NUL -> clean (safe_path_part filters every component; reject_unsafe_path_component rejects upstream in split_skill_id.)
-- `Bare-name resolution order`: Trick the resolver into preferring an untrusted local shim over an official entry, or vice versa, when names collide -> clean (Order is local path → exported shim → installed registry cache → workspace skills → official cache → explicit registry; each step is a distinct ResolvedSkillRef kind so confusion is observable in receipts.)
-- `CLI parser`: Pass `--registry` for non-resolver subcommands, mix with -- separator, double-dash escape -> finding (F-004: parser accepts silently.)
-- `Launcher/help parity`: Diff TS help vs Rust help vs fixtures/cli-parity/commands.json for new flags -> finding (F-002: native help and parity fixture omit --registry/--digest.)
-- `Dogfood evidence`: Verify dogfood actually exercises the new path end-to-end -> finding (F-003: --registry-resolver only runs cargo tests, never the native binary.)
-- `TOCTOU on cache dir restore`: Race between digest check and rename into <RUNX_HOME>/registry-skills/... -> clean (install_local_skill writes to a tempdir, verifies digest, then renames atomically; ConflictingSkill caught before mutation.)
-- `X.yaml restore from .runx/profile.json`: Tampered profile.json that points to a different X.yaml digest or path -> clean (Profile digest is checked against the trusted manifest digest before write; mismatches abort.)
-- `RUNX_DEV_CATALOG / allow-untrusted escape hatches`: See if any env var permits running an untrusted/pinned registry skill -> clean (RUNX_DEV_CATALOG only changes catalog visibility; pinned/untrusted refs remain non-runnable in v1.)
+- `F-001 regression: tests/official-skill-*.test.ts vs new TS shim`: Confirm legacy tests no longer assert removed TS-fetch behavior; verify rewritten tests exercise the native skill path -> clean (tests/official-skill-resolution.test.ts now asserts (a) local .runx/skills/ override wins and (b) unknown bare names pass through to native; tests/official-skill-fetch.test.ts drives RUNX_DEV_RUST_CLI_BIN against a signed local registry, asserts <home>/official-skills/runx/<name> path, X.yaml presence, digest mismatch rejection, and packaged stage helpers. Matches the shrunken shim at packages/cli/src/skill-refs.ts:77-83.)
+- `F-002 regression: --registry/--digest visibility in help+parity`: Grep native launcher help, TS help, and cli-parity commands.json for new flags -> clean (crates/runx-cli/src/launcher.rs:271, packages/cli/src/help.ts:54, fixtures/cli-parity/commands.json:530-540 all list `[--registry url|path] [--digest sha256]` for runx skill.)
+- `F-003 regression: --registry-resolver dogfood crosses launcher boundary`: Read scripts/dogfood-core-skills.mjs runRegistryResolverDogfood; verify it builds binary, publishes signed fixture, spawns native runx skill, asserts cache path -> clean (Lines 111-191 build the native runx binary, mint an ed25519 manifest signing key, publish acme/echo@1.0.0 to a tmp registry dir, sign the registry entry, then spawn `runx skill acme/echo@1.0.0 --registry <dir> --json --non-interactive`, parse the JSON envelope, and assert the materialized path includes `registry-skills` and contains SKILL.md.)
+- `F-004 regression: parser rejects --registry/--digest for management subcommands`: Pass `runx skill add --registry x`, `runx skill validate --digest sha256:...`, mix with `=` and space forms; confirm parser surfaces actionable error -> clean (crates/runx-cli/src/skill/parser.rs:153-174 calls reject_resolver_flags_for_skill_management_action after parsing; is_skill_management_action matches add/inspect/publish/search/validate as a 1-component path; both registry and expected_digest fields are checked. Error: 'runx skill --registry and --digest are only supported when running a skill ref'.)
+- `Trust boundary preserved during fix`: Re-check install_local_skill anchors, digest comparison, profile digest verification, and atomic rename ordering; look for skip-anchor knobs -> clean (verify_signed_manifest_anchor still mandatory (install.rs:210), DigestMismatch fires on both signed-manifest and caller --digest mismatch, profile_digest checked against signed manifest, no allow-untrusted/skip-signature paths exist (phase4-security-grep confirms).)
+- `Cache fingerprint isolation`: Check canonical_remote_registry_url for userinfo/query/fragment leak and trailing-slash collision -> clean (registry.rs:651-670 splits at #, ?, and rsplit_once('@') on authority to drop userinfo, then trim_end_matches('/') on path. Local source kinds prefix with local: vs file:. Result fed through sha256_prefixed and truncated to 16 hex chars in skill/resolver.rs:350-357.)
+- `Multi-version cache path separation`: Confirm materialization_cache_path encodes version+digest, and resolver routes both registry and official refs through it -> clean (skill/resolver.rs:268-301 always composes destination_root via materialization_cache_path(root, owner, name, version, identity_digest); install_local_skill then appends owner/name via safe_skill_package_parts inside that root, so 1.0.0 and 1.1.0 sit under sibling version directories.)
+- `Parser regression for skill paths that look like management names`: Edge case: `runx skill add foo --registry x` vs `runx skill ./add` (local path); confirm only flag-bearing management cases are rejected -> clean (is_skill_management_action requires PathBuf with exactly 1 component, so `./add` (2 components) falls through. `runx skill add foo` errors earlier on duplicate positional. Bare `runx skill add` without flags is accepted as a skill ref name (and would fail downstream with 'could not resolve skill ref add'), matching prior UX.)
 
 Findings:
-- [high/blocks completion] `F-001` Shrunken TS resolveRunnableSkillReference breaks existing official-skill resolution tests under `tests/`
-  - Location: `packages/cli/src/skill-refs.ts:77`
-  - Evidence: packages/cli/src/skill-refs.ts:77-83 reduces `resolveRunnableSkillReference` to local-path-or-passthrough, but `tests/official-skill-resolution.test.ts:32-34` asserts `rejects.toThrow('Try \`runx skill search definitely-not-a-real-skill\`')` and `tests/official-skill-fetch.test.ts:48-49,103,132,166` assert paths of the form `<globalHomeDir>/official-skills/runx/<name>`. The new shim never throws and never returns a fetched path, so these tests fail. `vitest.config.ts:10` (`include: ["packages/**/*.test.ts", "tests/**/*.test.ts"]`) confirms these tests run under `pnpm test`, even though the fast lane in `packages/cli/src/skill-refs.test.ts` and `packages/cli/src/index.test.ts` does not exercise them.
-  - Impact: `pnpm --dir oss test` fails. The spec explicitly requires `pnpm test` to stay green; rerun policy is `verify_open_blockers`. Acceptance phase 4 cannot be ratified.
-  - Validation: After fix, rerun `pnpm --dir oss exec vitest run tests/official-skill-resolution.test.ts tests/official-skill-fetch.test.ts` and the full `pnpm --dir oss test` — both must pass. The fix must either (a) delete/rewrite the legacy `tests/official-skill-*.test.ts` files because the TS resolver no longer owns the path (and add an equivalent native-runx integration test in Rust), or (b) restore the official-fetch behavior in the TS shim. Option (a) is consistent with the spec's TS-shrink intent; option (b) reintroduces the path runx-rust-registry-skill-resolver was meant to remove.
-- [medium/non-blocking] `F-002` Native `runx skill` help omits `--registry`/`--digest`, breaking parity with the TS launcher and the parity fixture
-  - Location: `crates/runx-cli/src/launcher.rs:271`
-  - Evidence: `crates/runx-cli/src/launcher.rs:271` builds the `runx skill` help block without listing the new resolver-only flags. `packages/cli/src/help.ts:54` and `fixtures/cli-parity/commands.json:530-545` likewise omit them. The spec's Resolution Contract surfaces `--registry`/`--digest` as a first-class entrypoint, so the only discoverability is via release notes.
-  - Impact: Users who run `runx skill --help` see no mention of `--registry`/`--digest`; parity guard will not catch later drift. Not a wire-shape break, but UX/discoverability regression for the headline contract.
-- [low/non-blocking] `F-003` `--registry-resolver` dogfood mode does not exercise native runx end-to-end
-  - Location: `scripts/dogfood-core-skills.mjs:18`
-  - Evidence: `scripts/dogfood-core-skills.mjs:18-59` invokes three `cargo test` invocations rather than running the native binary against a populated `RUNX_HOME`/registry and asserting a receipt. The spec's Phase 4 acceptance asks for dogfood evidence that proves the resolver works in the binary, not just that the unit tests pass.
-  - Impact: A future regression in CLI wiring (e.g., dispatch dropping `--registry` again, parser swallowing the value, or help drift) could land without the dogfood script noticing because the script never crosses the launcher boundary.
-- [low/non-blocking] `F-004` Parser accepts `--registry`/`--digest` for non-`skill` subcommands silently
-  - Location: `crates/runx-cli/src/skill/parser.rs:197`
-  - Evidence: `crates/runx-cli/src/skill/parser.rs:197-220` introduces `--registry` and `--digest` as explicit options before `parse_direct_input_arg`. The flags are only meaningful for the resolver but the parser does not reject them when the command is e.g. `runx skill validate` or `runx skill harness ...` — they are silently attached to `parsed.registry`/`parsed.digest` and may be ignored downstream.
-  - Impact: Silent acceptance of flags that have no effect for a given subcommand is a stealth dark pattern: users believe they pinned a digest when they did not. Low severity because no security boundary is crossed (the resolver still verifies anchors/digests), but it muddies the UX contract.
+- none
 
 ## Self Eval
 
