@@ -2,7 +2,7 @@
 spec_version: '2.0'
 task_id: runx-rust-registry-skill-resolver
 created: '2026-06-09T16:40:56Z'
-updated: '2026-06-10T00:26:26Z'
+updated: '2026-06-10T00:56:47Z'
 status: review
 harden_status: passed
 size: medium
@@ -15,12 +15,12 @@ risk_level: medium
 
 Status: review
 Current phase: final
-Next: repair
-Reason: review gate fail: 4 finding(s), 1 completion blocker(s)
+Next: review
+Reason: build completed; ready for review
 Blockers: none
-Allowed follow-up command: `scafld handoff runx-rust-registry-skill-resolver`
-Latest runner update: 2026-06-10T00:26:38Z
-Review gate: fail
+Allowed follow-up command: `scafld review runx-rust-registry-skill-resolver`
+Latest runner update: 2026-06-10T00:56:47Z
+Review gate: not_started
 
 ## Summary
 
