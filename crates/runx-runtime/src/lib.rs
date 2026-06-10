@@ -129,6 +129,7 @@ pub use receipts::store::{
 };
 pub use receipts::tree::{
     RuntimeReceiptResolver, validate_runtime_receipt_tree, verify_runtime_receipt_tree,
+    verify_runtime_receipt_tree_with_policy,
 };
 pub use receipts::{
     Ed25519ReceiptSigner, Ed25519ReceiptVerifier, ProductionReceiptKey,
@@ -145,6 +146,7 @@ pub use runner::{
     RuntimeOptions, StepRun,
 };
 pub use runx_core::kernel_eval;
+pub use runx_receipts::ReceiptTreeConfig;
 pub use scaffold::{
     InitAction, InitGeneratedValues, RunxInitOptions, RunxInitResult, RunxNewOptions,
     RunxNewResult, ScaffoldError, runx_init, sanitize_runx_package_name, scaffold_runx_package,

@@ -97,8 +97,8 @@ pub fn run_history_command(
     })
 }
 
-const RUNX_RECEIPT_VERIFY_KID_ENV: &str = "RUNX_RECEIPT_VERIFY_KID";
-const RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV: &str =
+pub(crate) const RUNX_RECEIPT_VERIFY_KID_ENV: &str = "RUNX_RECEIPT_VERIFY_KID";
+pub(crate) const RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV: &str =
     "RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64";
 
 fn history_production_verifier(

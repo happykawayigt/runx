@@ -18,3 +18,4 @@ pub mod scaffold;
 pub mod skill;
 pub mod tool;
 pub mod url_add;
+pub mod verify;

@@ -25,6 +25,7 @@ pub enum LauncherAction {
     RunParser(ParserPlan),
     RunNew(NewPlan),
     RunHistory(HistoryPlan),
+    RunVerify(VerifyPlan),
     RunHarness(HarnessPlan),
     RunKernel(KernelPlan),
     RunPayment(PaymentPlan),
@@ -65,6 +66,11 @@ pub struct HarnessPlan {
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct HistoryPlan {
+    pub args: Vec<OsString>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VerifyPlan {
     pub args: Vec<OsString>,
 }
 
@@ -208,6 +214,10 @@ pub fn plan_launcher(args: Vec<OsString>) -> LauncherAction {
         return LauncherAction::RunHistory(HistoryPlan { args });
     }
 
+    if first_arg_is(&args, "verify") {
+        return LauncherAction::RunVerify(VerifyPlan { args });
+    }
+
     if first_arg_is(&args, "mcp") {
         if mcp_runner_before_serve(&args) {
             return LauncherAction::Error(
@@ -257,6 +267,7 @@ Usage:
 Commands:
   runx new <name> [--directory dir] [--json]
   runx init [-g|--global] [--prefetch official] [--json]
+  runx verify [receipt-id] [--receipt-dir dir] [--json]
   runx history [query] [--skill s] [--status s] [--source s] [--actor a] [--artifact-type t] [--since iso] [--until iso] [--receipt-dir dir] [--json]
   runx list [tools|skills|graphs|packets|overlays] [--ok-only|--invalid-only] [--json]
   runx config set|get|list [agent.provider|agent.model|agent.api_key] [value] [--json]
