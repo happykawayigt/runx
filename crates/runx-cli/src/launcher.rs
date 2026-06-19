@@ -376,7 +376,7 @@ Usage:
   runx publish <receipt.json> [--api-base-url url] [--token token] [--allow-local-api] [--json]
 
 Options:
-  --api-base-url url  Public API base URL (default: RUNX_PUBLIC_API_BASE_URL or https://runx.ai)
+  --api-base-url url  Public API base URL (default: RUNX_PUBLIC_API_BASE_URL or https://api.runx.ai)
   --token token       Public API token (default: RUNX_PUBLIC_API_TOKEN or runx login)
   --allow-local-api   Allow loopback/private public API URLs for local dogfood only
   --json              Print the raw notary response as JSON

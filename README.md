@@ -105,7 +105,7 @@ npx @runxhq/cli new my-skill              # cold-start with no install: download
 runx new my-skill                         # scaffold a native cli-tool skill (SKILL.md + X.yaml + run.mjs, zero deps)
 ```
 
-Write the prose, declare the profile, run it locally, then publish from a public repo at [runx.ai/x/publish](https://runx.ai/x/publish) or with `runx login && runx registry publish`. This repo is the first-party lane for official skills and the runtime; community skills ship as standalone packages.
+Write the prose, declare the profile, run it locally, then publish from a public repo at [runx.ai/x/publish](https://runx.ai/x/publish) or with `runx login --for publish && runx registry publish`. This repo is the first-party lane for official skills and the runtime; community skills ship as standalone packages.
 
 ## docs
 

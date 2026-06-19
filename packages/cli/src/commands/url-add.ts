@@ -141,5 +141,5 @@ export function renderUrlAddResult(result: UrlAddIndexResult): string {
 }
 
 export function resolveUrlAddApiBaseUrl(env: Record<string, string | undefined>): string {
-  return env.RUNX_PUBLIC_API_BASE_URL?.trim() || "https://runx.ai";
+  return env.RUNX_PUBLIC_API_BASE_URL?.trim() || "https://api.runx.ai";
 }

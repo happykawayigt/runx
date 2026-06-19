@@ -126,7 +126,7 @@ fn resolves_publish_endpoint_and_token_precedence() -> Result<(), Box<dyn std::e
     };
     assert_eq!(
         resolve_public_api_base_url(&empty_url_plan, &BTreeMap::new()),
-        "https://runx.ai"
+        "https://api.runx.ai"
     );
     Ok(())
 }

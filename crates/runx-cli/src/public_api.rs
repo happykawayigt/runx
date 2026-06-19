@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use runx_runtime::registry::{DefaultRuntimeHttpTransport, RuntimeHttpError};
 use serde::Deserialize;
 
-pub(crate) const DEFAULT_BASE_URL: &str = "https://runx.ai";
+pub(crate) const DEFAULT_BASE_URL: &str = "https://api.runx.ai";
 const BASE_URL_ENV: &str = "RUNX_PUBLIC_API_BASE_URL";
 
 pub(crate) fn resolve_base_url(explicit: Option<&str>, env: &BTreeMap<String, String>) -> String {

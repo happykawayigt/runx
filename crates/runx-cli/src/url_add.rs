@@ -256,7 +256,7 @@ mod tests {
         let empty_env: BTreeMap<String, String> = BTreeMap::new();
         assert_eq!(
             resolve_public_api_base_url(&plan_no_override, &empty_env),
-            "https://runx.ai",
+            "https://api.runx.ai",
         );
     }
 

@@ -57,7 +57,7 @@ The CLI form keeps the public API token out of command lines:
 
 ```bash
 runx login --for publish
-runx registry publish ./skills/<your-skill>/SKILL.md --registry https://runx.ai
+runx registry publish ./skills/<your-skill>/SKILL.md --registry https://api.runx.ai
 ```
 
 For remote publishes the CLI sends a bounded skill package:

@@ -33,8 +33,8 @@ describe("isGithubRepoUrl", () => {
 });
 
 describe("resolveUrlAddApiBaseUrl", () => {
-  it("falls back to runx.ai", () => {
-    expect(resolveUrlAddApiBaseUrl({})).toBe("https://runx.ai");
+  it("falls back to the hosted API origin", () => {
+    expect(resolveUrlAddApiBaseUrl({})).toBe("https://api.runx.ai");
   });
 
   it("respects RUNX_PUBLIC_API_BASE_URL", () => {
