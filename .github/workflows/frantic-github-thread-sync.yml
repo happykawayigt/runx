@@ -4,6 +4,12 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 on:
+  # The venue fires repository_dispatch (board-sync) on board mutations so the drain
+  # runs promptly. The cron below is the backstop: GitHub throttles high-frequency
+  # schedules (they fire roughly hourly under load), so this event is what makes the
+  # sync low-latency and reliable rather than schedule-only.
+  repository_dispatch:
+    types: [board-sync]
   workflow_dispatch:
     inputs:
       after_event_id:

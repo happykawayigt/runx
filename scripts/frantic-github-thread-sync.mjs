@@ -11,8 +11,13 @@ const PROVIDER_SCRIPT = path.join(__dirname, "../tools/thread/thread_outbox_prov
 
 async function main() {
   const config = readConfig(process.env);
-  const afterEventId = readCursor(config.cursorFile) ?? config.afterEventId;
-  const payload = await fetchThreadOutbox({ ...config, afterEventId });
+  // Default to the server-side per-thread cursor (?pending=true) so CI needs no
+  // client cursor file. An explicit after_event_id or a populated cursor file
+  // still wins and pins the client-side walk for one-off replays.
+  const explicitCursor = readCursor(config.cursorFile) ?? config.explicitAfterEventId;
+  const pending = explicitCursor === undefined;
+  const afterEventId = pending ? 0 : explicitCursor;
+  const payload = await fetchThreadOutbox({ ...config, afterEventId, pending });
   const intents = Array.isArray(payload.intents) ? payload.intents : [];
   let maxEventId = afterEventId;
   const observations = [];
@@ -42,12 +47,16 @@ async function main() {
   if (!config.dryRun && observations.length > 0) {
     await postThreadObservations(config, observations);
   }
-  if (!config.dryRun && config.cursorFile && maxEventId > afterEventId) {
+  // Only persist a client cursor when explicitly walking by after_event_id. In
+  // the default pending mode the server tracks each thread's cursor from the
+  // observations we post back, so a client cursor file is neither read nor written.
+  if (!config.dryRun && !pending && config.cursorFile && maxEventId > afterEventId) {
     writeFileSync(config.cursorFile, `${maxEventId}\n`);
   }
 
   process.stdout.write(`${JSON.stringify({
     ok: true,
+    pending,
     fetched: intents.length,
     observed: observations.length,
     after_event_id: afterEventId,
@@ -68,7 +77,7 @@ function readConfig(env) {
     provider: trim(env.FRANTIC_THREAD_PROVIDER) ?? "github",
     targetRepo: trim(env.FRANTIC_GITHUB_TARGET_REPO ?? env.FRANTIC_BOARD_REPO),
     limit: positiveInteger(env.FRANTIC_THREAD_LIMIT, 50),
-    afterEventId: positiveInteger(env.FRANTIC_THREAD_AFTER_EVENT_ID, 0),
+    explicitAfterEventId: optionalPositiveInteger(env.FRANTIC_THREAD_AFTER_EVENT_ID),
     cursorFile: trim(env.FRANTIC_THREAD_CURSOR_FILE),
     adapterId: trim(env.FRANTIC_THREAD_ADAPTER_ID) ?? "runx-github-thread-adapter",
     dryRun: env.FRANTIC_THREAD_DRY_RUN === "1" || env.FRANTIC_THREAD_DRY_RUN === "true",
@@ -79,7 +88,11 @@ function readConfig(env) {
 async function fetchThreadOutbox(config) {
   const url = new URL("/internal/thread-outbox", config.apiBaseUrl);
   url.searchParams.set("provider", config.provider);
-  url.searchParams.set("after_event_id", String(config.afterEventId));
+  if (config.pending) {
+    url.searchParams.set("pending", "true");
+  } else {
+    url.searchParams.set("after_event_id", String(config.afterEventId));
+  }
   url.searchParams.set("limit", String(config.limit));
   if (config.targetRepo) {
     url.searchParams.set("target_repo", config.targetRepo);
@@ -158,12 +171,19 @@ function readCursor(cursorFile) {
   if (!cursorFile || !existsSync(cursorFile)) {
     return undefined;
   }
-  return positiveInteger(readFileSync(cursorFile, "utf8"), 0);
+  // An empty or zero cursor file means "no explicit cursor"; fall through to the
+  // server-side pending read rather than re-walking all history from event 0.
+  return optionalPositiveInteger(readFileSync(cursorFile, "utf8"));
 }
 
 function positiveInteger(value, fallback) {
   const parsed = Number.parseInt(String(value ?? ""), 10);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function optionalPositiveInteger(value) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function numberOrZero(value) {
