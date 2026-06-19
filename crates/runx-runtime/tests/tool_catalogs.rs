@@ -8,9 +8,9 @@ use runx_runtime::{
 };
 
 #[test]
-fn tool_catalogs_build_scaffold_manifest() -> Result<(), Box<dyn std::error::Error>> {
-    let temp_root = copy_scaffold_fixture("build_scaffold_manifest")?;
-    let tool_dir = temp_root.join("tools/docs/echo");
+fn tool_catalogs_build_minimal_manifest() -> Result<(), Box<dyn std::error::Error>> {
+    let temp_root = copy_minimal_tool_fixture("build_minimal_manifest")?;
+    let tool_dir = temp_root.join("tools/fixture/minimal");
 
     let report = build_tool_catalogs(&ToolBuildOptions {
         root: temp_root.clone(),
@@ -23,11 +23,11 @@ fn tool_catalogs_build_scaffold_manifest() -> Result<(), Box<dyn std::error::Err
     assert_eq!(report.built.len(), 1);
     assert!(report.errors.is_empty());
 
-    let manifest = fs::read_to_string(temp_root.join("tools/docs/echo/manifest.json"))?;
+    let manifest = fs::read_to_string(temp_root.join("tools/fixture/minimal/manifest.json"))?;
     assert!(manifest.contains(r#""schema": "runx.tool.manifest.v1""#));
     assert!(manifest.contains(r#""toolkit_version": "0.1.4""#));
-    assert!(manifest.contains(r#""source_hash": "sha256:55f8c4e20a11308b1f8446d16413d4e09d88fc59721c7ebbe1cb18f13e5b1a11""#));
-    assert!(manifest.contains(r#""schema_hash": "sha256:d5c0e413e7484e04bec267def5ecfe1f63fafb94d8cd96c7fab17d2608b0631a""#));
+    assert!(manifest.contains(r#""source_hash": "sha256:63e4461ecfd377d113e10e8a7aedb0e40ea92cf32ff2ed1f14b1b2815b7d7b73""#));
+    assert!(manifest.contains(r#""schema_hash": "sha256:6395f3286433e5a5036334876c3708da19906eca61a02dd0a4e75f15d4b0f4f8""#));
     Ok(())
 }
 
@@ -76,10 +76,10 @@ fn tool_catalogs_inspect_fixture_mcp_echo() -> Result<(), Box<dyn std::error::Er
 
 #[test]
 fn tool_catalogs_inspect_local_manifest() -> Result<(), Box<dyn std::error::Error>> {
-    let temp_root = copy_scaffold_fixture("inspect_local_manifest")?;
+    let temp_root = copy_minimal_tool_fixture("inspect_local_manifest")?;
     let report = inspect_tool(&ToolInspectOptions {
         root: temp_root.clone(),
-        tool_ref: "docs.echo".to_owned(),
+        tool_ref: "fixture.minimal".to_owned(),
         source: None,
         search_from_directory: temp_root.clone(),
         tool_roots: Vec::new(),
@@ -89,11 +89,11 @@ fn tool_catalogs_inspect_local_manifest() -> Result<(), Box<dyn std::error::Erro
 
     assert_eq!(report.status, ToolBuildStatus::Success);
     assert_eq!(report.tool.provenance.origin, ToolInspectOrigin::Local);
-    assert_eq!(report.tool.name, "docs.echo");
+    assert_eq!(report.tool.name, "fixture.minimal");
     assert_eq!(report.tool.execution_source_type, "cli-tool");
     assert_eq!(
         report.tool.reference_path,
-        display(&temp_root.join("tools/docs/echo/manifest.json"))
+        display(&temp_root.join("tools/fixture/minimal/manifest.json"))
     );
     Ok(())
 }
@@ -153,8 +153,8 @@ fn tool_catalogs_ignore_ancestor_tool_roots_outside_workspace()
 #[test]
 fn tool_catalogs_reject_absolute_explicit_manifest_path() -> Result<(), Box<dyn std::error::Error>>
 {
-    let temp_root = copy_scaffold_fixture("reject_absolute_manifest_path")?;
-    let manifest = temp_root.join("tools/docs/echo/manifest.json");
+    let temp_root = copy_minimal_tool_fixture("reject_absolute_manifest_path")?;
+    let manifest = temp_root.join("tools/fixture/minimal/manifest.json");
 
     let error = match inspect_tool(&ToolInspectOptions {
         root: temp_root.clone(),
@@ -181,7 +181,7 @@ fn tool_catalogs_reject_absolute_explicit_manifest_path() -> Result<(), Box<dyn 
 #[test]
 fn tool_catalogs_reject_parent_traversal_explicit_manifest_path()
 -> Result<(), Box<dyn std::error::Error>> {
-    let temp_root = copy_scaffold_fixture("reject_parent_manifest_path")?;
+    let temp_root = copy_minimal_tool_fixture("reject_parent_manifest_path")?;
 
     let error = match inspect_tool(&ToolInspectOptions {
         root: temp_root.clone(),
@@ -208,7 +208,7 @@ fn tool_catalogs_reject_parent_traversal_explicit_manifest_path()
 #[test]
 fn tool_catalogs_inspect_prefers_local_manifest_over_fixture_catalog()
 -> Result<(), Box<dyn std::error::Error>> {
-    let temp_root = copy_scaffold_fixture("inspect_local_precedence")?;
+    let temp_root = copy_minimal_tool_fixture("inspect_local_precedence")?;
     let tool_dir = temp_root.join("tools/fixture/echo");
     fs::create_dir_all(&tool_dir)?;
     fs::write(
@@ -261,8 +261,8 @@ fn tool_catalogs_inspect_prefers_local_manifest_over_fixture_catalog()
     Ok(())
 }
 
-fn copy_scaffold_fixture(name: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let source = repo_root()?.join("fixtures/scaffold/new-docs-demo/files");
+fn copy_minimal_tool_fixture(name: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let source = repo_root()?.join("fixtures/tool-catalogs/build/minimal/workspace");
     let target = std::env::temp_dir()
         .join("runx-tool-catalogs-tests")
         .join(format!("{name}-{}", std::process::id()));

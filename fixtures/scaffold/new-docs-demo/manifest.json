@@ -1,29 +1,15 @@
 {
   "name": "docs-demo",
-  "packet_namespace": "docs.demo",
   "files": [
-    "package.json",
-    "README.md",
     "SKILL.md",
     "X.yaml",
-    "src/packets/echo.ts",
-    "dist/packets/echo.v1.schema.json",
-    "tools/docs/echo/src/index.ts",
-    "tools/docs/echo/run.mjs",
-    "tools/docs/echo/manifest.json",
-    "tools/docs/echo/fixtures/basic.yaml",
-    "fixtures/agent.yaml",
-    "fixtures/agent.replay.json",
-    "fixtures/repos/readme-only/README.md",
-    ".github/workflows/publish.yml",
-    ".gitignore",
-    ".gitattributes",
-    "tsconfig.json"
+    "run.mjs",
+    "README.md",
+    ".gitignore"
   ],
   "next_steps": [
     "cd <target>",
-    "pnpm install",
-    "pnpm build",
-    "runx dev"
+    "runx harness . --json",
+    "runx skill . --input message=hello --json"
   ]
 }

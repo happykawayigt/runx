@@ -8,8 +8,7 @@ export function renderNewResult(result: NewResult, env: NodeJS.ProcessEnv = proc
     "runx new",
     "success",
     [
-      ["package", result.name],
-      ["packet_namespace", result.packet_namespace],
+      ["skill", result.name],
       ["directory", result.directory],
       ["files", String(result.files.length)],
       ["next", result.next_steps.join(" && ")],

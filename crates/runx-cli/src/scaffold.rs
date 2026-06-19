@@ -24,8 +24,6 @@ pub fn run_native_new(plan: NewPlan) -> ExitCode {
     let options = RunxNewOptions {
         name: plan.name,
         directory,
-        cli_package_version: scaffold_cli_package_version(),
-        authoring_package_version: scaffold_authoring_package_version(),
     };
 
     match scaffold_runx_package(&options) {
@@ -89,9 +87,8 @@ fn render_new_result(json: bool, result: &RunxNewResult) -> ExitCode {
             &NewJsonResult {
                 status: "success",
                 new: NewCommandResult {
-                    action: "package",
+                    action: "skill",
                     name: &result.name,
-                    packet_namespace: &result.packet_namespace,
                     directory: &result.directory,
                     files: &result.files,
                     next_steps: &result.next_steps,
@@ -102,8 +99,7 @@ fn render_new_result(json: bool, result: &RunxNewResult) -> ExitCode {
     write_stdout(&render_key_values(
         "runx new",
         &[
-            ("package", Some(result.name.clone())),
-            ("packet_namespace", Some(result.packet_namespace.clone())),
+            ("skill", Some(result.name.clone())),
             ("directory", Some(result.directory.display().to_string())),
             ("files", Some(result.files.len().to_string())),
             ("next", Some(result.next_steps.join(" && "))),
@@ -272,14 +268,6 @@ fn default_home_runx_dir() -> PathBuf {
         .join(".runx")
 }
 
-fn scaffold_cli_package_version() -> String {
-    env::var("RUNX_CLI_PACKAGE_VERSION").unwrap_or_else(|_| "^0.6.2".to_owned())
-}
-
-fn scaffold_authoring_package_version() -> String {
-    env::var("RUNX_AUTHORING_PACKAGE_VERSION").unwrap_or_else(|_| "^0.2.0".to_owned())
-}
-
 #[derive(Serialize)]
 struct NewJsonResult<'a> {
     status: &'static str,
@@ -290,7 +278,6 @@ struct NewJsonResult<'a> {
 struct NewCommandResult<'a> {
     action: &'static str,
     name: &'a str,
-    packet_namespace: &'a str,
     directory: &'a Path,
     files: &'a [String],
     next_steps: &'a [String],

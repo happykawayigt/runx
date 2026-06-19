@@ -99,7 +99,6 @@ Recommended flows:
 runx init
 runx init -g --prefetch official
 runx new docs-demo
-npm create @runxhq/skill@latest docs-demo
 runx list skills
 runx registry search sourcey --json
 runx skill sourcey/sourcey@1.0.0 --registry https://runx.example.test --project . --json
@@ -145,9 +144,9 @@ contract layer:
   Rust-owned schema artifacts.
 - `@runxhq/cli`: npm distribution wrapper and client presentation around the
   native CLI.
-- `@runxhq/authoring`, `@runxhq/create-skill`, `@runxhq/host-adapters`, and
-  `@runxhq/langchain`: authoring, scaffolding, host presentation, and bridge
-  packages over language-neutral contracts.
+- `@runxhq/authoring`, `@runxhq/host-adapters`, and `@runxhq/langchain`:
+  authoring, host presentation, and bridge packages over language-neutral
+  contracts.
 
 For the generated package export index, see [docs/api-surface.md](docs/api-surface.md).
 
@@ -220,22 +219,16 @@ publish policy. See [docs/issue-to-pr.md](docs/issue-to-pr.md).
 
 ## Standalone Skill Packages
 
-`runx new <name>` is the canonical standalone package scaffold:
+`runx new <name>` scaffolds a native cli-tool skill (SKILL.md + X.yaml +
+run.mjs, zero npm deps, no build step):
 
 ```bash
 runx new docs-demo
 ```
 
-For cold-start adoption, the package entrypoint is:
-
-```bash
-npm create @runxhq/skill@latest docs-demo
-```
-
-Both entrypoints go through the same scaffolder. Community skills should be
-authored and published as standalone packages created this way. The main `runx`
-repo is the first-party lane for official skills and runtime code, not the
-community package catalog.
+Community skills should be authored and published as standalone packages created
+this way. The main `runx` repo is the first-party lane for official skills and
+runtime code, not the community package catalog.
 
 Registry search and install now normalize public trust into three tiers:
 `first_party`, `verified`, and `community`. Richer provenance and attestation

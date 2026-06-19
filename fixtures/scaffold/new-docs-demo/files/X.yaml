@@ -1,18 +1,46 @@
 skill: docs-demo
+version: "0.1.0"
+
+catalog:
+  kind: skill
+  audience: public
+  visibility: public
+  role: canonical
+
+harness:
+  cases:
+    - name: docs-demo-smoke
+      runner: default
+      inputs:
+        message: hello
+      expect:
+        status: sealed
+        receipt:
+          schema: runx.receipt.v1
+          state: sealed
+          disposition: closed
+          reason_code: process_closed
+    - name: docs-demo-empty-message-fails
+      runner: default
+      inputs:
+        message: ""
+      expect:
+        status: failure
+        receipt:
+          schema: runx.receipt.v1
+          state: sealed
+          disposition: closed
+          reason_code: process_failed
 
 runners:
   default:
     default: true
-    type: graph
+    type: cli-tool
+    command: node
+    args:
+      - run.mjs
     inputs:
       message:
         type: string
-        required: false
-        default: hello
-    graph:
-      name: docs-demo
-      steps:
-        - id: echo
-          tool: docs.echo
-          inputs:
-            message: inputs.message
+        required: true
+        description: Input the skill acts on.

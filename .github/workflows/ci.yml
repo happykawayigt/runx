@@ -160,17 +160,14 @@ jobs:
         run: node scripts/check-rust-kernel-parity.mjs --api-only
 
   authoring-smoke:
-    # Drift guard: scaffold -> install -> build -> harness end to end. Reds the
-    # build the moment the `runx new` authoring path breaks (stale package pins,
-    # toolkit drift, broken templates), so it can never silently rot again.
+    # Drift guard: scaffold -> harness end to end. Reds the build the moment the
+    # `runx new` native scaffold breaks (broken templates, harness regressions),
+    # so the authoring path can never silently rot. Native skills carry no npm
+    # deps and no build step, so this is scaffold then harness, nothing else.
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v5
-        with:
-          version: 10.18.2
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
@@ -184,7 +181,7 @@ jobs:
       - name: Build runx
         working-directory: crates
         run: cargo build -p runx-cli
-      - name: Scaffold, install, build, harness
+      - name: Scaffold and harness
         env:
           RUNX_RECEIPT_SIGN_KID: ci-authoring-smoke
           RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64: QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI=
@@ -193,10 +190,7 @@ jobs:
           set -euo pipefail
           RUNX="$GITHUB_WORKSPACE/crates/target/debug/runx"
           "$RUNX" new authoring-smoke --directory "$RUNNER_TEMP/authoring-smoke"
-          cd "$RUNNER_TEMP/authoring-smoke"
-          pnpm install
-          "$RUNX" tool build --all --json
-          "$RUNX" harness . --json
+          "$RUNX" harness "$RUNNER_TEMP/authoring-smoke" --json
 
   checks:
     runs-on: ubuntu-latest

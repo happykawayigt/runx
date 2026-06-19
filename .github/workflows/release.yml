@@ -307,25 +307,6 @@ jobs:
             fi
             ( cd "$dir" && npm publish --access public --tag latest )
           done
-      - name: Publish workspace JS packages
-        # The cli-v* release also publishes the workspace JS packages the `runx new`
-        # authoring toolkit depends on, so they can never lag the binary again
-        # (the prior drift root cause). pnpm publish resolves the workspace:
-        # protocol to concrete versions; the list is dep-ordered (contracts first).
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: "true"
-        run: |
-          set -euo pipefail
-          for dir in packages/contracts packages/authoring; do
-            name=$(node -p "require('./${dir}/package.json').name")
-            version=$(node -p "require('./${dir}/package.json').version")
-            if npm view "${name}@${version}" version >/dev/null 2>&1; then
-              echo "${name}@${version} already published; skipping"
-              continue
-            fi
-            pnpm --filter "${name}" publish --no-git-checks --access public --tag latest
-          done
 
   publish-crates:
     needs: [prepare, github-release]

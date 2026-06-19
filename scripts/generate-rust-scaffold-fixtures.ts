@@ -33,7 +33,6 @@ try {
       path.join(fixtureRoot, "manifest.json"),
       `${JSON.stringify({
         name: result.name,
-        packet_namespace: result.packet_namespace,
         files: result.files,
         next_steps: normalizeNextSteps(result.next_steps),
       }, null, 2)}\n`,

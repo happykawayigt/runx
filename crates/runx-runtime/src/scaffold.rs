@@ -7,10 +7,7 @@ pub use init::{
     InitAction, InitGeneratedValues, RunxInitOptions, RunxInitResult, RunxInstallState,
     RunxProjectState, ensure_runx_install_state, ensure_runx_project_state, runx_init,
 };
-pub use new::{
-    RunxNewOptions, RunxNewResult, packet_namespace_for_name, sanitize_runx_package_name,
-    scaffold_runx_package,
-};
+pub use new::{RunxNewOptions, RunxNewResult, sanitize_runx_package_name, scaffold_runx_package};
 
 use std::fmt;
 use std::io;

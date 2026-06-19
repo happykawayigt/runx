@@ -45,10 +45,10 @@ fn tool_inspect_fixture_catalog_json() -> Result<(), Box<dyn std::error::Error>>
 }
 
 #[test]
-fn tool_build_scaffold_manifest_json() -> Result<(), Box<dyn std::error::Error>> {
-    let temp_root = copy_scaffold_fixture("cli_tool_build")?;
+fn tool_build_minimal_manifest_json() -> Result<(), Box<dyn std::error::Error>> {
+    let temp_root = copy_tool_catalog_build_fixture("cli_tool_build", "minimal")?;
     let output = runx_command()
-        .args(["tool", "build", "tools/docs/echo", "--json"])
+        .args(["tool", "build", "tools/fixture/minimal", "--json"])
         .env("RUNX_CWD", &temp_root)
         .output()?;
 
@@ -197,18 +197,6 @@ fn optional_oracle_contents(name: &str) -> Result<Option<String>, Box<dyn std::e
         return Ok(None);
     }
     Ok(Some(fs::read_to_string(path)?))
-}
-
-fn copy_scaffold_fixture(name: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let source = repo_root()?.join("fixtures/scaffold/new-docs-demo/files");
-    let target = std::env::temp_dir()
-        .join("runx-tool-cli-tests")
-        .join(format!("{name}-{}", std::process::id()));
-    if target.exists() {
-        fs::remove_dir_all(&target)?;
-    }
-    copy_dir(&source, &target)?;
-    Ok(target)
 }
 
 fn copy_tool_catalog_build_fixture(

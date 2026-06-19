@@ -1,25 +1,26 @@
 # @runxhq/create-skill
 
-Initializer package behind:
+Deprecated compatibility wrapper behind the old npm initializer:
 
 ```bash
 npm create @runxhq/skill@latest my-skill
 ```
 
-The canonical runx command remains:
+The supported runx command is:
 
 ```bash
 runx new my-skill
 ```
 
-This package is intentionally thin. It invokes the `runx` binary from
-`@runxhq/cli` so the scaffolding logic stays in one native CLI path.
+This package is intentionally thin and should not grow new behaviour. It invokes
+the `runx` binary from `@runxhq/cli` so the scaffolding logic stays in the
+native CLI path.
 
 ## Rust takeover boundary
 
-`@runxhq/create-skill` remains a thin npm bootstrapper. After the Rust CLI
-cutover it continues to wrap `runx new` through the bundled CLI rather than
-reimplementing scaffolding logic.
+`@runxhq/create-skill` is compatibility-only after the Rust CLI cutover. It
+continues to wrap `runx new` through the bundled CLI rather than reimplementing
+scaffolding logic.
 
 See the [TypeScript interop boundary](../../docs/ts-interop-boundary.md) for
 the package disposition and ownership rules.

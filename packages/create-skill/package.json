@@ -1,7 +1,7 @@
 {
   "name": "@runxhq/create-skill",
   "version": "0.2.0",
-  "description": "Cold-start scaffolder for runx standalone skill packages.",
+  "description": "Deprecated compatibility wrapper around runx new.",
   "private": false,
   "license": "MIT",
   "type": "module",

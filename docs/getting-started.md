@@ -77,9 +77,8 @@ crates/target/debug/runx history <receipt-id> --json
 
 ## Next
 
-- Use `crates/target/debug/runx new docs-demo` for local standalone skill
-  scaffolding.
-- Use `npm create @runxhq/skill@latest docs-demo` when starting from npm.
+- Use `crates/target/debug/runx new docs-demo` to scaffold a native cli-tool
+  skill (SKILL.md + X.yaml + run.mjs, zero npm deps).
 - Compose the example into a graph with [Skill To Graph](./skill-to-graph.md).
 - Publish a ready skill from a public repo at https://runx.ai/x/publish, or run
   `crates/target/debug/runx login` followed by `crates/target/debug/runx registry publish ... --registry https://runx.ai`.

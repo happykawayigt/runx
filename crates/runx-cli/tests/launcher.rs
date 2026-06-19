@@ -695,10 +695,10 @@ fn routes_add_to_native_plan() {
 #[test]
 fn routes_tool_to_native_plan_and_rejects_unknown_subcommands() {
     assert_eq!(
-        plan(&["tool", "build", "tools/docs/echo", "--json"]),
+        plan(&["tool", "build", "tools/fixture/minimal", "--json"]),
         LauncherAction::RunTool(ToolPlan {
             action: ToolAction::Build,
-            path: Some(PathBuf::from("tools/docs/echo")),
+            path: Some(PathBuf::from("tools/fixture/minimal")),
             ref_or_query: None,
             all: false,
             source: None,

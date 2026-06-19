@@ -14,27 +14,23 @@ static NEXT_TEST_DIR: AtomicUsize = AtomicUsize::new(0);
 #[derive(Debug, Deserialize)]
 struct ScaffoldFixtureManifest {
     name: String,
-    packet_namespace: String,
     files: Vec<String>,
     next_steps: Vec<String>,
 }
 
 #[test]
-fn new_scaffold_matches_typescript_fixture() -> Result<(), Box<dyn std::error::Error>> {
+fn new_scaffold_matches_native_fixture() -> Result<(), Box<dyn std::error::Error>> {
     let temp = TestDir::create("new-byte-parity")?;
     let target = temp.path().join("docs-demo");
     let options = RunxNewOptions {
         name: "docs-demo".to_owned(),
         directory: target.clone(),
-        authoring_package_version: "^0.1.4".to_owned(),
-        cli_package_version: "^0.5.22".to_owned(),
     };
 
     let result = scaffold_runx_package(&options)?;
     let manifest = scaffold_fixture_manifest()?;
 
     assert_eq!(result.name, manifest.name);
-    assert_eq!(result.packet_namespace, manifest.packet_namespace);
     assert_eq!(result.files, manifest.files);
     assert_eq!(
         normalize_next_steps(&target, &result.next_steps),
@@ -53,8 +49,6 @@ fn new_refuses_non_empty_targets() -> Result<(), Box<dyn std::error::Error>> {
     let options = RunxNewOptions {
         name: "docs-demo".to_owned(),
         directory: target.clone(),
-        authoring_package_version: "^0.1.4".to_owned(),
-        cli_package_version: "^0.5.22".to_owned(),
     };
 
     match scaffold_runx_package(&options) {
@@ -62,7 +56,7 @@ fn new_refuses_non_empty_targets() -> Result<(), Box<dyn std::error::Error>> {
         Err(error) => return Err(format!("expected non-empty target error, got {error}").into()),
         Ok(_) => return Err("expected non-empty target error".into()),
     }
-    assert!(!target.join("package.json").exists());
+    assert!(!target.join("SKILL.md").exists());
     Ok(())
 }
 

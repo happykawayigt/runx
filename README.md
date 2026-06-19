@@ -101,8 +101,7 @@ cd oss && cargo build --manifest-path crates/Cargo.toml -p runx-cli
 ## author and publish
 
 ```bash
-runx new my-skill                         # scaffold a standalone skill package
-npm create @runxhq/skill@latest my-skill  # or start from npm
+runx new my-skill                         # scaffold a native cli-tool skill (SKILL.md + X.yaml + run.mjs, zero deps)
 ```
 
 Write the prose, declare the profile, run it locally, then publish from a public repo at [runx.ai/x/publish](https://runx.ai/x/publish) or with `runx login && runx registry publish`. This repo is the first-party lane for official skills and the runtime; community skills ship as standalone packages.

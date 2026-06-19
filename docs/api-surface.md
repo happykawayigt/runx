@@ -34,16 +34,6 @@ Version: `0.3.0`
 | --- | --- | --- |
 | `@runxhq/contracts` | `./dist/index.d.ts` | `./dist/index.js` |
 
-## @runxhq/create-skill
-
-Cold-start scaffolder for runx standalone skill packages.
-
-Version: `0.2.0`
-
-| Import | Types | Runtime |
-| --- | --- | --- |
-| `@runxhq/create-skill` | `./dist/index.d.ts` | `./dist/index.js` |
-
 ## @runxhq/host-adapters
 
 Thin host response adapters over the runx host protocol.

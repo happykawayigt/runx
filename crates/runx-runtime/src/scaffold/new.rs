@@ -4,20 +4,17 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 
 use super::ScaffoldError;
-use super::templates::{ScaffoldTemplateVersions, scaffold_package_files};
+use super::templates::scaffold_package_files;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RunxNewOptions {
     pub name: String,
     pub directory: PathBuf,
-    pub authoring_package_version: String,
-    pub cli_package_version: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct RunxNewResult {
     pub name: String,
-    pub packet_namespace: String,
     pub directory: PathBuf,
     pub files: Vec<String>,
     pub next_steps: Vec<String>,
@@ -25,20 +22,10 @@ pub struct RunxNewResult {
 
 pub fn scaffold_runx_package(options: &RunxNewOptions) -> Result<RunxNewResult, ScaffoldError> {
     let name = sanitize_runx_package_name(&options.name);
-    let packet_namespace = packet_namespace_for_name(&name);
     let root = lexical_absolute(&options.directory)?;
     assert_writable_scaffold_target(&root)?;
 
-    let versions = ScaffoldTemplateVersions {
-        authoring_package_version: options.authoring_package_version.clone(),
-        authoring_toolkit_version: options
-            .authoring_package_version
-            .strip_prefix('^')
-            .unwrap_or(&options.authoring_package_version)
-            .to_owned(),
-        cli_package_version: options.cli_package_version.clone(),
-    };
-    let writes = scaffold_package_files(&name, &packet_namespace, &versions);
+    let writes = scaffold_package_files(&name);
 
     fs::create_dir_all(&root)
         .map_err(|source| ScaffoldError::io("creating scaffold root", &root, source))?;
@@ -48,14 +35,12 @@ pub fn scaffold_runx_package(options: &RunxNewOptions) -> Result<RunxNewResult, 
 
     Ok(RunxNewResult {
         name,
-        packet_namespace,
         directory: root.clone(),
         files: writes.into_iter().map(|file| file.relative_path).collect(),
         next_steps: vec![
             format!("cd {}", root.display()),
-            "pnpm install".to_owned(),
-            "pnpm build".to_owned(),
-            "runx dev".to_owned(),
+            "runx harness . --json".to_owned(),
+            "runx skill . --input message=hello --json".to_owned(),
         ],
     })
 }
@@ -75,21 +60,6 @@ pub fn sanitize_runx_package_name(value: &str) -> String {
         "runx-package".to_owned()
     } else {
         sanitized
-    }
-}
-
-#[must_use]
-pub fn packet_namespace_for_name(value: &str) -> String {
-    let unscoped = value.to_lowercase().trim_start_matches('@').to_owned();
-    let namespace = trim_dots(&replace_runs(
-        &unscoped,
-        |character| character.is_ascii_lowercase() || character.is_ascii_digit(),
-        '.',
-    ));
-    if namespace.is_empty() {
-        "runx.package".to_owned()
-    } else {
-        namespace
     }
 }
 
@@ -150,8 +120,4 @@ fn trim_boundary_separators(value: &str) -> String {
     value
         .trim_matches(|character| matches!(character, '.' | '_' | '-'))
         .to_owned()
-}
-
-fn trim_dots(value: &str) -> String {
-    value.trim_matches('.').to_owned()
 }

@@ -8,9 +8,8 @@ export interface NewCommandArgs {
 }
 
 export interface NewResult {
-  readonly action: "package";
+  readonly action: "skill";
   readonly name: string;
-  readonly packet_namespace: string;
   readonly directory: string;
   readonly files: readonly string[];
   readonly next_steps: readonly string[];
@@ -26,7 +25,7 @@ export async function handleNewCommand(parsed: NewCommandArgs, env: NodeJS.Proce
     directory,
   });
   return {
-    action: "package",
+    action: "skill",
     ...result,
   };
 }
