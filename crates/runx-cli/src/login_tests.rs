@@ -37,6 +37,8 @@ fn parses_login_plan() -> Result<(), String> {
         OsString::from("https://runx.test/"),
         OsString::from("--provider"),
         OsString::from("github"),
+        OsString::from("--for"),
+        OsString::from("publish"),
         OsString::from("--allow-local-api"),
         OsString::from("--json"),
     ];
@@ -45,6 +47,7 @@ fn parses_login_plan() -> Result<(), String> {
         LoginPlan {
             api_base_url: Some("https://runx.test/".to_owned()),
             provider: Some("github".to_owned()),
+            purpose: Some("publish".to_owned()),
             allow_local_api: true,
             json: true,
         }
@@ -93,6 +96,7 @@ fn login_exchange_stores_encrypted_public_api_token() -> Result<(), Box<dyn std:
         &LoginPlan {
             api_base_url: Some("https://runx.test/".to_owned()),
             provider: Some("github".to_owned()),
+            purpose: Some("publish".to_owned()),
             allow_local_api: false,
             json: true,
         },
@@ -112,7 +116,7 @@ fn login_exchange_stores_encrypted_public_api_token() -> Result<(), Box<dyn std:
     assert_eq!(requests[0].method, HttpMethod::Post);
     assert_eq!(
         request_json_body(&requests[0])?,
-        serde_json::json!({"provider":"github"})
+        serde_json::json!({"provider":"github","purpose":"publish"})
     );
     assert_eq!(
         requests[1].url,
@@ -143,6 +147,7 @@ fn login_surfaces_api_error() -> Result<(), String> {
         &LoginPlan {
             api_base_url: Some("https://runx.test/".to_owned()),
             provider: Some("bad".to_owned()),
+            purpose: None,
             allow_local_api: false,
             json: false,
         },

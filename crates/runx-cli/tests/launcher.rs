@@ -51,7 +51,7 @@ fn top_level_help_and_version_are_native() {
     );
     assert_help_line(
         &help,
-        "runx login [--provider github|google|gitlab] [--api-base-url url] [--allow-local-api] [--json]",
+        "runx login [--provider github|google|gitlab] [--for default|publish] [--api-base-url url] [--allow-local-api] [--json]",
     );
     assert!(
         !help.contains("runx connect"),
@@ -121,12 +121,15 @@ fn routes_login_to_native_plan() {
             "login",
             "--provider",
             "github",
+            "--for",
+            "publish",
             "--api-base-url",
             "https://runx.test",
             "--json",
         ]),
         LauncherAction::RunLogin(LoginPlan {
             provider: Some("github".to_owned()),
+            purpose: Some("publish".to_owned()),
             api_base_url: Some("https://runx.test".to_owned()),
             allow_local_api: false,
             json: true,

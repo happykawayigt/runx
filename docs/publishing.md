@@ -56,7 +56,7 @@ For humans, start at https://runx.ai/x/publish. There are two publish lanes:
 The CLI form keeps the public API token out of command lines:
 
 ```bash
-runx login
+runx login --for publish
 runx registry publish ./skills/<your-skill>/SKILL.md --registry https://runx.ai
 ```
 
@@ -85,11 +85,13 @@ instead of trusting a client-supplied summary, while keeping local credentials,
 fixtures, source trees, and build trash out of the registry. The local harness
 still runs first for fast feedback.
 
-`runx login` opens the hosted sign-in flow and stores the returned public API
-token in the encrypted local config at `public.api_token`. Hosted CLI commands
-use token precedence in this order: an explicit `--token` when the command has
-one, then `RUNX_PUBLIC_API_TOKEN`, then the stored token from `runx login`.
-`runx registry publish` uses the env or stored-token sources.
+`runx login --for publish` opens the hosted sign-in flow and stores a
+purpose-scoped public API token in the encrypted local config at
+`public.api_token`. The token can publish and report skills, but it cannot move
+money, mutate hosted billing state, or operate unrelated hosted surfaces. Hosted
+CLI commands use token precedence in this order: an explicit `--token` when the
+command has one, then `RUNX_PUBLIC_API_TOKEN`, then the stored token from
+`runx login`. `runx registry publish` uses the env or stored-token sources.
 
 After a public URL publish, use the claim flow from the registry listing to prove
 control of the source repo and move matching versions toward verified discovery.
@@ -103,7 +105,9 @@ runx treats it like every other governed action, with no special-casing:
 - The **connected identity** proves the publisher namespace. Hosted runx derives
   the owner from that identity; the request body cannot spoof it.
 - The **public API token is stored encrypted locally** and masked by `runx config`.
-  You can also use `RUNX_PUBLIC_API_TOKEN` for CI.
+  Use `runx login --for publish` for human publishing, or
+  `RUNX_PUBLIC_API_TOKEN` for CI when you intentionally inject the same narrow
+  credential.
 - New publishes start as **community**. Verification and evidence promote
   discovery; publisher declaration alone never does.
 - Hosted publishing is rate-limited per publisher identity. A noisy publisher

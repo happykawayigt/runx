@@ -26,6 +26,7 @@ const DEFAULT_LOGIN_TIMEOUT_SECONDS: u64 = 180;
 pub struct LoginPlan {
     pub api_base_url: Option<String>,
     pub provider: Option<String>,
+    pub purpose: Option<String>,
     pub allow_local_api: bool,
     pub json: bool,
 }
@@ -139,6 +140,8 @@ struct LoginStartResponse {
 struct LoginStartRequest<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     provider: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    purpose: Option<&'a str>,
 }
 
 #[derive(Clone, Debug, serde::Serialize, PartialEq, Eq)]
@@ -170,6 +173,7 @@ struct LoginResult {
 pub fn parse_login_plan(args: &[OsString]) -> Result<LoginPlan, String> {
     let mut api_base_url = None;
     let mut provider = None;
+    let mut purpose = None;
     let mut allow_local_api = false;
     let mut json = false;
     let mut index = 1;
@@ -197,6 +201,11 @@ pub fn parse_login_plan(args: &[OsString]) -> Result<LoginPlan, String> {
                 provider = Some(value);
                 index = next_index;
             }
+            "--for" | "--purpose" => {
+                let (value, next_index) = flag_value(args, index, flag, inline_value, "login")?;
+                purpose = Some(value);
+                index = next_index;
+            }
             "--allow-local-api" | "--allowLocalApi" => {
                 if inline_value.is_some() {
                     return Err("--allow-local-api does not take a value".to_owned());
@@ -210,6 +219,7 @@ pub fn parse_login_plan(args: &[OsString]) -> Result<LoginPlan, String> {
     Ok(LoginPlan {
         api_base_url,
         provider,
+        purpose,
         allow_local_api,
         json,
     })
@@ -264,7 +274,12 @@ fn run_login_command_with_transport<T: Transport>(
     sleep: impl Fn(Duration),
 ) -> Result<String, LoginCliError> {
     let base_url = resolve_public_api_base_url(plan, env);
-    let started = start_login_session(transport, &base_url, plan.provider.as_deref())?;
+    let started = start_login_session(
+        transport,
+        &base_url,
+        plan.provider.as_deref(),
+        plan.purpose.as_deref(),
+    )?;
     let signin_url = started
         .authorization_url
         .as_deref()
@@ -338,9 +353,11 @@ fn start_login_session<T: Transport>(
     transport: &T,
     base_url: &str,
     provider: Option<&str>,
+    purpose: Option<&str>,
 ) -> Result<LoginStartResponse, LoginHttpError> {
     let request = LoginStartRequest {
         provider: provider.map(str::trim).filter(|value| !value.is_empty()),
+        purpose: purpose.map(str::trim).filter(|value| !value.is_empty()),
     };
     let response = transport.send(HttpRequest {
         method: HttpMethod::Post,

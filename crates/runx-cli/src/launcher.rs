@@ -325,7 +325,7 @@ Commands:
   runx verify [receipt-id] [--receipt-dir dir] [--receipt <path|->] [--notary <path|-> --notary-key trusted.pem] [--json]
   runx history [query] [--skill s] [--status s] [--source s] [--actor a] [--artifact-type t] [--since iso] [--until iso] [--receipt-dir dir] [--json]
   runx list [tools|skills|graphs|packets|overlays] [--ok-only|--invalid-only] [--json]
-  runx login [--provider github|google|gitlab] [--api-base-url url] [--allow-local-api] [--json]
+  runx login [--provider github|google|gitlab] [--for default|publish] [--api-base-url url] [--allow-local-api] [--json]
   runx config set|get|list [agent.provider|agent.model|agent.api_key|public.api_token] [value] [--json]
   runx policy inspect|lint <policy.json> [--json]
   runx publish <receipt.json> [--api-base-url url] [--token token] [--allow-local-api] [--json]
