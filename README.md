@@ -1,8 +1,8 @@
 <h1 align="center">runx</h1>
 
-<p align="center"><strong>accountable agency for agent skills</strong></p>
+<p align="center"><strong>force multiplier for AI agents</strong></p>
 
-<p align="center">Run skill URLs under explicit authority. Seal consequential work into receipts that can be verified, replayed, and learned from.</p>
+<p align="center">Composable skill chains, governed authority, verifiable receipts.</p>
 
 <p align="center">
   <a href="LICENSE"><img alt="license: MIT" src="https://img.shields.io/badge/license-MIT-111111?style=flat-square"></a>
@@ -129,10 +129,11 @@ can walk receipt ancestry from a receipt store.
 
 ## skills and execution profiles
 
-A skill starts as a portable `SKILL.md`: prose for the model and a
-human-readable contract for the operator. When the skill needs deterministic
-runners, typed inputs, graph stages, receipt mapping, harness cases, or governed
-side effects, it also carries an execution profile named `X.yaml`.
+A skill is expertise as a URL. It starts as a portable `SKILL.md`: prose for
+the model and a human-readable contract for the operator. When the skill needs
+deterministic runners, typed inputs, graph stages, receipt mapping, harness
+cases, or governed side effects, it also carries an execution profile named
+`X.yaml`.
 
 ```yaml
 ---
