@@ -7,7 +7,7 @@ use super::super::super::super::adapter::{InvocationStatus, SkillOutput};
 use super::super::fixtures::{HarnessExpectedStatus, HarnessFixture};
 use super::HarnessReplayError;
 use crate::RuntimeError;
-use crate::execution::disposition::parse_agent_answer_disposition;
+use crate::execution::disposition::agent_answer_disposition_or_closed;
 
 pub(super) fn agent_task_output(
     fixture: &HarnessFixture,
@@ -84,7 +84,7 @@ pub(super) fn required_string_metadata(
 pub(super) fn agent_answer_disposition(
     answer: &JsonValue,
 ) -> Result<ClosureDisposition, HarnessReplayError> {
-    parse_agent_answer_disposition(answer).map_err(|error| {
+    agent_answer_disposition_or_closed(answer).map_err(|error| {
         HarnessReplayError::InvalidReplayMetadata {
             field: "caller.answers.*.closure.disposition".to_owned(),
             message: error.to_string(),

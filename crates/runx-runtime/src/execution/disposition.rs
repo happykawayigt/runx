@@ -32,6 +32,15 @@ pub(crate) fn parse_agent_answer_disposition(
     parse_closure_disposition(disposition)
 }
 
+pub(crate) fn agent_answer_disposition_or_closed(
+    answer: &JsonValue,
+) -> Result<ClosureDisposition, ClosureDispositionParseError> {
+    match answer.as_object() {
+        Some(object) if object.contains_key("closure") => parse_agent_answer_disposition(answer),
+        _ => Ok(ClosureDisposition::Closed),
+    }
+}
+
 pub(crate) fn parse_closure_disposition(
     disposition: &str,
 ) -> Result<ClosureDisposition, ClosureDispositionParseError> {

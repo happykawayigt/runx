@@ -128,7 +128,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn scope_arrays_reject_non_string_entries() {
+    fn scope_arrays_reject_non_string_entries() -> Result<(), Box<dyn std::error::Error>> {
         let mut record = JsonObject::new();
         record.insert(
             "scopes".to_owned(),
@@ -138,13 +138,17 @@ mod tests {
             ]),
         );
 
-        let error = string_array_field_from_object(Some(&record), "auth.scopes")
-            .expect_err("malformed scope entry must fail closed");
+        let error = match string_array_field_from_object(Some(&record), "auth.scopes") {
+            Ok(_) => return Err("malformed scope entry should fail closed".into()),
+            Err(error) => error,
+        };
         assert_eq!(error.field, "auth.scopes[1]");
+        Ok(())
     }
 
     #[test]
-    fn scope_arrays_trim_deduplicate_and_reject_empty_entries() {
+    fn scope_arrays_trim_deduplicate_and_reject_empty_entries()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut record = JsonObject::new();
         record.insert(
             "scopes".to_owned(),
@@ -154,8 +158,11 @@ mod tests {
             ]),
         );
 
-        let error = string_array_field_from_object(Some(&record), "auth.scopes")
-            .expect_err("empty scope entry must fail closed");
+        let error = match string_array_field_from_object(Some(&record), "auth.scopes") {
+            Ok(_) => return Err("empty scope entry should fail closed".into()),
+            Err(error) => error,
+        };
         assert_eq!(error.field, "auth.scopes[1]");
+        Ok(())
     }
 }

@@ -37,7 +37,7 @@ use crate::agent_invocation::{
 };
 use crate::approval::ApprovalResolution;
 use crate::effects::EffectReplay;
-use crate::execution::disposition::{ClosureDispositionParseError, parse_agent_answer_disposition};
+use crate::execution::disposition::agent_answer_disposition_or_closed;
 use crate::execution::output_projection::{StepOutputProjection, project_step_output};
 use crate::host::Host;
 use crate::receipts::{StepSeal, StepSealClosure, seal_step};
@@ -1348,7 +1348,7 @@ fn agent_task_output(
         } else {
             format!(
                 "agent act closed with {}",
-                closure_disposition_label(&disposition)
+                closure_disposition_label(disposition)
             )
         },
         exit_code: succeeded.then_some(0),
@@ -1388,14 +1388,10 @@ fn agent_answer_disposition_value(
     step: &GraphStep,
     answer: &JsonValue,
 ) -> Result<ClosureDisposition, RuntimeError> {
-    parse_agent_answer_disposition(answer).map_err(|error| RuntimeError::InvalidRunStep {
+    agent_answer_disposition_or_closed(answer).map_err(|error| RuntimeError::InvalidRunStep {
         step_id: step.id.clone(),
-        reason: agent_answer_disposition_error(error),
+        reason: format!("{error}"),
     })
-}
-
-fn agent_answer_disposition_error(error: ClosureDispositionParseError) -> String {
-    format!("{error}")
 }
 
 fn closure_disposition_label(disposition: &ClosureDisposition) -> &'static str {

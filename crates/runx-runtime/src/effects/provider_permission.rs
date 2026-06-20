@@ -438,26 +438,36 @@ mod tests {
         let env = provider_env("github-mcp-read", "repo.read");
 
         let mut missing_verb = test_step("read_issue", vec!["repo.read"], false, "read", false);
-        provider_permission_policy_mut(&mut missing_verb).remove("verb");
-        let error = effect
-            .admit(EffectStepRequest {
-                step: &missing_verb,
-                inputs: &inputs,
-                env: &env,
-                graph_dir: Path::new("."),
-            })
-            .expect_err("missing provider permission verb must fail");
+        provider_permission_policy_mut(&mut missing_verb)?.remove("verb");
+        let error = match effect.admit(EffectStepRequest {
+            step: &missing_verb,
+            inputs: &inputs,
+            env: &env,
+            graph_dir: Path::new("."),
+        }) {
+            Ok(_) => {
+                return Err(io::Error::other(
+                    "missing provider permission verb should fail",
+                ));
+            }
+            Err(error) => error,
+        };
         assert_policy_error(error, "verb is required")?;
 
         let unknown_verb = test_step("read_issue", vec!["repo.read"], false, "publish", false);
-        let error = effect
-            .admit(EffectStepRequest {
-                step: &unknown_verb,
-                inputs: &inputs,
-                env: &env,
-                graph_dir: Path::new("."),
-            })
-            .expect_err("unknown provider permission verb must fail");
+        let error = match effect.admit(EffectStepRequest {
+            step: &unknown_verb,
+            inputs: &inputs,
+            env: &env,
+            graph_dir: Path::new("."),
+        }) {
+            Ok(_) => {
+                return Err(io::Error::other(
+                    "unknown provider permission verb should fail",
+                ));
+            }
+            Err(error) => error,
+        };
         assert_policy_error(error, "not supported")
     }
 
@@ -465,7 +475,7 @@ mod tests {
     fn rejects_malformed_required_scopes() -> Result<(), io::Error> {
         let effect = ProviderPermissionEffect;
         let mut step = test_step("read_issue", vec!["repo.read"], false, "read", false);
-        provider_permission_policy_mut(&mut step).insert(
+        provider_permission_policy_mut(&mut step)?.insert(
             "required_scopes".to_owned(),
             JsonValue::Array(vec![
                 JsonValue::String("repo.read".to_owned()),
@@ -475,14 +485,19 @@ mod tests {
         let inputs = JsonObject::new();
         let env = provider_env("github-mcp-read", "repo.read");
 
-        let error = effect
-            .admit(EffectStepRequest {
-                step: &step,
-                inputs: &inputs,
-                env: &env,
-                graph_dir: Path::new("."),
-            })
-            .expect_err("malformed provider permission required_scopes must fail");
+        let error = match effect.admit(EffectStepRequest {
+            step: &step,
+            inputs: &inputs,
+            env: &env,
+            graph_dir: Path::new("."),
+        }) {
+            Ok(_) => {
+                return Err(io::Error::other(
+                    "malformed provider permission required_scopes should fail",
+                ));
+            }
+            Err(error) => error,
+        };
 
         assert_policy_error(error, "required_scopes[1] must be a string")
     }
@@ -562,16 +577,22 @@ mod tests {
         .collect()
     }
 
-    fn provider_permission_policy_mut(step: &mut GraphStep) -> &mut JsonObject {
-        let value = step
+    fn provider_permission_policy_mut(step: &mut GraphStep) -> Result<&mut JsonObject, io::Error> {
+        let Some(value) = step
             .policy
             .as_mut()
             .and_then(|policy| policy.get_mut(PROVIDER_PERMISSION_EFFECT_FAMILY))
-            .expect("test step should carry provider permission policy");
-        let JsonValue::Object(object) = value else {
-            panic!("test step provider permission policy should be an object");
+        else {
+            return Err(io::Error::other(
+                "test step should carry provider permission policy",
+            ));
         };
-        object
+        let JsonValue::Object(object) = value else {
+            return Err(io::Error::other(
+                "test step provider permission policy should be an object",
+            ));
+        };
+        Ok(object)
     }
 
     fn assert_policy_error(error: RuntimeEffectError, needle: &str) -> Result<(), io::Error> {
