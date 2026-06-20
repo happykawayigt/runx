@@ -50,7 +50,7 @@
     "dogfood_run": {
       "status": "passed",
       "command": "runx skill godfood/support-triage-reply@sha-4887b7e3476f --registry https://api.runx.ai --input support_request=<json> --input policy=<json> --receipts <dir> --json",
-      "receipt_id": "sha256:c3c59e6d1cba7ea6333534fd7b2229dd24f6c192547ad5331024ea62cbc96600",
+      "receipt_id": "sha256:8e87b9c4c18bf2e39c976059bb480bb6825400f15bd62886d1592a57c7357b9f",
       "receipt_file": "dogfood-receipt.json",
       "verify_command": "runx verify --receipt dogfood-receipt.json --json",
       "verify_note": "Verified with the public Ed25519 verification key for the demo signing key used by the local runtime.",
@@ -59,7 +59,35 @@
       "severity": "low",
       "confidence": 0.88,
       "recommended_path": "reply_draft",
-      "send_gate_status": "requires_human_approval"
+      "send_gate_status": "requires_human_approval",
+      "draft_email": {
+        "body": "Hi Mira,\n\nThanks for the note. You asked about How do I verify my sending domain?.\n\nFor Nitrosend domain verification, check that the DNS records shown in the sending-domain setup are published exactly, then run the domain verification check again after DNS propagation. If a record still fails, compare the host/name and value fields character for character, including whether your DNS provider automatically appends the root domain.\n\nBefore sending, an operator should confirm the product state and any account-specific details. This draft has not been sent.\n\nThanks,\nNitrosend Support",
+        "proposed": true,
+        "recipient_hint": "customer_email_present",
+        "subject": "Re: How do I verify my sending domain?"
+      },
+      "output_evidence": {
+        "matched_signals": [
+          "how do i",
+          "what should",
+          "verify",
+          "dns",
+          "domain"
+        ],
+        "missing_context": [],
+        "private_data_required": false,
+        "send_side_effects": "none",
+        "source": "dogfood:operator-support",
+        "source_summary": "How do I verify my sending domain?",
+        "taxonomy_coverage": [
+          "how_to",
+          "billing",
+          "account_access",
+          "bug",
+          "abuse",
+          "unknown"
+        ]
+      }
     },
     "hosted_run_admission": {
       "status": "accepted_pending_worker",
@@ -83,10 +111,11 @@
     "A clean install succeeded with runx add godfood/support-triage-reply@sha-4887b7e3476f --registry https://api.runx.ai --installation-id godfood-support-triage-final3 --json.",
     "The local harness passed three cases: safe-how-to-reply-draft, account-access-escalates-without-draft, and missing-request-fails.",
     "The registry publish gate ran the hosted harness successfully before accepting the package.",
-    "The dogfood command ran the published registry skill on a real support-domain input and produced receipt sha256:c3c59e6d1cba7ea6333534fd7b2229dd24f6c192547ad5331024ea62cbc96600.",
+    "The dogfood command ran the published registry skill on a real support-domain input and produced receipt sha256:8e87b9c4c18bf2e39c976059bb480bb6825400f15bd62886d1592a57c7357b9f.",
     "runx verify --receipt dogfood-receipt.json --json returned valid for the dogfood receipt with kid runx-demo-key and public key IVL40Zt5HSRFMkLhXy6rbLfP+ntqXtMAl5YOBpiB2xI=.",
     "The dogfood output classified the request as how_to with severity low, confidence 0.88, recommended_path reply_draft, and send_gate.status requires_human_approval.",
-    "The classification taxonomy covers how_to, billing, account_access, bug, abuse, and unknown; unsafe account, billing, abuse, bug, and unknown paths do not automatically propose a customer send."
+    "The classification taxonomy covers how_to, billing, account_access, bug, abuse, and unknown; unsafe account, billing, abuse, bug, and unknown paths do not automatically propose a customer send.",
+    "The dogfood output includes draft_email.body with a greeting, acknowledgement of the domain-verification request, concrete DNS verification steps, an explicit not-sent notice, and the configured support signoff."
   ],
   "observation_details": {
     "runx_version": "runx-cli 0.6.6",
@@ -108,7 +137,7 @@
     ],
     "local_harness_status": "passed",
     "hosted_registry_harness_status": "passed as the registry publish gate",
-    "receipt_ref": "sha256:c3c59e6d1cba7ea6333534fd7b2229dd24f6c192547ad5331024ea62cbc96600",
+    "receipt_ref": "sha256:8e87b9c4c18bf2e39c976059bb480bb6825400f15bd62886d1592a57c7357b9f",
     "runx_verify_verdict": "valid",
     "classification_taxonomy_coverage": [
       "how_to",
@@ -122,7 +151,48 @@
     "escalation_case": "account-access-escalates-without-draft",
     "how_to_install": "runx add godfood/support-triage-reply@sha-4887b7e3476f --registry https://api.runx.ai --installation-id <stable-id>",
     "how_to_run": "runx skill godfood/support-triage-reply@sha-4887b7e3476f --registry https://api.runx.ai --input support_request=<json> --input policy=<json> --json",
-    "how_to_verify": "Download dogfood-receipt.json from source, set RUNX_RECEIPT_VERIFY_KID=runx-demo-key and RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64 to the public key in this evidence file, then run runx verify --receipt dogfood-receipt.json --json."
+    "how_to_verify": "Download dogfood-receipt.json from source, set RUNX_RECEIPT_VERIFY_KID=runx-demo-key and RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64 to the public key in this evidence file, then run runx verify --receipt dogfood-receipt.json --json.",
+    "dogfood_draft_subject": "Re: How do I verify my sending domain?",
+    "dogfood_draft_body": "Hi Mira,\n\nThanks for the note. You asked about How do I verify my sending domain?.\n\nFor Nitrosend domain verification, check that the DNS records shown in the sending-domain setup are published exactly, then run the domain verification check again after DNS propagation. If a record still fails, compare the host/name and value fields character for character, including whether your DNS provider automatically appends the root domain.\n\nBefore sending, an operator should confirm the product state and any account-specific details. This draft has not been sent.\n\nThanks,\nNitrosend Support",
+    "dogfood_output": {
+      "classification": "how_to",
+      "confidence": 0.88,
+      "draft_email": {
+        "body": "Hi Mira,\n\nThanks for the note. You asked about How do I verify my sending domain?.\n\nFor Nitrosend domain verification, check that the DNS records shown in the sending-domain setup are published exactly, then run the domain verification check again after DNS propagation. If a record still fails, compare the host/name and value fields character for character, including whether your DNS provider automatically appends the root domain.\n\nBefore sending, an operator should confirm the product state and any account-specific details. This draft has not been sent.\n\nThanks,\nNitrosend Support",
+        "proposed": true,
+        "recipient_hint": "customer_email_present",
+        "subject": "Re: How do I verify my sending domain?"
+      },
+      "evidence": {
+        "matched_signals": [
+          "how do i",
+          "what should",
+          "verify",
+          "dns",
+          "domain"
+        ],
+        "missing_context": [],
+        "private_data_required": false,
+        "send_side_effects": "none",
+        "source": "dogfood:operator-support",
+        "source_summary": "How do I verify my sending domain?",
+        "taxonomy_coverage": [
+          "how_to",
+          "billing",
+          "account_access",
+          "bug",
+          "abuse",
+          "unknown"
+        ]
+      },
+      "recommended_path": "reply_draft",
+      "send_gate": {
+        "action": "send_customer_email",
+        "rationale": "The draft is customer-ready, but this skill never sends. A separate governed send lane must approve delivery.",
+        "status": "requires_human_approval"
+      },
+      "severity": "low"
+    }
   },
   "value_assessment": {
     "real_operator_value": true,

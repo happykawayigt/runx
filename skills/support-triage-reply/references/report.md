@@ -77,6 +77,21 @@ Output summary:
 - Recommended path: `reply_draft`
 - Send gate: `requires_human_approval`
 
+Draft excerpt from the dogfood run:
+
+```text
+Hi Mira,
+
+Thanks for the note. You asked about How do I verify my sending domain?.
+
+For Nitrosend domain verification, check that the DNS records shown in the sending-domain setup are published exactly, then run the domain verification check again after DNS propagation. If a record still fails, compare the host/name and value fields character for character, including whether your DNS provider automatically appends the root domain.
+
+Before sending, an operator should confirm the product state and any account-specific details. This draft has not been sent.
+
+Thanks,
+Nitrosend Support
+```
+
 Receipt verification:
 
 ```sh
