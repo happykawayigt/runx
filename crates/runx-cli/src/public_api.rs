@@ -37,6 +37,19 @@ pub(crate) fn parse_error(body: &str) -> Option<ErrorPayload> {
     serde_json::from_str::<ErrorEnvelope>(body)
         .ok()
         .map(|envelope| envelope.error)
+        .or_else(|| {
+            serde_json::from_str::<PlainErrorEnvelope>(body)
+                .ok()
+                .and_then(|envelope| match envelope.error {
+                    PlainError::Message(detail) => Some(ErrorPayload {
+                        code: plain_error_code(&detail).to_owned(),
+                        detail,
+                        hint: None,
+                        retry_after_seconds: None,
+                    }),
+                    PlainError::Payload(payload) => Some(payload),
+                })
+        })
 }
 
 fn normalize_non_empty_base_url(value: &str) -> Option<String> {
@@ -61,4 +74,24 @@ pub(crate) struct ErrorPayload {
 #[derive(Deserialize)]
 struct ErrorEnvelope {
     error: ErrorPayload,
+}
+
+#[derive(Deserialize)]
+struct PlainErrorEnvelope {
+    error: PlainError,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum PlainError {
+    Message(String),
+    Payload(ErrorPayload),
+}
+
+fn plain_error_code(detail: &str) -> &'static str {
+    if detail.contains("Missing required scope") {
+        "missing_scope"
+    } else {
+        "api_error"
+    }
 }

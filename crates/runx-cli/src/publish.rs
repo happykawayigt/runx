@@ -114,10 +114,13 @@ impl fmt::Display for PublishError {
                     "runx-api publish returned invalid JSON: {message}"
                 )
             }
-            Self::RunxApi { code, detail, .. } => {
+            Self::RunxApi {
+                code, detail, hint, ..
+            } => {
                 write!(
                     formatter,
-                    "runx-api publish returned error [{code}]: {detail}"
+                    "{}",
+                    publish_error_message(code, detail, hint.as_deref())
                 )
             }
         }
@@ -130,6 +133,23 @@ impl From<RuntimeHttpError> for PublishError {
     fn from(error: RuntimeHttpError) -> Self {
         Self::RuntimeHttp(error)
     }
+}
+
+fn publish_error_message(code: &str, detail: &str, hint: Option<&str>) -> String {
+    if code == "missing_scope" && detail.contains("receipts:write") {
+        return [
+            "This token can publish skills but not receipts.",
+            "The receipt notary requires `receipts:write`.",
+            "Use `runx publish --token <receipt-token> <receipt.json>` or set `RUNX_PUBLIC_API_TOKEN` to a receipt-capable token.",
+            "Your stored login token is still valid for the scopes it was issued with.",
+        ]
+        .join(" ");
+    }
+    let mut message = format!("runx-api publish returned error [{code}]: {detail}");
+    if let Some(hint) = hint.filter(|value| !value.trim().is_empty()) {
+        message.push_str(&format!(" Hint: {hint}"));
+    }
+    message
 }
 
 #[derive(Clone, Debug)]

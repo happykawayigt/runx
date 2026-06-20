@@ -250,6 +250,21 @@ fn human_output_reflects_notary_status() -> Result<(), PublishCliError> {
     Ok(())
 }
 
+#[test]
+fn publish_error_explains_receipt_scope_mismatch() {
+    let message = PublishError::RunxApi {
+        code: "missing_scope".to_owned(),
+        detail: "Missing required scope: receipts:write.".to_owned(),
+        hint: None,
+        retry_after_seconds: None,
+    }
+    .to_string();
+
+    assert!(message.contains("can publish skills but not receipts"));
+    assert!(message.contains("receipts:write"));
+    assert!(message.contains("runx publish --token"));
+}
+
 fn request_json_body(request: &HttpRequest) -> Result<JsonValue, String> {
     let body = request
         .body
