@@ -70,6 +70,30 @@ runners:
 }
 
 #[test]
+fn catalog_audience_accepts_system_sync_profiles() -> Result<(), String> {
+    let manifest = parse_manifest(
+        r#"
+catalog:
+  kind: skill
+  audience: system
+  visibility: internal
+  role: canonical
+runners:
+  default:
+    source:
+      type: agent
+"#,
+    )?;
+
+    let catalog = manifest
+        .catalog
+        .ok_or_else(|| "expected catalog metadata".to_owned())?;
+    assert_eq!(catalog.audience, CatalogAudience::System);
+    assert_eq!(catalog.audience.as_str(), "system");
+    Ok(())
+}
+
+#[test]
 fn unknown_catalog_kind_fails_closed() -> Result<(), String> {
     let raw = parse_runner_manifest_yaml(
         r#"

@@ -18,6 +18,7 @@ pub enum CatalogAudience {
     Public,
     Builder,
     Operator,
+    System,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -53,6 +54,7 @@ impl CatalogAudience {
             CatalogAudience::Public => "public",
             CatalogAudience::Builder => "builder",
             CatalogAudience::Operator => "operator",
+            CatalogAudience::System => "system",
         }
     }
 }
@@ -153,8 +155,9 @@ fn parse_catalog_audience(
         "public" => Ok(CatalogAudience::Public),
         "builder" => Ok(CatalogAudience::Builder),
         "operator" => Ok(CatalogAudience::Operator),
+        "system" => Ok(CatalogAudience::System),
         _ => Err(FIELDS.validation_error(format!(
-            "{label}.audience must be public, builder, or operator."
+            "{label}.audience must be public, builder, operator, or system."
         ))),
     }
 }

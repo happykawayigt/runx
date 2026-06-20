@@ -347,6 +347,7 @@ pub(super) fn normalize_registry_catalog(
         audience: match audience {
             Some("builder") => runx_parser::CatalogAudience::Builder,
             Some("operator") => runx_parser::CatalogAudience::Operator,
+            Some("system") => runx_parser::CatalogAudience::System,
             _ => runx_parser::CatalogAudience::Public,
         },
         visibility: match visibility {

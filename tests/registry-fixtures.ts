@@ -38,7 +38,7 @@ export interface RegistrySkillVersion {
   readonly trust_tier: RegistryTrustTier;
   readonly maturity?: "alpha" | "beta" | "stable";
   readonly catalog_kind?: "skill" | "graph";
-  readonly catalog_audience?: "public" | "builder" | "operator";
+  readonly catalog_audience?: "public" | "builder" | "operator" | "system";
   readonly catalog_visibility?: "public" | "internal";
   readonly attestations?: readonly RegistryAttestation[];
   readonly required_scopes: readonly string[];
