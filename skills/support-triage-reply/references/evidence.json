@@ -75,6 +75,42 @@
     "live_godfood_self_serve_credentials_remaining": 0,
     "tokens_in_artifacts": false
   },
+  "observations": {
+    "runx_version": "runx-cli 0.6.6",
+    "publisher_owner": "godfood",
+    "package_name": "support-triage-reply",
+    "version": "sha-7fee56e60e96",
+    "registry_ref": "godfood/support-triage-reply@sha-7fee56e60e96",
+    "public_url": "https://runx.ai/x/godfood/support-triage-reply",
+    "source_url": "https://github.com/runxhq/runx/tree/main/oss/skills/support-triage-reply",
+    "publish_method": "purpose-scoped godfood publish credential; credential revoked after publish",
+    "install_command": "runx add godfood/support-triage-reply@sha-7fee56e60e96 --registry https://api.runx.ai --installation-id godfood-support-triage-final --json",
+    "dogfood_command": "runx skill godfood/support-triage-reply@sha-7fee56e60e96 --registry https://api.runx.ai --input support_request=<json> --input policy=<json> --receipts <dir> --json",
+    "verify_command": "runx verify --receipt dogfood-receipt.json --json",
+    "verify_public_key_base64": "IVL40Zt5HSRFMkLhXy6rbLfP+ntqXtMAl5YOBpiB2xI=",
+    "harness_case_names": [
+      "safe-how-to-reply-draft",
+      "account-access-escalates-without-draft",
+      "missing-request-fails"
+    ],
+    "local_harness_status": "passed",
+    "hosted_registry_harness_status": "passed as the registry publish gate",
+    "receipt_ref": "sha256:0cae135b62adf38fb8512096b85c0111f4b76b980e4401ab793c44b2f8a8d279",
+    "runx_verify_verdict": "valid",
+    "classification_taxonomy_coverage": [
+      "how_to",
+      "billing",
+      "account_access",
+      "bug",
+      "abuse",
+      "unknown"
+    ],
+    "safe_answer_case": "safe-how-to-reply-draft",
+    "escalation_case": "account-access-escalates-without-draft",
+    "how_to_install": "runx add godfood/support-triage-reply@sha-7fee56e60e96 --registry https://api.runx.ai --installation-id <stable-id>",
+    "how_to_run": "runx skill godfood/support-triage-reply@sha-7fee56e60e96 --registry https://api.runx.ai --input support_request=<json> --input policy=<json> --json",
+    "how_to_verify": "Download dogfood-receipt.json from source, set RUNX_RECEIPT_VERIFY_KID=runx-demo-key and RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64 to the public key in this evidence file, then run runx verify --receipt dogfood-receipt.json --json."
+  },
   "value_assessment": {
     "real_operator_value": true,
     "summary": "The skill handles a repeatable day-to-day support operation: classify one support request, select the safe lane, and draft a sendable reply only behind a human approval gate.",
