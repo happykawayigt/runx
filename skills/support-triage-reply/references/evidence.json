@@ -1,5 +1,6 @@
 {
   "schema": "runx.support_triage_reply.evidence.v1",
+  "summary": "Published and dogfooded a reusable public Runx support-triage-reply skill for real operator support work. The skill classifies one support request, chooses a safe next path, drafts a customer-ready email only when appropriate, and keeps any customer send behind an explicit human approval gate.",
   "skill": {
     "name": "support-triage-reply",
     "published_ref": "godfood/support-triage-reply@sha-4887b7e3476f",
@@ -75,7 +76,19 @@
     "live_godfood_self_serve_credentials_remaining": 0,
     "tokens_in_artifacts": false
   },
-  "observations": {
+  "observations": [
+    "runx --version returned runx-cli 0.6.6, satisfying the CLI floor for this bounty.",
+    "The published registry ref is godfood/support-triage-reply@sha-4887b7e3476f under the godfood authenticated namespace.",
+    "runx registry read godfood/support-triage-reply@sha-4887b7e3476f --registry https://api.runx.ai --json resolves the package metadata, digests, publisher, trust tier, and triage runner.",
+    "A clean install succeeded with runx add godfood/support-triage-reply@sha-4887b7e3476f --registry https://api.runx.ai --installation-id godfood-support-triage-final3 --json.",
+    "The local harness passed three cases: safe-how-to-reply-draft, account-access-escalates-without-draft, and missing-request-fails.",
+    "The registry publish gate ran the hosted harness successfully before accepting the package.",
+    "The dogfood command ran the published registry skill on a real support-domain input and produced receipt sha256:c3c59e6d1cba7ea6333534fd7b2229dd24f6c192547ad5331024ea62cbc96600.",
+    "runx verify --receipt dogfood-receipt.json --json returned valid for the dogfood receipt with kid runx-demo-key and public key IVL40Zt5HSRFMkLhXy6rbLfP+ntqXtMAl5YOBpiB2xI=.",
+    "The dogfood output classified the request as how_to with severity low, confidence 0.88, recommended_path reply_draft, and send_gate.status requires_human_approval.",
+    "The classification taxonomy covers how_to, billing, account_access, bug, abuse, and unknown; unsafe account, billing, abuse, bug, and unknown paths do not automatically propose a customer send."
+  ],
+  "observation_details": {
     "runx_version": "runx-cli 0.6.6",
     "publisher_owner": "godfood",
     "package_name": "support-triage-reply",
