@@ -16,6 +16,7 @@ inputs:
     required: true
     description: Input the skill acts on. Replace with the real inputs.
 runx:
+  category: ops
   input_resolution:
     required:
       - message

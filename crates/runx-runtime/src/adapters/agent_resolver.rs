@@ -269,7 +269,7 @@ mod tests {
     }
 
     #[test]
-    fn final_result_schema_uses_declared_outputs() {
+    fn final_result_schema_uses_declared_outputs() -> Result<(), String> {
         let outputs = BTreeMap::from([
             ("decision".to_owned(), OutputField::Type(OutputType::String)),
             ("quality".to_owned(), OutputField::Type(OutputType::Object)),
@@ -278,18 +278,17 @@ mod tests {
         let final_tool = tools
             .iter()
             .find(|tool| tool.name == FINAL_RESULT_TOOL)
-            .expect("missing final-result tool");
+            .ok_or_else(|| "missing final-result tool".to_owned())?;
 
         let JsonValue::Object(schema) = &final_tool.input_schema else {
-            panic!("final result schema should be an object");
+            return Err("final result schema should be an object".to_owned());
         };
         assert_eq!(
             schema.get("type"),
             Some(&JsonValue::String("object".to_owned()))
         );
-        let JsonValue::Object(properties) = schema.get("properties").expect("missing properties")
-        else {
-            panic!("properties should be an object");
+        let Some(JsonValue::Object(properties)) = schema.get("properties") else {
+            return Err("properties should be an object".to_owned());
         };
         assert!(properties.contains_key("decision"));
         assert!(properties.contains_key("quality"));
@@ -304,6 +303,7 @@ mod tests {
             schema.get("additionalProperties"),
             Some(&JsonValue::Bool(false))
         );
+        Ok(())
     }
 
     #[test]

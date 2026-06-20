@@ -78,9 +78,9 @@ fn run_doctor_command(
 
     let root = resolve_doctor_root(plan, env, cwd);
     let mut report = run_doctor(&root, &default_doctor_options())?;
-    report
-        .diagnostics
-        .push(managed_agent_config_diagnostic(env, cwd));
+    if let Some(diagnostic) = managed_agent_config_diagnostic(env, cwd) {
+        report.diagnostics.push(diagnostic);
+    }
     report.summary = summary(&report.diagnostics);
     if report
         .diagnostics
@@ -103,7 +103,10 @@ fn run_doctor_command(
 
 // rust-style-allow: long-function - this builds one structured diagnostic packet
 // from env, config, and credential state so the evidence and repair stay together.
-fn managed_agent_config_diagnostic(env: &BTreeMap<String, String>, cwd: &Path) -> DoctorDiagnostic {
+fn managed_agent_config_diagnostic(
+    env: &BTreeMap<String, String>,
+    cwd: &Path,
+) -> Option<DoctorDiagnostic> {
     let config_dir = resolve_runx_home_dir(env, cwd);
     let config_path = config_dir.join("config.json");
     let config = load_runx_config_file(&config_path);
@@ -181,6 +184,9 @@ fn managed_agent_config_diagnostic(env: &BTreeMap<String, String>, cwd: &Path) -
     let complete = provider.is_some() && model.is_some() && api_key_configured;
     let partial = !complete
         && (provider.is_some() || model.is_some() || api_key_configured || config_error.is_some());
+    if !complete && !partial {
+        return None;
+    }
     let severity = if partial {
         DoctorDiagnosticSeverity::Warning
     } else {
@@ -190,13 +196,11 @@ fn managed_agent_config_diagnostic(env: &BTreeMap<String, String>, cwd: &Path) -
         format!("Managed-agent config could not be read: {error}.")
     } else if complete {
         "Managed-agent config is complete; agent-task runners can execute in-process.".to_owned()
-    } else if partial {
-        "Managed-agent config is partial; set provider, model, and API key or unset the partial values. Otherwise agent-task runners may yield to the host or fail later.".to_owned()
     } else {
-        "Managed-agent config is not set; agent-task runners will use host-driven resolution unless a provider is configured.".to_owned()
+        "Managed-agent config is partial; set provider, model, and API key or unset the partial values. Otherwise agent-task runners may yield to the host or fail later.".to_owned()
     };
 
-    DoctorDiagnostic {
+    Some(DoctorDiagnostic {
         id: "runx.agent.config".to_owned(),
         instance_id: "runx:doctor:runx.agent.config".to_owned(),
         severity,
@@ -232,7 +236,7 @@ fn managed_agent_config_diagnostic(env: &BTreeMap<String, String>, cwd: &Path) -
         } else {
             Vec::new()
         },
-    }
+    })
 }
 
 fn first_non_empty<'a>(values: impl IntoIterator<Item = Option<&'a str>>) -> Option<&'a str> {

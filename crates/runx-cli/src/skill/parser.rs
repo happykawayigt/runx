@@ -510,8 +510,8 @@ mod tests {
             runx_dir.join("credentials.json"),
             r#"{
   "profiles": {
-    "frantic": {
-      "credential": "frantic:bearer:local://frantic/internal:frantic.review",
+    "example": {
+      "credential": "example:bearer:local://example/internal:example.review",
       "secret_env": "INTERNAL_SYNC_SECRET"
     }
   }
@@ -520,8 +520,10 @@ mod tests {
         )
         .map_err(|error| error.to_string())?;
 
-        let mut state = SkillParseState::default();
-        state.credential_profile = Some("frantic".to_owned());
+        let state = SkillParseState {
+            credential_profile: Some("example".to_owned()),
+            ..Default::default()
+        };
         let env = [
             (
                 "RUNX_PROJECT_DIR".to_owned(),
@@ -534,12 +536,12 @@ mod tests {
         let credential = finalize_local_credential(&state, &env, &root)?
             .ok_or_else(|| "credential profile did not resolve".to_owned())?;
 
-        assert_eq!(credential.provider, "frantic");
+        assert_eq!(credential.provider, "example");
         assert_eq!(credential.auth_mode, "bearer");
-        assert_eq!(credential.material_ref, "local://frantic/internal");
+        assert_eq!(credential.material_ref, "local://example/internal");
         assert_eq!(credential.env_var, "INTERNAL_SYNC_SECRET");
         assert_eq!(credential.secret, "secret-value");
-        assert_eq!(credential.scopes, vec!["frantic.review"]);
+        assert_eq!(credential.scopes, vec!["example.review"]);
 
         fs::remove_dir_all(root).map_err(|error| error.to_string())?;
         Ok(())
@@ -547,9 +549,11 @@ mod tests {
 
     #[test]
     fn credential_profile_rejects_manual_credential_flags() -> Result<(), String> {
-        let mut state = SkillParseState::default();
-        state.credential_profile = Some("frantic".to_owned());
-        state.secret_env = Some(("TOKEN".to_owned(), "secret".to_owned()));
+        let state = SkillParseState {
+            credential_profile: Some("example".to_owned()),
+            secret_env: Some(("TOKEN".to_owned(), "secret".to_owned())),
+            ..Default::default()
+        };
         let error = finalize_local_credential(&state, &Default::default(), &std::env::temp_dir())
             .err()
             .ok_or_else(|| "profile unexpectedly combined with manual flags".to_owned())?;

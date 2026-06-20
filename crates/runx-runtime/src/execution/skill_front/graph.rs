@@ -6,6 +6,7 @@ use super::{
     contract_json_value, identifier_segment, invalid, needs_agent_output, sealed_output,
 };
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use runx_contracts::{
@@ -73,6 +74,7 @@ pub(super) fn execute_graph_skill_run(
         credential_delivery_from_invocation(workspace.env(), request.local_credential.as_ref())?;
     let inline_resolver = InlineResolver {
         skill_directory: skill_dir.clone(),
+        env: env.clone(),
         credential_delivery: credential_delivery.clone(),
     };
     let runtime = Runtime::new(
@@ -438,6 +440,8 @@ struct InlineResolver {
     #[cfg_attr(not(feature = "agent"), allow(dead_code))]
     skill_directory: PathBuf,
     #[cfg_attr(not(feature = "agent"), allow(dead_code))]
+    env: BTreeMap<String, String>,
+    #[cfg_attr(not(feature = "agent"), allow(dead_code))]
     credential_delivery: CredentialDelivery,
 }
 
@@ -452,23 +456,22 @@ impl InlineResolver {
             skill_name: "managed-agent".to_owned(),
             message,
         };
-        // The same process-env snapshot the rest of the runtime reads, so the
-        // inline graph agent path resolves the provider exactly like the
-        // top-level agent path rather than reaching for raw `std::env`.
-        let env = crate::services::process_env_snapshot();
-        let config = match crate::config::load_managed_agent_config(&env, &self.skill_directory)
-            .map_err(|error| fail(format!("managed agent config error: {error}")))?
-        {
-            Some(config) if config.provider.as_str().eq_ignore_ascii_case("anthropic") => config,
-            _ => return Ok(None),
-        };
+        let config =
+            match crate::config::load_managed_agent_config(&self.env, &self.skill_directory)
+                .map_err(|error| fail(format!("managed agent config error: {error}")))?
+            {
+                Some(config) if config.provider.as_str().eq_ignore_ascii_case("anthropic") => {
+                    config
+                }
+                _ => return Ok(None),
+            };
         let transport = ReqwestHttpTransport::for_managed_agent()
             .map_err(|error| fail(format!("managed agent transport error: {error}")))?;
         let resolver = AnthropicAgentResolver::new(
             transport,
             config.api_key,
             config.model,
-            env,
+            self.env.clone(),
             self.skill_directory.clone(),
             self.credential_delivery.clone(),
         );

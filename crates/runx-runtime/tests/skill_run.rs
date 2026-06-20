@@ -2178,6 +2178,10 @@ fn run_skill(request: SkillRunRequest) -> Result<RunResult, Box<dyn std::error::
 fn with_test_signing_env(mut request: SkillRunRequest) -> SkillRunRequest {
     crate::support::insert_test_signing_env(&mut request.env);
     request
+        .env
+        .entry("RUNX_HOME".to_owned())
+        .or_insert_with(|| request.cwd.join(".runx").to_string_lossy().into_owned());
+    request
 }
 
 fn write_agent_task_skill(root: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {

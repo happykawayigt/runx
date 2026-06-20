@@ -40,14 +40,14 @@ pub(crate) fn parse_error(body: &str) -> Option<ErrorPayload> {
         .or_else(|| {
             serde_json::from_str::<PlainErrorEnvelope>(body)
                 .ok()
-                .and_then(|envelope| match envelope.error {
-                    PlainError::Message(detail) => Some(ErrorPayload {
+                .map(|envelope| match envelope.error {
+                    PlainError::Message(detail) => ErrorPayload {
                         code: plain_error_code(&detail).to_owned(),
                         detail,
                         hint: None,
                         retry_after_seconds: None,
-                    }),
-                    PlainError::Payload(payload) => Some(payload),
+                    },
+                    PlainError::Payload(payload) => payload,
                 })
         })
 }
