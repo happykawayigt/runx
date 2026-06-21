@@ -51,16 +51,12 @@ fn native_skill_pauses_and_resumes_with_run_id() -> Result<(), Box<dyn std::erro
 
     let resume = runx_command()
         .args([
-            "skill",
-            skill_dir.to_str().ok_or("non-utf8 skill dir")?,
+            "resume",
+            "issue-intake-run",
+            answers_path.to_str().ok_or("non-utf8 answers path")?,
             "--receipt-dir",
             receipt_dir.to_str().ok_or("non-utf8 receipt dir")?,
-            "--run-id",
-            "issue-intake-run",
-            "--answers",
-            answers_path.to_str().ok_or("non-utf8 answers path")?,
             "--json",
-            "--non-interactive",
         ])
         .output()?;
     let resume_json = assert_json(&resume, Some(0))?;
@@ -117,8 +113,9 @@ fn native_skill_resolves_bare_local_skill_and_documented_input_flags()
 }
 
 #[test]
-fn native_skill_runner_flag_selects_non_default_runner() -> Result<(), Box<dyn std::error::Error>> {
-    let root = crate::support::temp_root("runx-skill-runner-flag");
+fn native_skill_positional_runner_selects_non_default_runner()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = crate::support::temp_root("runx-skill-positional-runner");
     let skill_dir = write_multi_runner_skill(&root)?;
     let receipt_dir = root.join("receipts");
 
@@ -126,8 +123,8 @@ fn native_skill_runner_flag_selects_non_default_runner() -> Result<(), Box<dyn s
         .args([
             "skill",
             skill_dir.to_str().ok_or("non-utf8 skill dir")?,
-            "--runner",
             "second",
+            "--run",
             "--receipt-dir",
             receipt_dir.to_str().ok_or("non-utf8 receipt dir")?,
             "--json",
@@ -284,10 +281,9 @@ fn native_skill_registry_run_reports_provenance_on_execution_error()
         .args([
             "skill",
             "acme/echo@1.0.0",
+            "missing-runner",
             "--registry",
             registry_dir.to_str().ok_or("non-utf8 registry dir")?,
-            "--runner",
-            "missing-runner",
             "--json",
             "--non-interactive",
         ])
@@ -465,7 +461,7 @@ fn native_skill_text_output_includes_copy_paste_resume_command()
 }
 
 #[test]
-fn native_skill_rejects_answers_without_run_id() -> Result<(), Box<dyn std::error::Error>> {
+fn native_skill_rejects_legacy_answers_flag() -> Result<(), Box<dyn std::error::Error>> {
     let root = crate::support::temp_root("runx-skill-reject-answers");
     let skill_dir = write_agent_task_skill(&root)?;
     let answers_path = root.join("answers.json");
@@ -480,14 +476,16 @@ fn native_skill_rejects_answers_without_run_id() -> Result<(), Box<dyn std::erro
         .output()?;
 
     assert_eq!(output.status.code(), Some(64));
-    assert!(String::from_utf8(output.stderr)?.contains("runx skill --answers requires --run-id"));
+    assert!(
+        String::from_utf8(output.stderr)?.contains("use `runx resume <run-id> <answers.json>`")
+    );
     assert_eq!(String::from_utf8(output.stdout)?, "");
 
     Ok(())
 }
 
 #[test]
-fn native_skill_rejects_run_id_without_answers() -> Result<(), Box<dyn std::error::Error>> {
+fn native_skill_rejects_legacy_run_id_flag() -> Result<(), Box<dyn std::error::Error>> {
     let root = crate::support::temp_root("runx-skill-reject-run-id");
     let skill_dir = write_agent_task_skill(&root)?;
     let output = runx_command()
@@ -500,7 +498,9 @@ fn native_skill_rejects_run_id_without_answers() -> Result<(), Box<dyn std::erro
         .output()?;
 
     assert_eq!(output.status.code(), Some(64));
-    assert!(String::from_utf8(output.stderr)?.contains("runx skill --run-id requires --answers"));
+    assert!(
+        String::from_utf8(output.stderr)?.contains("use `runx resume <run-id> <answers.json>`")
+    );
     assert_eq!(String::from_utf8(output.stdout)?, "");
 
     Ok(())

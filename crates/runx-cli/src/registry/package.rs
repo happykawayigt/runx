@@ -358,6 +358,7 @@ fn resolve_publish_harness_dependency_paths(
     Ok(vec![declared_relative.to_owned()])
 }
 
+// rust-style-allow: long-function - publish packaging keeps file safety, byte limits, and canonical path checks in one audit-friendly collector.
 fn copy_publish_harness_dependency(
     package_dir: &Path,
     relative: &str,

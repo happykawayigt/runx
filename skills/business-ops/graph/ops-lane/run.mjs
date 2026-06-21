@@ -148,7 +148,7 @@ const laneDetails = {
       interfaceName: "skill",
       laneRef: "send-as -> provider.send",
       runnerRef: "send-as plan, then the selected vendor-specific send runner",
-      commandHint: "runx skill send-as ...; runx skill <provider-send-skill> --runner <send-runner> ...",
+      commandHint: "runx skill send-as ...; runx skill <provider-send-skill> <send-runner> ...",
     }),
     evidence: evidence(
       ["principal", "audience", "content digest", "consent basis", "provider status"],

@@ -4,6 +4,7 @@
 use std::collections::BTreeSet;
 use std::fs;
 use std::io::ErrorKind;
+use std::io::Write;
 use std::path::Path;
 
 use runx_contracts::schema::NonEmptyString;
@@ -121,6 +122,40 @@ pub struct PausedRunCheckpoint {
     pub selected_runner: Option<String>,
     pub step_ids: Vec<String>,
     pub step_labels: Vec<String>,
+}
+
+pub fn append_paused_run_checkpoint(
+    receipt_dir: &Path,
+    checkpoint: &PausedRunCheckpoint,
+) -> Result<(), std::io::Error> {
+    let ledgers_dir = receipt_dir.join("ledgers");
+    fs::create_dir_all(&ledgers_dir)?;
+    let ledger_path = ledgers_dir.join(format!("{}.jsonl", checkpoint.id));
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(ledger_path)?;
+    let entry = LedgerEntry {
+        entry_type: "run_event".to_owned(),
+        data: LedgerEventData {
+            kind: "resolution_requested".to_owned(),
+            detail: LedgerEventDetail {
+                resume_skill_ref: checkpoint.resume_skill_ref.clone(),
+                selected_runner: checkpoint.selected_runner.clone(),
+                step_ids: checkpoint.step_ids.clone(),
+                step_labels: checkpoint.step_labels.clone(),
+            },
+        },
+        meta: LedgerEventMeta {
+            created_at: checkpoint.started_at.clone(),
+            producer: Some(LedgerEventProducer {
+                skill: Some(checkpoint.name.clone()),
+                runner: checkpoint.selected_runner.clone(),
+            }),
+        },
+    };
+    serde_json::to_writer(&mut file, &entry)?;
+    file.write_all(b"\n")
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -729,7 +764,7 @@ fn ledger_run_id(path: &Path) -> Option<String> {
         return None;
     }
     let run_id = path.file_stem()?.to_str()?;
-    if !(run_id.starts_with("rx_") || run_id.starts_with("gx_"))
+    if !(run_id.starts_with("rx_") || run_id.starts_with("gx_") || run_id.starts_with("run_"))
         || !run_id
             .chars()
             .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '-'))
@@ -774,7 +809,7 @@ enum LedgerLine {
     Entry(LedgerEntry),
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct LedgerEntry {
     #[serde(rename = "type")]
     entry_type: String,
@@ -782,14 +817,14 @@ struct LedgerEntry {
     meta: LedgerEventMeta,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct LedgerEventData {
     kind: String,
     #[serde(default)]
     detail: LedgerEventDetail,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 struct LedgerEventDetail {
     #[serde(default)]
     resume_skill_ref: Option<String>,
@@ -801,7 +836,7 @@ struct LedgerEventDetail {
     step_labels: Vec<String>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct LedgerEventMeta {
     #[serde(default)]
     created_at: Option<String>,
@@ -809,7 +844,7 @@ struct LedgerEventMeta {
     producer: Option<LedgerEventProducer>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct LedgerEventProducer {
     #[serde(default)]
     skill: Option<String>,

@@ -160,7 +160,7 @@ pub(super) fn execute_cli_tool_skill_run(
 ) -> Result<JsonValue, SkillRunError> {
     if request.answers_path.is_some() {
         return Err(invalid(
-            "runx skill cli-tool runners do not support --answers",
+            "cli-tool runners do not support continuation answers",
         ));
     }
     let run_id = request

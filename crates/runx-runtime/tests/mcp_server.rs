@@ -625,7 +625,7 @@ fn mcp_server_host_result_conversion_covers_terminal_statuses() {
     });
     assert_eq!(
         needs_agent.content[0].text,
-        "echo needs agent input at run-1. Continue by rerunning the same skill with --run-id run-1 --answers answers.json after resolving 2 request(s)."
+        "echo needs agent input at run-1. Resolve 2 request(s), write answers.json, then run: runx resume run-1 answers.json."
     );
     assert!(!needs_agent.is_error);
 

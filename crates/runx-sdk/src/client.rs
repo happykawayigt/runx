@@ -104,7 +104,6 @@ impl RunxClient {
     ) -> RunxResult<RunxJsonReport> {
         let mut args = vec!["skill".to_owned(), skill_ref.to_owned()];
         if let Some(runner) = options.runner {
-            args.push("--runner".to_owned());
             args.push(runner);
         }
         for (name, value) in options.inputs {
@@ -119,18 +118,15 @@ impl RunxClient {
 
     pub fn continue_run(
         &self,
-        skill_ref: &str,
+        _skill_ref: &str,
         run_id: &str,
         payload: ContinuePayload,
     ) -> RunxResult<RunxJsonReport> {
         let answers_path = write_continue_payload(payload)?;
         let result = self.run_json(
             vec![
-                "skill".to_owned(),
-                skill_ref.to_owned(),
-                "--run-id".to_owned(),
+                "resume".to_owned(),
                 run_id.to_owned(),
-                "--answers".to_owned(),
                 answers_path.to_string_lossy().into_owned(),
             ],
             None,

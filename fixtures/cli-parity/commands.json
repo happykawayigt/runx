@@ -135,6 +135,41 @@
       ]
     },
     {
+      "id": "resume",
+      "usage": "runx resume <run-id> <answers.json>",
+      "aliases": [],
+      "requiredPositionals": [
+        "<run-id>",
+        "<answers.json>"
+      ],
+      "flags": [
+        "--receipt-dir",
+        "--non-interactive",
+        "--json"
+      ],
+      "exitCodes": [
+        0,
+        1,
+        2,
+        64
+      ],
+      "parity": {
+        "humanOutput": "semantic",
+        "jsonOutput": "schema-exact",
+        "receipt": "schema-exact",
+        "sideEffect": "local-runtime",
+        "surfaces": [
+          "caller-mediated-resolution",
+          "graph-runtime",
+          "receipts",
+          "cli-presentation"
+        ]
+      },
+      "cases": [
+        "resume.validate"
+      ]
+    },
+    {
       "id": "verify",
       "usage": "runx verify [receipt-id]",
       "aliases": [],
@@ -621,7 +656,7 @@
     },
     {
       "id": "skill.run",
-      "usage": "runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md>",
+      "usage": "runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner]",
       "aliases": [],
       "requiredPositionals": [
         "<skill-ref|owner/name@version|skill-dir|SKILL.md>"
@@ -629,11 +664,8 @@
       "flags": [
         "--registry",
         "--digest",
-        "--runner",
         "--input",
         "--receipt-dir",
-        "--run-id",
-        "--answers",
         "--credential",
         "--secret-env",
         "--non-interactive",

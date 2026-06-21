@@ -103,31 +103,41 @@ fn write_skill_text(
         writeln!(writer, "summary: {summary}")?;
     }
     if let Some(requests) = object.get("requests").and_then(JsonValue::as_array) {
-        writeln!(writer, "pending_requests: {}", requests.len())?;
-        for request in requests {
-            if let Some(request) = request.as_object() {
-                let id = object_string(request, "id").unwrap_or("<unknown>");
-                let kind = object_string(request, "kind").unwrap_or("<unknown>");
-                writeln!(writer, "- {kind}: {id}")?;
-            }
+        write_pending_requests(writer, object, requests, resume)?;
+    }
+    Ok(())
+}
+
+fn write_pending_requests(
+    writer: &mut dyn Write,
+    object: &JsonObject,
+    requests: &[JsonValue],
+    resume: SkillOutputResume<'_>,
+) -> io::Result<()> {
+    writeln!(writer, "pending_requests: {}", requests.len())?;
+    for request in requests {
+        if let Some(request) = request.as_object() {
+            let id = object_string(request, "id").unwrap_or("<unknown>");
+            let kind = object_string(request, "kind").unwrap_or("<unknown>");
+            writeln!(writer, "- {kind}: {id}")?;
         }
-        if let Some(template) = answers_template(requests) {
-            writeln!(writer, "answers_template:")?;
-            write_indented_json(writer, &template)?;
-        }
-        if let Some(run_id) = object_string(object, "run_id") {
-            let command =
-                crate::resume::render_skill_resume_command(crate::resume::SkillResumeCommand {
-                    skill_ref: resume
-                        .skill_ref
-                        .or_else(|| object_string(object, "skill_name")),
-                    run_id,
-                    selected_runner: resume.selected_runner,
-                    receipt_dir: resume.receipt_dir,
-                    answers_path: resume.answers_path,
-                });
-            writeln!(writer, "next: resolve the request, then rerun: {command}")?;
-        }
+    }
+    if let Some(template) = answers_template(requests) {
+        writeln!(writer, "answers_template:")?;
+        write_indented_json(writer, &template)?;
+    }
+    if let Some(run_id) = object_string(object, "run_id") {
+        let command =
+            crate::resume::render_skill_resume_command(crate::resume::SkillResumeCommand {
+                skill_ref: resume
+                    .skill_ref
+                    .or_else(|| object_string(object, "skill_name")),
+                run_id,
+                selected_runner: resume.selected_runner,
+                receipt_dir: resume.receipt_dir,
+                answers_path: resume.answers_path,
+            });
+        writeln!(writer, "next: resolve the request, then rerun: {command}")?;
     }
     Ok(())
 }

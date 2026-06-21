@@ -141,6 +141,17 @@
       ]
     },
     {
+      "id": "resume.validate",
+      "commandId": "resume",
+      "mode": "validate",
+      "proves": [
+        "caller-mediated-resolution",
+        "graph-runtime",
+        "receipts",
+        "cli-presentation"
+      ]
+    },
+    {
       "id": "verify.validate",
       "commandId": "verify",
       "mode": "validate",

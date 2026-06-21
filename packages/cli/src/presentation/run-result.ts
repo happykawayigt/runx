@@ -98,7 +98,7 @@ function writeNeedsAgentResult(
     const requestIds = result.requests.map((request) => request.id).join(", ");
     io.stderr.write(
       `runx: production run ${result.runId} halted with unresolved cognitive-work request(s): ${requestIds}\n`
-      + "  RUNX_PRODUCTION=1 forbids pausing; supply --answers or unset RUNX_PRODUCTION to allow pause semantics.\n",
+      + "  RUNX_PRODUCTION=1 forbids pausing; unset RUNX_PRODUCTION to allow pause/resume semantics.\n",
     );
   }
   return 2;

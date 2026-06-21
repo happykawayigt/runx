@@ -229,7 +229,7 @@ continuation command. Resolve that request into an answers file, then resume
 the same native run:
 
 ```bash
-pnpm dogfood:github-issue-to-pr -- --mode create --run-id <run-id> --answers answers.json --allow-repo owner/repo --repo owner/repo --issue 123 --workspace /path/to/repo
+runx resume <run-id> answers.json --receipt-dir /path/to/repo/.runx/receipts --json
 ```
 
 When the graph seals, provider push runs through the `issue-to-pr-push-outbox`

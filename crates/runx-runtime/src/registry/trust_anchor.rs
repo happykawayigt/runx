@@ -359,11 +359,15 @@ mod tests {
 
     #[test]
     fn official_source_trust_key_is_official_scoped_without_owner() {
-        let keys = trusted_registry_manifest_keys_from_env_with_source(
+        let result = trusted_registry_manifest_keys_from_env_with_source(
             &trust_env(),
             Some(RegistryManifestSourceAuthority::OfficialRunx),
-        )
-        .expect("official source trust key should be accepted");
+        );
+        assert!(
+            result.is_ok(),
+            "official source trust key should be accepted: {result:?}"
+        );
+        let keys = result.unwrap_or_default();
 
         assert_eq!(
             keys.last().map(|key| &key.scope),
@@ -373,14 +377,13 @@ mod tests {
 
     #[test]
     fn third_party_source_trust_key_still_requires_owner() {
-        let error = trusted_registry_manifest_keys_from_env_with_source(
+        let result = trusted_registry_manifest_keys_from_env_with_source(
             &trust_env(),
             Some(RegistryManifestSourceAuthority::RegistrySource(
                 "local:/tmp/runx-registry".to_owned(),
             )),
-        )
-        .expect_err("third-party trust key must be owner-scoped");
+        );
 
-        assert_eq!(error, RegistryManifestTrustEnvError::MissingOwner);
+        assert_eq!(result, Err(RegistryManifestTrustEnvError::MissingOwner));
     }
 }

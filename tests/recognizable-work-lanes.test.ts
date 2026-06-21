@@ -113,21 +113,39 @@ describe("recognizable work lanes", () => {
         )}\n`,
       );
 
+      const firstStdout = createMemoryStream();
+      const firstStderr = createMemoryStream();
+      const startArgs = [
+        "skill",
+        "skills/issue-intake",
+        "--thread-title",
+        "README should point users to issue-to-pr",
+        "--thread-body",
+        "The public docs should present issue-to-pr as the canonical command.",
+        "--thread-locator",
+        "github://example/repo/issues/101",
+        "--operator-context",
+        "Prefer the canonical issue-to-pr name in user-facing replies.",
+        "--receipt-dir",
+        receiptDir,
+        "--non-interactive",
+        "--json",
+      ];
+      const firstExitCode = await runCli(
+        startArgs,
+        { stdin: process.stdin, stdout: firstStdout, stderr: firstStderr },
+        { ...process.env, ...fixtureSigningEnv, RUNX_CWD: process.cwd() },
+      );
+
+      expect(firstExitCode, firstStderr.contents() || firstStdout.contents()).toBe(2);
+      expect(firstStderr.contents()).toBe("");
+      const firstJson = JSON.parse(firstStdout.contents()) as { run_id: string; status: string };
+      expect(firstJson.status).toBe("needs_agent");
+
       const exitCode = await runCli(
         [
-          "skill",
-          "skills/issue-intake",
-          "--thread-title",
-          "README should point users to issue-to-pr",
-          "--thread-body",
-          "The public docs should present issue-to-pr as the canonical command.",
-          "--thread-locator",
-          "github://example/repo/issues/101",
-          "--operator-context",
-          "Prefer the canonical issue-to-pr name in user-facing replies.",
-          "--run-id",
-          "issue-intake-recognizable-work-lane",
-          "--answers",
+          "resume",
+          firstJson.run_id,
           answersPath,
           "--receipt-dir",
           receiptDir,
@@ -268,35 +286,8 @@ describe("recognizable work lanes", () => {
 
       const exitCode = await runCli(
         [
-          "skill",
-          "skills/issue-to-pr",
-          "--fixture",
-          tempDir,
-          "--task-id",
-          taskId,
-          "--thread-title",
-          "Fixture thread-driven change",
-          "--thread-body",
-          "Apply a bounded fixture docs update.",
-          "--thread-locator",
-          threadLocator,
-          "--thread",
-          JSON.stringify(thread),
-          "--target-repo",
-          "fixtures/repo",
-          "--size",
-          "micro",
-          "--risk",
-          "low",
-          "--provider",
-          "command",
-          "--provider-command",
-          passingReviewCommand,
-          "--scafld-bin",
-          scafldBin,
-          "--run-id",
+          "resume",
           firstJson.run_id,
-          "--answers",
           answersPath,
           "--receipt-dir",
           receiptDir,

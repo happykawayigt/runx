@@ -49,7 +49,7 @@ fn continue_run_writes_answers_file_for_canonical_skill_rerun()
 
     assert_eq!(report.status(), Some("sealed"));
     let args = fs::read_to_string(fixture.args_path())?;
-    assert!(args.starts_with("skill\nskills/example\n--run-id\nrun-123\n--answers\n"));
+    assert!(args.starts_with("resume\nrun-123\n"));
     assert!(args.ends_with("\n--json\n"));
     assert_eq!(
         fs::read_to_string(fixture.stdin_path())?,
@@ -131,8 +131,8 @@ fn fake_runx_script() -> &'static str {
 printf '%s\n' "$@" > "$RUNX_SDK_ARGS"
 if [ "$1" = "skill" ] && [ "$2" = "search" ]; then
   printf '%s\n' '{"status":"success","results":[{"skill_id":"acme/sourcey","name":"sourcey","owner":"acme","source":"runx-registry","source_label":"runx registry","source_type":"cli-tool","trust_tier":"community","required_scopes":["repo:read"],"tags":["docs"],"version":"1.0.0"}]}'
-elif [ "$1" = "skill" ] && [ "$3" = "--run-id" ]; then
-  cat "$6" > "$RUNX_SDK_STDIN"
+elif [ "$1" = "resume" ]; then
+  cat "$3" > "$RUNX_SDK_STDIN"
   printf '%s\n' '{"status":"sealed","args":["skill"]}'
 else
   printf '%s\n' '{"status":"success","args":["skill"]}'

@@ -6,9 +6,11 @@ use super::{
 
 use runx_contracts::{ClosureDisposition, JsonObject, JsonValue};
 
+use crate::RuntimeError;
 use crate::adapter::{InvocationStatus, SkillInvocation, SkillOutput};
 use crate::agent_invocation::agent_act_invocation_id;
 use crate::execution::orchestrator::SkillRunRequest;
+use crate::journal::{PausedRunCheckpoint, append_paused_run_checkpoint};
 use crate::receipts::{DomainActReceiptRequest, domain_act_receipt};
 use crate::services::{ReceiptServices, WorkspaceEnv};
 use runx_parser::{SkillRunnerDefinition, SkillRunnerManifest};
@@ -46,6 +48,15 @@ pub(super) fn execute_agent_skill_run(
                 #[cfg(feature = "agent")]
                 InlineAgentOutcome::Resolved { payload, effect } => (payload, effect),
                 InlineAgentOutcome::HostDrives => {
+                    write_paused_agent_checkpoint(
+                        request,
+                        workspace,
+                        receipts,
+                        manifest,
+                        runner,
+                        &run_id,
+                        &request_id,
+                    )?;
                     return Ok(JsonValue::Object(needs_agent_output(
                         &run_id,
                         &request_id,
@@ -94,6 +105,42 @@ pub(super) fn execute_agent_skill_run(
         &receipt,
         contract_json_value(&receipt)?,
     )))
+}
+
+fn write_paused_agent_checkpoint(
+    request: &SkillRunRequest,
+    workspace: &WorkspaceEnv,
+    receipts: &ReceiptServices,
+    manifest: &SkillRunnerManifest,
+    runner: &SkillRunnerDefinition,
+    run_id: &str,
+    request_id: &str,
+) -> Result<(), SkillRunError> {
+    let receipt_path = receipts.resolve_path(workspace, request.receipt_dir.as_deref(), None);
+    let checkpoint = PausedRunCheckpoint {
+        id: run_id.to_owned(),
+        name: manifest
+            .skill
+            .clone()
+            .unwrap_or_else(|| runner.name.clone()),
+        kind: "agent".to_owned(),
+        started_at: Some(crate::time::now_iso8601()),
+        resume_skill_ref: Some(request.skill_path.to_string_lossy().into_owned()),
+        selected_runner: Some(runner.name.clone()),
+        step_ids: vec![request_id.to_owned()],
+        step_labels: vec![runner.name.clone()],
+    };
+    append_paused_run_checkpoint(&receipt_path.path, &checkpoint).map_err(|source| {
+        RuntimeError::io(
+            format!(
+                "writing paused run checkpoint for {} in {}",
+                checkpoint.id,
+                receipt_path.path.display()
+            ),
+            source,
+        )
+    })?;
+    Ok(())
 }
 
 /// Outcome of attempting the optional in-process managed-agent loop.
@@ -178,8 +225,12 @@ fn try_inline_agent_resolution(
 fn agent_run_id(request: &SkillRunRequest, request_id: &str) -> Result<String, SkillRunError> {
     match (&request.run_id, &request.answers_path) {
         (Some(run_id), Some(_)) => Ok(run_id.clone()),
-        (Some(_), None) => Err(invalid("runx skill --run-id requires --answers")),
-        (None, Some(_)) => Err(invalid("runx skill --answers requires --run-id")),
+        (Some(_), None) => Err(invalid(
+            "skill continuation requires both run_id and answers",
+        )),
+        (None, Some(_)) => Err(invalid(
+            "skill continuation requires both run_id and answers",
+        )),
         (None, None) => Ok(format!("run_{}", identifier_segment(request_id))),
     }
 }

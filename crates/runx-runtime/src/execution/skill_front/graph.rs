@@ -619,8 +619,12 @@ fn graph_run_id(
 ) -> Result<String, SkillRunError> {
     match (&request.run_id, &request.answers_path) {
         (Some(run_id), Some(_)) => Ok(run_id.clone()),
-        (Some(_), None) => Err(invalid("runx skill --run-id requires --answers")),
-        (None, Some(_)) => Err(invalid("runx skill --answers requires --run-id")),
+        (Some(_), None) => Err(invalid(
+            "skill continuation requires both run_id and answers",
+        )),
+        (None, Some(_)) => Err(invalid(
+            "skill continuation requires both run_id and answers",
+        )),
         (None, None) => {
             let input_bytes = serde_json::to_vec(&request.inputs).unwrap_or_default();
             let digest = sha256_hex(&input_bytes);

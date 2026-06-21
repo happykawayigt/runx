@@ -170,12 +170,12 @@ Return the provided task id.
     const secondStdout = createMemoryStream();
     const secondStderr = createMemoryStream();
     const secondExitCode = await runCli(
-      ["skill", skillDir, "--task-id", "abc-123", "--run-id", firstJson.run_id, "--answers", answersPath, "--receipt-dir", receiptDir, "--non-interactive", "--json"],
+      ["resume", firstJson.run_id, answersPath, "--receipt-dir", receiptDir, "--non-interactive", "--json"],
       { stdin: process.stdin, stdout: secondStdout, stderr: secondStderr },
       hostDrivenAgentEnv(tempDir),
     );
 
-    expect(secondExitCode).toBe(0);
+    expect(secondExitCode, secondStdout.contents() + secondStderr.contents()).toBe(0);
     expect(secondStderr.contents()).toBe("");
     const secondJson = JSON.parse(secondStdout.contents()) as { execution: { stdout: string }; status: string };
     expect(secondJson).toMatchObject({
@@ -205,13 +205,21 @@ Return the provided task id.
       "--non-interactive",
       "--receipt-dir",
       "/tmp/receipts",
-      "--run-id",
-      "rx_123",
     ]);
 
     expect(parsed.nonInteractive).toBe(true);
     expect(parsed.receiptDir).toBe("/tmp/receipts");
+    expect(parsed.inputs).toEqual({});
+  });
+
+  it("parses resume as the canonical continuation command", () => {
+    const parsed = parseArgs(["resume", "rx_123", "answers.json", "--receipt-dir", "/tmp/receipts", "--json"]);
+
+    expect(parsed.command).toBe("resume");
     expect(parsed.runId).toBe("rx_123");
+    expect(parsed.answersPath).toBe("answers.json");
+    expect(parsed.receiptDir).toBe("/tmp/receipts");
+    expect(parsed.json).toBe(true);
     expect(parsed.inputs).toEqual({});
   });
 
@@ -301,7 +309,7 @@ Return the provided task id.
     expect(parsed.inputs).toEqual({});
   });
 
-  it("requires native answer continuation to include a run id", async () => {
+  it("rejects legacy skill continuation flags with resume guidance", async () => {
     const stdout = createMemoryStream();
     const stderr = createMemoryStream();
     const exitCode = await runCli(
@@ -312,8 +320,8 @@ Return the provided task id.
 
     expect(exitCode).toBe(1);
     expect(stdout.contents()).toBe("");
-    expect(stderr.contents()).toContain("native runx skill");
-    expect(stderr.contents()).toContain("runx skill --answers requires --run-id");
+    expect(stderr.contents()).toContain("runx skill continuation flags are no longer supported");
+    expect(stderr.contents()).toContain("runx resume <run-id> <answers.json>");
   });
 
   it("renders human-friendly needs-agent guidance for native agent-task runs", async () => {
@@ -839,12 +847,12 @@ Return the grounded label.
     const continuedStdout = createMemoryStream();
     const continuedStderr = createMemoryStream();
     const continuedExit = await runCli(
-      ["skill", skillDir, "--prompt", "hello", "--run-id", first.run_id, "--answers", answersPath, "--receipt-dir", receiptDir, "--non-interactive", "--json"],
+      ["resume", first.run_id, answersPath, "--receipt-dir", receiptDir, "--non-interactive", "--json"],
       { stdin: process.stdin, stdout: continuedStdout, stderr: continuedStderr },
       env,
     );
 
-    expect(continuedExit).toBe(0);
+    expect(continuedExit, continuedStdout.contents() + continuedStderr.contents()).toBe(0);
     expect(continuedStderr.contents()).toBe("");
     const continued = JSON.parse(continuedStdout.contents()) as { execution: { stdout: string } };
     expect(JSON.parse(continued.execution.stdout)).toMatchObject({ summary: "grounded from caller answer" });

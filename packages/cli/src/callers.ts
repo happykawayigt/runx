@@ -66,7 +66,7 @@ export function createAgentRuntimeLoader(
 export async function readCallerInputFile(answersPath: string): Promise<CallerInputFile> {
   const parsed = JSON.parse(await readFile(answersPath, "utf8")) as unknown;
   if (!isRecord(parsed)) {
-    throw new Error("--answers file must contain a JSON object.");
+    throw new Error("answers file must contain a JSON object.");
   }
   if (parsed.answers === undefined && parsed.approvals === undefined) {
     return {
@@ -78,13 +78,13 @@ export async function readCallerInputFile(answersPath: string): Promise<CallerIn
   );
   if (extraTopLevelKeys.length > 0) {
     throw new Error(
-      `--answers file mixes top-level keys [${extraTopLevelKeys.join(", ")}] with the nested 'answers'/'approvals' shape. ` +
+      `answers file mixes top-level keys [${extraTopLevelKeys.join(", ")}] with the nested 'answers'/'approvals' shape. ` +
         "Use either the flat shape (top-level keys = answers, no 'approvals') " +
         "or the nested shape ({ answers: {...}, approvals: {...} }), not both.",
     );
   }
   if (parsed.answers !== undefined && !isRecord(parsed.answers)) {
-    throw new Error("--answers answers field must be an object.");
+    throw new Error("answers field must be an object.");
   }
   return {
     answers: parsed.answers === undefined ? {} : parsed.answers,
@@ -260,12 +260,12 @@ function validateCallerApprovals(value: unknown): boolean | Readonly<Record<stri
     return value;
   }
   if (!isRecord(value)) {
-    throw new Error("--answers approvals field must be a boolean or object.");
+    throw new Error("answers approvals field must be a boolean or object.");
   }
   return Object.fromEntries(
     Object.entries(value).map(([key, approval]) => {
       if (typeof approval !== "boolean") {
-        throw new Error(`--answers approvals.${key} must be a boolean.`);
+        throw new Error(`answers approvals.${key} must be a boolean.`);
       }
       return [key, approval];
     }),

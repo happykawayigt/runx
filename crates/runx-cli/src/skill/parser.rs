@@ -32,18 +32,7 @@ pub fn parse_skill_plan(args: &[OsString]) -> Result<SkillPlan, String> {
     };
     reject_resolver_flags_for_skill_management_action(skill_path, &state)?;
     let skill_path = skill_path.clone();
-    if state.answers.is_some() && state.run_id.is_none() {
-        return Err("runx skill --answers requires --run-id".to_owned());
-    }
-    if state.run_id.is_some() && state.answers.is_none() {
-        return Err("runx skill --run-id requires --answers".to_owned());
-    }
-
-    let action = if state.force_run
-        || state.run_id.is_some()
-        || state.answers.is_some()
-        || !state.inputs.is_empty()
-    {
+    let action = if state.force_run || !state.inputs.is_empty() {
         SkillAction::Run
     } else {
         SkillAction::Inspect
@@ -318,8 +307,8 @@ fn is_skill_management_action(skill_path: &Path) -> bool {
 }
 
 // rust-style-allow: long-function because this is the single skill-flag dispatch
-// match (--receipt-dir/--run-id/--answers/--json/--credential and positionals);
-// splitting the arms would scatter the CLI parse contract.
+// match (--receipt-dir/--json/--credential and positionals); splitting the
+// arms would scatter the CLI parse contract.
 fn parse_skill_arg(
     args: &[OsString],
     mut index: usize,
@@ -353,29 +342,17 @@ fn parse_skill_arg(
             index += 1;
             state.receipt_dir = Some(PathBuf::from(string_arg(args, index)?));
         }
-        value if value.starts_with("--run-id=") => {
-            state.run_id = Some(value.trim_start_matches("--run-id=").to_owned());
+        value if value.starts_with("--run-id=") || value == "--run-id" => {
+            return Err(skill_resume_flag_error());
         }
-        "--run-id" => {
-            index += 1;
-            state.run_id = Some(string_arg(args, index)?);
+        value if value.starts_with("--answers=") || value == "--answers" => {
+            return Err(skill_resume_flag_error());
         }
-        value if value.starts_with("--answers=") => {
-            state.answers = Some(PathBuf::from(value.trim_start_matches("--answers=")));
-        }
-        "--answers" => {
-            index += 1;
-            state.answers = Some(PathBuf::from(string_arg(args, index)?));
-        }
-        value if value.starts_with("--runner=") => {
-            state.runner = Some(non_empty_flag_value(
-                "--runner",
-                value.trim_start_matches("--runner="),
-            )?);
-        }
-        "--runner" => {
-            index += 1;
-            state.runner = Some(non_empty_flag_value("--runner", &string_arg(args, index)?)?);
+        value if value.starts_with("--runner=") || value == "--runner" => {
+            return Err(
+                "runx skill --runner is no longer supported; use `runx skill <skill> <runner>`"
+                    .to_owned(),
+            );
         }
         value if value.starts_with("--registry=") => {
             state.registry = Some(non_empty_flag_value(
@@ -495,6 +472,10 @@ fn non_empty_flag_value(flag: &str, value: &str) -> Result<String, String> {
         return Err(format!("runx skill {flag} requires a non-empty value"));
     }
     Ok(value.to_owned())
+}
+
+fn skill_resume_flag_error() -> String {
+    "runx skill continuation flags are no longer supported; use `runx resume <run-id> <answers.json>`".to_owned()
 }
 
 fn is_retired_skill_option(token: &str) -> bool {
@@ -724,7 +705,7 @@ mod tests {
     }
 
     #[test]
-    fn input_json_rejects_non_json_values() {
+    fn input_json_rejects_non_json_values() -> Result<(), String> {
         let args = [
             "skill",
             "skills/data-store",
@@ -735,11 +716,12 @@ mod tests {
         .into_iter()
         .map(std::ffi::OsString::from)
         .collect::<Vec<_>>();
-        let error = super::parse_skill_plan(&args)
-            .err()
-            .expect("invalid json input should fail");
+        let Err(error) = super::parse_skill_plan(&args) else {
+            return Err("invalid json input should fail".to_owned());
+        };
 
         assert!(error.contains("--input-json event is invalid JSON"));
+        Ok(())
     }
 
     #[test]

@@ -57,6 +57,8 @@ export interface ParsedArgs {
   readonly answersPath?: string;
   readonly receiptDir?: string;
   readonly runner?: string;
+  readonly skillRunnerFlagUsed: boolean;
+  readonly skillContinuationFlagUsed: boolean;
   readonly forceRun: boolean;
   readonly knowledgeProject?: string;
   readonly sourceFilter?: string;
@@ -94,6 +96,8 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
   let receiptDir: string | undefined;
   let runId: string | undefined;
   let runner: string | undefined;
+  let runnerFlagUsed = false;
+  let continuationFlagUsed = false;
   let forceRun = false;
 
   for (let index = 0; index < rest.length; index += 1) {
@@ -134,6 +138,7 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     }
 
     if (knownKey === "answers") {
+      continuationFlagUsed = true;
       answersPath = String(value);
       continue;
     }
@@ -144,11 +149,13 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     }
 
     if (knownKey === "runId") {
+      continuationFlagUsed = true;
       runId = String(value);
       continue;
     }
 
     if (knownKey === "runner") {
+      runnerFlagUsed = true;
       runner = String(value);
       continue;
     }
@@ -171,6 +178,7 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
   const isNew = command === "new";
   const isInit = command === "init";
   const isReplay = command === "replay";
+  const isResume = command === "resume";
   const isDiff = command === "diff";
   const isDoctor = command === "doctor";
   const isTool = command === "tool";
@@ -205,6 +213,8 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
   const registryUrl = (isSkillSearch || isTopLevelAdd || isSkillPublish || isSkillRun) && typeof inputs.registry === "string" ? inputs.registry : undefined;
   const expectedDigest = (isTopLevelAdd || isSkillRun) && typeof inputs.digest === "string" ? normalizeDigest(inputs.digest) : undefined;
   const selectedRunner = runner ?? (isSkillRun ? positionals[1] : undefined);
+  const selectedRunId = isResume ? positionals[0] : runId;
+  const selectedAnswersPath = isResume ? positionals[1] : answersPath;
   const newDirectory = isNew && typeof inputs.directory === "string"
     ? inputs.directory
     : isNew && typeof inputs.dir === "string"
@@ -287,6 +297,7 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     receiptPublishToken,
     receiptPublishAllowLocalApi,
     receiptId: isSkillInspect ? inspectPositionals[0] : undefined,
+    runId: selectedRunId,
     replayRef: isReplay ? positionals[0] : undefined,
     diffLeft: isDiff ? positionals[0] : undefined,
     diffRight: isDiff ? positionals[1] : undefined,
@@ -310,10 +321,11 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     inputs: effectiveInputs,
     nonInteractive,
     json,
-    answersPath,
+    answersPath: selectedAnswersPath,
     receiptDir,
-    runId,
     runner: selectedRunner,
+    skillRunnerFlagUsed: isSkillRun && runnerFlagUsed,
+    skillContinuationFlagUsed: isSkillRun && continuationFlagUsed,
     forceRun,
     knowledgeProject,
     sourceFilter,
@@ -377,6 +389,9 @@ export function isSupportedCommand(parsed: ParsedArgs): boolean {
     return true;
   }
   if (parsed.command === "publish" && parsed.receiptPublishPath) {
+    return true;
+  }
+  if (parsed.command === "resume" && parsed.runId && parsed.answersPath) {
     return true;
   }
   if (parsed.skillPath) {

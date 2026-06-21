@@ -318,7 +318,7 @@ Mutation gates:
 Examples:
   pnpm live:issue-to-pr -- --allow-repo owner/repo --repo owner/repo --issue 123 --workspace /repo
   pnpm dogfood:github-issue-to-pr -- --mode create --prepare-branch --allow-repo owner/repo --repo owner/repo --issue 123 --workspace /repo
-  pnpm dogfood:github-issue-to-pr -- --mode create --run-id <run-id> --answers answers.json --allow-repo owner/repo --repo owner/repo --issue 123 --workspace /repo
+  runx resume <run-id> answers.json --receipt-dir /repo/.runx/receipts --json
   pnpm dogfood:github-issue-to-pr -- --mode observe --allow-repo owner/repo --repo owner/repo --issue 123 --workspace /repo
 `;
 }
@@ -395,8 +395,6 @@ async function buildDogfoodPreflight({ args: argsRecord, issueRef, workspace, sc
     argsRecord.scafld_bin ? `--scafld-bin ${shellQuote(argsRecord.scafld_bin)}` : "",
     argsRecord.runx_bin ? `--runx-bin ${shellQuote(argsRecord.runx_bin)}` : "",
     argsRecord.skill ? `--skill ${shellQuote(argsRecord.skill)}` : "",
-    argsRecord.run_id ? `--run-id ${shellQuote(argsRecord.run_id)}` : "",
-    argsRecord.answers ? `--answers ${shellQuote(argsRecord.answers)}` : "",
     argsRecord.receipt_dir ? `--receipt-dir ${shellQuote(argsRecord.receipt_dir)}` : "",
   ].filter(Boolean).join(" ");
 
@@ -570,7 +568,7 @@ function inspectContinuationArgs(argsRecord, taskId, issueRef, workspace) {
       },
       task_id: taskId,
       workspace: summarizeLocalPath(workspace),
-      next: "First run create mode without --answers, then rerun with the returned run_id and --answers file.",
+      next: "First run create mode without an answers file, then continue with the returned run_id and answers file.",
     };
   }
   if (runId && !answers) {
@@ -587,7 +585,7 @@ function inspectContinuationArgs(argsRecord, taskId, issueRef, workspace) {
       task_id: taskId,
       run_id: runId,
       workspace: summarizeLocalPath(workspace),
-      next: "Pass --answers with --run-id so the native graph can resume the stored run state.",
+      next: "Provide an answers file with the run_id so the native graph can resume the stored run state.",
     };
   }
   return undefined;
@@ -606,6 +604,22 @@ function buildIssueToPrSkillInvocation({
   repoSnapshot,
 }) {
   const skillPath = resolveDogfoodSkillPath(argsRecord);
+  const runId = firstNonEmptyString(argsRecord.run_id);
+  const answers = firstNonEmptyString(argsRecord.answers);
+  if (runId && answers) {
+    return {
+      skill_path: skillPath,
+      argv: [
+        "resume",
+        runId,
+        resolveInputPath(answers),
+        "--receipt-dir",
+        receiptDir,
+        "--json",
+      ],
+    };
+  }
+
   const threadBody = primaryThreadBody(thread);
   const argv = [
     "skill",
@@ -650,12 +664,6 @@ function buildIssueToPrSkillInvocation({
   pushOptionalInput(argv, "--provider-command", argsRecord.provider_command);
   pushOptionalInput(argv, "--provider-binary", argsRecord.provider_binary);
   pushOptionalInput(argv, "--model", argsRecord.model);
-
-  const runId = firstNonEmptyString(argsRecord.run_id);
-  const answers = firstNonEmptyString(argsRecord.answers);
-  if (runId && answers) {
-    argv.push("--run-id", runId, "--answers", resolveInputPath(answers));
-  }
 
   return {
     skill_path: skillPath,
@@ -709,14 +717,10 @@ function buildDogfoodCreateResult({
       requests: sanitizeDogfoodValue(nativeOutput?.requests, redactions),
       next_command: buildContinuationCommand({
         args: argsRecord,
-        issueRef,
-        workspace,
-        taskId,
-        branchName,
         runId,
         receiptDir,
       }),
-      next_human_gate: "Resolve the native graph request and rerun create mode with --run-id and --answers.",
+      next_human_gate: "Resolve the native graph request, write answers.json, then run the continuation command.",
     };
   }
 
@@ -832,34 +836,15 @@ function summarizeNativeRoute(runxCli, run, nativeOutput, redactions) {
   };
 }
 
-function buildContinuationCommand({ args: argsRecord, issueRef, workspace, taskId, branchName, runId, receiptDir }) {
+function buildContinuationCommand({ args: argsRecord, runId, receiptDir }) {
+  const runx = firstNonEmptyString(argsRecord.runx_bin, "runx");
   return [
-    "pnpm dogfood:github-issue-to-pr --",
-    "--mode create",
-    "--allow-repo", issueRef.repo_slug,
-    "--repo", issueRef.repo_slug,
-    "--issue", issueRef.issue_number,
-    "--workspace", shellQuote(workspace),
-    "--task-id", shellQuote(taskId),
-    branchName && branchName !== taskId ? `--branch ${shellQuote(branchName)}` : "",
-    argsRecord.prepare_branch ? "--prepare-branch" : "",
-    argsRecord.scafld_bin ? `--scafld-bin ${shellQuote(argsRecord.scafld_bin)}` : "",
-    argsRecord.runx_bin ? `--runx-bin ${shellQuote(argsRecord.runx_bin)}` : "",
-    argsRecord.skill ? `--skill ${shellQuote(argsRecord.skill)}` : "",
+    shellQuote(runx),
+    "resume",
+    runId ? shellQuote(runId) : "<run-id>",
+    "<answers.json>",
     receiptDir ? `--receipt-dir ${shellQuote(receiptDir)}` : "",
-    argsRecord.source_id ? `--source-id ${shellQuote(argsRecord.source_id)}` : "",
-    argsRecord.runner_id ? `--runner-id ${shellQuote(argsRecord.runner_id)}` : "",
-    argsRecord.operational_policy ? `--operational-policy ${shellQuote(argsRecord.operational_policy)}` : "",
-    argsRecord.repo_context ? `--repo-context ${shellQuote(argsRecord.repo_context)}` : "",
-    argsRecord.size ? `--size ${shellQuote(argsRecord.size)}` : "",
-    argsRecord.risk ? `--risk ${shellQuote(argsRecord.risk)}` : "",
-    argsRecord.base ? `--base ${shellQuote(argsRecord.base)}` : "",
-    argsRecord.provider ? `--provider ${shellQuote(argsRecord.provider)}` : "",
-    argsRecord.provider_command ? `--provider-command ${shellQuote(argsRecord.provider_command)}` : "",
-    argsRecord.provider_binary ? `--provider-binary ${shellQuote(argsRecord.provider_binary)}` : "",
-    argsRecord.model ? `--model ${shellQuote(argsRecord.model)}` : "",
-    runId ? `--run-id ${shellQuote(runId)}` : "",
-    "--answers <answers.json>",
+    "--json",
   ].filter(Boolean).join(" ");
 }
 

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.runx.dev/runx/github-sync/v1.json",
+  "x-runx-packet-id": "runx.github_sync.v1",
+  "type": "object",
+  "properties": {
+    "repo": { "type": "string", "minLength": 1 },
+    "direction": {
+      "type": "string",
+      "enum": ["pull", "push"]
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "scope": { "type": "string" },
+    "cursor": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "planned_actions": { "type": "array" },
+    "stop_conditions": { "type": "array" }
+  },
+  "required": ["repo", "direction", "resources", "scope"],
+  "additionalProperties": true
+}

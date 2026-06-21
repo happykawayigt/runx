@@ -90,21 +90,23 @@ mod tests {
     use super::merge_path_env;
 
     #[test]
-    fn merge_path_env_appends_new_paths_and_deduplicates_existing_paths() {
+    fn merge_path_env_appends_new_paths_and_deduplicates_existing_paths()
+    -> Result<(), std::env::JoinPathsError> {
         let first = PathBuf::from("/runx/tools");
         let second = PathBuf::from("/runx/skills/data-store/tools");
-        let existing = std::env::join_paths([first.as_path()])
-            .unwrap()
-            .to_string_lossy()
-            .into_owned();
-        let addition = std::env::join_paths([second.as_path(), first.as_path()])
-            .unwrap()
-            .to_string_lossy()
-            .into_owned();
+        let existing = path_list_string([first.as_path()])?;
+        let addition = path_list_string([second.as_path(), first.as_path()])?;
 
         let merged = merge_path_env(&existing, &addition);
         let paths = std::env::split_paths(&merged).collect::<Vec<_>>();
 
         assert_eq!(paths, vec![first, second]);
+        Ok(())
+    }
+
+    fn path_list_string<'a>(
+        paths: impl IntoIterator<Item = &'a std::path::Path>,
+    ) -> Result<String, std::env::JoinPathsError> {
+        std::env::join_paths(paths).map(|value| value.to_string_lossy().into_owned())
     }
 }

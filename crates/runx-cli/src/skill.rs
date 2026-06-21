@@ -1,3 +1,4 @@
+// rust-style-allow: large-file - skill command keeps parse, inspect, registry provenance, and execution wiring together until the native skill UX settles.
 use std::collections::BTreeMap;
 use std::env;
 use std::fs;
@@ -44,6 +45,7 @@ pub enum SkillAction {
     Run,
 }
 
+// rust-style-allow: long-function - the top-level command path owns resolve/inspect/run/failure presentation in one explicit dispatch.
 pub fn run_native_skill(plan: SkillPlan) -> ExitCode {
     let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let env = env::vars().collect();
@@ -127,6 +129,7 @@ fn write_skill_inspection(
     }
 }
 
+// rust-style-allow: long-function - inspection assembles one public JSON contract from SKILL.md, X.yaml, fixtures, and selected runner metadata.
 fn inspect_skill(
     skill_path: &Path,
     selected_runner: Option<&str>,
@@ -210,6 +213,7 @@ fn inspect_skill(
     Ok(JsonValue::Object(output))
 }
 
+// rust-style-allow: long-function - text rendering mirrors the inspect JSON shape and is kept adjacent to avoid presentation drift.
 fn write_inspection_text(value: &JsonValue) -> ExitCode {
     let Some(object) = value.as_object() else {
         return crate::cli_io::write_stdout_code("{}\n", 0);
@@ -300,9 +304,9 @@ fn parse_skill_frontmatter(markdown: &str) -> Result<JsonObject, String> {
     };
     serde_norway::from_str::<JsonValue>(frontmatter)
         .map_err(|error| format!("skill frontmatter is invalid YAML: {error}"))
-        .and_then(|value| match value {
-            JsonValue::Object(object) => Ok(object),
-            _ => Ok(JsonObject::new()),
+        .map(|value| match value {
+            JsonValue::Object(object) => object,
+            _ => JsonObject::new(),
         })
 }
 
@@ -409,11 +413,10 @@ fn fixture_targets_runner(path: &Path, runner: &str) -> bool {
 }
 
 fn runner_may_pause(runner: &JsonObject) -> bool {
-    match object_string(runner, "type") {
-        Some("agent") | Some("agent-task") => true,
-        Some("graph") => true,
-        _ => false,
-    }
+    matches!(
+        object_string(runner, "type"),
+        Some("agent") | Some("agent-task") | Some("graph")
+    )
 }
 
 fn attach_registry_provenance(output: &mut JsonValue, resolved: &ResolvedSkillRef) {

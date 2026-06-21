@@ -168,7 +168,7 @@ describe.each(adapters)("data adapter conformance: $name", (adapter) => {
         before_version: 1,
         after_version: 1,
       });
-      expect(packet.events[0]?.event_type).toBe("messageboard.accept");
+      expect(recordField(packet.events[0], "event_type")).toBe("messageboard.accept");
 
       const projection = runAdapter(adapter, workspace, {
         ...base,
@@ -182,7 +182,7 @@ describe.each(adapters)("data adapter conformance: $name", (adapter) => {
         before_version: 1,
         after_version: 1,
       });
-      expect(projectionPacket.projection.last_event_type).toBe("messageboard.accept");
+      expect(recordField(projectionPacket.projection, "last_event_type")).toBe("messageboard.accept");
     } finally {
       rmSync(workspace, { recursive: true, force: true });
     }
@@ -515,6 +515,11 @@ function assertNoSecretMaterial(value: unknown, pathParts: readonly string[] = [
     ).toBe(false);
     assertNoSecretMaterial(child, [...pathParts, key]);
   }
+}
+
+function recordField(value: unknown, key: string): unknown {
+  expect(value && typeof value === "object" && !Array.isArray(value)).toBe(true);
+  return (value as Record<string, unknown>)[key];
 }
 
 function tempWorkspace(adapterName: string): string {

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.runx.dev/runx/effect/transition/v1.json",
+  "x-runx-packet-id": "runx.effect.transition.v1",
+  "type": "object",
+  "properties": {
+    "effect_family": { "type": "string", "minLength": 1 },
+    "operation": { "type": "string", "minLength": 1 },
+    "actor_kid": { "type": "string" },
+    "moderator_kid": { "type": "string" },
+    "posting_id": { "type": "string" },
+    "posting": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "claim": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "delivery": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "judgment": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "funding": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "clocks": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "stop_conditions": { "type": "array" }
+  },
+  "required": ["effect_family", "operation"],
+  "additionalProperties": true
+}

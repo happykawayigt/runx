@@ -228,6 +228,15 @@ export async function dispatchCli(
     return await streamNativeRunxToIo(io, args, env);
   }
 
+  if (parsed.command === "resume" && parsed.runId && parsed.answersPath) {
+    const resumeEnv = await withBundledCliToolRoots(env);
+    const args = ["resume", parsed.runId, resolvePathFromUserInput(parsed.answersPath, env)];
+    pushOptionalFlag(args, "--receipt-dir", parsed.receiptDir ? resolvePathFromUserInput(parsed.receiptDir, env) : undefined);
+    if (parsed.json) args.push("--json");
+    if (parsed.nonInteractive) args.push("--non-interactive");
+    return await streamNativeRunxToIo(io, args, resumeEnv);
+  }
+
   if (parsed.command === "add") {
     const unknownFlag = firstUnknownAddFlag(parsed.inputs);
     if (unknownFlag) {
@@ -403,20 +412,24 @@ async function executeLocalSkillCommand(options: {
   const env = await withBundledCliToolRoots(options.env);
   const resolvedReceiptDir = options.parsed.receiptDir ? resolvePathFromUserInput(options.parsed.receiptDir, env) : undefined;
 
-  const args = ["skill", options.skillPath, ...inputArgs(options.inputs), "--json"];
+  if (options.parsed.skillRunnerFlagUsed) {
+    throw new Error("runx skill --runner is no longer supported; use `runx skill <skill> <runner>`.");
+  }
+  if (options.parsed.skillContinuationFlagUsed) {
+    throw new Error("runx skill continuation flags are no longer supported; use `runx resume <run-id> <answers.json>`.");
+  }
+
+  const args = ["skill", options.skillPath];
+  if (options.parsed.runner) {
+    args.push(options.parsed.runner);
+  }
+  args.push(...inputArgs(options.inputs), "--json");
   pushOptionalFlag(args, "--registry", options.parsed.registryUrl);
   pushOptionalFlag(args, "--digest", options.parsed.expectedDigest);
-  pushOptionalFlag(args, "--runner", options.parsed.runner);
   if (options.parsed.forceRun) {
     args.push("--run");
   }
   pushOptionalFlag(args, "--receipt-dir", resolvedReceiptDir);
-  pushOptionalFlag(args, "--run-id", options.parsed.runId);
-  pushOptionalFlag(
-    args,
-    "--answers",
-    options.parsed.answersPath ? resolvePathFromUserInput(options.parsed.answersPath, env) : undefined,
-  );
   if (options.parsed.nonInteractive) {
     args.push("--non-interactive");
   }

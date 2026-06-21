@@ -324,14 +324,9 @@ fn routes_canonical_skill_run_to_native_plan() {
         plan(&[
             "skill",
             "skills/issue-intake",
-            "--runner",
             "intake",
             "--receipt-dir",
             ".runx/receipts",
-            "--run-id",
-            "run_agent_task.issue-intake.output",
-            "--answers",
-            "/tmp/answers.json",
             "--json",
             "--non-interactive",
             "--input",
@@ -344,8 +339,8 @@ fn routes_canonical_skill_run_to_native_plan() {
             skill_path: PathBuf::from("skills/issue-intake"),
             runner: Some("intake".to_owned()),
             receipt_dir: Some(PathBuf::from(".runx/receipts")),
-            run_id: Some("run_agent_task.issue-intake.output".to_owned()),
-            answers: Some(PathBuf::from("/tmp/answers.json")),
+            run_id: None,
+            answers: None,
             registry: None,
             expected_digest: None,
             json: true,
@@ -367,11 +362,21 @@ fn routes_canonical_skill_run_to_native_plan() {
 }
 
 #[test]
-fn skill_rejects_partial_continuation_shape() {
+fn skill_rejects_legacy_runner_and_continuation_flags() {
     assert_eq!(
-        plan(&["skill", "skills/issue-intake", "--run-id", "run_123"]),
-        LauncherAction::Error("runx skill --run-id requires --answers".to_owned())
+        plan(&["skill", "skills/issue-intake", "--runner", "intake"]),
+        LauncherAction::Error(
+            "runx skill --runner is no longer supported; use `runx skill <skill> <runner>`"
+                .to_owned()
+        )
     );
+    assert_eq!(
+            plan(&["skill", "skills/issue-intake", "--run-id", "run_123"]),
+            LauncherAction::Error(
+                "runx skill continuation flags are no longer supported; use `runx resume <run-id> <answers.json>`"
+                    .to_owned()
+            )
+        );
     assert_eq!(
         plan(&[
             "skill",
@@ -379,8 +384,11 @@ fn skill_rejects_partial_continuation_shape() {
             "--answers",
             "/tmp/answers.json",
         ]),
-        LauncherAction::Error("runx skill --answers requires --run-id".to_owned())
-    );
+            LauncherAction::Error(
+                "runx skill continuation flags are no longer supported; use `runx resume <run-id> <answers.json>`"
+                    .to_owned()
+            )
+        );
 }
 
 #[test]

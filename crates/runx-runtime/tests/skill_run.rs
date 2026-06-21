@@ -2217,7 +2217,7 @@ fn native_skill_run_rejects_partial_continuation_shape() -> Result<(), Box<dyn s
     assert!(
         run_id_only
             .to_string()
-            .contains("runx skill --run-id requires --answers")
+            .contains("skill continuation requires both run_id and answers")
     );
 
     let answers_only = match run_skill(SkillRunRequest {
@@ -2236,7 +2236,7 @@ fn native_skill_run_rejects_partial_continuation_shape() -> Result<(), Box<dyn s
     assert!(
         answers_only
             .to_string()
-            .contains("runx skill --answers requires --run-id")
+            .contains("skill continuation requires both run_id and answers")
     );
 
     Ok(())
