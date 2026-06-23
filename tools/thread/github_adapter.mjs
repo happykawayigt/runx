@@ -1419,9 +1419,6 @@ function getGitHubIssueState({ repoSlug, issueNumber, cwd, env }) {
 const knownGitHubLabels = new Set();
 
 function ensureGitHubLabel({ repoSlug, label, cwd, env }) {
-  if (!label.startsWith("frantic:")) {
-    return;
-  }
   const cacheKey = `${repoSlug}:${label}`;
   if (knownGitHubLabels.has(cacheKey)) {
     return;
@@ -1456,7 +1453,7 @@ function ensureGitHubLabel({ repoSlug, label, cwd, env }) {
     "--color",
     "0969DA",
     "--description",
-    "Frantic lifecycle",
+    "Mirrored thread label",
     "--force",
   ], {
     cwd,
@@ -1487,7 +1484,7 @@ function ensureGitHubLabelRest({ repoSlug, label, env }) {
     body: {
       name: label,
       color: "0969DA",
-      description: "Frantic lifecycle",
+      description: "Mirrored thread label",
     },
     acceptedStatuses: [201, 422],
   });
