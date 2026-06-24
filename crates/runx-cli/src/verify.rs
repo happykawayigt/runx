@@ -403,6 +403,16 @@ fn run_single_receipt_verify<R: Read>(
     })
 }
 
+/// Resolve a possibly-relative user-supplied path against `cwd`. The single
+/// resolver for receipt and notary-key file inputs, so both stay consistent.
+fn resolve_under_cwd(path: &Path, cwd: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        cwd.join(path)
+    }
+}
+
 fn read_single_receipt_input<R: Read>(
     input: &ReceiptInput,
     cwd: &Path,
@@ -410,11 +420,7 @@ fn read_single_receipt_input<R: Read>(
 ) -> Result<Vec<u8>, VerifyCliError> {
     match input {
         ReceiptInput::Path(path) => {
-            let path = if path.is_absolute() {
-                path.clone()
-            } else {
-                cwd.join(path)
-            };
+            let path = resolve_under_cwd(path, cwd);
             if let Ok(metadata) = fs::metadata(&path) {
                 if metadata.len() > SINGLE_RECEIPT_MAX_BYTES as u64 {
                     return Err(single_receipt_too_large());
@@ -655,11 +661,7 @@ fn trusted_notary_keys_from_paths(
 ) -> Result<Vec<Vec<u8>>, VerifyCliError> {
     let mut keys = Vec::with_capacity(paths.len());
     for path in paths {
-        let path = if path.is_absolute() {
-            path.clone()
-        } else {
-            cwd.join(path)
-        };
+        let path = resolve_under_cwd(path, cwd);
         let pem = fs::read_to_string(&path).map_err(|error| {
             VerifyCliError::Store(format!(
                 "failed to read notary key {}: {error}",
