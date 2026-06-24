@@ -26,7 +26,7 @@ use crate::RuntimeError;
     feature = "thread-outbox-provider"
 ))]
 use crate::adapter::SkillAdapter;
-use crate::adapter::{InvocationStatus, SkillInvocation, SkillOutput};
+use crate::adapter::{SkillInvocation, SkillOutput};
 #[cfg(feature = "cli-tool")]
 use crate::adapters::cli_tool::CliToolAdapter;
 use crate::credentials::CredentialDelivery;
@@ -34,7 +34,8 @@ use crate::effects::RuntimeEffectRegistry;
 use crate::execution::graph::materialize_graph_inputs;
 use crate::execution::orchestrator::SkillRunRequest;
 use crate::execution::runner::{
-    GraphCheckpoint, GraphRun, RUNX_RUN_ID_ENV, Runtime, RuntimeOptions,
+    GraphCheckpoint, GraphRun, RUNX_RUN_ID_ENV, Runtime, RuntimeOptions, graph_run_payload,
+    graph_run_skill_output,
 };
 use crate::host::Host;
 use crate::journal::{PausedRunCheckpoint, append_paused_run_checkpoint};
@@ -689,78 +690,6 @@ fn graph_run_id(
             ))
         }
     }
-}
-
-// Canonical graph-run payload builder. The nested-step path
-// (`runner::steps::graph_run_payload`) keeps a shape-identical copy: while the
-// `runner::steps` and `skill_front::graph` submodules are each private to their
-// parent and cannot name one another, the two builders are kept byte-identical so
-// they collapse to one call the moment a re-export lets them share. The
-// skill-front path passes `include_receipt_id = false`; only the nested-step path
-// surfaces `graph_receipt_id`.
-fn graph_run_payload(run: &GraphRun, include_receipt_id: bool) -> JsonValue {
-    let mut payload = JsonObject::new();
-    payload.insert(
-        "graph".to_owned(),
-        JsonValue::String(run.graph.name.clone()),
-    );
-    payload.insert(
-        "graph_status".to_owned(),
-        JsonValue::String(format!("{:?}", run.state.status)),
-    );
-    if include_receipt_id {
-        payload.insert(
-            "graph_receipt_id".to_owned(),
-            JsonValue::String(run.receipt.id.to_string()),
-        );
-    }
-    let mut step_outputs = JsonObject::new();
-    let mut step_summaries = Vec::new();
-    for step in &run.steps {
-        let mut summary = JsonObject::new();
-        summary.insert(
-            "step_id".to_owned(),
-            JsonValue::String(step.step_id.clone()),
-        );
-        summary.insert("skill".to_owned(), JsonValue::String(step.skill.clone()));
-        summary.insert(
-            "status".to_owned(),
-            JsonValue::String(if step.output.succeeded() {
-                "success".to_owned()
-            } else {
-                "failure".to_owned()
-            }),
-        );
-        summary.insert(
-            "receipt_id".to_owned(),
-            JsonValue::String(step.receipt.id.to_string()),
-        );
-        step_summaries.push(JsonValue::Object(summary));
-        step_outputs.insert(
-            step.step_id.clone(),
-            JsonValue::Object(step.outputs.clone()),
-        );
-    }
-    payload.insert("steps".to_owned(), JsonValue::Array(step_summaries));
-    payload.insert("step_outputs".to_owned(), JsonValue::Object(step_outputs));
-    JsonValue::Object(payload)
-}
-
-fn graph_run_skill_output(payload: &JsonValue, run: &GraphRun) -> Result<SkillOutput, RuntimeError> {
-    let stdout = serde_json::to_string(payload)
-        .map_err(|source| RuntimeError::json("serializing graph payload", source))?;
-    Ok(SkillOutput {
-        status: if run.state.status == GraphStatus::Succeeded {
-            InvocationStatus::Success
-        } else {
-            InvocationStatus::Failure
-        },
-        stdout,
-        stderr: String::new(),
-        exit_code: Some(0),
-        duration_ms: 0,
-        metadata: JsonObject::new(),
-    })
 }
 
 fn write_graph_receipts(
