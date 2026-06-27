@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::unwrap_used)]
+
 use std::collections::VecDeque;
 
 use runx_contracts::{
@@ -303,12 +305,13 @@ fn assert_resolved_event(
 }
 
 fn resolved_event_data(events: &[ExecutionEvent]) -> &Option<JsonValue> {
-    for event in events {
-        if let ExecutionEvent::ResolutionResolved { data, .. } = event {
-            return data;
-        }
-    }
-    panic!("missing resolution resolved event");
+    events
+        .iter()
+        .find_map(|event| match event {
+            ExecutionEvent::ResolutionResolved { data, .. } => Some(data),
+            _ => None,
+        })
+        .expect("missing resolution resolved event")
 }
 
 fn assert_event_key(
