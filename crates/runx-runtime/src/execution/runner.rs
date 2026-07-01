@@ -47,6 +47,7 @@ use execution::GraphExecution;
 
 pub const RUNX_MAX_FANOUT_CONCURRENCY_ENV: &str = "RUNX_MAX_FANOUT_CONCURRENCY";
 pub const RUNX_RUN_ID_ENV: &str = "RUNX_RUN_ID";
+pub const RUNX_LOCAL_ENV_ALLOWLIST_ENV: &str = "RUNX_LOCAL_ENV_ALLOWLIST";
 
 #[derive(Clone, Debug)]
 pub struct RuntimeOptions {
@@ -124,10 +125,32 @@ fn safe_default_env_from(
         "RUNX_REGISTRY_DIR",
         "RUNX_REGISTRY_URL",
     ];
-    allowed
+    let mut env = allowed
         .into_iter()
         .filter_map(|key| value_for_key(key).map(|value| (key.to_owned(), value)))
-        .collect()
+        .collect::<BTreeMap<_, _>>();
+
+    if let Some(raw_allowlist) = value_for_key(RUNX_LOCAL_ENV_ALLOWLIST_ENV) {
+        for key in parse_local_env_allowlist(&raw_allowlist) {
+            if let Some(value) = value_for_key(&key) {
+                env.insert(key, value);
+            }
+        }
+    }
+
+    env
+}
+
+fn parse_local_env_allowlist(raw: &str) -> impl Iterator<Item = String> + '_ {
+    raw.split([',', ' ', '\n', '\t'])
+        .map(str::trim)
+        .filter(|key| !key.is_empty())
+        .filter(|key| {
+            key.bytes()
+                .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_')
+        })
+        .filter(|key| !key.starts_with("RUNX_RECEIPT_SIGN_"))
+        .map(ToOwned::to_owned)
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -537,8 +560,9 @@ pub(crate) fn graph_run_skill_output(
 #[cfg(test)]
 mod tests {
     use super::{
-        RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64_ENV, RUNX_RECEIPT_SIGN_ISSUER_TYPE_ENV,
-        RUNX_RECEIPT_SIGN_KID_ENV, RuntimeOptions, safe_default_env_from,
+        RUNX_LOCAL_ENV_ALLOWLIST_ENV, RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64_ENV,
+        RUNX_RECEIPT_SIGN_ISSUER_TYPE_ENV, RUNX_RECEIPT_SIGN_KID_ENV, RuntimeOptions,
+        safe_default_env_from,
     };
     use crate::sandbox::RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY_ENV;
     use std::collections::BTreeMap;
@@ -577,6 +601,31 @@ mod tests {
             env.get(RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY_ENV),
             Some(&"local".to_owned())
         );
+    }
+
+    #[test]
+    fn safe_default_env_preserves_local_operator_allowlisted_env() {
+        let env = safe_default_env_from(|key| match key {
+            RUNX_LOCAL_ENV_ALLOWLIST_ENV => Some(
+                "NITROSEND_API_KEY,NITROSEND_ADMIN_API_KEY RUNX_RECEIPT_SIGN_SECRET bad-key"
+                    .to_owned(),
+            ),
+            "NITROSEND_API_KEY" => Some("nskey_live_test".to_owned()),
+            "NITROSEND_ADMIN_API_KEY" => Some("nskey_live_admin".to_owned()),
+            "RUNX_RECEIPT_SIGN_SECRET" => Some("secret".to_owned()),
+            _ => None,
+        });
+
+        assert_eq!(
+            env.get("NITROSEND_API_KEY"),
+            Some(&"nskey_live_test".to_owned())
+        );
+        assert_eq!(
+            env.get("NITROSEND_ADMIN_API_KEY"),
+            Some(&"nskey_live_admin".to_owned())
+        );
+        assert!(!env.contains_key("RUNX_RECEIPT_SIGN_SECRET"));
+        assert!(!env.contains_key("bad-key"));
     }
 
     #[test]
