@@ -88,55 +88,86 @@ pub(crate) fn resolve_registry_target(
         .registry
         .as_deref()
         .or_else(|| env.get("RUNX_REGISTRY_URL").map(String::as_str));
-    if let Some(registry) = &plan.registry {
-        if is_remote_registry_url(registry) {
-            return RegistryTarget::Remote {
-                registry_url: registry.clone(),
-            };
-        }
-        return RegistryTarget::Local {
-            registry_path: registry_path_from_value(registry, env, cwd),
-            registry_url: env
-                .get("RUNX_REGISTRY_URL")
-                .filter(|value| is_remote_registry_url(value))
-                .cloned(),
-            source_kind: if file_url_path(registry).is_some() {
-                LocalRegistrySourceKind::File
-            } else {
-                LocalRegistrySourceKind::Local
-            },
-        };
+    if let Some(target) = explicit_registry_target(plan, env, cwd) {
+        return target;
     }
-    if let Some(registry_dir) = &plan.registry_dir {
-        return RegistryTarget::Local {
-            registry_path: super::resolve_path(registry_dir, env, cwd, false),
-            registry_url: configured_registry
-                .filter(|value| is_remote_registry_url(value))
-                .map(ToOwned::to_owned),
-            source_kind: LocalRegistrySourceKind::Local,
-        };
+    if let Some(target) = explicit_registry_dir_target(plan, configured_registry, env, cwd) {
+        return target;
     }
-    if let Some(registry_dir) = env.get("RUNX_REGISTRY_DIR") {
-        return RegistryTarget::Local {
-            registry_path: runx_runtime::resolve_path_from_user_input(
-                registry_dir,
-                env,
-                cwd,
-                false,
-            ),
-            registry_url: configured_registry
-                .filter(|value| is_remote_registry_url(value))
-                .map(ToOwned::to_owned),
-            source_kind: LocalRegistrySourceKind::Local,
-        };
+    if let Some(target) = env_registry_dir_target(configured_registry, env, cwd) {
+        return target;
     }
     if let Some(registry) = configured_registry.filter(|value| is_remote_registry_url(value)) {
         return RegistryTarget::Remote {
             registry_url: registry.to_owned(),
         };
     }
+    default_local_registry_target(configured_registry, env, cwd)
+}
+
+fn explicit_registry_target(
+    plan: &RegistryPlan,
+    env: &BTreeMap<String, String>,
+    cwd: &Path,
+) -> Option<RegistryTarget> {
+    let registry = plan.registry.as_ref()?;
+    if is_remote_registry_url(registry) {
+        return Some(RegistryTarget::Remote {
+            registry_url: registry.clone(),
+        });
+    }
+    Some(RegistryTarget::Local {
+        registry_path: registry_path_from_value(registry, env, cwd),
+        registry_url: env
+            .get("RUNX_REGISTRY_URL")
+            .filter(|value| is_remote_registry_url(value))
+            .cloned(),
+        source_kind: registry_source_kind(registry),
+    })
+}
+
+fn explicit_registry_dir_target(
+    plan: &RegistryPlan,
+    configured_registry: Option<&str>,
+    env: &BTreeMap<String, String>,
+    cwd: &Path,
+) -> Option<RegistryTarget> {
+    let registry_dir = plan.registry_dir.as_ref()?;
+    Some(local_registry_target(
+        super::resolve_path(registry_dir, env, cwd, false),
+        remote_registry_url(configured_registry),
+    ))
+}
+
+fn env_registry_dir_target(
+    configured_registry: Option<&str>,
+    env: &BTreeMap<String, String>,
+    cwd: &Path,
+) -> Option<RegistryTarget> {
+    let registry_dir = env.get("RUNX_REGISTRY_DIR")?;
+    Some(local_registry_target(
+        runx_runtime::resolve_path_from_user_input(registry_dir, env, cwd, false),
+        remote_registry_url(configured_registry),
+    ))
+}
+
+fn default_local_registry_target(
+    configured_registry: Option<&str>,
+    env: &BTreeMap<String, String>,
+    cwd: &Path,
+) -> RegistryTarget {
+    local_registry_target(
+        runx_runtime::resolve_runx_global_home_dir(env, cwd).join("registry"),
+        configured_registry,
+    )
+}
+
+fn local_registry_target(
+    registry_path: PathBuf,
+    configured_registry: Option<&str>,
+) -> RegistryTarget {
     RegistryTarget::Local {
-        registry_path: runx_runtime::resolve_runx_global_home_dir(env, cwd).join("registry"),
+        registry_path,
         registry_url: configured_registry.map(ToOwned::to_owned),
         source_kind: LocalRegistrySourceKind::Local,
     }
@@ -186,6 +217,18 @@ fn registry_path_from_value(value: &str, env: &BTreeMap<String, String>, cwd: &P
         return path;
     }
     runx_runtime::resolve_path_from_user_input(value, env, cwd, false)
+}
+
+fn registry_source_kind(registry: &str) -> LocalRegistrySourceKind {
+    if file_url_path(registry).is_some() {
+        LocalRegistrySourceKind::File
+    } else {
+        LocalRegistrySourceKind::Local
+    }
+}
+
+fn remote_registry_url(value: Option<&str>) -> Option<&str> {
+    value.filter(|entry| is_remote_registry_url(entry))
 }
 
 fn file_url_path(value: &str) -> Option<PathBuf> {

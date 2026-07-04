@@ -13,7 +13,7 @@ use runx_contracts::{
 use thiserror::Error;
 
 use crate::credentials::CredentialDelivery;
-use crate::process::{ProcessSpec, ProcessStdin, run_process};
+use crate::process::{ProcessOutcome, ProcessSpec, ProcessStdin, run_process};
 use crate::redaction::trim_ascii_whitespace;
 
 const DEFAULT_TIMEOUT_MS: u64 = 5_000;
@@ -93,8 +93,24 @@ impl ThreadOutboxProviderProcessSupervisor {
         credential_delivery: &CredentialDelivery,
     ) -> Result<ThreadOutboxProviderProcessOutcome, ThreadOutboxProviderSupervisorError> {
         let started = Instant::now();
+        let output = self.run_provider_process(manifest, &request, credential_delivery)?;
+        self.interpret_provider_process_output(
+            manifest,
+            &request,
+            credential_delivery,
+            output,
+            started,
+        )
+    }
+
+    fn run_provider_process(
+        &self,
+        manifest: &ThreadOutboxProviderManifest,
+        request: &ThreadOutboxProviderRequest<'_>,
+        credential_delivery: &CredentialDelivery,
+    ) -> Result<ProcessOutcome, ThreadOutboxProviderSupervisorError> {
         let command = process_command(manifest)?;
-        let output = run_process(
+        run_process(
             ProcessSpec::new(
                 "thread-outbox-provider",
                 command.to_string_lossy().into_owned(),
@@ -112,7 +128,17 @@ impl ThreadOutboxProviderProcessSupervisor {
         .map_err(|source| ThreadOutboxProviderSupervisorError::Process {
             context: "running thread outbox provider process".to_owned(),
             detail: source.to_string(),
-        })?;
+        })
+    }
+
+    fn interpret_provider_process_output(
+        &self,
+        manifest: &ThreadOutboxProviderManifest,
+        request: &ThreadOutboxProviderRequest<'_>,
+        credential_delivery: &CredentialDelivery,
+        output: ProcessOutcome,
+        started: Instant,
+    ) -> Result<ThreadOutboxProviderProcessOutcome, ThreadOutboxProviderSupervisorError> {
         if output.timed_out {
             return Err(ThreadOutboxProviderSupervisorError::TimedOut {
                 timeout_ms: self.options.timeout_ms,
