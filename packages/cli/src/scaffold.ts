@@ -153,6 +153,10 @@ A native runx skill: a \`SKILL.md\` contract, an \`X.yaml\` execution profile, a
 
 ## Develop
 
+For local development, \`runx skill\` and inline \`runx harness\` use
+local-development receipts when no production signing env is configured.
+Publishing and hosted verification still require real authority.
+
 \`\`\`bash
 runx harness . --json                       # run the harness cases in X.yaml
 runx skill . --input message=hello --json   # run the skill once

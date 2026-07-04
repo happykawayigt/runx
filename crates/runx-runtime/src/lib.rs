@@ -76,7 +76,7 @@ pub use config::{
     load_managed_agent_config, load_runx_config_file, lookup_runx_config_value,
     managed_agent_provider, mask_runx_config_file, parse_config_key, resolve_local_skill_profile,
     resolve_path_from_user_input, resolve_runx_global_home_dir, resolve_runx_home_dir,
-    update_runx_config_value, write_runx_config_file,
+    resolve_runx_workspace_base, update_runx_config_value, write_runx_config_file,
 };
 pub use credentials::{
     CredentialDelivery, CredentialDeliveryError, CredentialDeliveryProfile, CredentialMaterialRole,

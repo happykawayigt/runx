@@ -127,8 +127,13 @@ fn collect_credential_grant_reasons(
     if options.skip_connected_auth.unwrap_or(false) {
         return;
     }
-    let Some(requirement) = credential_grant_requirement(skill.auth.as_ref()) else {
-        return;
+    let requirement = match credential_grant_requirement(skill.auth.as_ref()) {
+        Ok(Some(requirement)) => requirement,
+        Ok(None) => return,
+        Err(error) => {
+            reasons.push(error.message().to_owned());
+            return;
+        }
     };
     let grants = options.connected_grants.as_deref().unwrap_or_default();
 

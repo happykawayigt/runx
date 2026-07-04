@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 use runx_contracts::JsonObject;
 use runx_core::policy::{CwdPolicy, SandboxProfile};
@@ -134,28 +134,7 @@ fn is_within_path(candidate: &Path, root: &Path) -> bool {
 }
 
 pub(super) fn normalize_path(path: &Path) -> PathBuf {
-    let mut normalized = PathBuf::new();
-    for component in path.components() {
-        match component {
-            Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
-            Component::RootDir => normalized.push(component.as_os_str()),
-            Component::CurDir => {}
-            Component::Normal(part) => normalized.push(part),
-            Component::ParentDir => {
-                if normalized.as_os_str().is_empty()
-                    || normalized
-                        .components()
-                        .next_back()
-                        .is_some_and(|component| component == Component::ParentDir)
-                {
-                    normalized.push("..");
-                } else {
-                    normalized.pop();
-                }
-            }
-        }
-    }
-    normalized
+    crate::path_util::lexical_normalize(path)
 }
 
 pub(super) fn validate_sandbox(sandbox: Option<&SkillSandbox>) -> Result<(), RuntimeError> {
@@ -304,5 +283,18 @@ fn validate_unrestricted_sandbox(sandbox: &SkillSandbox) -> Result<(), RuntimeEr
 pub(super) fn sandbox_violation(message: impl Into<String>) -> RuntimeError {
     RuntimeError::SandboxViolation {
         message: message.into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::{Path, PathBuf};
+
+    use super::normalize_path;
+
+    #[test]
+    fn normalize_path_preserves_current_directory() {
+        assert_eq!(normalize_path(Path::new(".")), PathBuf::from("."));
+        assert_eq!(normalize_path(Path::new("skill/..")), PathBuf::from("."));
     }
 }

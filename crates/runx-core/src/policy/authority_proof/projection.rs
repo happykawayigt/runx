@@ -19,7 +19,9 @@ use super::{
 
 #[must_use]
 pub fn build_authority_proof(options: &BuildAuthorityProofOptions) -> AuthorityProof {
-    let requirement = credential_grant_requirement(options.auth.as_ref());
+    let requirement = credential_grant_requirement(options.auth.as_ref())
+        .ok()
+        .flatten();
     let scope_admission = options.scope_admission.clone().unwrap_or_else(|| {
         build_local_scope_admission(
             options.auth.as_ref(),

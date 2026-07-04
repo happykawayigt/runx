@@ -12,7 +12,7 @@ use runx_cli::router::{
     verify_help_text,
 };
 
-const INLINE_HARNESS_SIGNING_HINT: &str = "runx: hint: inline harnesses seal signed receipts; set RUNX_RECEIPT_SIGN_KID, RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64, and RUNX_RECEIPT_SIGN_ISSUER_TYPE, or run the example's run.sh when one is provided.";
+const INLINE_HARNESS_SIGNING_HINT: &str = "runx: hint: inline harnesses seal signed receipts; set RUNX_RECEIPT_SIGN_KID, RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64, and RUNX_RECEIPT_SIGN_ISSUER_TYPE together, or unset all three to use local-development receipts.";
 const INLINE_HARNESS_STALE_RECEIPT_STORE_HINT: &str = "runx: hint: the receipt store contains entries that do not verify with the current issuer; retry with --receipt-dir \"$(mktemp -d)\" for an isolated harness run.";
 
 fn main() -> ExitCode {
@@ -301,7 +301,7 @@ fn run_inline_harness(skill_path: &Path, receipt_dir: Option<&OsString>) -> Exit
 }
 
 fn inline_harness_failure_hint(message: &str) -> Option<&'static str> {
-    if message.contains("governed runtime receipt signing requires") {
+    if is_receipt_signing_error(message) {
         return Some(INLINE_HARNESS_SIGNING_HINT);
     }
     None
@@ -311,7 +311,7 @@ fn inline_harness_report_hint(report: &runx_runtime::InlineHarnessReport) -> Opt
     if report
         .assertion_errors
         .iter()
-        .any(|error| error.contains("governed runtime receipt signing requires"))
+        .any(|error| is_receipt_signing_error(error))
     {
         return Some(INLINE_HARNESS_SIGNING_HINT);
     }
@@ -323,6 +323,12 @@ fn inline_harness_report_hint(report: &runx_runtime::InlineHarnessReport) -> Opt
         return Some(INLINE_HARNESS_STALE_RECEIPT_STORE_HINT);
     }
     None
+}
+
+fn is_receipt_signing_error(message: &str) -> bool {
+    message.contains("governed runtime receipt signing requires")
+        || message.contains("production receipt signing requires")
+        || message.contains("production receipt signer")
 }
 
 fn write_stdout(message: &str) -> ExitCode {

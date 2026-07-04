@@ -439,7 +439,7 @@ fn random_config_secret_bytes() -> Result<[u8; 32], ConfigError> {
     <[u8; 32]>::try_generate().map_err(|error| ConfigError::Crypto(error.to_string()))
 }
 
-fn resolve_runx_workspace_base(env: &BTreeMap<String, String>, cwd: &Path) -> PathBuf {
+pub fn resolve_runx_workspace_base(env: &BTreeMap<String, String>, cwd: &Path) -> PathBuf {
     env.get("RUNX_CWD")
         .map(PathBuf::from)
         .or_else(|| find_runx_workspace_root(cwd))

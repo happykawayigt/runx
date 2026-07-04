@@ -901,27 +901,7 @@ fn resolve_doctor_root(plan: &DoctorPlan, env: &BTreeMap<String, String>, cwd: &
         Some(path) => {
             runx_runtime::resolve_path_from_user_input(&path.to_string_lossy(), env, cwd, true)
         }
-        None => workspace_base(env, cwd),
-    }
-}
-
-fn workspace_base(env: &BTreeMap<String, String>, cwd: &Path) -> PathBuf {
-    env.get("RUNX_CWD")
-        .map(PathBuf::from)
-        .or_else(|| find_runx_workspace_root(cwd))
-        .or_else(|| env.get("INIT_CWD").map(PathBuf::from))
-        .unwrap_or_else(|| cwd.to_path_buf())
-}
-
-fn find_runx_workspace_root(start: &Path) -> Option<PathBuf> {
-    let mut current = start.to_path_buf();
-    loop {
-        if current.join("pnpm-workspace.yaml").exists() {
-            return Some(current);
-        }
-        if !current.pop() {
-            return None;
-        }
+        None => runx_runtime::resolve_runx_workspace_base(env, cwd),
     }
 }
 

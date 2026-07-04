@@ -4,7 +4,6 @@
 use std::collections::{BTreeMap, VecDeque};
 use std::future::Future;
 use std::path::PathBuf;
-use std::process::Stdio;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::thread;
@@ -15,6 +14,7 @@ use serde_json::{self, Value as JsonWireValue};
 
 #[cfg(unix)]
 use crate::process::{ProcessSignal, signal_process_group_id};
+use crate::process::{TokioProcessSpec, spawn_tokio_process};
 use crate::sandbox::SandboxPlan;
 
 use super::rmcp_content_length::{RmcpContentLengthTransport, RmcpTransportErrorState};
@@ -489,34 +489,15 @@ fn spawn_tokio_mcp_server(
     plan: &SandboxPlan,
     spawn_count: &AtomicU64,
 ) -> Result<tokio::process::Child, McpTransportError> {
-    let mut command = tokio::process::Command::new(&plan.command);
-    command
-        .args(&plan.args)
-        .current_dir(&plan.cwd)
-        .env_clear()
-        .envs(&plan.env)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    configure_process_group(&mut command);
-    let child = command.spawn().map_err(|error| {
-        McpTransportError::failed(format!(
-            "MCP server failed to spawn command '{}' in cwd '{}': {error}",
-            plan.command,
-            plan.cwd.display()
-        ))
-    })?;
+    let child = spawn_tokio_process(
+        TokioProcessSpec::new("MCP server", plan.command.clone(), plan.cwd.clone())
+            .args(plan.args.clone())
+            .env(plan.env.clone()),
+    )
+    .map_err(|error| McpTransportError::failed(error.to_string()))?;
     spawn_count.fetch_add(1, Ordering::SeqCst);
     Ok(child)
 }
-
-#[cfg(unix)]
-fn configure_process_group(command: &mut tokio::process::Command) {
-    command.process_group(0);
-}
-
-#[cfg(not(unix))]
-fn configure_process_group(_command: &mut tokio::process::Command) {}
 
 #[cfg(unix)]
 async fn terminate_tokio_child(child: &mut tokio::process::Child) {

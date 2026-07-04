@@ -185,9 +185,7 @@ fn writable_mount_path(path: &Path, cwd: &Path) -> PathBuf {
     if path.exists() {
         return normalize_existing_path(&path);
     }
-    path.parent()
-        .map(normalize_existing_path)
-        .unwrap_or_else(|| normalize_path(&path))
+    normalize_path(&path)
 }
 
 fn sandbox_exec_args(
@@ -349,7 +347,7 @@ mod tests {
     }
 
     #[test]
-    fn bubblewrap_uses_validated_writable_paths_without_re_resolving_strings() {
+    fn bubblewrap_keeps_non_existing_writable_file_grants_narrow() {
         let args = bubblewrap_args(BubblewrapCommand {
             command: "tool".to_owned(),
             command_args: Vec::new(),
@@ -365,8 +363,8 @@ mod tests {
             window
                 == [
                     "--bind".to_owned(),
-                    "/workspace/logs".to_owned(),
-                    "/workspace/logs".to_owned(),
+                    "/workspace/logs/output.json".to_owned(),
+                    "/workspace/logs/output.json".to_owned(),
                 ]
         }));
     }

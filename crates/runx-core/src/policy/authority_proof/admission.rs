@@ -14,8 +14,24 @@ pub fn build_local_scope_admission(
     grants: &[LocalAdmissionGrant],
     options: &LocalScopeAdmissionOptions,
 ) -> ScopeAdmission {
-    let Some(requirement) = credential_grant_requirement(auth) else {
-        return scope_admission_allow(Vec::new(), Vec::new(), None, "no connected auth requested");
+    let requirement = match credential_grant_requirement(auth) {
+        Ok(Some(requirement)) => requirement,
+        Ok(None) => {
+            return scope_admission_allow(
+                Vec::new(),
+                Vec::new(),
+                None,
+                "no connected auth requested",
+            );
+        }
+        Err(error) => {
+            return scope_admission_deny(
+                Vec::new(),
+                Vec::new(),
+                vec![error.message().to_owned()],
+                "invalid connected auth request",
+            );
+        }
     };
 
     let requested_scopes = unique_strings(&requirement.scopes);

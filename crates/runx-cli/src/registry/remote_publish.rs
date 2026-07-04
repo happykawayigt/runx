@@ -86,6 +86,12 @@ pub(super) fn publish_remote_skill_package_with_transport<T: Transport>(
                 "remote registry publish returned invalid JSON: {error}"
             ))
         })?;
+    if envelope.status != "success" || envelope.publish.status != "published" {
+        return Err(internal_error(format!(
+            "remote registry publish returned unsuccessful status: envelope={}, publish={}",
+            envelope.status, envelope.publish.status
+        )));
+    }
     Ok(envelope.publish)
 }
 
@@ -199,6 +205,48 @@ mod tests {
             "console.log('hello');\n"
         );
         Ok(())
+    }
+
+    #[test]
+    fn remote_registry_publish_rejects_unsuccessful_2xx_envelope() {
+        let transport = StubTransport::new(HttpResponse {
+            status: 200,
+            body: serde_json::json!({
+                "status": "failure",
+                "publish": {
+                    "status": "rejected",
+                    "skill_id": "kam/hello",
+                    "owner": "kam",
+                    "name": "hello",
+                    "version": "sha-123",
+                    "digest": "abc",
+                    "trust_tier": "community",
+                    "install_command": "runx add kam/hello@sha-123",
+                    "run_command": "runx skill kam/hello@sha-123",
+                    "public_url": "https://runx.test/x/kam/hello"
+                }
+            })
+            .to_string(),
+        });
+        let package = SkillPackage {
+            markdown: "---\nname: hello\nsource:\n  type: cli-tool\n  command: echo\n---\nHello.\n"
+                .to_owned(),
+            profile_document: None,
+            harness_path: None,
+            harness_temp_dir: None,
+            package_files: Vec::new(),
+        };
+
+        let error = publish_remote_skill_package_with_transport(
+            &transport,
+            "https://runx.test/",
+            "rxk_secret",
+            None,
+            &package,
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("unsuccessful status"));
     }
 
     struct StubTransport {

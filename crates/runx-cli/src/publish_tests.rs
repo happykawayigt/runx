@@ -33,11 +33,11 @@ fn parses_publish_plan() -> Result<(), String> {
     let args = vec![
         OsString::from("publish"),
         OsString::from("receipt.json"),
-        OsString::from("--api-url"),
+        OsString::from("--api-base-url"),
         OsString::from("https://runx.test/"),
         OsString::from("--token"),
         OsString::from("rxk_test"),
-        OsString::from("--local-api"),
+        OsString::from("--allow-local-api"),
         OsString::from("-j"),
     ];
     let plan = parse_publish_plan(&args)?;

@@ -2,7 +2,6 @@ import { existsSync, readFileSync } from "node:fs";
 import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseDocument } from "yaml";
 
 import {
   resolvePathFromUserInput,
@@ -10,11 +9,9 @@ import {
   resolveRunxProjectDir,
   resolveSkillInstallRoot,
 } from "./cli-config.js";
-import { type SkillSearchResult } from "./cli-registry.js";
 
 import { asRecord, errorMessage, firstNonEmpty, hashString, parsePositiveInt, readOptionalFile } from "./cli-util.js";
 
-import { searchRegistryViaRustCli } from "./native-registry.js";
 import { runNativeRunx } from "./native-runx.js";
 
 let cachedBundledSkillsDir: string | undefined | null = null;
@@ -45,39 +42,12 @@ export function preferredRunCommand(skillName: string): string {
   return `runx skill ${skillName}`;
 }
 
-export async function runSkillSearch(
-  query: string,
-  sourceFilter: string | undefined,
-  env: NodeJS.ProcessEnv,
-  registryOverride?: string,
-): Promise<readonly SkillSearchResult[]> {
-  const results: SkillSearchResult[] = [];
-  const normalizedSource = sourceFilter?.trim().toLowerCase();
-
-  if (!normalizedSource || normalizedSource === "registry" || normalizedSource === "runx-registry") {
-    results.push(...(await searchRegistryViaRustCli(query, { env, registryOverride })).map(canonicalizeSearchAddCommand));
-  }
-
-  if (!normalizedSource || normalizedSource === "bundled" || normalizedSource === "builtin") {
-    results.push(...(await searchBundledSkills(query, env)).map(canonicalizeSearchAddCommand));
-  }
-
-  return results;
-}
-
-function canonicalizeSearchAddCommand(result: SkillSearchResult): SkillSearchResult {
-  const addCommand = result.add_command
-    .replace(/^runx registry install\b/, "runx add")
-    .replace(/^runx skill add\b/, "runx add");
-  return addCommand === result.add_command ? result : { ...result, add_command: addCommand };
-}
-
 export function resolveSkillReference(ref: string, env: NodeJS.ProcessEnv): string {
   const resolved = resolveLocalSkillReference(ref, env);
   if (resolved) {
     return resolved;
   }
-  throw new Error(`Skill not found: ${ref}. Try \`runx skill search ${ref}\` to discover available skills.`);
+  throw new Error(`Skill not found: ${ref}. Try \`runx registry search ${ref}\` to discover available skills.`);
 }
 
 export async function resolveRunnableSkillReference(ref: string, env: NodeJS.ProcessEnv): Promise<string> {
@@ -323,44 +293,6 @@ async function rewriteOfficialSkillSiblingRefs(skillDir: string, ownerSkillId: s
   }
 }
 
-async function searchBundledSkills(query: string, env: NodeJS.ProcessEnv): Promise<readonly SkillSearchResult[]> {
-  const bundledDir = resolveBundledSkillsDir();
-  if (!bundledDir || !existsSync(bundledDir)) return [];
-  const entries = await readdir(bundledDir, { withFileTypes: true });
-  const needle = query.trim().toLowerCase();
-  const out: SkillSearchResult[] = [];
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    const skillMdPath = path.join(bundledDir, entry.name, "SKILL.md");
-    if (!existsSync(skillMdPath)) continue;
-    const raw = await readFile(skillMdPath, "utf8");
-    const { name, description, category, sourceCategory } = parseSkillFrontmatter(raw, entry.name);
-    if (!officialSkillVisibleForCatalog(`runx/${name}`, env)) continue;
-    const hay = `${name}\n${description}\n${category ?? ""}\n${sourceCategory ?? ""}`.toLowerCase();
-    if (needle && !hay.includes(needle)) continue;
-    const hasProfile = existsSync(path.join(path.dirname(bundledDir), "bindings", "runx", entry.name, "X.yaml"));
-    out.push({
-      skill_id: `runx/${name}`,
-      name,
-      summary: description,
-      owner: "runx",
-      source: "runx-registry",
-      source_label: "runx (bundled)",
-      source_type: "bundled",
-      trust_tier: "first_party",
-      required_scopes: [],
-      tags: category ? [category] : [],
-      category,
-      source_category: sourceCategory,
-      profile_mode: hasProfile ? "profiled" : "portable",
-      runner_names: [],
-      add_command: `runx add runx/${name}`,
-      run_command: preferredRunCommand(name),
-    });
-  }
-  return out;
-}
-
 function resolveBundledSkillsDir(): string | undefined {
   if (cachedBundledSkillsDir !== null) return cachedBundledSkillsDir ?? undefined;
   try {
@@ -476,46 +408,4 @@ function assertSkillReferencePath(resolved: string): void {
       `Skill references must point to a skill package directory or SKILL.md. Flat markdown files are not supported: ${resolved}`,
     );
   }
-}
-
-function parseSkillFrontmatter(raw: string, fallbackName: string): { name: string; description: string; category?: string; sourceCategory?: string } {
-  const match = raw.match(/^---\n([\s\S]*?)\n---/);
-  let name = fallbackName;
-  let description = "";
-  let category: string | undefined;
-  let sourceCategory: string | undefined;
-  if (match) {
-    const parsed = parseDocument(match[1], { prettyErrors: false });
-    if (parsed.errors.length === 0) {
-      const frontmatter = asRecord(parsed.toJS());
-      if (frontmatter) {
-        const runx = asRecord(frontmatter.runx);
-        const runxCategory = normalizeCategory(stringValue(runx?.category));
-        return {
-          name: stringValue(frontmatter.name) || fallbackName,
-          description: stringValue(frontmatter.description) ?? "",
-          category: runxCategory,
-          sourceCategory: normalizeCategory(stringValue(frontmatter.category)),
-        };
-      }
-    }
-    for (const line of match[1].split("\n")) {
-      const kv = line.match(/^(name|description|category):\s*(.*)$/);
-      if (!kv) continue;
-      const value = kv[2].trim().replace(/^["']|["']$/g, "");
-      if (kv[1] === "name") name = value || fallbackName;
-      else if (kv[1] === "description") description = value;
-      else if (kv[1] === "category") sourceCategory = normalizeCategory(value);
-    }
-  }
-  return { name, description, category, sourceCategory };
-}
-
-function stringValue(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
-}
-
-function normalizeCategory(value: string | undefined): string | undefined {
-  const normalized = value?.trim();
-  return normalized ? normalized : undefined;
 }

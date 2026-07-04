@@ -1,16 +1,73 @@
 use std::fs;
 use std::process::Command;
 
+type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
+
 #[test]
-fn inline_harness_missing_signer_prints_actionable_hint() -> Result<(), Box<dyn std::error::Error>>
-{
+fn scaffolded_next_steps_run_without_signer_env() -> TestResult {
+    let root = crate::support::temp_root("runx-new-next-steps");
+    fs::create_dir_all(&root)?;
+    let skill_dir = root.join("receipt-demo");
+
+    let scaffold = unsigned_runx_command()?
+        .current_dir(&root)
+        .args([
+            "new",
+            "receipt-demo",
+            "--directory",
+            skill_dir.to_str().ok_or("non-utf8 skill dir")?,
+            "--json",
+        ])
+        .output()?;
+    assert_eq!(
+        scaffold.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&scaffold.stderr)
+    );
+
+    let harness = unsigned_runx_command()?
+        .current_dir(&skill_dir)
+        .args(["harness", ".", "--json"])
+        .output()?;
+    assert_eq!(
+        harness.status.code(),
+        Some(0),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&harness.stdout),
+        String::from_utf8_lossy(&harness.stderr)
+    );
+    let harness_json = serde_json::from_slice::<serde_json::Value>(&harness.stdout)?;
+    assert_eq!(harness_json["status"], "passed");
+
+    let skill = unsigned_runx_command()?
+        .current_dir(&skill_dir)
+        .args(["skill", ".", "--input", "message=hello", "--json"])
+        .output()?;
+    assert_eq!(
+        skill.status.code(),
+        Some(0),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&skill.stdout),
+        String::from_utf8_lossy(&skill.stderr)
+    );
+    let skill_json = serde_json::from_slice::<serde_json::Value>(&skill.stdout)?;
+    assert_eq!(skill_json["status"], "sealed");
+
+    Ok(())
+}
+
+#[test]
+fn inline_harness_partial_signer_config_prints_actionable_hint() -> TestResult {
     let root = crate::support::temp_root("runx-inline-harness-hint");
     let skill_dir = root.join("skill");
     let receipt_dir = root.join("receipts");
     fs::create_dir_all(&skill_dir)?;
     write_cli_tool_skill(&skill_dir)?;
 
-    let output = unsigned_runx_command()?
+    let mut command = unsigned_runx_command()?;
+    command.env("RUNX_RECEIPT_SIGN_KID", "partial-explicit-key");
+    let output = command
         .args([
             "harness",
             skill_dir.to_str().ok_or("non-utf8 skill dir")?,
@@ -26,12 +83,11 @@ fn inline_harness_missing_signer_prints_actionable_hint() -> Result<(), Box<dyn 
     let stderr = String::from_utf8(output.stderr)?;
     assert!(stderr.contains("inline harnesses seal signed receipts"));
     assert!(stderr.contains("RUNX_RECEIPT_SIGN_KID"));
-    assert!(stderr.contains("run.sh"));
 
     Ok(())
 }
 
-fn unsigned_runx_command() -> Result<Command, Box<dyn std::error::Error>> {
+fn unsigned_runx_command() -> TestResult<Command> {
     let mut command = Command::new(env!("CARGO_BIN_EXE_runx"));
     command.env_clear();
     if let Some(path) = std::env::var_os("PATH") {
@@ -42,7 +98,7 @@ fn unsigned_runx_command() -> Result<Command, Box<dyn std::error::Error>> {
     Ok(command)
 }
 
-fn write_cli_tool_skill(skill_dir: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+fn write_cli_tool_skill(skill_dir: &std::path::Path) -> TestResult {
     fs::write(
         skill_dir.join("SKILL.md"),
         "---\nname: harness-hint\n---\n# Harness Hint\n",

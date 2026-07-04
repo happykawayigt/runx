@@ -57,12 +57,45 @@ pub(crate) fn lexical_normalize(path: &Path) -> PathBuf {
             Component::RootDir => normalized.push(component.as_os_str()),
             Component::CurDir => {}
             Component::ParentDir => {
-                if !normalized.pop() {
+                if normalized.as_os_str().is_empty()
+                    || normalized
+                        .components()
+                        .next_back()
+                        .is_some_and(|component| component == Component::ParentDir)
+                {
                     normalized.push("..");
+                } else {
+                    normalized.pop();
                 }
             }
             Component::Normal(segment) => normalized.push(segment),
         }
     }
+    if normalized.as_os_str().is_empty() {
+        normalized.push(".");
+    }
     normalized
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lexical_normalize_preserves_current_directory() {
+        assert_eq!(lexical_normalize(Path::new(".")), PathBuf::from("."));
+        assert_eq!(lexical_normalize(Path::new("skill/..")), PathBuf::from("."));
+    }
+
+    #[test]
+    fn lexical_normalize_keeps_leading_parent_segments() {
+        assert_eq!(
+            lexical_normalize(Path::new("../skill")),
+            PathBuf::from("../skill")
+        );
+        assert_eq!(
+            lexical_normalize(Path::new("../../skill")),
+            PathBuf::from("../../skill")
+        );
+    }
 }

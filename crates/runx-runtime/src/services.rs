@@ -16,8 +16,8 @@ mod tests {
     use std::collections::BTreeMap;
     use std::path::{Path, PathBuf};
 
-    use crate::receipts::RuntimeReceiptSignatureConfig;
     use crate::receipts::paths::{RUNX_CWD_ENV, RUNX_PROJECT_DIR_ENV};
+    use crate::receipts::{RUNX_RECEIPT_SIGN_KID_ENV, RuntimeReceiptSignatureConfig};
     use crate::services::{ReceiptServices, WorkspaceEnv};
 
     #[test]
@@ -65,5 +65,26 @@ mod tests {
             resolved.path,
             PathBuf::from("/tmp/runx-work/.runx-custom/receipts")
         );
+    }
+
+    #[test]
+    fn receipt_services_local_development_fallback_only_handles_absent_signer_env() {
+        let receipts = ReceiptServices::from_env_or_local_development(&BTreeMap::new())
+            .expect("absent signer env should use local-development receipts");
+
+        assert!(
+            receipts
+                .signature_config()
+                .production_key_for_kid("any-production-key")
+                .is_none()
+        );
+
+        let partial_env = BTreeMap::from([(
+            RUNX_RECEIPT_SIGN_KID_ENV.to_owned(),
+            "partial-explicit-key".to_owned(),
+        )]);
+        let error = ReceiptServices::from_env_or_local_development(&partial_env)
+            .expect_err("partial signer env must still fail closed");
+        assert!(error.to_string().contains("set together"));
     }
 }

@@ -2,6 +2,8 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::path::{Component, Path, PathBuf};
 
+use crate::path_util::lexical_normalize;
+
 pub const RUNTIME_RECEIPTS_DIR_CONFIG_KEY: &str = "runtime.receipts.dir";
 pub const RUNX_RECEIPT_DIR_ENV: &str = "RUNX_RECEIPT_DIR";
 pub const RUNX_PROJECT_DIR_ENV: &str = "RUNX_PROJECT_DIR";
@@ -207,24 +209,6 @@ fn absolute_cwd(cwd: &Path) -> PathBuf {
         };
         lexical_normalize(&base.join(cwd))
     }
-}
-
-fn lexical_normalize(path: &Path) -> PathBuf {
-    let mut normalized = PathBuf::new();
-    for component in path.components() {
-        match component {
-            Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
-            Component::RootDir => normalized.push(component.as_os_str()),
-            Component::CurDir => {}
-            Component::ParentDir => {
-                if !normalized.pop() {
-                    normalized.push("..");
-                }
-            }
-            Component::Normal(segment) => normalized.push(segment),
-        }
-    }
-    normalized
 }
 
 fn path_label(path: &Path) -> String {

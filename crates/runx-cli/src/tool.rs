@@ -1,6 +1,6 @@
 // rust-style-allow: large-file - command wiring keeps tool build/search/inspect output parity together.
+use std::collections::BTreeMap;
 use std::env;
-use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -38,10 +38,10 @@ fn run_tool(plan: ToolPlan) -> Result<ToolCliOutput, ToolCliError> {
 
 fn run_build(
     plan: ToolPlan,
-    env: &[(OsString, OsString)],
+    env: &BTreeMap<String, String>,
     cwd: &Path,
 ) -> Result<ToolCliOutput, ToolCliError> {
-    let root = resolve_workspace_base(env, cwd);
+    let root = runx_runtime::resolve_runx_workspace_base(env, cwd);
     let tool_path = plan
         .path
         .as_deref()
@@ -66,7 +66,10 @@ fn run_build(
     Ok(ToolCliOutput { stdout, exit_code })
 }
 
-fn run_search(plan: ToolPlan, env: &[(OsString, OsString)]) -> Result<ToolCliOutput, ToolCliError> {
+fn run_search(
+    plan: ToolPlan,
+    env: &BTreeMap<String, String>,
+) -> Result<ToolCliOutput, ToolCliError> {
     let query = plan
         .ref_or_query
         .ok_or_else(|| ToolCliError::Usage("runx tool search requires a query".to_owned()))?;
@@ -90,13 +93,13 @@ fn run_search(plan: ToolPlan, env: &[(OsString, OsString)]) -> Result<ToolCliOut
 
 fn run_inspect(
     plan: ToolPlan,
-    env: &[(OsString, OsString)],
+    env: &BTreeMap<String, String>,
     cwd: &Path,
 ) -> Result<ToolCliOutput, ToolCliError> {
     let tool_ref = plan.ref_or_query.ok_or_else(|| {
         ToolCliError::Usage("runx tool inspect requires a tool reference".to_owned())
     })?;
-    let root = resolve_workspace_base(env, cwd);
+    let root = runx_runtime::resolve_runx_workspace_base(env, cwd);
     let search_from_directory = resolve_user_path(Path::new("."), env, cwd);
     let tool_roots = env_value(env, "RUNX_TOOL_ROOTS")
         .map(|value| split_env_paths(&value))
@@ -122,64 +125,23 @@ fn run_inspect(
     })
 }
 
-fn env_pairs() -> Vec<(OsString, OsString)> {
-    env::vars_os().collect()
+fn env_pairs() -> BTreeMap<String, String> {
+    env::vars().collect()
 }
 
-fn env_value(env: &[(OsString, OsString)], key: &str) -> Option<String> {
-    env.iter()
-        .find(|(name, _)| name == key)
-        .and_then(|(_, value)| value.to_str().map(str::to_owned))
+fn env_value(env: &BTreeMap<String, String>, key: &str) -> Option<String> {
+    env.get(key).cloned()
 }
 
-fn resolve_workspace_base(env: &[(OsString, OsString)], cwd: &Path) -> PathBuf {
-    env_value(env, "RUNX_CWD")
-        .map(PathBuf::from)
-        .or_else(|| find_workspace_root(cwd))
-        .or_else(|| env_value(env, "INIT_CWD").map(PathBuf::from))
-        .unwrap_or_else(|| cwd.to_path_buf())
-}
-
-fn resolve_user_path(user_path: &Path, env: &[(OsString, OsString)], cwd: &Path) -> PathBuf {
-    if user_path.is_absolute() {
-        return user_path.to_path_buf();
-    }
-    for base in [
-        env_value(env, "RUNX_CWD").map(PathBuf::from),
-        env_value(env, "INIT_CWD").map(PathBuf::from),
-        find_workspace_root(cwd),
-        Some(cwd.to_path_buf()),
-    ]
-    .into_iter()
-    .flatten()
-    {
-        let candidate = base.join(user_path);
-        if candidate.exists() {
-            return candidate;
-        }
-    }
-    resolve_workspace_base(env, cwd).join(user_path)
-}
-
-fn find_workspace_root(start: &Path) -> Option<PathBuf> {
-    let mut current = start.to_path_buf();
-    loop {
-        if current.join("pnpm-workspace.yaml").exists() {
-            return Some(current);
-        }
-        let parent = current.parent()?.to_path_buf();
-        if parent == current {
-            return None;
-        }
-        current = parent;
-    }
+fn resolve_user_path(user_path: &Path, env: &BTreeMap<String, String>, cwd: &Path) -> PathBuf {
+    runx_runtime::resolve_path_from_user_input(&user_path.to_string_lossy(), env, cwd, true)
 }
 
 fn split_env_paths(value: &str) -> Vec<PathBuf> {
     env::split_paths(value).collect()
 }
 
-fn toolkit_version(env: &[(OsString, OsString)]) -> String {
+fn toolkit_version(env: &BTreeMap<String, String>) -> String {
     env_value(env, "RUNX_AUTHORING_TOOLKIT_VERSION")
         .or_else(|| env_value(env, "RUNX_AUTHORING_PACKAGE_VERSION"))
         .map(|value| value.trim_start_matches('^').to_owned())

@@ -3,6 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use runx_runtime::registry::RegistryManifestSourceAuthority;
+use url::Url;
 
 use super::RegistryPlan;
 
@@ -99,7 +100,7 @@ pub(crate) fn resolve_registry_target(
                 .get("RUNX_REGISTRY_URL")
                 .filter(|value| is_remote_registry_url(value))
                 .cloned(),
-            source_kind: if registry.starts_with("file://") {
+            source_kind: if file_url_path(registry).is_some() {
                 LocalRegistrySourceKind::File
             } else {
                 LocalRegistrySourceKind::Local
@@ -149,7 +150,7 @@ pub(crate) fn destination_root(
     plan.destination
         .as_ref()
         .map(|path| super::resolve_path(path, env, cwd, false))
-        .unwrap_or_else(|| workspace_base(env, cwd).join("skills"))
+        .unwrap_or_else(|| runx_runtime::resolve_runx_workspace_base(env, cwd).join("skills"))
 }
 
 pub(crate) fn official_skills_cache_root(env: &BTreeMap<String, String>, cwd: &Path) -> PathBuf {
@@ -180,31 +181,19 @@ pub(crate) fn registry_source_description(target: &RegistryTarget) -> String {
     }
 }
 
-pub(crate) fn workspace_base(env: &BTreeMap<String, String>, cwd: &Path) -> PathBuf {
-    env.get("RUNX_CWD")
-        .map(PathBuf::from)
-        .or_else(|| find_workspace_root(cwd))
-        .or_else(|| env.get("INIT_CWD").map(PathBuf::from))
-        .unwrap_or_else(|| cwd.to_path_buf())
-}
-
 fn registry_path_from_value(value: &str, env: &BTreeMap<String, String>, cwd: &Path) -> PathBuf {
-    if let Some(path) = value.strip_prefix("file://") {
-        return PathBuf::from(path);
+    if let Some(path) = file_url_path(value) {
+        return path;
     }
     runx_runtime::resolve_path_from_user_input(value, env, cwd, false)
 }
 
-fn find_workspace_root(start: &Path) -> Option<PathBuf> {
-    let mut current = start.to_path_buf();
-    loop {
-        if current.join("pnpm-workspace.yaml").exists() {
-            return Some(current);
-        }
-        if !current.pop() {
-            return None;
-        }
+fn file_url_path(value: &str) -> Option<PathBuf> {
+    let url = Url::parse(value).ok()?;
+    if url.scheme() != "file" {
+        return None;
     }
+    url.to_file_path().ok()
 }
 
 fn canonical_remote_registry_url(value: &str) -> String {

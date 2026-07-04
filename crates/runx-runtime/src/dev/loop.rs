@@ -24,6 +24,7 @@ use super::types::{
     PreparedDevFixtureWorkspace,
 };
 use crate::doctor::{default_doctor_options, run_doctor};
+use crate::path_util::lexical_normalize;
 
 pub fn run_dev_once(options: &DevLoopOptions) -> Result<DevReport, DevError> {
     run_dev_once_with_executor(options, &LocalDevFixtureExecutor)
@@ -33,7 +34,7 @@ pub fn run_dev_once_with_executor(
     options: &DevLoopOptions,
     executor: &impl DevFixtureExecutor,
 ) -> Result<DevReport, DevError> {
-    let root = normalize_path(&options.root);
+    let root = lexical_normalize(&options.root);
     let doctor = run_doctor(&root, &default_doctor_options())?;
     if doctor.status == DoctorStatus::Failure {
         return Ok(DevReport {
@@ -428,7 +429,7 @@ fn resolve_inside_fixture_root(root: &Path, relative_path: &str) -> Result<PathB
             path: relative_path.to_owned(),
         });
     }
-    let resolved = normalize_path(&root.join(relative));
+    let resolved = lexical_normalize(&root.join(relative));
     if !resolved.starts_with(root) {
         return Err(DevError::EscapingWorkspacePath {
             path: relative_path.to_owned(),
@@ -686,20 +687,6 @@ fn unique_temp_dir() -> Result<PathBuf, DevError> {
         source,
     })?;
     Ok(path)
-}
-
-fn normalize_path(path: &Path) -> PathBuf {
-    let mut normalized = PathBuf::new();
-    for component in path.components() {
-        match component {
-            std::path::Component::CurDir => {}
-            std::path::Component::ParentDir => {
-                normalized.pop();
-            }
-            other => normalized.push(other.as_os_str()),
-        }
-    }
-    normalized
 }
 
 fn path_stem(path: &Path) -> String {

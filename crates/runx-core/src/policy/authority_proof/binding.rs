@@ -13,7 +13,10 @@ use super::util::non_empty_option;
 pub fn validate_credential_binding(
     request: &CredentialBindingRequest,
 ) -> CredentialBindingDecision {
-    let requirement = credential_grant_requirement(request.auth.as_ref());
+    let requirement = match credential_grant_requirement(request.auth.as_ref()) {
+        Ok(requirement) => requirement,
+        Err(error) => return deny(vec![error.message().to_owned()]),
+    };
     match request.credential.as_ref() {
         None => validate_missing_credential(requirement.as_ref(), &request.scope_admission),
         Some(credential) => validate_resolved_credential(request, requirement.as_ref(), credential),

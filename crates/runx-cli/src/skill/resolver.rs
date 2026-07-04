@@ -102,10 +102,10 @@ fn resolve_bare_skill_ref(
         return resolve_official_skill(entry.skill_id, entry.version, entry.digest, cwd, options);
     }
     Err(format!(
-        "could not resolve skill ref '{}'; tried {} and {}. Search with `runx skill search {}` or run a registry ref directly with `runx skill <owner>/<name>@<version>`.",
+        "could not resolve skill ref '{}'; tried {} and {}. Search with `runx registry search {}` or run a registry ref directly with `runx skill <owner>/<name>@<version>`.",
         skill_ref.display(),
         cwd.join("skills").join(skill_ref).display(),
-        registry::workspace_base(options.env, cwd)
+        runx_runtime::resolve_runx_workspace_base(options.env, cwd)
             .join("skills")
             .join(skill_ref)
             .display(),
@@ -139,7 +139,7 @@ fn resolve_installed_or_workspace_skill(
 
 fn installed_roots(cwd: &Path, env: &BTreeMap<String, String>) -> Vec<PathBuf> {
     let mut roots = vec![cwd.join("skills")];
-    let workspace_root = registry::workspace_base(env, cwd).join("skills");
+    let workspace_root = runx_runtime::resolve_runx_workspace_base(env, cwd).join("skills");
     if !roots.contains(&workspace_root) {
         roots.push(workspace_root);
     }
@@ -729,7 +729,7 @@ mod tests {
             Err(error) => error,
         };
 
-        assert!(error.contains("runx skill search missing-skill"));
+        assert!(error.contains("runx registry search missing-skill"));
         assert!(error.contains("runx skill <owner>/<name>@<version>"));
         Ok(())
     }

@@ -923,45 +923,6 @@ Answer the prompt directly.
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
-  it("renders search results with run and add commands", async () => {
-    const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-cli-search-"));
-    tempDirs.push(tempDir);
-    const registryDir = path.join(tempDir, "registry");
-    const stdout = createMemoryStream();
-    const stderr = createMemoryStream();
-
-    const publishStdout = createMemoryStream();
-    const publishStderr = createMemoryStream();
-    await expect(
-      runCli(
-        ["skill", "publish", "skills/receipt-auditor", "--owner", "acme", "--version", "1.0.0", "--registry", registryDir, "--json"],
-        { stdin: process.stdin, stdout: publishStdout, stderr: publishStderr },
-        { ...process.env, RUNX_CWD: process.cwd() },
-      ),
-    ).resolves.toBe(0);
-    expect(publishStderr.contents()).toBe("");
-
-    const exitCode = await runCli(
-      ["skill", "search", "receipt-auditor"],
-      { stdin: process.stdin, stdout, stderr },
-      {
-        ...process.env,
-        RUNX_CWD: process.cwd(),
-        RUNX_REGISTRY_DIR: registryDir,
-        RUNX_REGISTRY_URL: "https://runx.example.test",
-      },
-    );
-
-    expect(exitCode).toBe(0);
-    expect(stderr.contents()).toBe("");
-    expect(stdout.contents()).toContain("acme/receipt-auditor");
-    expect(stdout.contents()).toContain("runx registry");
-    expect(stdout.contents()).toContain("run  ");
-    expect(stdout.contents()).toContain("add  ");
-    expect(stdout.contents()).toContain("runx add acme/receipt-auditor@1.0.0 --registry https://runx.example.test");
-    expect(stdout.contents()).toContain("runx skill acme/receipt-auditor@1.0.0 --registry https://runx.example.test");
-  });
-
   it("routes hosted registry installs to the native subprocess", async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-cli-remote-add-"));
     tempDirs.push(tempDir);

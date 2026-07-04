@@ -304,21 +304,8 @@ fn resolve_user_path(value: &str, env: &BTreeMap<String, String>, cwd: &Path) ->
     if path.is_absolute() {
         path
     } else {
-        workspace_base(env, cwd).join(path)
+        runx_runtime::resolve_runx_workspace_base(env, cwd).join(path)
     }
-}
-
-fn workspace_base(env: &BTreeMap<String, String>, cwd: &Path) -> PathBuf {
-    env.get("RUNX_CWD")
-        .map(|value| {
-            let path = PathBuf::from(value);
-            if path.is_absolute() {
-                path
-            } else {
-                cwd.join(path)
-            }
-        })
-        .unwrap_or_else(|| cwd.to_path_buf())
 }
 
 fn scope_name(project: bool) -> &'static str {

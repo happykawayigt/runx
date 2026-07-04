@@ -22,7 +22,6 @@ import {
   renderKnowledgeProjections,
   renderListResult,
   renderNewResult,
-  renderSearchResults,
   writeLocalSkillResult,
 } from "./cli-presentation.js";
 import { handleConfigCommand } from "./commands/config.js";
@@ -55,7 +54,6 @@ import {
   type ToolCommandArgs,
 } from "./commands/tool.js";
 import { resolveBundledCliToolRoots } from "./runtime-assets.js";
-import { runSkillSearch } from "./skill-refs.js";
 import { streamTrainableReceipts } from "./trainable-receipts.js";
 import { runNativeRunx, streamNativeRunx, type NativeRunxProcessResult } from "./native-runx.js";
 
@@ -185,27 +183,6 @@ export async function dispatchCli(
     return await streamNativeRunxToIo(io, nativeToolArgs("inspect", parsed.toolRef, parsed), env);
   }
 
-  if (parsed.command === "skill" && parsed.skillAction === "search" && parsed.searchQuery) {
-    const results = await runSkillSearch(parsed.searchQuery, parsed.sourceFilter, env, parsed.registryUrl);
-    if (parsed.json) {
-      io.stdout.write(
-        `${JSON.stringify(
-          {
-            status: "success",
-            query: parsed.searchQuery,
-            source: parsed.sourceFilter ?? "all",
-            results,
-          },
-          null,
-          2,
-        )}\n`,
-      );
-    } else {
-      io.stdout.write(renderSearchResults(results, env));
-    }
-    return 0;
-  }
-
   if (parsed.retiredSkillAdd) {
     return writeAddValidationError(
       io,
@@ -299,16 +276,6 @@ export async function dispatchCli(
     pushOptionalFlag(args, "--registry", parsed.registryUrl);
     pushOptionalFlag(args, "--version", parsed.addVersion);
     pushOptionalFlag(args, "--digest", parsed.expectedDigest);
-    return await streamNativeRunxToIo(io, args, env);
-  }
-
-  if (parsed.command === "skill" && parsed.skillAction === "publish" && parsed.publishPath) {
-    const resolvedPublishPath = resolvePathFromUserInput(parsed.publishPath, env);
-    const args = ["registry", "publish", resolvedPublishPath, "--json"];
-    pushOptionalFlag(args, "--registry", parsed.registryUrl);
-    pushOptionalFlag(args, "--owner", parsed.publishOwner);
-    pushOptionalFlag(args, "--version", parsed.publishVersion);
-    pushOptionalFlag(args, "--profile", parsed.publishProfile);
     return await streamNativeRunxToIo(io, args, env);
   }
 

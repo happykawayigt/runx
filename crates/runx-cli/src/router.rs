@@ -15,6 +15,7 @@ use crate::publish::PublishPlan;
 use crate::registry::{RegistryAction, RegistryPlan};
 use crate::resume::ResumePlan;
 use crate::skill::SkillPlan;
+use runx_runtime::registry::parse_registry_ref;
 
 #[derive(Debug, PartialEq)]
 pub enum RouterAction {
@@ -355,10 +356,10 @@ Commands:
   runx history [query] [--skill s] [--status s] [--source s] [--actor a] [--artifact-type t] [--since iso] [--until iso] [--receipt-dir dir] [--json]
   runx resume <run-id> <answers.json> [-R dir] [-j|--json]
   runx list [tools|skills|graphs|packets|overlays] [--ok-only|--invalid-only] [-j|--json]
-  runx login [--provider github|google|gitlab] [--for default|publish] [--api-url url] [--local-api] [-j|--json]
+  runx login [--provider github|google|gitlab] [--for default|publish] [--api-base-url url] [--allow-local-api] [-j|--json]
   runx config set|get|list [provider|model|api-key|public-token] [value] [-j|--json]
   runx policy inspect|lint <policy.json> [--json]
-  runx publish <receipt.json> [--api-url url] [--token token] [--local-api] [-j|--json]
+  runx publish <receipt.json> [--api-base-url url] [--token token] [--allow-local-api] [-j|--json]
   runx kernel eval --input <file|-> --json
   runx payment admission issue --input <file|-> --json
   runx parser eval --input <file|-> --json
@@ -434,14 +435,13 @@ pub fn login_help_text() -> String {
 runx login
 
 Usage:
-  runx login [--provider github|google|gitlab] [--for default|publish] [--api-url url] [--local-api] [-j|--json]
+  runx login [--provider github|google|gitlab] [--for default|publish] [--api-base-url url] [--allow-local-api] [-j|--json]
 
 Options:
   --provider provider
   --for purpose
-  --api-url url
   --api-base-url url
-  --local-api
+  --allow-local-api
   -j, --json
 "
     .to_owned()
@@ -452,14 +452,12 @@ pub fn publish_help_text() -> String {
 runx publish
 
 Usage:
-  runx publish <receipt.json> [--api-url url] [--token token] [--local-api] [-j|--json]
+  runx publish <receipt.json> [--api-base-url url] [--token token] [--allow-local-api] [-j|--json]
 
 Options:
-  --api-url url       Public API base URL (default: RUNX_PUBLIC_API_BASE_URL or https://api.runx.ai)
-  --api-base-url url  Alias for --api-url
+  --api-base-url url  Public API base URL (default: RUNX_PUBLIC_API_BASE_URL or https://api.runx.ai)
   --token token       Public API token (default: RUNX_PUBLIC_API_TOKEN or runx login)
-  --local-api         Allow loopback/private public API URLs for local dogfood only
-  --allow-local-api   Alias for --local-api
+  --allow-local-api   Allow loopback/private public API URLs for local dogfood only
   -j, --json          Print the raw notary response as JSON
 "
     .to_owned()
@@ -796,12 +794,12 @@ fn parse_add_flag(
         "--version" => set_add_string(args, index, flag, inline_value, &mut parsed.version),
         "--ref" => set_add_string(args, index, flag, inline_value, &mut parsed.repo_ref),
         "--digest" => set_add_string(args, index, flag, inline_value, &mut parsed.expected_digest),
-        "--to" | "--destination" => {
+        "--to" => {
             let (value, next_index) = flag_value(args, index, flag, inline_value, "add")?;
             parsed.destination = Some(PathBuf::from(value));
             Ok(next_index)
         }
-        "--api-base-url" | "--apiBaseUrl" => {
+        "--api-base-url" => {
             set_add_string(args, index, flag, inline_value, &mut parsed.api_base_url)
         }
         _ => Err(format!("unknown add flag {flag}")),
@@ -916,7 +914,7 @@ fn parse_init_plan(args: &[OsString]) -> Result<InitPlan, String> {
                 global = true;
                 index += 1;
             }
-            "--prefetch" | "--prefetchOfficial" | "--prefetch-official" => {
+            "--prefetch" | "--prefetch-official" => {
                 if matches!(inline_value, Some("false") | Some("0")) {
                     prefetch_official = false;
                     index += 1;
@@ -1504,23 +1502,17 @@ fn parse_registry_flag(
         "--registry" => {
             set_registry_string_flag(args, index, flag, inline_value, &mut state.registry)
         }
-        "--registry-dir" | "--registryDir" => {
+        "--registry-dir" => {
             set_registry_path_flag(args, index, flag, inline_value, &mut state.registry_dir)
         }
-        "--version" => {
-            set_registry_string_flag(args, index, flag, inline_value, &mut state.version)
-        }
+        "--version" => set_registry_version_flag(args, index, flag, inline_value, state),
         "--digest" => {
             set_registry_string_flag(args, index, flag, inline_value, &mut state.expected_digest)
         }
-        "--to" | "--destination" => {
-            set_registry_path_flag(args, index, flag, inline_value, &mut state.destination)
-        }
+        "--to" => set_registry_path_flag(args, index, flag, inline_value, &mut state.destination),
         "--owner" => set_registry_string_flag(args, index, flag, inline_value, &mut state.owner),
         "--profile" => set_registry_path_flag(args, index, flag, inline_value, &mut state.profile),
-        "--trust-tier" | "--trustTier" => {
-            set_registry_trust_tier_flag(args, index, flag, inline_value, state)
-        }
+        "--trust-tier" => set_registry_trust_tier_flag(args, index, flag, inline_value, state),
         "--limit" => set_registry_limit_flag(args, index, flag, inline_value, state),
         _ => Err(format!("unknown registry flag {flag}")),
     }
@@ -1597,11 +1589,26 @@ fn set_registry_limit_flag(
     state: &mut RegistryParseState,
 ) -> Result<usize, String> {
     let (value, next_index) = flag_value(args, index, flag, inline_value, "registry")?;
-    state.limit = Some(
-        value
-            .parse::<usize>()
-            .map_err(|_| "--limit must be a positive integer".to_owned())?,
-    );
+    let limit = value
+        .parse::<usize>()
+        .map_err(|_| "--limit must be a positive integer".to_owned())?;
+    if limit == 0 {
+        return Err("--limit must be greater than zero".to_owned());
+    }
+    state.limit = Some(limit);
+    Ok(next_index)
+}
+
+fn set_registry_version_flag(
+    args: &[OsString],
+    index: usize,
+    flag: &str,
+    inline_value: Option<&str>,
+    state: &mut RegistryParseState,
+) -> Result<usize, String> {
+    let (value, next_index) = flag_value(args, index, flag, inline_value, "registry")?;
+    validate_registry_version(&value)?;
+    state.version = Some(value);
     Ok(next_index)
 }
 
@@ -1615,7 +1622,9 @@ fn registry_subject(
             if positionals.is_empty() {
                 return Err("runx registry search requires a query".to_owned());
             }
-            Ok(positionals.join(" "))
+            let subject = positionals.join(" ");
+            validate_registry_ref_version(&subject)?;
+            Ok(subject)
         }
         RegistryAction::Read | RegistryAction::Resolve | RegistryAction::Install => {
             if positionals.len() != 1 {
@@ -1623,7 +1632,9 @@ fn registry_subject(
                     "runx registry {subcommand} requires exactly one ref"
                 ));
             }
-            Ok(positionals.remove(0))
+            let subject = positionals.remove(0);
+            validate_registry_ref_version(&subject)?;
+            Ok(subject)
         }
         RegistryAction::Publish => {
             if positionals.len() != 1 {
@@ -1634,6 +1645,34 @@ fn registry_subject(
             Ok(positionals.remove(0))
         }
     }
+}
+
+fn validate_registry_ref_version(value: &str) -> Result<(), String> {
+    if let Some(version) = parse_registry_ref(value).version {
+        validate_registry_version(&version)?;
+    }
+    Ok(())
+}
+
+fn validate_registry_version(value: &str) -> Result<(), String> {
+    if value.trim().is_empty() {
+        return Err("registry version must not be empty".to_owned());
+    }
+    if value.len() > 128 {
+        return Err("registry version must be 128 characters or fewer".to_owned());
+    }
+    if value.chars().any(|character| {
+        !character.is_ascii_alphanumeric() && !matches!(character, '.' | '_' | '-' | '+')
+    }) {
+        return Err(
+            "registry version may only contain ASCII letters, numbers, '.', '_', '-', or '+'"
+                .to_owned(),
+        );
+    }
+    if matches!(value, "." | "..") {
+        return Err("registry version must not be '.' or '..'".to_owned());
+    }
+    Ok(())
 }
 
 fn truthy(value: &str) -> bool {

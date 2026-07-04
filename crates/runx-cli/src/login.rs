@@ -191,7 +191,7 @@ pub fn parse_login_plan(args: &[OsString]) -> Result<LoginPlan, String> {
                 json = true;
                 index += 1;
             }
-            "--api-base-url" | "--api-url" | "--apiBaseUrl" => {
+            "--api-base-url" => {
                 let (value, next_index) = flag_value(args, index, flag, inline_value, "login")?;
                 api_base_url = Some(value);
                 index = next_index;
@@ -206,7 +206,7 @@ pub fn parse_login_plan(args: &[OsString]) -> Result<LoginPlan, String> {
                 purpose = Some(value);
                 index = next_index;
             }
-            "--allow-local-api" | "--local-api" | "--allowLocalApi" => {
+            "--allow-local-api" => {
                 if inline_value.is_some() {
                     return Err("--allow-local-api does not take a value".to_owned());
                 }

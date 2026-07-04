@@ -25,7 +25,7 @@ mod target;
 
 pub(crate) use target::{
     RegistryTarget, destination_root, official_skills_cache_root, registry_skills_cache_root,
-    registry_source_description, resolve_registry_target, workspace_base,
+    registry_source_description, resolve_registry_target,
 };
 
 #[derive(Debug, Eq, PartialEq)]

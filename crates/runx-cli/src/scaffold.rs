@@ -179,17 +179,15 @@ fn resolve_new_package_directory(
 }
 
 fn new_package_base(env: &std::collections::BTreeMap<String, String>, cwd: &Path) -> PathBuf {
-    env.get("RUNX_CWD")
-        .map(|value| absolute_path(value, cwd))
-        .or_else(|| env.get("INIT_CWD").map(|value| absolute_path(value, cwd)))
-        .unwrap_or_else(|| cwd.to_path_buf())
+    runx_runtime::resolve_runx_workspace_base(env, cwd)
 }
 
 fn resolve_project_dir(env: &std::collections::BTreeMap<String, String>, cwd: &Path) -> PathBuf {
     if let Some(project_dir) = env.get("RUNX_PROJECT_DIR") {
         return resolve_user_path(project_dir, env, cwd);
     }
-    find_nearest_project_runx_dir(cwd).unwrap_or_else(|| workspace_base(env, cwd).join(".runx"))
+    find_nearest_project_runx_dir(cwd)
+        .unwrap_or_else(|| runx_runtime::resolve_runx_workspace_base(env, cwd).join(".runx"))
 }
 
 fn resolve_global_home_dir(
@@ -220,34 +218,8 @@ fn resolve_user_path(
     if path.is_absolute() {
         path
     } else {
-        workspace_base(env, cwd).join(path)
+        runx_runtime::resolve_runx_workspace_base(env, cwd).join(path)
     }
-}
-
-fn workspace_base(env: &std::collections::BTreeMap<String, String>, cwd: &Path) -> PathBuf {
-    env.get("RUNX_CWD")
-        .map(|value| absolute_path(value, cwd))
-        .or_else(|| find_runx_workspace_root(cwd))
-        .or_else(|| env.get("INIT_CWD").map(|value| absolute_path(value, cwd)))
-        .unwrap_or_else(|| cwd.to_path_buf())
-}
-
-fn absolute_path(value: &str, cwd: &Path) -> PathBuf {
-    let path = PathBuf::from(value);
-    if path.is_absolute() {
-        path
-    } else {
-        cwd.join(path)
-    }
-}
-
-fn find_runx_workspace_root(start: &Path) -> Option<PathBuf> {
-    for current in start.ancestors() {
-        if current.join("pnpm-workspace.yaml").exists() {
-            return Some(current.to_path_buf());
-        }
-    }
-    None
 }
 
 fn find_nearest_project_runx_dir(start: &Path) -> Option<PathBuf> {

@@ -14,9 +14,6 @@ Start with the checked-in hello-world skill:
 ```bash
 cd oss
 cargo build --manifest-path crates/Cargo.toml -p runx-cli
-export RUNX_RECEIPT_SIGN_KID=runx-demo-key
-export RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64=QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI=
-export RUNX_RECEIPT_SIGN_ISSUER_TYPE=hosted
 export RUNX_RECEIPT_DIR="$(mktemp -d)"
 crates/target/debug/runx skill examples/hello-world \
   --message "hello from docs" \
@@ -24,10 +21,14 @@ crates/target/debug/runx skill examples/hello-world \
   --json
 ```
 
+When no production signer environment is configured, local `runx skill` and
+inline `runx harness` runs seal local-development receipts. Publishing and
+hosted verification require real authority.
+
 Then inspect the emitted receipt. The full walkthrough is in
-[docs/getting-started.md](docs/getting-started.md), and the next step is
-[docs/skill-to-graph.md](docs/skill-to-graph.md).
-For governed code changes, see [docs/issue-to-pr.md](docs/issue-to-pr.md).
+[getting-started.md](getting-started.md), and the next step is
+[skill-to-graph.md](skill-to-graph.md).
+For governed code changes, see [issue-to-pr.md](issue-to-pr.md).
 
 ## Zero-Funded Payment Dogfood
 

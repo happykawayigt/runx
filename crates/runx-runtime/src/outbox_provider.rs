@@ -3,7 +3,6 @@
 // as a single trust surface.
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
 use runx_contracts::{
@@ -14,7 +13,7 @@ use runx_contracts::{
 use thiserror::Error;
 
 use crate::credentials::CredentialDelivery;
-use crate::process::{ProcessSignal, configure_process_group, signal_process_group_id};
+use crate::process::{ProcessSpec, ProcessStdin, run_process};
 use crate::redaction::trim_ascii_whitespace;
 
 const DEFAULT_TIMEOUT_MS: u64 = 5_000;
@@ -95,45 +94,49 @@ impl ThreadOutboxProviderProcessSupervisor {
     ) -> Result<ThreadOutboxProviderProcessOutcome, ThreadOutboxProviderSupervisorError> {
         let started = Instant::now();
         let command = process_command(manifest)?;
-        let mut child = Command::new(command);
-        if let Some(args) = manifest.transport.args.as_ref() {
-            child.args(args);
+        let output = run_process(
+            ProcessSpec::new(
+                "thread-outbox-provider",
+                command.to_string_lossy().into_owned(),
+                self.options.output_limit_bytes,
+            )
+            .args(manifest.transport.args.clone().unwrap_or_default())
+            .env(secret_env_map(credential_delivery))
+            .stdin(Some(ProcessStdin::new(
+                request_bytes(&request)?,
+                "writing thread outbox provider request",
+            )))
+            .timeout(Some(Duration::from_millis(self.options.timeout_ms)))
+            .cwd(self.options.cwd.clone().unwrap_or_else(current_dir)),
+        )
+        .map_err(|source| ThreadOutboxProviderSupervisorError::Process {
+            context: "running thread outbox provider process".to_owned(),
+            detail: source.to_string(),
+        })?;
+        if output.timed_out {
+            return Err(ThreadOutboxProviderSupervisorError::TimedOut {
+                timeout_ms: self.options.timeout_ms,
+            });
         }
-        if let Some(cwd) = self.options.cwd.as_ref() {
-            child.current_dir(cwd);
-        }
-        child
-            .env_clear()
-            .envs(credential_delivery.secret_env().iter())
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        configure_process_group(&mut child);
-        let mut child = child
-            .spawn()
-            .map_err(|source| io_error("spawning thread outbox provider process", source))?;
-        write_request(&mut child, &request)?;
-        let timeout = Duration::from_millis(self.options.timeout_ms);
-        let output = wait_for_output(child, timeout)?;
         let redacted_stderr = credential_delivery
-            .redact_bytes_to_string(output.stderr, self.options.output_limit_bytes);
+            .redact_bytes_to_string(output.stderr.bytes, self.options.output_limit_bytes);
         if !output.status.success() {
             return Err(ThreadOutboxProviderSupervisorError::ProcessFailed {
                 exit_status: output.status.to_string(),
                 stderr: redacted_stderr,
             });
         }
-        if output.stdout.len() > self.options.output_limit_bytes {
+        if output.stdout.truncated {
             return Err(ThreadOutboxProviderSupervisorError::ResponseTooLarge {
                 limit_bytes: self.options.output_limit_bytes,
             });
         }
-        if redacted_stderr.len() > self.options.output_limit_bytes {
+        if output.stderr.truncated || redacted_stderr.len() > self.options.output_limit_bytes {
             return Err(ThreadOutboxProviderSupervisorError::StderrTooLarge {
                 limit_bytes: self.options.output_limit_bytes,
             });
         }
-        let provider_response = parse_provider_response(&output.stdout, credential_delivery)?;
+        let provider_response = parse_provider_response(&output.stdout.bytes, credential_delivery)?;
         let observation = provider_response.observation;
         validate_observation(manifest, &request, &observation)?;
         Ok(ThreadOutboxProviderProcessOutcome {
@@ -214,6 +217,8 @@ pub enum ThreadOutboxProviderSupervisorError {
         #[source]
         source: std::io::Error,
     },
+    #[error("{context}: {detail}")]
+    Process { context: String, detail: String },
 }
 
 enum ThreadOutboxProviderRequest<'a> {
@@ -235,12 +240,6 @@ impl ThreadOutboxProviderRequest<'_> {
             Self::Fetch(fetch) => &fetch.fetch_id,
         }
     }
-}
-
-struct ProviderOutput {
-    status: ExitStatus,
-    stdout: Vec<u8>,
-    stderr: Vec<u8>,
 }
 
 fn validate_manifest(
@@ -347,53 +346,17 @@ fn resolve_process_command(command: &str) -> PathBuf {
     PathBuf::from(command)
 }
 
-fn write_request(
-    child: &mut std::process::Child,
+fn request_bytes(
     request: &ThreadOutboxProviderRequest<'_>,
-) -> Result<(), ThreadOutboxProviderSupervisorError> {
-    let Some(mut stdin) = child.stdin.take() else {
-        return Ok(());
-    };
+) -> Result<Vec<u8>, ThreadOutboxProviderSupervisorError> {
+    let mut bytes = Vec::new();
     match request {
-        ThreadOutboxProviderRequest::Push(push) => serde_json::to_writer(&mut stdin, push),
-        ThreadOutboxProviderRequest::Fetch(fetch) => serde_json::to_writer(&mut stdin, fetch),
+        ThreadOutboxProviderRequest::Push(push) => serde_json::to_writer(&mut bytes, push),
+        ThreadOutboxProviderRequest::Fetch(fetch) => serde_json::to_writer(&mut bytes, fetch),
     }
     .map_err(|source| json_error("serializing thread outbox provider request", source))?;
-    use std::io::Write as _;
-    stdin
-        .write_all(b"\n")
-        .map_err(|source| io_error("writing thread outbox provider request", source))?;
-    Ok(())
-}
-
-fn wait_for_output(
-    mut child: std::process::Child,
-    timeout: Duration,
-) -> Result<ProviderOutput, ThreadOutboxProviderSupervisorError> {
-    let started = Instant::now();
-    loop {
-        if child
-            .try_wait()
-            .map_err(|source| io_error("polling thread outbox provider process", source))?
-            .is_some()
-        {
-            let output = child
-                .wait_with_output()
-                .map_err(|source| io_error("collecting thread outbox provider output", source))?;
-            return Ok(ProviderOutput {
-                status: output.status,
-                stdout: output.stdout,
-                stderr: output.stderr,
-            });
-        }
-        if started.elapsed() >= timeout {
-            let _kill_result = kill_process_group(&mut child);
-            return Err(ThreadOutboxProviderSupervisorError::TimedOut {
-                timeout_ms: timeout.as_millis() as u64,
-            });
-        }
-        std::thread::sleep(Duration::from_millis(10));
-    }
+    bytes.push(b'\n');
+    Ok(bytes)
 }
 
 struct ThreadOutboxProviderProviderResponse {
@@ -565,29 +528,22 @@ fn redact_json_value(value: &mut JsonValue, credential_delivery: &CredentialDeli
     }
 }
 
-#[cfg(unix)]
-fn kill_process_group(
-    child: &mut std::process::Child,
-) -> Result<(), ThreadOutboxProviderSupervisorError> {
-    if signal_process_group_id(child.id(), ProcessSignal::Force) {
-        return Ok(());
-    }
-    child
-        .kill()
-        .map_err(|source| io_error("killing timed out thread outbox provider process", source))
-}
-
-#[cfg(not(unix))]
-fn kill_process_group(
-    child: &mut std::process::Child,
-) -> Result<(), ThreadOutboxProviderSupervisorError> {
-    child
-        .kill()
-        .map_err(|source| io_error("killing timed out thread outbox provider process", source))
-}
-
 fn duration_ms(started: Instant) -> u64 {
     u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
+}
+
+fn current_dir() -> PathBuf {
+    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+}
+
+fn secret_env_map(
+    credential_delivery: &CredentialDelivery,
+) -> std::collections::BTreeMap<String, String> {
+    credential_delivery
+        .secret_env()
+        .iter()
+        .map(|(key, value)| (key.to_owned(), value.to_owned()))
+        .collect()
 }
 
 fn json_error(
@@ -595,16 +551,6 @@ fn json_error(
     source: serde_json::Error,
 ) -> ThreadOutboxProviderSupervisorError {
     ThreadOutboxProviderSupervisorError::Json {
-        context: context.into(),
-        source,
-    }
-}
-
-fn io_error(
-    context: impl Into<String>,
-    source: std::io::Error,
-) -> ThreadOutboxProviderSupervisorError {
-    ThreadOutboxProviderSupervisorError::Io {
         context: context.into(),
         source,
     }

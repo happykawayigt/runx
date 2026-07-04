@@ -23,9 +23,6 @@ cargo build --manifest-path crates/Cargo.toml -p runx-cli
 Run the skill directly through the CLI:
 
 ```bash
-export RUNX_RECEIPT_SIGN_KID=runx-demo-key
-export RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64=QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI=
-export RUNX_RECEIPT_SIGN_ISSUER_TYPE=hosted
 export RUNX_RECEIPT_DIR="$(mktemp -d)"
 crates/target/debug/runx skill examples/hello-world \
   --message "hello from docs" \
@@ -34,6 +31,9 @@ crates/target/debug/runx skill examples/hello-world \
 ```
 
 The JSON response should report `status: "sealed"` and include a receipt id.
+For local development, no production signer is required: when the signer
+environment is absent, runx seals local-development receipts. Publishing and
+hosted verification still require real authority.
 The npm wrapper may be used for package-distribution checks, but it should
 delegate to the same Rust binary behavior.
 
@@ -46,10 +46,10 @@ The quickstart writes receipts to the temporary directory stored in
 crates/target/debug/runx history <receipt-id> --json
 ```
 
-The history projection should show a `runx.receipt.v1` receipt. The demo key
-above is intentionally public and exists only for local smoke tests. It is still
-durable evidence that runx executed the skill, recorded the input shape, and
-captured the output without relying on prose claims.
+The history projection should show a `runx.receipt.v1` receipt stamped by the
+local issuer. It is durable local evidence that runx executed the skill,
+recorded the input shape, and captured the output without relying on prose
+claims.
 
 ## Production Receipt Signing
 

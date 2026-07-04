@@ -61,7 +61,7 @@ fn top_level_help_and_version_are_native() {
     );
     assert_help_line(
         &help,
-        "runx login [--provider github|google|gitlab] [--for default|publish] [--api-url url] [--local-api] [-j|--json]",
+        "runx login [--provider github|google|gitlab] [--for default|publish] [--api-base-url url] [--allow-local-api] [-j|--json]",
     );
     assert!(
         !help.contains("runx connect"),
@@ -122,7 +122,7 @@ fn nested_skill_history_verify_and_publish_help_are_native() {
     );
     assert_help_line(
         &publish_help_text(),
-        "runx publish <receipt.json> [--api-url url] [--token token] [--local-api] [-j|--json]",
+        "runx publish <receipt.json> [--api-base-url url] [--token token] [--allow-local-api] [-j|--json]",
     );
 }
 
@@ -149,7 +149,7 @@ fn documented_command_help_is_native() {
     );
     assert_help_line(
         &login_help_text(),
-        "runx login [--provider github|google|gitlab] [--for default|publish] [--api-url url] [--local-api] [-j|--json]",
+        "runx login [--provider github|google|gitlab] [--for default|publish] [--api-base-url url] [--allow-local-api] [-j|--json]",
     );
     assert_help_line(
         &registry_help_text(),
@@ -684,6 +684,25 @@ fn routes_registry_to_native_plan() {
             upsert: false,
             json: true,
         })
+    );
+}
+
+#[test]
+fn rejects_zero_registry_limit() {
+    assert_eq!(
+        plan(&["registry", "search", "echo", "--limit", "0"]),
+        RouterAction::Error("--limit must be greater than zero".to_owned())
+    );
+}
+
+#[test]
+fn rejects_unsafe_registry_version() {
+    assert_eq!(
+        plan(&["registry", "install", "acme/echo@../bad"]),
+        RouterAction::Error(
+            "registry version may only contain ASCII letters, numbers, '.', '_', '-', or '+'"
+                .to_owned()
+        )
     );
 }
 

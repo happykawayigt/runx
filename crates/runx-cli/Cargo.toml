@@ -33,6 +33,7 @@ runx-runtime = { workspace = true, features = ["cli-tool", "catalog", "mcp", "mc
 serde.workspace = true
 serde_json.workspace = true
 serde_norway.workspace = true
+url = "2.5.7"
 
 [dev-dependencies]
 

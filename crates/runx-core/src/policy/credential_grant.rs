@@ -4,6 +4,23 @@ use serde::{Deserialize, Serialize};
 use super::rfc3339::parse_rfc3339_moment;
 use super::{AuthorityKind, LocalAdmissionGrant, scope::scope_allows};
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct CredentialGrantRequirementError {
+    message: String,
+}
+
+impl CredentialGrantRequirementError {
+    fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+        }
+    }
+
+    pub(crate) fn message(&self) -> &str {
+        &self.message
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) struct CredentialGrantRequirement {
@@ -21,18 +38,13 @@ pub(crate) struct CredentialGrantRequirement {
 
 pub(crate) fn credential_grant_requirement(
     auth: Option<&JsonValue>,
-) -> Option<CredentialGrantRequirement> {
+) -> Result<Option<CredentialGrantRequirement>, CredentialGrantRequirementError> {
     match auth {
-        None | Some(JsonValue::Null) | Some(JsonValue::Bool(false)) => None,
+        None | Some(JsonValue::Null) | Some(JsonValue::Bool(false)) => Ok(None),
         Some(JsonValue::Object(object)) => requirement_from_object(object),
-        Some(_) => Some(CredentialGrantRequirement {
-            provider: "unknown".to_owned(),
-            scopes: Vec::new(),
-            scope_family: None,
-            authority_kind: None,
-            target_repo: None,
-            target_locator: None,
-        }),
+        Some(_) => Err(CredentialGrantRequirementError::new(
+            "connected auth must be an object, null, or false",
+        )),
     }
 }
 
@@ -110,39 +122,62 @@ fn has_requirement_reference(requirement: &CredentialGrantRequirement) -> bool {
         || truthy_string(&requirement.target_locator)
 }
 
-fn requirement_from_object(object: &JsonObject) -> Option<CredentialGrantRequirement> {
+fn requirement_from_object(
+    object: &JsonObject,
+) -> Result<Option<CredentialGrantRequirement>, CredentialGrantRequirementError> {
     let auth_type = string_field(object, "type");
     if matches!(auth_type, Some("env" | "none" | "local")) {
-        return None;
+        return Ok(None);
     }
 
-    Some(CredentialGrantRequirement {
-        provider: string_field(object, "provider")
-            .or(auth_type)
-            .unwrap_or("unknown")
-            .to_owned(),
-        scopes: string_array_field(object, "scopes"),
+    let provider = string_field(object, "provider")
+        .or(auth_type)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| CredentialGrantRequirementError::new("connected auth provider is required"))?
+        .to_owned();
+    let scopes = string_array_field(object, "scopes")?;
+    if scopes.is_empty() {
+        return Err(CredentialGrantRequirementError::new(
+            "connected auth scopes must include at least one non-empty string",
+        ));
+    }
+
+    Ok(Some(CredentialGrantRequirement {
+        provider,
+        scopes,
         scope_family: owned_string_field(object, "scope_family"),
         authority_kind: authority_kind_field(object, "authority_kind"),
         target_repo: owned_string_field(object, "target_repo"),
         target_locator: owned_string_field(object, "target_locator"),
-    })
+    }))
 }
 
 fn owned_string_field(object: &JsonObject, field: &str) -> Option<String> {
     string_field(object, field).map(ToOwned::to_owned)
 }
 
-fn string_array_field(object: &JsonObject, field: &str) -> Vec<String> {
+fn string_array_field(
+    object: &JsonObject,
+    field: &str,
+) -> Result<Vec<String>, CredentialGrantRequirementError> {
     match object.get(field) {
         Some(JsonValue::Array(values)) => values
             .iter()
-            .filter_map(|value| match value {
-                JsonValue::String(scope) => Some(scope.clone()),
-                _ => None,
+            .map(|value| match value {
+                JsonValue::String(scope) if !scope.trim().is_empty() => Ok(scope.clone()),
+                JsonValue::String(_) => Err(CredentialGrantRequirementError::new(format!(
+                    "connected auth {field} cannot include empty strings"
+                ))),
+                _ => Err(CredentialGrantRequirementError::new(format!(
+                    "connected auth {field} must contain only strings"
+                ))),
             })
             .collect(),
-        _ => Vec::new(),
+        Some(_) => Err(CredentialGrantRequirementError::new(format!(
+            "connected auth {field} must be an array"
+        ))),
+        None => Ok(Vec::new()),
     }
 }
 
@@ -163,7 +198,9 @@ fn truthy_string(value: &Option<String>) -> bool {
 mod tests {
     use proptest::prelude::*;
 
-    use super::{CredentialGrantRequirement, find_matching_grant};
+    use runx_contracts::{JsonObject, JsonValue};
+
+    use super::{CredentialGrantRequirement, credential_grant_requirement, find_matching_grant};
     use crate::policy::{LocalAdmissionGrant, LocalAdmissionGrantStatus};
 
     proptest! {
@@ -269,6 +306,66 @@ mod tests {
             find_matching_grant(&requirement, &grants, Some("2026-05-22T00:00:00Z"), false);
 
         assert!(matched.is_none());
+    }
+
+    #[test]
+    fn non_object_connected_auth_is_rejected() {
+        let auth = JsonValue::String("github".to_owned());
+
+        let error = credential_grant_requirement(Some(&auth)).unwrap_err();
+
+        assert_eq!(
+            error.message(),
+            "connected auth must be an object, null, or false"
+        );
+    }
+
+    #[test]
+    fn connected_auth_requires_provider() {
+        let auth = JsonValue::Object(JsonObject::from_iter([(
+            "scopes".to_owned(),
+            JsonValue::Array(vec![JsonValue::String("repo:read".to_owned())]),
+        )]));
+
+        let error = credential_grant_requirement(Some(&auth)).unwrap_err();
+
+        assert_eq!(error.message(), "connected auth provider is required");
+    }
+
+    #[test]
+    fn connected_auth_requires_non_empty_scopes() {
+        let auth = JsonValue::Object(JsonObject::from_iter([(
+            "provider".to_owned(),
+            JsonValue::String("github".to_owned()),
+        )]));
+
+        let error = credential_grant_requirement(Some(&auth)).unwrap_err();
+
+        assert_eq!(
+            error.message(),
+            "connected auth scopes must include at least one non-empty string"
+        );
+    }
+
+    #[test]
+    fn connected_auth_scope_values_must_be_non_empty_strings() {
+        let auth = JsonValue::Object(JsonObject::from_iter([
+            (
+                "provider".to_owned(),
+                JsonValue::String("github".to_owned()),
+            ),
+            (
+                "scopes".to_owned(),
+                JsonValue::Array(vec![JsonValue::String(String::new())]),
+            ),
+        ]));
+
+        let error = credential_grant_requirement(Some(&auth)).unwrap_err();
+
+        assert_eq!(
+            error.message(),
+            "connected auth scopes cannot include empty strings"
+        );
     }
 
     fn github_repo_read_requirement() -> CredentialGrantRequirement {
