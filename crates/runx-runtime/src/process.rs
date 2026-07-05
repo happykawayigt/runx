@@ -1,3 +1,9 @@
+#[cfg(any(
+    feature = "cli-tool",
+    feature = "external-adapter",
+    feature = "thread-outbox-provider",
+    feature = "mcp"
+))]
 mod signals;
 
 #[cfg(any(
@@ -33,12 +39,14 @@ mod timeout;
 #[cfg(feature = "mcp")]
 mod tokio_supervisor;
 
+#[cfg(any(feature = "cli-tool", feature = "external-adapter"))]
+pub(crate) use self::capture::CapturedOutput;
 #[cfg(any(
     feature = "cli-tool",
     feature = "external-adapter",
-    feature = "thread-outbox-provider"
+    feature = "thread-outbox-provider",
+    feature = "mcp"
 ))]
-pub(crate) use self::capture::CapturedOutput;
 pub(crate) use self::signals::{ProcessSignal, configure_process_group, signal_process_group_id};
 #[cfg(any(
     feature = "cli-tool",

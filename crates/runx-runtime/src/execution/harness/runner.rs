@@ -113,6 +113,28 @@ pub fn run_harness_fixture(
 }
 
 #[cfg(feature = "cli-tool")]
+pub fn run_harness_fixture_with_env(
+    fixture_path: impl AsRef<Path>,
+    env: BTreeMap<String, String>,
+) -> Result<HarnessReplayOutput, HarnessReplayError> {
+    run_harness_fixture_with_adapter(
+        fixture_path,
+        crate::execution::skill_front::SkillRunGraphAdapter::default(),
+        fixture_runtime_options_from_env(env)?,
+    )
+}
+
+#[cfg(not(feature = "cli-tool"))]
+pub fn run_harness_fixture_with_env(
+    fixture_path: impl AsRef<Path>,
+    env: BTreeMap<String, String>,
+) -> Result<HarnessReplayOutput, HarnessReplayError> {
+    let _ = fixture_path;
+    let _ = env;
+    Err(HarnessReplayError::CliToolFeatureDisabled)
+}
+
+#[cfg(feature = "cli-tool")]
 pub fn run_harness_fixture_cli_tool(
     fixture_path: impl AsRef<Path>,
 ) -> Result<HarnessReplayOutput, HarnessReplayError> {
@@ -125,9 +147,16 @@ pub fn run_harness_fixture_cli_tool(
 
 #[cfg(feature = "cli-tool")]
 fn fixture_runtime_options() -> Result<RuntimeOptions, HarnessReplayError> {
+    fixture_runtime_options_from_env(crate::services::process_env_snapshot())
+}
+
+#[cfg(feature = "cli-tool")]
+fn fixture_runtime_options_from_env(
+    env: BTreeMap<String, String>,
+) -> Result<RuntimeOptions, HarnessReplayError> {
     Ok(RuntimeOptions {
         created_at: crate::time::DEFAULT_CREATED_AT.to_owned(),
-        ..RuntimeOptions::from_process_env()?
+        ..RuntimeOptions::from_env(env)?
     })
 }
 

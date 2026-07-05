@@ -74,16 +74,19 @@ pub(super) fn read_skill_package(
     } else {
         Vec::new()
     };
+    let skill_dir = markdown_path.parent().map(Path::to_path_buf);
     let harness_package = if include_harness {
         publish_harness_package(
             &markdown,
             profile_document.as_deref(),
             &harness_package_files,
+            skill_dir.as_deref(),
         )?
     } else {
         PublishHarnessPackage {
             path: None,
             temp_dir: None,
+            fixture_paths: Vec::new(),
         }
     };
     Ok(SkillPackage {
@@ -91,12 +94,14 @@ pub(super) fn read_skill_package(
         profile_document,
         harness_path: harness_package.path,
         harness_temp_dir: harness_package.temp_dir,
+        harness_fixture_paths: harness_package.fixture_paths,
         package_files,
     })
 }
 
 pub(super) fn run_publish_harness(
     harness_path: Option<&Path>,
+    fixture_paths: &[PathBuf],
 ) -> Result<RegistryPublishHarnessReport, RegistryCliError> {
     let Some(harness_path) = harness_path else {
         return Ok(RegistryPublishHarnessReport::not_declared());
@@ -116,6 +121,9 @@ pub(super) fn run_publish_harness(
         ))
     })?;
     let report = publish_harness_report(report);
+    if report.status == "not_declared" && !fixture_paths.is_empty() {
+        return run_standalone_publish_harness(fixture_paths);
+    }
     if report.failed() {
         return Err(internal_error(format!(
             "Harness failed for {}: {}",
@@ -126,12 +134,45 @@ pub(super) fn run_publish_harness(
     Ok(report)
 }
 
+fn run_standalone_publish_harness(
+    fixture_paths: &[PathBuf],
+) -> Result<RegistryPublishHarnessReport, RegistryCliError> {
+    let harness_env = publish_harness_env();
+    let mut case_names = Vec::new();
+    let mut receipt_ids = Vec::new();
+    let mut graph_case_count = 0usize;
+    for fixture_path in fixture_paths {
+        let output = runx_runtime::run_harness_fixture_with_env(fixture_path, harness_env.clone())
+            .map_err(|error| {
+                internal_error(format!(
+                    "standalone publish harness failed for {}: {error}",
+                    fixture_path.display()
+                ))
+            })?;
+        if matches!(output.fixture.kind, runx_runtime::HarnessFixtureKind::Graph) {
+            graph_case_count += 1;
+        }
+        case_names.push(output.fixture.name);
+        receipt_ids.push(output.receipt.id.to_string());
+    }
+    Ok(RegistryPublishHarnessReport {
+        status: "passed".to_owned(),
+        case_count: fixture_paths.len(),
+        assertion_error_count: 0,
+        assertion_errors: Vec::new(),
+        case_names,
+        receipt_ids,
+        graph_case_count,
+    })
+}
+
 #[derive(Clone, Debug)]
 pub(super) struct SkillPackage {
     pub(super) markdown: String,
     pub(super) profile_document: Option<String>,
     pub(super) harness_path: Option<PathBuf>,
     pub(super) harness_temp_dir: Option<PathBuf>,
+    pub(super) harness_fixture_paths: Vec<PathBuf>,
     pub(super) package_files: Vec<HostedSkillPackageFile>,
 }
 
@@ -144,6 +185,7 @@ pub(super) struct HostedSkillPackageFile {
 struct PublishHarnessPackage {
     path: Option<PathBuf>,
     temp_dir: Option<PathBuf>,
+    fixture_paths: Vec<PathBuf>,
 }
 
 const MAX_REMOTE_PUBLISH_FILE_BYTES: u64 = 512 * 1024;
@@ -191,11 +233,13 @@ fn publish_harness_package(
     markdown: &str,
     profile_document: Option<&str>,
     package_files: &[HostedSkillPackageFile],
+    source_skill_dir: Option<&Path>,
 ) -> Result<PublishHarnessPackage, RegistryCliError> {
     let Some(profile_document) = profile_document else {
         return Ok(PublishHarnessPackage {
             path: None,
             temp_dir: None,
+            fixture_paths: Vec::new(),
         });
     };
     let temp_dir = unique_temp_dir("runx-publish-profile-harness")?;
@@ -228,10 +272,64 @@ fn publish_harness_package(
             ))
         })?;
     }
+    let fixture_paths = copy_standalone_publish_fixtures(source_skill_dir, &temp_dir)?;
     Ok(PublishHarnessPackage {
         path: Some(temp_dir.clone()),
         temp_dir: Some(temp_dir),
+        fixture_paths,
     })
+}
+
+fn copy_standalone_publish_fixtures(
+    source_skill_dir: Option<&Path>,
+    temp_dir: &Path,
+) -> Result<Vec<PathBuf>, RegistryCliError> {
+    let Some(source_skill_dir) = source_skill_dir else {
+        return Ok(Vec::new());
+    };
+    let source_fixtures_dir = source_skill_dir.join("fixtures");
+    let Ok(entries) = fs::read_dir(&source_fixtures_dir) else {
+        return Ok(Vec::new());
+    };
+    let destination_fixtures_dir = temp_dir.join("fixtures");
+    fs::create_dir_all(&destination_fixtures_dir).map_err(|error| {
+        internal_error(format!(
+            "failed to create publish harness fixtures directory {}: {error}",
+            destination_fixtures_dir.display()
+        ))
+    })?;
+    let mut fixture_paths = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|error| {
+            internal_error(format!(
+                "failed to read publish harness fixture entry in {}: {error}",
+                source_fixtures_dir.display()
+            ))
+        })?;
+        let source_path = entry.path();
+        if !is_standalone_publish_fixture(&source_path) {
+            continue;
+        }
+        let destination = destination_fixtures_dir.join(entry.file_name());
+        fs::copy(&source_path, &destination).map_err(|error| {
+            internal_error(format!(
+                "failed to copy publish harness fixture {}: {error}",
+                source_path.display()
+            ))
+        })?;
+        fixture_paths.push(destination);
+    }
+    fixture_paths.sort();
+    Ok(fixture_paths)
+}
+
+fn is_standalone_publish_fixture(path: &Path) -> bool {
+    if !path.is_file() {
+        return false;
+    }
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| matches!(extension, "yaml" | "yml"))
 }
 
 fn write_publish_harness_file(path: &Path, content: &str) -> Result<(), std::io::Error> {

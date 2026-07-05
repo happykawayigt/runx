@@ -3,7 +3,7 @@
 // as a single trust surface.
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use runx_contracts::{
     JsonValue, ThreadOutboxProviderFetch, ThreadOutboxProviderManifest,
@@ -92,15 +92,8 @@ impl ThreadOutboxProviderProcessSupervisor {
         request: ThreadOutboxProviderRequest<'_>,
         credential_delivery: &CredentialDelivery,
     ) -> Result<ThreadOutboxProviderProcessOutcome, ThreadOutboxProviderSupervisorError> {
-        let started = Instant::now();
         let output = self.run_provider_process(manifest, &request, credential_delivery)?;
-        self.interpret_provider_process_output(
-            manifest,
-            &request,
-            credential_delivery,
-            output,
-            started,
-        )
+        self.interpret_provider_process_output(manifest, &request, credential_delivery, output)
     }
 
     fn run_provider_process(
@@ -137,11 +130,16 @@ impl ThreadOutboxProviderProcessSupervisor {
         request: &ThreadOutboxProviderRequest<'_>,
         credential_delivery: &CredentialDelivery,
         output: ProcessOutcome,
-        started: Instant,
     ) -> Result<ThreadOutboxProviderProcessOutcome, ThreadOutboxProviderSupervisorError> {
         if output.timed_out {
             return Err(ThreadOutboxProviderSupervisorError::TimedOut {
                 timeout_ms: self.options.timeout_ms,
+            });
+        }
+        if !output.cleanup_errors.is_empty() {
+            return Err(ThreadOutboxProviderSupervisorError::Process {
+                context: "cleaning thread outbox provider process resources".to_owned(),
+                detail: output.cleanup_errors.join("; "),
             });
         }
         let redacted_stderr = credential_delivery
@@ -170,7 +168,7 @@ impl ThreadOutboxProviderProcessSupervisor {
             provider_output: provider_response.output,
             redacted_stderr,
             process_exit_code: output.status.code(),
-            duration_ms: duration_ms(started),
+            duration_ms: output.duration_ms,
         })
     }
 }
@@ -552,10 +550,6 @@ fn redact_json_value(value: &mut JsonValue, credential_delivery: &CredentialDeli
         }
         JsonValue::Null | JsonValue::Bool(_) | JsonValue::Number(_) => {}
     }
-}
-
-fn duration_ms(started: Instant) -> u64 {
-    u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
 
 fn current_dir() -> PathBuf {

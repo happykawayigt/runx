@@ -10,4 +10,5 @@ pub use fixtures::{
 };
 pub use runner::{
     HarnessReplayError, HarnessReplayOutput, run_harness_fixture, run_harness_fixture_with_adapter,
+    run_harness_fixture_with_env,
 };

@@ -274,15 +274,19 @@ fn run_publish(
                 cwd,
                 true,
             )?;
-            let harness = package::run_publish_harness(package.harness_path.as_deref());
+            let harness = package::run_publish_harness(
+                package.harness_path.as_deref(),
+                &package.harness_fixture_paths,
+            );
             if let Some(temp_dir) = package.harness_temp_dir.as_ref() {
                 let _ignored = fs::remove_dir_all(temp_dir);
             }
-            harness?;
+            let harness = harness?;
             let result = remote_publish::publish_remote_skill_package(
                 &registry_url,
                 &plan,
                 &package,
+                &harness,
                 env,
                 cwd,
             )?;
@@ -309,7 +313,10 @@ fn run_publish(
                 cwd,
                 true,
             )?;
-            let harness = package::run_publish_harness(package.harness_path.as_deref());
+            let harness = package::run_publish_harness(
+                package.harness_path.as_deref(),
+                &package.harness_fixture_paths,
+            );
             if let Some(temp_dir) = package.harness_temp_dir.as_ref() {
                 let _ignored = fs::remove_dir_all(temp_dir);
             }

@@ -36,6 +36,7 @@ pub mod journal;
 mod json_render;
 mod lifecycle;
 pub mod list;
+#[cfg(feature = "thread-outbox-provider")]
 pub mod outbox_provider;
 pub mod parser_eval;
 mod path_util;
@@ -101,7 +102,7 @@ pub use error::RuntimeError;
 pub use harness::{
     HarnessExpectedStatus, HarnessFixtureError, HarnessFixtureKind, HarnessReplayError,
     HarnessReplayOutput, load_harness_fixture, parse_harness_fixture, run_harness_fixture,
-    run_harness_fixture_with_adapter,
+    run_harness_fixture_with_adapter, run_harness_fixture_with_env,
 };
 pub use host::{Host, NoopHost};
 pub use journal::ExecutionJournal;
@@ -113,6 +114,7 @@ pub use orchestrator::{
     GraphRunRequest, HarnessRunRequest, InlineHarnessRequest, LocalOrchestrator, OrchestratorError,
     RunContinuation, RunRequest, RunResult, RunStatus, SkillRunRequest,
 };
+#[cfg(feature = "thread-outbox-provider")]
 pub use outbox_provider::{
     ThreadOutboxProviderProcessOutcome, ThreadOutboxProviderProcessSupervisor,
     ThreadOutboxProviderSupervisorError, ThreadOutboxProviderSupervisorOptions,
