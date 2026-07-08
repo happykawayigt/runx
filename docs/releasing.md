@@ -27,8 +27,8 @@ the binary was installed.
 
 The source tree keeps its development version; release jobs **stamp** the tag
 version, they never commit it. One command stamps every version-bearing
-manifest (npm `package.json` + its `optionalDependencies`, `runx-cli/Cargo.toml`,
-and `Cargo.lock`):
+manifest: npm `package.json` + its `optionalDependencies`, the Cargo workspace
+dependency versions, every publishable internal Cargo package, and `Cargo.lock`.
 
 ```bash
 pnpm exec tsx scripts/set-release-version.ts X.Y.Z          # write
@@ -37,9 +37,11 @@ pnpm exec tsx scripts/set-release-version.ts --check X.Y.Z  # CI drift guard
 
 It accepts a raw `cli-vX.Y.Z` / `vX.Y.Z` tag and strips the prefix.
 
-The dependency crates (`runx-runtime`, `runx-contracts`, ...) carry their own
-versions and are **not** tied to the release version; they only publish to
-crates.io when their own version is bumped.
+Cargo is published as one release graph. The release job publishes the internal
+crates in dependency order and waits for each `crate@X.Y.Z` to appear on
+crates.io before publishing the next dependent crate. This keeps
+`cargo install runx-cli --version X.Y.Z` on the same code graph as npm and the
+binary archives.
 
 ## Pipeline
 

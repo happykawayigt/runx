@@ -15,6 +15,7 @@ const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
 interface Options {
   readonly version: string;
   readonly check: boolean;
+  readonly releaseGraph: boolean;
 }
 
 interface Finding {
@@ -23,17 +24,56 @@ interface Finding {
 }
 
 const packageJsonPath = path.join(workspaceRoot, "packages", "cli", "package.json");
-const cargoTomlPath = path.join(workspaceRoot, "crates", "runx-cli", "Cargo.toml");
+const cratesWorkspacePath = path.join(workspaceRoot, "crates", "Cargo.toml");
 const cargoLockPath = path.join(workspaceRoot, "crates", "Cargo.lock");
+const cargoPackagePaths = [
+  path.join(workspaceRoot, "crates", "runx-cli", "Cargo.toml"),
+  path.join(workspaceRoot, "crates", "runx-contracts", "Cargo.toml"),
+  path.join(workspaceRoot, "crates", "runx-contracts-derive", "Cargo.toml"),
+  path.join(workspaceRoot, "crates", "runx-core", "Cargo.toml"),
+  path.join(workspaceRoot, "crates", "runx-pay", "Cargo.toml"),
+  path.join(workspaceRoot, "crates", "runx-parser", "Cargo.toml"),
+  path.join(workspaceRoot, "crates", "runx-receipts", "Cargo.toml"),
+  path.join(workspaceRoot, "crates", "runx-runtime", "Cargo.toml"),
+  path.join(workspaceRoot, "crates", "runx-sdk", "Cargo.toml"),
+];
+const cargoPackageNames = [
+  "runx-cli",
+  "runx-contracts",
+  "runx-contracts-derive",
+  "runx-core",
+  "runx-pay",
+  "runx-parser",
+  "runx-receipts",
+  "runx-runtime",
+  "runx-sdk",
+];
+const cargoWorkspaceDependencyNames = [
+  "runx-contracts",
+  "runx-contracts-derive",
+  "runx-core",
+  "runx-pay",
+  "runx-parser",
+  "runx-receipts",
+  "runx-runtime",
+];
 const parsedOptions = parseArgs(process.argv.slice(2));
 const options = parsedOptions.version
-  ? parsedOptions
-  : { ...parsedOptions, version: currentPackageVersion(packageJsonPath) };
+  ? { ...parsedOptions, releaseGraph: true }
+  : { ...parsedOptions, version: currentPackageVersion(packageJsonPath), releaseGraph: false };
 const findings: Finding[] = [];
 
 stampPackageJson(packageJsonPath, options, findings);
-stampCargoToml(cargoTomlPath, options, findings);
-stampCargoLock(cargoLockPath, options, findings);
+if (options.releaseGraph) {
+  stampCargoWorkspace(cratesWorkspacePath, options, findings);
+  for (const cargoPackagePath of cargoPackagePaths) {
+    stampCargoPackage(cargoPackagePath, options, findings);
+  }
+  stampCargoLock(cargoLockPath, cargoPackageNames, options, findings);
+} else {
+  stampCargoPackage(path.join(workspaceRoot, "crates", "runx-cli", "Cargo.toml"), options, findings);
+  stampCargoLock(cargoLockPath, ["runx-cli"], options, findings);
+}
 
 if (findings.length > 0) {
   emit({ status: options.check ? "drift" : "failed", version: options.version, findings });
@@ -42,7 +82,14 @@ if (findings.length > 0) {
 emit({
   status: options.check ? "matched" : "stamped",
   version: options.version,
-  files: [relative(packageJsonPath), relative(cargoTomlPath), relative(cargoLockPath)],
+  files: options.releaseGraph
+    ? [
+        relative(packageJsonPath),
+        relative(cratesWorkspacePath),
+        ...cargoPackagePaths.map(relative),
+        relative(cargoLockPath),
+      ]
+    : [relative(packageJsonPath), "crates/runx-cli/Cargo.toml", relative(cargoLockPath)],
 });
 
 function stampPackageJson(filePath: string, opts: Options, output: Finding[]): void {
@@ -69,7 +116,33 @@ function stampPackageJson(filePath: string, opts: Options, output: Finding[]): v
   writeFileSync(filePath, `${JSON.stringify(manifest, null, 2)}\n`);
 }
 
-function stampCargoToml(filePath: string, opts: Options, output: Finding[]): void {
+function stampCargoWorkspace(filePath: string, opts: Options, output: Finding[]): void {
+  let raw = readFileSync(filePath, "utf8");
+  for (const dependencyName of cargoWorkspaceDependencyNames) {
+    const escapedName = escapeRegExp(dependencyName);
+    const pattern = new RegExp(`^(${escapedName} = \\{ path = "[^"]+", version = ")([^"]+)(" \\})$`, "mu");
+    const match = raw.match(pattern);
+    if (!match) {
+      output.push({ file: relative(filePath), message: `could not find workspace dependency ${dependencyName}` });
+      continue;
+    }
+    if (opts.check) {
+      if (match[2] !== opts.version) {
+        output.push({
+          file: relative(filePath),
+          message: `${dependencyName} workspace dependency version is ${match[2]}, expected ${opts.version}`,
+        });
+      }
+      continue;
+    }
+    raw = raw.replace(pattern, `$1${opts.version}$3`);
+  }
+  if (!opts.check) {
+    writeFileSync(filePath, raw);
+  }
+}
+
+function stampCargoPackage(filePath: string, opts: Options, output: Finding[]): void {
   const raw = readFileSync(filePath, "utf8");
   // Match the first `version = "..."` in the [package] section.
   const match = raw.match(/^version = "([^"]*)"/mu);
@@ -86,25 +159,33 @@ function stampCargoToml(filePath: string, opts: Options, output: Finding[]): voi
   writeFileSync(filePath, raw.replace(/^version = "[^"]*"/mu, `version = "${opts.version}"`));
 }
 
-function stampCargoLock(filePath: string, opts: Options, output: Finding[]): void {
-  const raw = readFileSync(filePath, "utf8");
-  // Update the version inside the [[package]] block whose name is runx-cli.
-  const block = /(name = "runx-cli"\r?\nversion = ")([^"]*)(")/u;
-  const match = raw.match(block);
-  if (!match) {
-    output.push({ file: relative(filePath), message: "could not find the runx-cli lock entry" });
-    return;
-  }
-  if (opts.check) {
-    if (match[2] !== opts.version) {
-      output.push({ file: relative(filePath), message: `runx-cli lock version is ${match[2]}, expected ${opts.version}` });
+function stampCargoLock(filePath: string, packageNames: readonly string[], opts: Options, output: Finding[]): void {
+  let raw = readFileSync(filePath, "utf8");
+  for (const packageName of packageNames) {
+    const escapedName = escapeRegExp(packageName);
+    const block = new RegExp(`(name = "${escapedName}"\\r?\\nversion = ")([^"]+)(")`, "u");
+    const match = raw.match(block);
+    if (!match) {
+      output.push({ file: relative(filePath), message: `could not find the ${packageName} lock entry` });
+      continue;
     }
-    return;
+    if (opts.check) {
+      if (match[2] !== opts.version) {
+        output.push({
+          file: relative(filePath),
+          message: `${packageName} lock version is ${match[2]}, expected ${opts.version}`,
+        });
+      }
+      continue;
+    }
+    raw = raw.replace(block, `$1${opts.version}$3`);
   }
-  writeFileSync(filePath, raw.replace(block, `$1${opts.version}$3`));
+  if (!opts.check) {
+    writeFileSync(filePath, raw);
+  }
 }
 
-function parseArgs(argv: readonly string[]): Options {
+function parseArgs(argv: readonly string[]): Omit<Options, "releaseGraph"> {
   let version = "";
   let check = false;
   for (let index = 0; index < argv.length; index += 1) {
@@ -151,6 +232,10 @@ function currentPackageVersion(filePath: string): string {
 
 function relative(filePath: string): string {
   return path.relative(workspaceRoot, filePath).split(path.sep).join("/");
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 }
 
 function emit(payload: unknown): void {

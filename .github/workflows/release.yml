@@ -349,14 +349,46 @@ jobs:
         working-directory: crates
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          RUNX_RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
         run: |
-          # Dependency crates carry their own versions and only publish when bumped;
-          # `cargo publish` is a no-op-with-error if the version already exists, so
-          # tolerate that and continue. runx-cli publishes last.
-          for crate in runx-receipts runx-core runx-parser runx-contracts runx-runtime runx-sdk runx-cli; do
+          crate_version_exists() {
+            cargo info "$1@$RUNX_RELEASE_VERSION" >/dev/null 2>&1
+          }
+
+          wait_for_crate_version() {
+            local crate="$1"
+            for attempt in $(seq 1 30); do
+              if crate_version_exists "$crate"; then
+                return 0
+              fi
+              echo "waiting for $crate@$RUNX_RELEASE_VERSION to appear on crates.io ($attempt/30)"
+              sleep 10
+            done
+            echo "::error::$crate@$RUNX_RELEASE_VERSION did not appear on crates.io after publish"
+            return 1
+          }
+
+          crates=(
+            runx-contracts-derive
+            runx-contracts
+            runx-core
+            runx-parser
+            runx-receipts
+            runx-runtime
+            runx-pay
+            runx-sdk
+            runx-cli
+          )
+
+          for crate in "${crates[@]}"; do
             echo "::group::publish $crate"
-            cargo publish -p "$crate" --allow-dirty || \
-              echo "::warning::$crate publish skipped (already published or blocked)"
+            if crate_version_exists "$crate"; then
+              echo "$crate@$RUNX_RELEASE_VERSION already published; skipping"
+              echo "::endgroup::"
+              continue
+            fi
+            cargo publish -p "$crate" --allow-dirty
+            wait_for_crate_version "$crate"
             echo "::endgroup::"
           done
 
