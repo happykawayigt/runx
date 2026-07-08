@@ -351,8 +351,36 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
           RUNX_RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
         run: |
+          set -euo pipefail
+
           crate_version_exists() {
-            cargo info "$1@$RUNX_RELEASE_VERSION" >/dev/null 2>&1
+            local crate="$1"
+            local response_path
+            response_path="$(mktemp)"
+            if ! curl -fsSL \
+              -H "User-Agent: runxhq-release-bot" \
+              -o "$response_path" \
+              "https://crates.io/api/v1/crates/$crate"; then
+              rm -f "$response_path"
+              return 1
+            fi
+            local status
+            if CRATES_RESPONSE_PATH="$response_path" node <<'NODE'
+          const fs = require("node:fs");
+
+          const responsePath = process.env.CRATES_RESPONSE_PATH;
+          const releaseVersion = process.env.RUNX_RELEASE_VERSION;
+          const response = JSON.parse(fs.readFileSync(responsePath, "utf8"));
+          const exists = response.versions.some((version) => version.num === releaseVersion);
+          process.exit(exists ? 0 : 1);
+          NODE
+            then
+              status=0
+            else
+              status=$?
+            fi
+            rm -f "$response_path"
+            return "$status"
           }
 
           wait_for_crate_version() {
