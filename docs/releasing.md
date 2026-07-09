@@ -10,6 +10,11 @@ workspace, `release/status.json` is the operator source of truth for package
 release status, the CLI package allowlist, and the cloud pin. The git tag is the
 immutable OSS release event that the public workflow builds.
 
+Release policy lives at the workspace root (`AGENTS.md` plus
+`release/status.json`). This doc is the OSS maintainer runbook. If a release doc,
+package manifest, cloud pin, or channel table disagrees with `release/status.json`,
+fix the drift there and run the root checks; do not invent a second release flow.
+
 The same product version is used on every active channel. The release workflow
 is secret-gated, so package-manager channels that are not configured are skipped
 with a warning instead of blocking the npm/GitHub release.
@@ -131,6 +136,7 @@ package.
 # 1. from the workspace root, prepare cloud/status together:
 pnpm release:prepare -- --version X.Y.Z
 pnpm release:check
+pnpm release:check:live # required before claiming public package channels are live
 
 # 2. dry-run from the Actions tab (workflow_dispatch, version = X.Y.Z)
 # 3. tag and push:
