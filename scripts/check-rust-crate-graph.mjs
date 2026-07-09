@@ -126,7 +126,7 @@ for (const crateName of expectedMembers) {
   crateManifests.set(crateName, await readManifest(`${crateName}/Cargo.toml`));
 }
 
-const releaseStampedGraph = isReleaseStampedGraph(crateManifests, workspaceRunxVersions);
+checkNoCliVersionBleed(crateManifests, workspaceRunxVersions);
 
 for (const crateName of expectedMembers) {
   const manifest = crateManifests.get(crateName);
@@ -135,7 +135,7 @@ for (const crateName of expectedMembers) {
     findings.push(`${crateName}/Cargo.toml package name is ${packageName ?? "missing"}, expected ${crateName}`);
   }
   checkWorkspaceDependencyVersion(crateName, manifest);
-  checkPublishingReadiness(crateName, manifest, releaseStampedGraph);
+  checkPublishingReadiness(crateName, manifest);
   checkRunxDependencies(crateName, manifest);
   await checkRunxDependencyUsage(crateName, manifest);
   checkDisallowedDependencies(crateName, manifest);
@@ -191,16 +191,6 @@ function parseWorkspaceRunxDependencyVersions(manifest) {
   return versions;
 }
 
-function isReleaseStampedGraph(manifests, workspaceVersions) {
-  const releaseVersion = parsePackageVersion(manifests.get("runx-cli") ?? "");
-  if (!releaseVersion) {
-    return false;
-  }
-  const packagesMatch = expectedMembers.every((crateName) => parsePackageVersion(manifests.get(crateName) ?? "") === releaseVersion);
-  const workspaceDependenciesMatch = [...workspaceVersions.values()].every((version) => version === releaseVersion);
-  return packagesMatch && workspaceDependenciesMatch;
-}
-
 function checkMembers(actualMembers) {
   const expected = [...expectedMembers].sort();
   if (actualMembers.join("\n") !== expected.join("\n")) {
@@ -224,14 +214,35 @@ function checkWorkspaceDependencyVersion(crateName, manifest) {
   }
 }
 
-function checkPublishingReadiness(crateName, manifest, releaseStamped) {
+function checkNoCliVersionBleed(manifests, workspaceVersions) {
+  const cliVersion = parsePackageVersion(manifests.get("runx-cli") ?? "");
+  if (!cliVersion) {
+    return;
+  }
+
+  const stampedCrates = expectedMembers
+    .filter((crateName) => crateName !== "runx-cli")
+    .filter((crateName) => parsePackageVersion(manifests.get(crateName) ?? "") === cliVersion);
+  const nonCliWorkspaceDeps = [...workspaceVersions.entries()].filter(([crateName]) => crateName !== "runx-cli");
+  const stampedWorkspaceDeps = nonCliWorkspaceDeps
+    .filter(([, version]) => version === cliVersion)
+    .map(([crateName]) => crateName);
+
+  if (stampedCrates.length === expectedMembers.length - 1 && stampedWorkspaceDeps.length === nonCliWorkspaceDeps.length) {
+    findings.push(
+      "CLI releases must not stamp the internal Rust crate graph. Only runx-cli may match the cli-v tag unless an explicit library-crate release is requested.",
+    );
+  }
+}
+
+function checkPublishingReadiness(crateName, manifest) {
   const packageBody = sectionBody(manifest, "package");
   const hasPublishFalse = /^publish\s*=\s*false\s*$/mu.test(packageBody);
   const version = parsePackageVersion(manifest);
   if (apiBearingPublishedCrates.has(crateName) && version === "0.0.1") {
     findings.push(`${crateName}/Cargo.toml must not reuse the published reservation version 0.0.1 for API-bearing publishability`);
   }
-  if (!releaseStamped && reservationVersionCrates.has(crateName)) {
+  if (reservationVersionCrates.has(crateName)) {
     if (version !== "0.0.1") {
       findings.push(`${crateName}/Cargo.toml must use placeholder reservation version 0.0.1, found ${version ?? "missing"}`);
     }

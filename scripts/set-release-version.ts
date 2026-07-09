@@ -2,12 +2,10 @@ import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-// Single source of truth for the runx CLI release version across every channel.
-// The git tag (cli-vX.Y.Z) is canonical; this tool stamps that version into all
-// version-bearing manifests (write mode) or asserts they already match it
-// (check mode, used in CI as a tag/manifest drift guard). The native binary
-// reports CARGO_PKG_VERSION, so the crate and npm versions must equal the tag
-// for `runx --version` to be truthful regardless of install channel.
+// Single source of truth for the runx CLI release version across every CLI
+// channel. A cli-vX.Y.Z tag is the CLI distribution version only. It stamps the
+// npm selector/native packages and the `runx-cli` crate so `runx --version`
+// stays truthful, but it must never stamp or publish internal library crates.
 
 const workspaceRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
@@ -15,7 +13,6 @@ const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
 interface Options {
   readonly version: string;
   readonly check: boolean;
-  readonly releaseGraph: boolean;
 }
 
 interface Finding {
@@ -24,56 +21,14 @@ interface Finding {
 }
 
 const packageJsonPath = path.join(workspaceRoot, "packages", "cli", "package.json");
-const cratesWorkspacePath = path.join(workspaceRoot, "crates", "Cargo.toml");
 const cargoLockPath = path.join(workspaceRoot, "crates", "Cargo.lock");
-const cargoPackagePaths = [
-  path.join(workspaceRoot, "crates", "runx-cli", "Cargo.toml"),
-  path.join(workspaceRoot, "crates", "runx-contracts", "Cargo.toml"),
-  path.join(workspaceRoot, "crates", "runx-contracts-derive", "Cargo.toml"),
-  path.join(workspaceRoot, "crates", "runx-core", "Cargo.toml"),
-  path.join(workspaceRoot, "crates", "runx-pay", "Cargo.toml"),
-  path.join(workspaceRoot, "crates", "runx-parser", "Cargo.toml"),
-  path.join(workspaceRoot, "crates", "runx-receipts", "Cargo.toml"),
-  path.join(workspaceRoot, "crates", "runx-runtime", "Cargo.toml"),
-  path.join(workspaceRoot, "crates", "runx-sdk", "Cargo.toml"),
-];
-const cargoPackageNames = [
-  "runx-cli",
-  "runx-contracts",
-  "runx-contracts-derive",
-  "runx-core",
-  "runx-pay",
-  "runx-parser",
-  "runx-receipts",
-  "runx-runtime",
-  "runx-sdk",
-];
-const cargoWorkspaceDependencyNames = [
-  "runx-contracts",
-  "runx-contracts-derive",
-  "runx-core",
-  "runx-pay",
-  "runx-parser",
-  "runx-receipts",
-  "runx-runtime",
-];
-const parsedOptions = parseArgs(process.argv.slice(2));
-const options = parsedOptions.version
-  ? { ...parsedOptions, releaseGraph: true }
-  : { ...parsedOptions, version: currentPackageVersion(packageJsonPath), releaseGraph: false };
+const cargoCliPackagePath = path.join(workspaceRoot, "crates", "runx-cli", "Cargo.toml");
+const options = parseArgs(process.argv.slice(2));
 const findings: Finding[] = [];
 
 stampPackageJson(packageJsonPath, options, findings);
-if (options.releaseGraph) {
-  stampCargoWorkspace(cratesWorkspacePath, options, findings);
-  for (const cargoPackagePath of cargoPackagePaths) {
-    stampCargoPackage(cargoPackagePath, options, findings);
-  }
-  stampCargoLock(cargoLockPath, cargoPackageNames, options, findings);
-} else {
-  stampCargoPackage(path.join(workspaceRoot, "crates", "runx-cli", "Cargo.toml"), options, findings);
-  stampCargoLock(cargoLockPath, ["runx-cli"], options, findings);
-}
+stampCargoPackage(cargoCliPackagePath, options, findings);
+stampCargoLock(cargoLockPath, ["runx-cli"], options, findings);
 
 if (findings.length > 0) {
   emit({ status: options.check ? "drift" : "failed", version: options.version, findings });
@@ -82,14 +37,7 @@ if (findings.length > 0) {
 emit({
   status: options.check ? "matched" : "stamped",
   version: options.version,
-  files: options.releaseGraph
-    ? [
-        relative(packageJsonPath),
-        relative(cratesWorkspacePath),
-        ...cargoPackagePaths.map(relative),
-        relative(cargoLockPath),
-      ]
-    : [relative(packageJsonPath), "crates/runx-cli/Cargo.toml", relative(cargoLockPath)],
+  files: [relative(packageJsonPath), relative(cargoCliPackagePath), relative(cargoLockPath)],
 });
 
 function stampPackageJson(filePath: string, opts: Options, output: Finding[]): void {
@@ -114,32 +62,6 @@ function stampPackageJson(filePath: string, opts: Options, output: Finding[]): v
     manifest.optionalDependencies![name] = opts.version;
   }
   writeFileSync(filePath, `${JSON.stringify(manifest, null, 2)}\n`);
-}
-
-function stampCargoWorkspace(filePath: string, opts: Options, output: Finding[]): void {
-  let raw = readFileSync(filePath, "utf8");
-  for (const dependencyName of cargoWorkspaceDependencyNames) {
-    const escapedName = escapeRegExp(dependencyName);
-    const pattern = new RegExp(`^(${escapedName} = \\{ path = "[^"]+", version = ")([^"]+)(" \\})$`, "mu");
-    const match = raw.match(pattern);
-    if (!match) {
-      output.push({ file: relative(filePath), message: `could not find workspace dependency ${dependencyName}` });
-      continue;
-    }
-    if (opts.check) {
-      if (match[2] !== opts.version) {
-        output.push({
-          file: relative(filePath),
-          message: `${dependencyName} workspace dependency version is ${match[2]}, expected ${opts.version}`,
-        });
-      }
-      continue;
-    }
-    raw = raw.replace(pattern, `$1${opts.version}$3`);
-  }
-  if (!opts.check) {
-    writeFileSync(filePath, raw);
-  }
 }
 
 function stampCargoPackage(filePath: string, opts: Options, output: Finding[]): void {
@@ -185,7 +107,7 @@ function stampCargoLock(filePath: string, packageNames: readonly string[], opts:
   }
 }
 
-function parseArgs(argv: readonly string[]): Omit<Options, "releaseGraph"> {
+function parseArgs(argv: readonly string[]): Options {
   let version = "";
   let check = false;
   for (let index = 0; index < argv.length; index += 1) {
@@ -215,8 +137,8 @@ function parseArgs(argv: readonly string[]): Omit<Options, "releaseGraph"> {
   if (version && !SEMVER.test(version)) {
     throw new Error(`--version must be semver (got "${version}")`);
   }
-  if (!version && !check) {
-    throw new Error("--version is required unless --check is used");
+  if (!version) {
+    version = currentPackageVersion(packageJsonPath);
   }
   return { version, check };
 }

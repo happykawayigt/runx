@@ -26,9 +26,10 @@ the binary was installed.
 ## Versioning model
 
 The source tree keeps its development version; release jobs **stamp** the tag
-version, they never commit it. One command stamps every version-bearing
-manifest: npm `package.json` + its `optionalDependencies`, the Cargo workspace
-dependency versions, every publishable internal Cargo package, and `Cargo.lock`.
+version, they never commit it. `cli-vX.Y.Z` is the CLI distribution version, not
+a workspace-wide library-crate release. One command stamps only the CLI package
+surfaces: npm `package.json` + its `optionalDependencies`, `runx-cli`, and the
+`runx-cli` lockfile entry.
 
 ```bash
 pnpm exec tsx scripts/set-release-version.ts X.Y.Z          # write
@@ -37,11 +38,13 @@ pnpm exec tsx scripts/set-release-version.ts --check X.Y.Z  # CI drift guard
 
 It accepts a raw `cli-vX.Y.Z` / `vX.Y.Z` tag and strips the prefix.
 
-Cargo is published as one release graph. The release job publishes the internal
-crates in dependency order and waits for each `crate@X.Y.Z` to appear on
-crates.io before publishing the next dependent crate. This keeps
-`cargo install runx-cli --version X.Y.Z` on the same code graph as npm and the
-binary archives.
+Cargo publishing is CLI-only. The release job publishes `runx-cli` and does not
+stamp or publish internal Rust crates (`runx-core`, `runx-runtime`,
+`runx-parser`, `runx-contracts`, `runx-pay`, `runx-receipts`, `runx-sdk`, or
+`runx-contracts-derive`) unless the operator explicitly requests a separate
+library-crate release. Never cut a new patch just to repair a package-manager
+manifest; repair the existing release asset, channel manifest, or workflow in
+place.
 
 ## Pipeline
 
@@ -64,12 +67,15 @@ channel that downloads its archives):
    publish the Release with all archives. This is the hub.
 5. **publish-npm** — verify + publish the selector and native packages with npm
    provenance (`skip-existing`).
-6. **publish-crates** — publish the crates in dependency order, then `runx-cli`.
+6. **publish-crates** — publish `runx-cli` only.
 7. **package-managers** — build the channel input from the published checksums
    (`build-channel-input.mjs`), render Homebrew / Scoop / winget / AUR manifests
-   (`gen-channel-manifests.ts`), attach them to the Release.
+   (`gen-channel-manifests.ts`), verify them against the actual release archive
+   contents (`check-channel-manifests.mjs`), and attach them to the Release.
 8. **publish-{homebrew,scoop,winget,aur}** — push to the owned registries when
-   their credentials are configured; otherwise skipped with a warning.
+   their credentials are configured; otherwise skipped with a warning. winget
+   submits the validated singleton manifest from `channels/winget/runx.yaml`
+   directly; it must not use a generator that guesses archive nesting.
 9. **publish-docker** — multi-arch GHCR image (pulls the musl archive from the
    Release; no Rust toolchain in the image build).
 
@@ -120,13 +126,15 @@ package.
 ## Cutting a release
 
 ```bash
-# 1. dry-run from the Actions tab (workflow_dispatch, version = X.Y.Z) — optional
+# 1. dry-run from the Actions tab (workflow_dispatch, version = X.Y.Z)
 # 2. tag and push:
 git tag cli-vX.Y.Z
 git push origin cli-vX.Y.Z
 ```
 
-Never move a published semver tag; cut a new patch instead.
+Never move a published semver tag. Never bump a new patch just to repair channel
+drift; fix the existing channel artifact or workflow unless the binary itself is
+wrong.
 
 ## Layout
 
@@ -137,6 +145,8 @@ scripts/
   build-release-archives.ts   # raw tar.gz/zip + .sha256 per target (release hub)
   build-channel-input.mjs     # checksums -> channel manifest input
   gen-channel-manifests.ts    # render Homebrew / Scoop / winget / AUR
+  check-channel-manifests.mjs # verify channel manifests against real archives
+  publish-winget-manifest.mjs # submit the validated singleton manifest to winget
   make-signature-manifest.ts  # npm native-package signature manifest
   package-rust-cli.ts         # npm selector + native package staging
   check-rust-cli-release-artifacts.ts  # npm release contract validator
