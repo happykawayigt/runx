@@ -1,3 +1,5 @@
+// rust-style-allow: large-file - transitive preflight discovery keeps traversal,
+// admission provenance, limits, and its focused fixtures in one auditable module.
 //! Runtime-owned preflight expansion for the complete skill chain shown to an
 //! operator before execution. Discovery uses the same validated graph, child
 //! skill, registry admission, and context-skill loaders as execution.
@@ -351,6 +353,8 @@ impl ExpansionState {
             .collect()
     }
 
+    // rust-style-allow: long-function - one graph-step expansion must resolve
+    // its exclusive target, attached context, child provenance, and recursion together.
     fn expand_graph_step(
         &mut self,
         parent_path: &str,

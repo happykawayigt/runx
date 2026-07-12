@@ -593,11 +593,11 @@ fn native_skill_run_uses_production_receipt_signing_env() -> Result<(), Box<dyn 
 }
 
 #[test]
-fn native_skill_run_rejects_missing_production_receipt_signing_env()
+fn native_skill_run_uses_local_development_without_production_receipt_signing_env()
 -> Result<(), Box<dyn std::error::Error>> {
     let temp = tempdir()?;
     let skill_dir = write_agent_task_skill(temp.path())?;
-    let error = LocalOrchestrator::default()
+    let result = LocalOrchestrator::default()
         .run_skill(&SkillRunRequest {
             skill_path: skill_dir,
             receipt_dir: None,
@@ -607,14 +607,9 @@ fn native_skill_run_rejects_missing_production_receipt_signing_env()
             env: BTreeMap::new(),
             cwd: temp.path().to_path_buf(),
             local_credential: None,
-        })
-        .err()
-        .ok_or("missing signing env unexpectedly succeeded")?;
-    assert!(
-        error
-            .to_string()
-            .contains("governed runtime receipt signing")
-    );
+        })?;
+    assert_eq!(result.status, runx_runtime::RunStatus::Sealed);
+    assert_eq!(result.receipt_refs.len(), 1);
     Ok(())
 }
 

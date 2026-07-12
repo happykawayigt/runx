@@ -1,3 +1,5 @@
+// rust-style-allow: large-file - the canonical entrypoint keeps request/result
+// types and prepared/unprepared execution dispatch in one reviewable boundary.
 //! Canonical local orchestration entrypoint.
 //!
 //! CLI commands and TypeScript wrappers should enter local skill, graph, and

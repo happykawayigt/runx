@@ -83,6 +83,8 @@ pub fn parse_resume_plan(args: &[OsString]) -> Result<ResumePlan, String> {
     })
 }
 
+// rust-style-allow: long-function - resume reconstructs one guarded continuation
+// request and keeps its path, receipt, and output error handling in one transaction.
 pub fn run_native_resume(plan: ResumePlan) -> ExitCode {
     let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let env = crate::cli_io::env_map();

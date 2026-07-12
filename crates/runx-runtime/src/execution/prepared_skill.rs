@@ -1,3 +1,5 @@
+// rust-style-allow: large-file - prepared requests keep digest construction,
+// drift guards, approval evidence, and their security fixtures co-located.
 //! Digest-bound preparation for operator-approved skill execution.
 //!
 //! The public report is deliberately safe to print or serialize. The owned
@@ -287,6 +289,8 @@ struct PreparedDigestPreimage<'a> {
     blocked_reason: Option<&'a str>,
 }
 
+// rust-style-allow: long-function - preparation builds one canonical snapshot,
+// trace, digest preimage, governance summary, and guard set atomically.
 pub fn prepare_skill_run(
     mut request: SkillRunRequest,
     selected_runner_name: Option<&str>,

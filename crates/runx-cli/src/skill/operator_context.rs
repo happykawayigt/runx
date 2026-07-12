@@ -5,6 +5,8 @@ use runx_runtime::skill_front::{
     SkillOperatorContextTerminal, SkillOperatorContextTool,
 };
 
+// rust-style-allow: long-function - compact and full modes share one ordered
+// operator-facing rendering contract so decision fields cannot drift.
 pub(super) fn write_operator_context(
     report: &PreparedSkillRunReport,
     full: bool,
@@ -135,6 +137,8 @@ fn list_or_none(values: &[String]) -> String {
     }
 }
 
+// rust-style-allow: long-function - a recursive skill node is rendered as one
+// ordered packet so child contracts, tools, context, and steps stay adjacent.
 fn append_node(
     out: &mut String,
     node: &SkillOperatorContextNode,
