@@ -597,17 +597,16 @@ fn native_skill_run_uses_local_development_without_production_receipt_signing_en
 -> Result<(), Box<dyn std::error::Error>> {
     let temp = tempdir()?;
     let skill_dir = write_agent_task_skill(temp.path())?;
-    let result = LocalOrchestrator::default()
-        .run_skill(&SkillRunRequest {
-            skill_path: skill_dir,
-            receipt_dir: None,
-            run_id: None,
-            answers_path: None,
-            inputs: BTreeMap::new(),
-            env: BTreeMap::new(),
-            cwd: temp.path().to_path_buf(),
-            local_credential: None,
-        })?;
+    let result = LocalOrchestrator::default().run_skill(&SkillRunRequest {
+        skill_path: skill_dir,
+        receipt_dir: None,
+        run_id: None,
+        answers_path: None,
+        inputs: BTreeMap::new(),
+        env: BTreeMap::new(),
+        cwd: temp.path().to_path_buf(),
+        local_credential: None,
+    })?;
     assert_eq!(result.status, runx_runtime::RunStatus::Sealed);
     assert_eq!(result.receipt_refs.len(), 1);
     Ok(())
