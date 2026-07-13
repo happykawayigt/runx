@@ -1421,6 +1421,8 @@ fn agent_answer_disposition_value(
     })
 }
 
+// rust-style-allow: long-function because an approval step resolves, projects,
+// and seals one trust-boundary decision without exposing a partially built receipt.
 pub(super) fn run_approval_step<A>(
     runtime: &Runtime<A>,
     graph_name: &str,
@@ -1438,7 +1440,11 @@ where
     // fixture host already resolves approvals by gate_id; keying the request id
     // the same way lets a seeded graph run drive an approval gate to a decision.
     let request_id = gate.id.to_string();
-    let resolution = resolve_step_approval(step, host, request_id, gate.clone())?;
+    let resolution = completed_approval_resolution(
+        step,
+        &gate,
+        resolve_step_approval(step, host, request_id, gate.clone())?,
+    )?;
     let outputs = approval_outputs(step, &gate, &resolution)?;
     let stdout = serde_json::to_string(&outputs)
         .map_err(|source| RuntimeError::json("serializing approval run output", source))?;
@@ -1479,6 +1485,20 @@ where
         receipt,
         admission_witness,
     })
+}
+
+fn completed_approval_resolution(
+    step: &GraphStep,
+    gate: &ApprovalGate,
+    resolution: ApprovalResolution,
+) -> Result<ApprovalResolution, RuntimeError> {
+    if matches!(resolution, ApprovalResolution::Pending { .. }) {
+        return Err(RuntimeError::GraphBlocked {
+            step_id: step.id.clone(),
+            reason: format!("approval gate '{}' is pending", gate.id),
+        });
+    }
+    Ok(resolution)
 }
 
 fn run_type_ref(step: &GraphStep) -> Result<&str, RuntimeError> {
