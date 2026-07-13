@@ -1,8 +1,6 @@
 <h1 align="center">runx</h1>
 
-<p align="center"><strong>force multiplier for AI agents</strong></p>
-
-<p align="center">Composable skill chains, governed authority, verifiable receipts.</p>
+<p align="center"><strong>the governed runtime for agent skills</strong></p>
 
 <p align="center">
   <a href="LICENSE"><img alt="license: MIT" src="https://img.shields.io/badge/license-MIT-111111?style=flat-square"></a>
@@ -14,16 +12,6 @@
 
 ---
 
-runx turns expertise into portable agent infrastructure. A skill is a
-`SKILL.md` published at a URL; agents can pull it into their own environment,
-compose it with other skills, and build chains of useful work without bespoke
-glue code.
-
-That power needs a boundary. runx admits each act under explicit authority,
-delivers credentials without turning them into prompt material, runs the
-declared profile, and seals the result into a receipt. Authority narrows through
-the chain, so agent work can compound without becoming ambient trust.
-
 ```text
 a skill is a URL.
 a graph is what unfolds.
@@ -31,7 +19,20 @@ authority narrows. it does not pass through.
 every act produces a receipt.
 ```
 
+A skill is expertise published as a portable `SKILL.md` at a URL; agents pull
+it into their own environment, compose it with other skills, and chain real
+work without bespoke glue code. That power needs a boundary: runx admits each
+act under explicit authority, delivers credentials without turning them into
+prompt material, and seals every result into a signed receipt. Authority
+narrows through the chain, so agent work compounds without becoming ambient
+trust.
+
 ## quickstart
+
+This README has an agent-readable twin at
+[runx.ai/SKILL.md](https://runx.ai/SKILL.md). Paste it into your agent and the
+agent learns the CLI, the catalog at [runx.ai/x](https://runx.ai/x), and how to
+return receipts.
 
 Install the CLI:
 
@@ -44,9 +45,7 @@ Then choose how you want to run skills.
 
 ### agent path
 
-Paste [runx.ai/SKILL.md](https://runx.ai/SKILL.md) into your agent. It teaches
-the agent how to use the runx CLI, discover skills from the catalog at
-[runx.ai/x](https://runx.ai/x), and return receipts.
+Hand the agent a goal and let it drive the runtime:
 
 ```text
 Use runx to plan and execute end-to-end business ops for my company.
@@ -101,10 +100,19 @@ runx registry search payments
 runx registry read runx/x402-pay@sha-008aef3f3b2e
 ```
 
+Every run seals a signed receipt. Verify the local store offline:
+
+```bash
+runx verify --json
+```
+
+Pass a receipt id to check a single tree. What a receipt proves, and how
+verification works, is covered below.
+
 ## skills and execution profiles
 
-A skill is expertise as a URL. It starts as a portable `SKILL.md`: prose for
-the model and a human-readable contract for the operator. When the skill needs
+A skill starts as a portable `SKILL.md`: prose for the model and a
+human-readable contract for the operator. When the skill needs
 deterministic runners, typed inputs, graph stages, receipt mapping, harness
 cases, or governed side effects, it also carries an execution profile named
 `X.yaml`.
