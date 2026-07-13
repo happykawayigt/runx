@@ -662,7 +662,10 @@ mod tests {
             run_id: None,
             answers_path: None,
             inputs: BTreeMap::new(),
-            env: BTreeMap::new(),
+            // Anchor the runx home inside the test dir: without this the
+            // agent path discovers the developer's real ~/.runx agent
+            // credentials and resolves inline against the live provider.
+            env: BTreeMap::from([("RUNX_HOME".to_owned(), path.to_string_lossy().into_owned())]),
             cwd: path.to_path_buf(),
             local_credential: None,
         }
