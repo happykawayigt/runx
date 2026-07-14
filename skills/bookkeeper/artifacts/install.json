@@ -1,0 +1,43 @@
+{
+  "status": "success",
+  "registry": {
+    "action": "install",
+    "source": "remote",
+    "ref": "happykawayigt/bookkeeper@0.1.0",
+    "install": {
+      "status": "installed",
+      "destination": "/home/runner/work/runx/runx/skills/happykawayigt/bookkeeper/0.1.0/SKILL.md",
+      "skill_name": "bookkeeper",
+      "source": "runx-registry",
+      "source_label": "runx registry",
+      "skill_id": "happykawayigt/bookkeeper",
+      "version": "0.1.0",
+      "digest": "sha256:6c29c16ce5da85ddec3614966fa84b53fcdeb4a92010b3b1c6e5866ab2094c22",
+      "profile_digest": "sha256:29ec8d5fbbd26e9a774509089e7284e09a1e13060dd0f54957f9c926785fbc8b",
+      "profile_state_path": "/home/runner/work/runx/runx/skills/happykawayigt/bookkeeper/0.1.0/.runx/profile.json",
+      "runner_names": [
+        "default"
+      ],
+      "trust_tier": "community"
+    },
+    "receipt_metadata": {
+      "destination": "/home/runner/work/runx/runx/skills/happykawayigt/bookkeeper/0.1.0/SKILL.md",
+      "digest": "sha256:6c29c16ce5da85ddec3614966fa84b53fcdeb4a92010b3b1c6e5866ab2094c22",
+      "install_count": 6,
+      "package_digest": "9f86d282e3a3ece21f6eeaceab1acff7543330807e75868545110f4d1ee63f32",
+      "profile_digest": "sha256:29ec8d5fbbd26e9a774509089e7284e09a1e13060dd0f54957f9c926785fbc8b",
+      "publisher": {
+        "display_name": "happykawayigt",
+        "handle": "happykawayigt",
+        "id": "user_f945989a95dc8eed55f99f8e",
+        "kind": "user"
+      },
+      "ref": "happykawayigt/bookkeeper@0.1.0",
+      "skill_id": "happykawayigt/bookkeeper",
+      "source_label": "runx registry",
+      "status": "installed",
+      "trust_tier": "community",
+      "version": "0.1.0"
+    }
+  }
+}

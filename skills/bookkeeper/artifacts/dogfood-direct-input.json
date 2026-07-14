@@ -1,0 +1,72 @@
+{
+  "transactions": [
+    {
+      "id": "frantic:receipt:247f05ba257f074d:worker-liability",
+      "date": "2026-07-12",
+      "description": "Frantic bounty 100 worker liability funded",
+      "amount": 8,
+      "currency": "USD"
+    },
+    {
+      "id": "frantic:receipt:247f05ba257f074d:posting-fee",
+      "date": "2026-07-12",
+      "description": "Frantic bounty 100 demand-side posting fee",
+      "amount": -0.8,
+      "currency": "USD"
+    },
+    {
+      "id": "frantic:receipt:df458b36e0458cc9:worker-liability",
+      "date": "2026-07-12",
+      "description": "Frantic bounty 106 worker liability funded",
+      "amount": 10,
+      "currency": "USD"
+    },
+    {
+      "id": "frantic:receipt:df458b36e0458cc9:posting-fee",
+      "date": "2026-07-12",
+      "description": "Frantic bounty 106 demand-side posting fee",
+      "amount": -1,
+      "currency": "USD"
+    }
+  ],
+  "chart_of_accounts": [
+    {
+      "id": "2100",
+      "name": "Funded worker liability",
+      "type": "liability",
+      "keywords": [
+        "worker liability",
+        "liability funded"
+      ]
+    },
+    {
+      "id": "6300",
+      "name": "Demand-side posting fees",
+      "type": "expense",
+      "keywords": [
+        "posting fee",
+        "demand-side fee"
+      ]
+    }
+  ],
+  "prior_period": {
+    "transactions": [
+      {
+        "id": "frantic:receipt:6970b5626a70b6f5:worker-liability",
+        "date": "2026-07-05",
+        "description": "Frantic bounty 89 worker liability funded",
+        "amount": 9,
+        "currency": "USD",
+        "account_id": "2100"
+      },
+      {
+        "id": "frantic:receipt:6970b5626a70b6f5:posting-fee",
+        "date": "2026-07-05",
+        "description": "Frantic bounty 89 demand-side posting fee",
+        "amount": -0.9,
+        "currency": "USD",
+        "account_id": "6300"
+      }
+    ]
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "schema": "runx.bookkeeper.result.v1",
+  "decision": "ready",
+  "categorized": [
+    {
+      "transaction_id": "frantic:receipt:247f05ba257f074d:worker-liability",
+      "date": "2026-07-12",
+      "description": "Frantic bounty 100 worker liability funded",
+      "amount": 8,
+      "currency": "USD",
+      "account_id": "2100",
+      "account_name": "Funded worker liability",
+      "confidence": 0.98,
+      "reason": "matched keywords: worker liability, liability funded; matched account-name tokens: funded, worker, liability"
+    },
+    {
+      "transaction_id": "frantic:receipt:247f05ba257f074d:posting-fee",
+      "date": "2026-07-12",
+      "description": "Frantic bounty 100 demand-side posting fee",
+      "amount": -0.8,
+      "currency": "USD",
+      "account_id": "6300",
+      "account_name": "Demand-side posting fees",
+      "confidence": 0.98,
+      "reason": "matched keywords: posting fee; matched account-name tokens: demand, side, posting; negative amount supports expense"
+    },
+    {
+      "transaction_id": "frantic:receipt:df458b36e0458cc9:worker-liability",
+      "date": "2026-07-12",
+      "description": "Frantic bounty 106 worker liability funded",
+      "amount": 10,
+      "currency": "USD",
+      "account_id": "2100",
+      "account_name": "Funded worker liability",
+      "confidence": 0.98,
+      "reason": "matched keywords: worker liability, liability funded; matched account-name tokens: funded, worker, liability"
+    },
+    {
+      "transaction_id": "frantic:receipt:df458b36e0458cc9:posting-fee",
+      "date": "2026-07-12",
+      "description": "Frantic bounty 106 demand-side posting fee",
+      "amount": -1,
+      "currency": "USD",
+      "account_id": "6300",
+      "account_name": "Demand-side posting fees",
+      "confidence": 0.98,
+      "reason": "matched keywords: posting fee; matched account-name tokens: demand, side, posting; negative amount supports expense"
+    }
+  ],
+  "anomalies": [],
+  "reconciliation": {
+    "matched": 4,
+    "unmatched": 0,
+    "total": 4,
+    "debits": 1.8,
+    "credits": 18,
+    "net": 16.2,
+    "prior_period_matches": 0
+  },
+  "needs_review": []
+}
