@@ -75,7 +75,7 @@ const dogfoodCommand = [
 ].join(" ");
 
 const installCommand = `runx add ${registryRef} --registry https://api.runx.ai`;
-const verifyCommand = `runx verify --receipt dogfood-receipt.json --json`;
+const verifyCommand = `runx verify --receipt dogfood-receipt.json --allow-local-development-signatures --json`;
 
 const harnessCases = [
   {

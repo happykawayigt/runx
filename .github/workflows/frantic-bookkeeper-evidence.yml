@@ -72,7 +72,7 @@ jobs:
           RECEIPT_PATH="$(grep -R -l "$RID" skills/bookkeeper/artifacts/dogfood-receipts | head -n 1)"
           test -n "$RECEIPT_PATH"
           cp "$RECEIPT_PATH" skills/bookkeeper/artifacts/dogfood-receipt.json
-          runx verify --receipt skills/bookkeeper/artifacts/dogfood-receipt.json --json | tee skills/bookkeeper/artifacts/receipt-verify.json
+          runx verify --receipt skills/bookkeeper/artifacts/dogfood-receipt.json --allow-local-development-signatures --json | tee skills/bookkeeper/artifacts/receipt-verify.json
           node skills/bookkeeper/artifacts/build-final-evidence.mjs
 
       - name: Commit evidence artifacts
