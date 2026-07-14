@@ -152,8 +152,9 @@ function readEvents(rawInputs) {
 
   const envelope = baseEnvelope(rawInputs, "read_events");
   const limit = boundedLimit(rawInputs.limit);
+  const afterVersion = optionalVersion(rawInputs.after_version, "after_version");
   const current = currentVersion(database, envelope);
-  const rows = queryJson(database, `
+  const rows = afterVersion === undefined ? queryJson(database, `
 SELECT event_ref, version, event_type, event_digest, idempotency_key, committed_at, event_json
 FROM runx_events
 WHERE data_source_ref = ${sqlString(envelope.data_source_ref)}
@@ -161,9 +162,17 @@ WHERE data_source_ref = ${sqlString(envelope.data_source_ref)}
   AND aggregate_id = ${sqlString(envelope.aggregate_id)}
 ORDER BY version DESC
 LIMIT ${limit};
+`).reverse() : queryJson(database, `
+SELECT event_ref, version, event_type, event_digest, idempotency_key, committed_at, event_json
+FROM runx_events
+WHERE data_source_ref = ${sqlString(envelope.data_source_ref)}
+  AND resource = ${sqlString(envelope.resource)}
+  AND aggregate_id = ${sqlString(envelope.aggregate_id)}
+  AND version > ${afterVersion}
+ORDER BY version ASC
+LIMIT ${limit};
 `);
   const events = rows
-    .reverse()
     .map((row) => ({
       event_ref: row.event_ref,
       version: Number(row.version),
@@ -515,6 +524,14 @@ function boundedLimit(value) {
   if (value === undefined || value === null) return 50;
   if (!Number.isInteger(value) || value < 1 || value > 500) {
     throw new Error("limit must be an integer from 1 to 500");
+  }
+  return value;
+}
+
+function optionalVersion(value, field) {
+  if (value === undefined || value === null) return undefined;
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`${field} must be a non-negative integer`);
   }
   return value;
 }

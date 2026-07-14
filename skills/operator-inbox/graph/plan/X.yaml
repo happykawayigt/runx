@@ -1,0 +1,52 @@
+skill: operator-inbox-plan
+version: "0.1.0"
+
+catalog:
+  kind: skill
+  audience: operator
+  visibility: internal
+  role: graph-stage
+  part_of:
+    - runx/operator-inbox
+
+runners:
+  default:
+    default: true
+    type: cli-tool
+    command: node
+    args:
+      - run.mjs
+    artifacts:
+      named_emits:
+        transition: runx.effect.transition.v1
+      packets:
+        transition: runx.effect.transition.v1
+    inputs:
+      operation:
+        type: string
+        required: true
+        description: scan_page or disposition.
+      expected_version:
+        type: number
+        required: true
+        description: Current projection and stream version.
+      projection:
+        type: json
+        required: true
+        description: Fully folded operator inbox projection.
+      observed_at:
+        type: string
+        required: true
+        description: Host-supplied transition time.
+      scan:
+        type: json
+        required: false
+        description: Redacted scan metadata for scan_page.
+      messages:
+        type: json
+        required: false
+        description: Provider-neutral messages for scan_page.
+      disposition:
+        type: json
+        required: false
+        description: Human disposition for disposition.

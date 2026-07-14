@@ -134,9 +134,12 @@ function conflictResult(envelope, stream, { idempotency_key, event_digest, reaso
 function readEvents(rawInputs) {
   const envelope = baseEnvelope(rawInputs, "read_events");
   const limit = boundedLimit(rawInputs.limit);
+  const afterVersion = optionalVersion(rawInputs.after_version, "after_version");
   const store = readStore(rawInputs);
   const stream = streamFor(store, envelope.resource, envelope.aggregate_id);
-  const events = stream.events.slice(Math.max(0, stream.events.length - limit));
+  const events = afterVersion === undefined
+    ? stream.events.slice(Math.max(0, stream.events.length - limit))
+    : stream.events.filter((entry) => entry.version > afterVersion).slice(0, limit);
   return {
     ...envelope,
     status: "read",
@@ -309,6 +312,14 @@ function boundedLimit(value) {
   if (value === undefined || value === null) return 50;
   if (!Number.isInteger(value) || value < 1 || value > 500) {
     throw new Error("limit must be an integer from 1 to 500");
+  }
+  return value;
+}
+
+function optionalVersion(value, field) {
+  if (value === undefined || value === null) return undefined;
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`${field} must be a non-negative integer`);
   }
   return value;
 }

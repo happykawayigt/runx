@@ -1,0 +1,40 @@
+skill: operator-inbox-reduce
+version: "0.1.0"
+
+catalog:
+  kind: skill
+  audience: operator
+  visibility: internal
+  role: graph-stage
+  part_of:
+    - runx/operator-inbox
+
+runners:
+  default:
+    default: true
+    type: cli-tool
+    command: node
+    args:
+      - run.mjs
+    artifacts:
+      named_emits:
+        projection: runx.operator_inbox.projection.v1
+      packets:
+        projection: runx.operator_inbox.projection.v1
+    inputs:
+      after_version:
+        type: number
+        required: true
+        description: Exclusive version already represented by projection.
+      projection:
+        type: json
+        required: false
+        description: Projection from the previous forward page.
+      events:
+        type: json
+        required: true
+        description: Contiguous forward data-store events.
+      stream_version:
+        type: number
+        required: true
+        description: Current version reported by the data store.

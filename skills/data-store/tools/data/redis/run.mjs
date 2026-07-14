@@ -129,8 +129,11 @@ function appendEvent(rawInputs) {
 function readEvents(rawInputs) {
   const envelope = baseEnvelope(rawInputs, "read_events");
   const limit = boundedLimit(rawInputs.limit);
+  const afterVersion = optionalVersion(rawInputs.after_version, "after_version");
   const keys = redisKeys(rawInputs, envelope);
-  const rows = redis(rawInputs, ["LRANGE", keys.stream, String(-limit), "-1"]);
+  const rows = afterVersion === undefined
+    ? redis(rawInputs, ["LRANGE", keys.stream, String(-limit), "-1"])
+    : redis(rawInputs, ["LRANGE", keys.stream, String(afterVersion), String(afterVersion + limit - 1)]);
   const events = parseJsonLines(rows);
   const current = redisInteger(rawInputs, ["LLEN", keys.stream]);
   return {
@@ -392,6 +395,14 @@ function boundedLimit(value) {
   if (value === undefined || value === null) return 50;
   if (!Number.isInteger(value) || value < 1 || value > 500) {
     throw new Error("limit must be an integer from 1 to 500");
+  }
+  return value;
+}
+
+function optionalVersion(value, field) {
+  if (value === undefined || value === null) return undefined;
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`${field} must be a non-negative integer`);
   }
   return value;
 }

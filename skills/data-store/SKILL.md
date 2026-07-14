@@ -183,6 +183,10 @@ state.
 - `expected_version` (required when the source enforces concurrency): current
   stream/resource version expected by the caller.
 - `limit` (optional): maximum rows or events to return.
+- `after_version` (optional for `read_events`): return an ascending page whose
+  event versions are strictly greater than this value. Omit it to retain the
+  existing latest-tail read. Compare the last returned event version with
+  `after_version` in the result envelope to know whether another page remains.
 - `store_id` (local fixture adapter only): deterministic local store id that
   opts into the bundled `data.local` proof adapter. Omit it for durable local
   SQLite. Production adapters should ignore it.

@@ -135,6 +135,70 @@ describe.each(adapters)("data adapter conformance: $name", (adapter) => {
     }
   });
 
+  it("pages forward by exclusive stream version without changing latest-tail reads", () => {
+    const workspace = tempWorkspace(adapter.name);
+    try {
+      const base = adapter.makeBaseInputs(workspace, uniqueId("forward-page"));
+      for (let index = 1; index <= 3; index += 1) {
+        runAdapter(adapter, workspace, {
+          ...base,
+          operation: "append_event",
+          resource: "board_events",
+          aggregate_id: "paged-stream",
+          expected_version: index - 1,
+          idempotency_key: `paged-stream:${index}`,
+          event: { type: "page.item", payload: { index } },
+        });
+      }
+
+      const tail = expectPacket(runAdapter(adapter, workspace, {
+        ...base,
+        operation: "read_events",
+        resource: "board_events",
+        aggregate_id: "paged-stream",
+        limit: 1,
+      }), {
+        status: "read",
+        operation: "read_events",
+        before_version: 3,
+        after_version: 3,
+      });
+      expect(tail.events.map((event) => recordField(event, "version"))).toEqual([3]);
+
+      const firstPage = expectPacket(runAdapter(adapter, workspace, {
+        ...base,
+        operation: "read_events",
+        resource: "board_events",
+        aggregate_id: "paged-stream",
+        after_version: 0,
+        limit: 2,
+      }), {
+        status: "read",
+        operation: "read_events",
+        before_version: 3,
+        after_version: 3,
+      });
+      expect(firstPage.events.map((event) => recordField(event, "version"))).toEqual([1, 2]);
+
+      const secondPage = expectPacket(runAdapter(adapter, workspace, {
+        ...base,
+        operation: "read_events",
+        resource: "board_events",
+        aggregate_id: "paged-stream",
+        after_version: 2,
+        limit: 2,
+      }), {
+        status: "read",
+        operation: "read_events",
+        before_version: 3,
+        after_version: 3,
+      });
+      expect(secondPage.events.map((event) => recordField(event, "version"))).toEqual([3]);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
   it("derives event_type from generic effect transition packets", () => {
     const workspace = tempWorkspace(adapter.name);
     try {

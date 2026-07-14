@@ -135,6 +135,10 @@ runners:
         required: false
         default: 50
         description: Maximum events to return.
+      after_version:
+        type: number
+        required: false
+        description: When present, return the next ascending page strictly after this stream version; omission retains the latest-tail read.
     graph:
       name: data-store-read-events
       steps:
@@ -149,6 +153,7 @@ runners:
             resource: "$input.resource"
             aggregate_id: "$input.aggregate_id"
             limit: "$input.limit"
+            after_version: "$input.after_version"
 
   read_projection:
     type: graph

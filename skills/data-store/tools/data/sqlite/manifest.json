@@ -59,6 +59,11 @@
       "required": false,
       "default": 50,
       "description": "Maximum events returned by read_events."
+    },
+    "after_version": {
+      "type": "number",
+      "required": false,
+      "description": "Return ascending read_events strictly after this version; omit for the latest tail."
     }
   },
   "scopes": ["runx:data:read", "runx:data:append"],
