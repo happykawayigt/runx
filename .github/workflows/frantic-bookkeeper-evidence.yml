@@ -42,13 +42,13 @@ jobs:
           SOURCE_REF: ${{ github.sha }}
           ARTIFACT_REF: codex/frantic-bookkeeper
         run: |
-          set -euo pipefail
+          set -euxo pipefail
           mkdir -p skills/bookkeeper/artifacts/dogfood-receipts
           runx --version | tee skills/bookkeeper/artifacts/runx-version.txt
           node skills/bookkeeper/test.mjs
-          runx skill inspect skills/bookkeeper --json > skills/bookkeeper/artifacts/local-inspect.json
-          runx registry read happykawayigt/bookkeeper --registry https://api.runx.ai --version 0.1.0 --json > skills/bookkeeper/artifacts/registry-read.json
-          runx add happykawayigt/bookkeeper@0.1.0 --registry https://api.runx.ai --json > skills/bookkeeper/artifacts/install.json
+          runx skill inspect skills/bookkeeper --json | tee skills/bookkeeper/artifacts/local-inspect.json
+          runx registry read happykawayigt/bookkeeper --registry https://api.runx.ai --version 0.1.0 --json | tee skills/bookkeeper/artifacts/registry-read.json
+          runx add happykawayigt/bookkeeper@0.1.0 --registry https://api.runx.ai --json | tee skills/bookkeeper/artifacts/install.json
           node - <<'NODE'
           const fs = require('node:fs');
           const doc = JSON.parse(fs.readFileSync('skills/bookkeeper/artifacts/dogfood-input.json', 'utf8'));
@@ -66,13 +66,13 @@ jobs:
             --input-json prior_period "$PRIOR" \
             --skip-operator-context \
             --receipt-dir skills/bookkeeper/artifacts/dogfood-receipts \
-            --json > skills/bookkeeper/artifacts/dogfood-run.json
+            --json | tee skills/bookkeeper/artifacts/dogfood-run.json
           RID="$(jq -r '.receipt_id' skills/bookkeeper/artifacts/dogfood-run.json)"
           test "$RID" != "null"
           RECEIPT_PATH="$(grep -R -l "$RID" skills/bookkeeper/artifacts/dogfood-receipts | head -n 1)"
           test -n "$RECEIPT_PATH"
           cp "$RECEIPT_PATH" skills/bookkeeper/artifacts/dogfood-receipt.json
-          runx verify --receipt skills/bookkeeper/artifacts/dogfood-receipt.json --json > skills/bookkeeper/artifacts/receipt-verify.json
+          runx verify --receipt skills/bookkeeper/artifacts/dogfood-receipt.json --json | tee skills/bookkeeper/artifacts/receipt-verify.json
           node skills/bookkeeper/artifacts/build-final-evidence.mjs
 
       - name: Commit evidence artifacts
