@@ -1,0 +1,85 @@
+name: Frantic bookkeeper evidence
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/frantic-bookkeeper
+    paths:
+      - .github/workflows/frantic-bookkeeper-evidence.yml
+      - skills/bookkeeper/SKILL.md
+      - skills/bookkeeper/X.yaml
+      - skills/bookkeeper/run.mjs
+      - skills/bookkeeper/test.mjs
+      - skills/bookkeeper/fixtures/**
+      - skills/bookkeeper/artifacts/dogfood-input.json
+      - skills/bookkeeper/artifacts/build-final-evidence.mjs
+
+permissions:
+  contents: write
+
+jobs:
+  dogfood:
+    if: github.repository == 'happykawayigt/runx'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install runx
+        run: npm install --global @runxhq/cli@0.7.1
+
+      - name: Generate post-publish evidence
+        env:
+          BOOKKEEPER_OWNER: happykawayigt
+          BOOKKEEPER_VERSION: "0.1.0"
+          BOOKKEEPER_PR_URL: https://github.com/runxhq/runx/pull/321
+          SOURCE_REF: ${{ github.sha }}
+          ARTIFACT_REF: codex/frantic-bookkeeper
+        run: |
+          set -euo pipefail
+          mkdir -p skills/bookkeeper/artifacts/dogfood-receipts
+          runx --version | tee skills/bookkeeper/artifacts/runx-version.txt
+          node skills/bookkeeper/test.mjs
+          runx skill inspect skills/bookkeeper --json > skills/bookkeeper/artifacts/local-inspect.json
+          runx registry read happykawayigt/bookkeeper --registry https://api.runx.ai --version 0.1.0 --json > skills/bookkeeper/artifacts/registry-read.json
+          runx add happykawayigt/bookkeeper@0.1.0 --registry https://api.runx.ai --json > skills/bookkeeper/artifacts/install.json
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const doc = JSON.parse(fs.readFileSync('skills/bookkeeper/artifacts/dogfood-input.json', 'utf8'));
+          fs.writeFileSync('skills/bookkeeper/artifacts/dogfood-direct-input.json', JSON.stringify(doc.input, null, 2));
+          NODE
+          RUNX_INPUTS_PATH="$PWD/skills/bookkeeper/artifacts/dogfood-direct-input.json" \
+            node skills/bookkeeper/run.mjs > skills/bookkeeper/artifacts/observed-output.json
+          TX="$(jq -c '.input.transactions' skills/bookkeeper/artifacts/dogfood-input.json)"
+          COA="$(jq -c '.input.chart_of_accounts' skills/bookkeeper/artifacts/dogfood-input.json)"
+          PRIOR="$(jq -c '.input.prior_period' skills/bookkeeper/artifacts/dogfood-input.json)"
+          runx skill happykawayigt/bookkeeper@0.1.0 \
+            --registry https://api.runx.ai \
+            --input-json transactions "$TX" \
+            --input-json chart_of_accounts "$COA" \
+            --input-json prior_period "$PRIOR" \
+            --receipt-dir skills/bookkeeper/artifacts/dogfood-receipts \
+            --json > skills/bookkeeper/artifacts/dogfood-run.json
+          RID="$(jq -r '.receipt_id' skills/bookkeeper/artifacts/dogfood-run.json)"
+          test "$RID" != "null"
+          RECEIPT_PATH="$(grep -R -l "$RID" skills/bookkeeper/artifacts/dogfood-receipts | head -n 1)"
+          test -n "$RECEIPT_PATH"
+          cp "$RECEIPT_PATH" skills/bookkeeper/artifacts/dogfood-receipt.json
+          runx verify --receipt skills/bookkeeper/artifacts/dogfood-receipt.json --json > skills/bookkeeper/artifacts/receipt-verify.json
+          node skills/bookkeeper/artifacts/build-final-evidence.mjs
+
+      - name: Commit evidence artifacts
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add skills/bookkeeper/artifacts
+          git diff --cached --quiet && exit 0
+          git commit -m "chore(bookkeeper): add post-publish evidence"
+          git push
