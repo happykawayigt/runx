@@ -69,7 +69,8 @@ jobs:
             --json | tee skills/bookkeeper/artifacts/dogfood-run.json
           RID="$(jq -r '.receipt_id' skills/bookkeeper/artifacts/dogfood-run.json)"
           test "$RID" != "null"
-          RECEIPT_PATH="$(grep -R -l "$RID" skills/bookkeeper/artifacts/dogfood-receipts | head -n 1)"
+          RECEIPT_PATH="skills/bookkeeper/artifacts/dogfood-receipts/${RID/:/-}.json"
+          test -f "$RECEIPT_PATH"
           test -n "$RECEIPT_PATH"
           cp "$RECEIPT_PATH" skills/bookkeeper/artifacts/dogfood-receipt.json
           runx verify --receipt skills/bookkeeper/artifacts/dogfood-receipt.json --allow-local-development-signatures --json | tee skills/bookkeeper/artifacts/receipt-verify.json
