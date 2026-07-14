@@ -69,6 +69,7 @@ const dogfoodCommand = [
   `--input-json transactions '${JSON.stringify(dogfoodInput.input.transactions)}'`,
   `--input-json chart_of_accounts '${JSON.stringify(dogfoodInput.input.chart_of_accounts)}'`,
   `--input-json prior_period '${JSON.stringify(dogfoodInput.input.prior_period)}'`,
+  "--skip-operator-context",
   "--receipt-dir ./dogfood-receipts",
   "--json",
 ].join(" ");

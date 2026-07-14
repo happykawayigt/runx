@@ -64,6 +64,7 @@ jobs:
             --input-json transactions "$TX" \
             --input-json chart_of_accounts "$COA" \
             --input-json prior_period "$PRIOR" \
+            --skip-operator-context \
             --receipt-dir skills/bookkeeper/artifacts/dogfood-receipts \
             --json > skills/bookkeeper/artifacts/dogfood-run.json
           RID="$(jq -r '.receipt_id' skills/bookkeeper/artifacts/dogfood-run.json)"
