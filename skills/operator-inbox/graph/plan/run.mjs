@@ -6,11 +6,14 @@ const inputs = readInputs();
 const transition = planTransition({
   operation: inputs.operation,
   expectedVersion: inputs.expected_version,
-  projection: inputs.projection,
   observedAt: inputs.observed_at,
   scan: inputs.scan,
   messages: inputs.messages,
+  currentAction: inputs.current_action,
+  message: inputs.message,
+  triage: inputs.triage,
   disposition: inputs.disposition,
+  action: inputs.action,
 });
 
 process.stdout.write(`${JSON.stringify({ transition }, null, 2)}\n`);

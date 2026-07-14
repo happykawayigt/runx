@@ -24,10 +24,10 @@ logical source. Unbound local refs resolve to SQLite under
 `data_source_ref` binding. Runx Connect may still own OAuth, grants, and provider
 execution; that does not move this queue into the hosted control plane.
 
-The event stream resource is `operator_inbox_events`. One aggregate id identifies
-one operator queue. A host reads it incrementally with `status_page`, passing the
-returned projection and `next_after_version` into the next page until
-`complete=true`.
+Observations and resumable checkpoints live in `operator_inbox_scans`, partitioned
+by query digest. Action snapshots live in `operator_inbox_actions`, with one
+stream per stable thread digest. Queue reads use bounded `list_stream_heads`
+pages; no command folds or transports the complete queue.
 
 ## Status rules
 
@@ -40,26 +40,31 @@ Items use `open`, `waiting`, `followed_up`, `resolved`, or `dismissed`.
 - An external message newer than the covered occurrence reopens the item to
   `open`, including unseen work that arrived before the disposition was saved.
 - Scan coverage is explicit: `running`, `complete`, `truncated`, or `failed`.
+- Direct mentions are actionable structural evidence. Author and keyword scans
+  remain observation-only unless the operator explicitly marks the query
+  actionable. The skill does not contain provider-specific keyword heuristics.
 
 The provider-neutral thread locator is the item key. Stored previews are bounded;
 credentials, tokens, and full provider response envelopes are forbidden.
 
 ## Host loop
 
-1. Drain `status_page` from version zero to the reported stream version.
-2. Fetch one bounded provider page through the caller's authorized connector.
-3. Call `record_scan_page` with the current projection and exact expected
-   version.
-4. On a version conflict, reload state and retry the same idempotent page.
-5. Record a final complete, truncated, or failed scan page.
-6. Use `record_disposition` only for an explicit operator correction.
+1. Read the latest checkpoint for the bounded query digest.
+2. Resume its provider cursor when the prior scan was interrupted or truncated.
+3. Fetch one bounded provider page through the caller's authorized connector.
+4. Record actionable messages against their per-thread streams and append the
+   scan page with its next cursor.
+5. On a version conflict, reload only the affected scan or action stream and
+   retry the idempotent transition.
+6. List queue state through bounded action-head pages and use
+   `record_disposition` only for an explicit operator correction.
 
 The loop is outside the kernel. Each page or disposition remains one governed,
 receipt-backed Runx turn.
 
 ## Stop conditions
 
-- `needs_input`: missing queue identity, projection, observation, disposition,
+- `needs_input`: missing query identity, observation, disposition,
   actor, reason, or scan coverage.
 - `conflict`: the projection version is stale; reload before retrying.
 - `provider_unavailable`: the caller cannot prove provider read coverage.

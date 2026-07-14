@@ -1,67 +1,42 @@
 import crypto from "node:crypto";
 
-const SCHEMA = "runx.operator_inbox.projection.v1";
-const STATUSES = new Set(["open", "waiting", "followed_up", "resolved", "dismissed"]);
+const ACTION_SCHEMA = "runx.operator_inbox.action.v1";
+const ACTION_STATUSES = new Set(["open", "waiting", "followed_up", "resolved", "dismissed"]);
+const HUMAN_STATUSES = new Set(["waiting", "followed_up", "resolved", "dismissed"]);
 const SCAN_STATUSES = new Set(["running", "complete", "truncated", "failed"]);
+const TRIAGE_KINDS = new Set(["direct_mention", "operator_selected_query", "imported"]);
 const MAX_MESSAGES_PER_PAGE = 20;
-const MAX_ITEMS = 5_000;
-const MAX_SCANS = 100;
 const MAX_LOCATORS = 50;
 
-export function emptyProjection() {
-  return { schema: SCHEMA, version: 0, items: [], scans: [] };
-}
-
-export function foldEventPage({ projection, events, afterVersion, streamVersion }) {
-  const state = normalizeProjection(projection);
-  const after = nonNegativeInteger(afterVersion, "after_version");
-  const current = nonNegativeInteger(streamVersion, "stream_version");
-  if (state.version !== after) {
-    throw new Error(`operator inbox projection version ${state.version} does not match after_version ${after}`);
-  }
-  if (current < after) throw new Error("operator inbox stream_version precedes after_version");
-  if (!Array.isArray(events) || events.length > 500) throw new Error("operator inbox events must be a bounded array");
-
-  let expected = after + 1;
-  for (const entry of events) {
-    const record = object(entry, "event entry");
-    const version = nonNegativeInteger(record.version, "event version");
-    if (version !== expected) throw new Error(`operator inbox event page is not contiguous at version ${expected}`);
-    applyDomainEvent(state, object(record.event, "event"));
-    state.version = version;
-    expected += 1;
-  }
-  if (state.version > current) throw new Error("operator inbox event page exceeds stream_version");
-  return {
-    ...state,
-    page: {
-      next_after_version: state.version,
-      stream_version: current,
-      complete: state.version === current,
-    },
-  };
+export function actionIdForThread(threadLocator) {
+  return `action-${crypto.createHash("sha256").update(text(threadLocator, 500, "thread_locator")).digest("hex")}`;
 }
 
 export function planTransition(input) {
-  const state = normalizeProjection(input.projection);
+  const operation = text(input.operation, 40, "operation");
   const expectedVersion = nonNegativeInteger(input.expectedVersion, "expected_version");
-  if (state.version !== expectedVersion) {
-    throw new Error(`operator inbox projection version ${state.version} does not match expected_version ${expectedVersion}`);
-  }
   const observedAt = isoTime(input.observedAt, "observed_at");
-  const operation = text(input.operation, 30, "operation");
   let event;
+  let idempotencyKey;
+
   if (operation === "scan_page") {
     event = scanPageEvent(input.scan, input.messages, observedAt);
+    idempotencyKey = `operator-inbox:scan:${event.payload.scan.scan_id}:${event.payload.scan.page_index}:${sha256(event).slice(7, 31)}`;
+  } else if (operation === "action_observation") {
+    const observedMessage = normalizeMessage(input.message);
+    event = actionObservationEvent(input.currentAction, observedMessage, input.triage, observedAt);
+    idempotencyKey = `operator-inbox:action:${sha256(observedMessage.message_locator).slice(7, 47)}`;
   } else if (operation === "disposition") {
-    event = dispositionEvent(input.disposition, observedAt, state);
+    event = dispositionEvent(input.currentAction, input.disposition, observedAt);
+    idempotencyKey = `operator-inbox:disposition:${event.payload.action.action_id}:${sha256(event).slice(7, 31)}`;
+  } else if (operation === "import_action") {
+    const action = normalizeAction(input.action);
+    event = actionSnapshotEvent(action, "import", action.last_observed_at);
+    idempotencyKey = `operator-inbox:import:${action.action_id}:${sha256(action).slice(7, 31)}`;
   } else {
-    throw new Error("operator inbox operation must be scan_page or disposition");
+    throw new Error("operator inbox operation must be scan_page, action_observation, disposition, or import_action");
   }
-  const eventDigest = sha256(event);
-  const idempotencyKey = operation === "scan_page"
-    ? `operator-inbox:scan:${event.payload.scan.scan_id}:${event.payload.scan.page_index}:${eventDigest.slice(7, 31)}`
-    : `operator-inbox:disposition:${event.payload.disposition.thread_locator}:${eventDigest.slice(7, 31)}`;
+
   return {
     effect_family: "operator-inbox",
     operation,
@@ -72,180 +47,167 @@ export function planTransition(input) {
 }
 
 function scanPageEvent(rawScan, rawMessages, observedAt) {
-  const scanInput = object(rawScan, "scan");
-  const status = text(scanInput.status, 30, "scan.status");
+  const input = object(rawScan, "scan");
+  const status = text(input.status, 30, "scan.status");
   if (!SCAN_STATUSES.has(status)) throw new Error(`unsupported operator inbox scan status '${status}'`);
   const messages = Array.isArray(rawMessages) ? rawMessages.map(normalizeMessage) : null;
   if (!messages || messages.length > MAX_MESSAGES_PER_PAGE) {
     throw new Error(`operator inbox messages must be an array of at most ${MAX_MESSAGES_PER_PAGE}`);
   }
-  const error = optionalText(scanInput.error, 500, "scan.error");
+  const error = optionalText(input.error, 500, "scan.error");
   if (status === "failed" && !error) throw new Error("failed operator inbox scans require a bounded error");
+  const nextCursor = optionalText(input.next_cursor, 500, "scan.next_cursor");
+  const startedAt = isoTime(input.started_at ?? observedAt, "scan.started_at");
+  const scan = {
+    scan_id: text(input.scan_id, 200, "scan.scan_id"),
+    provider: text(input.provider, 100, "scan.provider"),
+    query_digest: digest(input.query_digest, "scan.query_digest"),
+    page_index: positiveInteger(input.page_index, "scan.page_index"),
+    status,
+    started_at: startedAt,
+    updated_at: observedAt,
+    ...(nextCursor ? { next_cursor: nextCursor } : {}),
+    ...(error ? { error } : {}),
+  };
   return {
-    type: "operator_inbox.scan_page_recorded",
+    type: `operator_inbox.scan.${status}`,
     effect_family: "operator-inbox",
     operation: "scan_page",
-    payload: {
-      observed_at: observedAt,
-      scan: {
-        scan_id: text(scanInput.scan_id, 200, "scan.scan_id"),
-        provider: text(scanInput.provider, 100, "scan.provider"),
-        query_digest: digest(scanInput.query_digest, "scan.query_digest"),
-        page_index: positiveInteger(scanInput.page_index, "scan.page_index"),
-        status,
-        ...(error ? { error } : {}),
-      },
-      messages,
-    },
+    payload: { observed_at: observedAt, scan, messages },
   };
 }
 
-function dispositionEvent(rawDisposition, observedAt, state) {
-  const input = object(rawDisposition, "disposition");
-  const threadLocator = text(input.thread_locator, 500, "disposition.thread_locator");
-  const item = state.items.find((candidate) => candidate.thread_locator === threadLocator);
-  if (!item) {
-    throw new Error(`operator inbox item ${threadLocator} was not found`);
+function actionObservationEvent(rawCurrentAction, rawMessage, rawTriage, observedAt) {
+  const current = rawCurrentAction ? normalizeAction(rawCurrentAction) : undefined;
+  const message = normalizeMessage(rawMessage);
+  if (message.author.external_id === message.connected_subject_ref) {
+    throw new Error("operator-authored messages cannot create or reopen operator inbox actions");
   }
+  const triage = normalizeTriage(rawTriage);
+  const actionId = actionIdForThread(message.thread_locator);
+  if (current && (current.action_id !== actionId || current.thread_locator !== message.thread_locator)) {
+    throw new Error("current_action does not match the observed thread");
+  }
+  const isNewer = !current || Date.parse(message.occurred_at) > Date.parse(current.latest_message.occurred_at);
+  const reopens = Boolean(
+    current?.disposition
+      && Date.parse(message.occurred_at) > Date.parse(current.disposition.covered_occurrence_at),
+  );
+  const locators = Array.from(new Set([...(current?.message_locators ?? []), message.message_locator])).slice(-MAX_LOCATORS);
+  const action = {
+    schema: ACTION_SCHEMA,
+    action_id: actionId,
+    provider: current?.provider ?? message.provider,
+    external_tenant_ref: current?.external_tenant_ref ?? message.external_tenant_ref,
+    connected_subject_ref: current?.connected_subject_ref ?? message.connected_subject_ref,
+    thread_locator: message.thread_locator,
+    requester: current?.requester ?? message.author,
+    conversation: isNewer ? message.conversation : current.conversation,
+    latest_message: isNewer ? latestMessage(message) : current.latest_message,
+    message_locators: locators,
+    status: reopens ? "open" : (current?.status ?? "open"),
+    disposition: reopens ? undefined : current?.disposition,
+    triage: current?.triage ?? triage,
+    first_observed_at: current?.first_observed_at ?? observedAt,
+    last_observed_at: observedAt,
+  };
+  return actionSnapshotEvent(action, reopens ? "reopened" : "observed", observedAt);
+}
+
+function dispositionEvent(rawCurrentAction, rawDisposition, observedAt) {
+  const current = normalizeAction(rawCurrentAction);
+  const input = object(rawDisposition, "disposition");
   const status = text(input.status, 30, "disposition.status");
-  if (!STATUSES.has(status) || status === "open") {
+  if (!HUMAN_STATUSES.has(status)) {
     throw new Error("operator inbox human disposition must be waiting, followed_up, resolved, or dismissed");
   }
   const evidenceUrl = optionalHttpsUrl(input.evidence_url);
+  const action = {
+    ...current,
+    status,
+    disposition: {
+      status,
+      actor: text(input.actor, 200, "disposition.actor"),
+      reason: text(input.reason, 500, "disposition.reason"),
+      at: observedAt,
+      covered_occurrence_at: current.latest_message.occurred_at,
+      ...(evidenceUrl ? { evidence_url: evidenceUrl } : {}),
+    },
+    last_observed_at: observedAt,
+  };
+  return actionSnapshotEvent(action, "disposition", observedAt);
+}
+
+function actionSnapshotEvent(rawAction, reason, observedAt) {
+  const action = normalizeAction(rawAction);
   return {
-    type: "operator_inbox.disposition_recorded",
+    type: `operator_inbox.action.${action.status}`,
     effect_family: "operator-inbox",
-    operation: "disposition",
+    operation: "action_snapshot",
     payload: {
       observed_at: observedAt,
-      disposition: {
-        thread_locator: threadLocator,
-        status,
-        actor: text(input.actor, 200, "disposition.actor"),
-        reason: text(input.reason, 500, "disposition.reason"),
-        covered_occurrence_at: isoTime(item.latest_message.occurred_at, "item.latest_message.occurred_at"),
-        ...(evidenceUrl ? { evidence_url: evidenceUrl } : {}),
-      },
+      reason,
+      action,
     },
   };
 }
 
-function applyDomainEvent(state, event) {
-  if (event.type === "operator_inbox.scan_page_recorded") {
-    const payload = object(event.payload, "scan event payload");
-    const observedAt = isoTime(payload.observed_at, "event observed_at");
-    const scan = object(payload.scan, "event scan");
-    for (const message of array(payload.messages, "event messages").map(normalizeMessage)) {
-      applyMessage(state, message, observedAt);
-    }
-    applyScan(state, scan, observedAt);
-    return;
-  }
-  if (event.type === "operator_inbox.disposition_recorded") {
-    const payload = object(event.payload, "disposition event payload");
-    const observedAt = isoTime(payload.observed_at, "event observed_at");
-    const disposition = object(payload.disposition, "event disposition");
-    const threadLocator = text(disposition.thread_locator, 500, "event disposition.thread_locator");
-    const status = text(disposition.status, 30, "event disposition.status");
-    if (!STATUSES.has(status) || status === "open") {
-      throw new Error("operator inbox human disposition must be waiting, followed_up, resolved, or dismissed");
-    }
-    const actor = text(disposition.actor, 200, "event disposition.actor");
-    const reason = text(disposition.reason, 500, "event disposition.reason");
-    const coveredOccurrenceAt = isoTime(disposition.covered_occurrence_at, "event disposition.covered_occurrence_at");
-    const evidenceUrl = optionalHttpsUrl(disposition.evidence_url);
-    const item = state.items.find((candidate) => candidate.thread_locator === threadLocator);
-    if (!item) throw new Error(`operator inbox item ${threadLocator} was not found`);
-    item.status = status;
-    item.disposition = {
-      status,
-      actor,
-      reason,
-      at: observedAt,
-      covered_occurrence_at: coveredOccurrenceAt,
-      ...(evidenceUrl ? { evidence_url: evidenceUrl } : {}),
-    };
-    return;
-  }
-  throw new Error(`unsupported operator inbox event '${event.type}'`);
-}
-
-function applyMessage(state, message, observedAt) {
-  if (message.author.external_id === message.connected_subject_ref) return;
-  let item = state.items.find((candidate) => candidate.thread_locator === message.thread_locator);
-  if (!item) {
-    if (state.items.length >= MAX_ITEMS) throw new Error(`operator inbox capacity of ${MAX_ITEMS} items was reached`);
-    item = {
-      thread_locator: message.thread_locator,
-      provider: message.provider,
-      external_tenant_ref: message.external_tenant_ref,
-      connected_subject_ref: message.connected_subject_ref,
-      requester: message.author,
-      conversation: message.conversation,
-      latest_message: latestMessage(message),
-      message_locators: [message.message_locator],
-      status: "open",
-      disposition: null,
-      first_observed_at: observedAt,
-      last_observed_at: observedAt,
-    };
-    state.items.push(item);
-    return;
-  }
-  item.last_observed_at = observedAt;
-  item.message_locators = [...new Set([...item.message_locators, message.message_locator])].slice(-MAX_LOCATORS);
-  if (Date.parse(message.occurred_at) > Date.parse(item.latest_message.occurred_at)) {
-    item.latest_message = latestMessage(message);
-    item.conversation = message.conversation;
-  }
-  if (item.disposition && Date.parse(message.occurred_at) > Date.parse(item.disposition.covered_occurrence_at)) {
-    item.status = "open";
-  }
-}
-
-function applyScan(state, scan, observedAt) {
-  const scanId = text(scan.scan_id, 200, "scan.scan_id");
-  const status = text(scan.status, 30, "scan.status");
-  if (!SCAN_STATUSES.has(status)) throw new Error(`unsupported operator inbox scan status '${status}'`);
-  const error = optionalText(scan.error, 500, "scan.error");
-  if (status === "failed" && !error) throw new Error("failed operator inbox scans require a bounded error");
-  const existing = state.scans.find((entry) => entry.scan_id === scanId);
-  const record = existing ?? {
-    scan_id: scanId,
-    provider: text(scan.provider, 100, "scan.provider"),
-    query_digest: digest(scan.query_digest, "scan.query_digest"),
-    started_at: observedAt,
-    pages_observed: 0,
-    status: "running",
+function normalizeAction(value) {
+  const input = object(value, "action");
+  if (input.schema !== ACTION_SCHEMA) throw new Error("operator inbox action has an unsupported schema");
+  const status = text(input.status, 30, "action.status");
+  if (!ACTION_STATUSES.has(status)) throw new Error(`unsupported operator inbox action status '${status}'`);
+  const disposition = input.disposition ? normalizeDisposition(input.disposition) : undefined;
+  if (status !== "open" && !disposition) throw new Error("non-open operator inbox actions require a disposition");
+  const threadLocator = text(input.thread_locator, 500, "action.thread_locator");
+  const actionId = text(input.action_id, 100, "action.action_id");
+  if (actionId !== actionIdForThread(threadLocator)) throw new Error("action_id does not match action.thread_locator");
+  return {
+    schema: ACTION_SCHEMA,
+    action_id: actionId,
+    provider: text(input.provider, 100, "action.provider"),
+    external_tenant_ref: text(input.external_tenant_ref, 300, "action.external_tenant_ref"),
+    connected_subject_ref: text(input.connected_subject_ref, 300, "action.connected_subject_ref"),
+    thread_locator: threadLocator,
+    requester: normalizeAuthor(input.requester),
+    conversation: normalizeConversation(input.conversation),
+    latest_message: normalizeLatestMessage(input.latest_message),
+    message_locators: array(input.message_locators, "action.message_locators").slice(-MAX_LOCATORS).map((locator) => text(locator, 500, "action.message_locator")),
+    status,
+    ...(disposition ? { disposition } : {}),
+    triage: normalizeTriage(input.triage),
+    first_observed_at: isoTime(input.first_observed_at, "action.first_observed_at"),
+    last_observed_at: isoTime(input.last_observed_at, "action.last_observed_at"),
   };
-  record.pages_observed = Math.max(record.pages_observed, positiveInteger(scan.page_index, "scan.page_index"));
-  record.status = status;
-  record.updated_at = observedAt;
-  record.error = error ?? null;
-  if (!existing) state.scans.push(record);
-  state.scans = state.scans.slice(-MAX_SCANS);
 }
 
-function normalizeProjection(value) {
-  if (value === undefined || value === null) return emptyProjection();
-  const input = object(value, "projection");
-  if (input.schema !== SCHEMA) throw new Error("operator inbox projection has an unsupported schema");
-  const projection = {
-    schema: SCHEMA,
-    version: nonNegativeInteger(input.version, "projection.version"),
-    items: clone(array(input.items, "projection.items")),
-    scans: clone(array(input.scans, "projection.scans")),
+function normalizeTriage(value) {
+  const input = object(value, "triage");
+  const kind = text(input.kind, 50, "triage.kind");
+  if (!TRIAGE_KINDS.has(kind)) throw new Error(`unsupported operator inbox triage kind '${kind}'`);
+  return {
+    kind,
+    reason: text(input.reason, 500, "triage.reason"),
   };
-  if (projection.items.length > MAX_ITEMS || projection.scans.length > MAX_SCANS) {
-    throw new Error("operator inbox projection exceeds capacity");
-  }
-  return projection;
+}
+
+function normalizeDisposition(value) {
+  const input = object(value, "action.disposition");
+  const status = text(input.status, 30, "action.disposition.status");
+  if (!HUMAN_STATUSES.has(status)) throw new Error("action disposition has an unsupported status");
+  const evidenceUrl = optionalHttpsUrl(input.evidence_url);
+  return {
+    status,
+    actor: text(input.actor, 200, "action.disposition.actor"),
+    reason: text(input.reason, 500, "action.disposition.reason"),
+    at: isoTime(input.at, "action.disposition.at"),
+    covered_occurrence_at: isoTime(input.covered_occurrence_at, "action.disposition.covered_occurrence_at"),
+    ...(evidenceUrl ? { evidence_url: evidenceUrl } : {}),
+  };
 }
 
 function normalizeMessage(value) {
   const input = object(value, "message");
-  const author = object(input.author, "message.author");
-  const conversation = object(input.conversation, "message.conversation");
   const context = array(input.context, "message.context").slice(0, 40).map((entry) => {
     const message = object(entry, "message.context entry");
     return {
@@ -262,12 +224,8 @@ function normalizeMessage(value) {
     connected_subject_ref: text(input.connected_subject_ref, 300, "message.connected_subject_ref"),
     message_locator: text(input.message_locator, 500, "message.message_locator"),
     thread_locator: text(input.thread_locator, 500, "message.thread_locator"),
-    author: normalizeAuthor(author),
-    conversation: {
-      external_id: text(conversation.external_id, 300, "conversation.external_id"),
-      ...(optionalText(conversation.display_name, 300, "conversation.display_name") ? { display_name: optionalText(conversation.display_name, 300, "conversation.display_name") } : {}),
-      type: text(conversation.type, 30, "conversation.type"),
-    },
+    author: normalizeAuthor(input.author),
+    conversation: normalizeConversation(input.conversation),
     occurred_at: isoTime(input.occurred_at, "message.occurred_at"),
     preview: optionalText(input.preview, 2_000, "message.preview") ?? "",
     ...(optionalHttpsUrl(input.permalink) ? { permalink: optionalHttpsUrl(input.permalink) } : {}),
@@ -276,23 +234,39 @@ function normalizeMessage(value) {
   };
 }
 
-function normalizeAuthor(value) {
-  const author = object(value, "author");
-  const displayName = optionalText(author.display_name, 300, "author.display_name");
+function normalizeConversation(value) {
+  const input = object(value, "conversation");
+  const displayName = optionalText(input.display_name, 300, "conversation.display_name");
   return {
-    external_id: text(author.external_id, 300, "author.external_id"),
+    external_id: text(input.external_id, 300, "conversation.external_id"),
+    ...(displayName ? { display_name: displayName } : {}),
+    type: text(input.type, 30, "conversation.type"),
+  };
+}
+
+function normalizeAuthor(value) {
+  const input = object(value, "author");
+  const displayName = optionalText(input.display_name, 300, "author.display_name");
+  return {
+    external_id: text(input.external_id, 300, "author.external_id"),
     ...(displayName ? { display_name: displayName } : {}),
   };
 }
 
-function latestMessage(message) {
+function normalizeLatestMessage(value) {
+  const input = object(value, "latest_message");
+  const permalink = optionalHttpsUrl(input.permalink);
   return {
-    message_locator: message.message_locator,
-    occurred_at: message.occurred_at,
-    preview: message.preview,
-    ...(message.permalink ? { permalink: message.permalink } : {}),
-    ...(message.reply_count !== undefined ? { reply_count: message.reply_count } : {}),
+    message_locator: text(input.message_locator, 500, "latest_message.message_locator"),
+    occurred_at: isoTime(input.occurred_at, "latest_message.occurred_at"),
+    preview: optionalText(input.preview, 2_000, "latest_message.preview") ?? "",
+    ...(permalink ? { permalink } : {}),
+    ...(Number.isSafeInteger(input.reply_count) && input.reply_count >= 0 ? { reply_count: input.reply_count } : {}),
   };
+}
+
+function latestMessage(message) {
+  return normalizeLatestMessage(message);
 }
 
 function object(value, field) {
@@ -354,8 +328,4 @@ function canonical(value) {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
   return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(",")}}`;
-}
-
-function clone(value) {
-  return structuredClone(value);
 }

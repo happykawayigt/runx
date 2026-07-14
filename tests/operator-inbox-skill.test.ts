@@ -6,124 +6,118 @@ import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 
 const PLAN_RUNNER = path.resolve("skills/operator-inbox/graph/plan/run.mjs");
-const REDUCE_RUNNER = path.resolve("skills/operator-inbox/graph/reduce/run.mjs");
 const SKILL_PATH = path.resolve("skills/operator-inbox");
 const QUERY_DIGEST = `sha256:${"0".repeat(64)}`;
 
 describe("operator-inbox skill", () => {
-  it("preserves explicit dispositions and reopens only for newer external work", () => {
-    let projection = emptyProjection();
-
-    const first = plan({
-      operation: "scan_page",
-      expected_version: 0,
-      projection,
-      observed_at: "2026-07-14T09:05:00.000Z",
-      scan: scan("scan-1", 1, "complete"),
-      messages: [message({
-        messageLocator: "slack://workspace/analytics/100.1",
-        occurredAt: "2026-07-14T09:00:00.000Z",
-        authorId: "george",
-        preview: "Can you check the analytics claim?",
-      })],
-    });
-    projection = fold(projection, 0, 1, [eventRecord(1, first.event)]);
-
-    expect(projection).toMatchObject({
-      version: 1,
-      page: { complete: true, next_after_version: 1, stream_version: 1 },
-      items: [{
-        thread_locator: "slack://workspace/analytics/thread-100",
-        status: "open",
-        requester: { external_id: "george", display_name: "George" },
-        conversation: { external_id: "analytics", display_name: "analytics", type: "channel" },
-      }],
-      scans: [{ scan_id: "scan-1", status: "complete", pages_observed: 1 }],
+  it("preserves a disposition for old history and reopens only for newer external work", () => {
+    const initialTransition = planAction(undefined, 0, message({
+      messageLocator: "slack://workspace/analytics/100.1",
+      occurredAt: "2026-07-14T09:00:00.000Z",
+      authorId: "george",
+      preview: "Can you check the analytics claim?",
+    }));
+    const initial = actionFrom(initialTransition);
+    expect(initial).toMatchObject({
+      schema: "runx.operator_inbox.action.v1",
+      status: "open",
+      requester: { external_id: "george", display_name: "George" },
+      conversation: { external_id: "analytics", display_name: "analytics", type: "channel" },
+      triage: { kind: "direct_mention" },
     });
 
-    const resolved = plan({
+    const resolved = actionFrom(plan({
       operation: "disposition",
       expected_version: 1,
-      projection,
+      current_action: initial,
       observed_at: "2026-07-14T10:00:00.000Z",
       disposition: {
-        thread_locator: "slack://workspace/analytics/thread-100",
         status: "resolved",
         actor: "Kam",
         reason: "Addressed in the sending-at-scale article",
         evidence_url: "https://example.com/sending-at-scale",
       },
+    }));
+    expect(resolved).toMatchObject({
+      status: "resolved",
+      disposition: {
+        actor: "Kam",
+        covered_occurrence_at: "2026-07-14T09:00:00.000Z",
+      },
     });
-    projection = fold(projection, 1, 2, [eventRecord(2, resolved.event)]);
 
-    const oldHistory = planScan(projection, 2, "scan-2", message({
+    const oldHistoryTransition = planAction(resolved, 2, message({
       messageLocator: "slack://workspace/analytics/99.9",
       occurredAt: "2026-07-14T08:30:00.000Z",
       authorId: "george",
       preview: "An older reminder",
     }));
-    projection = fold(projection, 2, 3, [eventRecord(3, oldHistory.event)]);
-    expect(projection.items[0]).toMatchObject({
+    const oldHistory = actionFrom(oldHistoryTransition);
+    expect(oldHistoryTransition.idempotency_key).not.toBe(initialTransition.idempotency_key);
+    expect(oldHistory).toMatchObject({
       status: "resolved",
-      disposition: { actor: "Kam", reason: "Addressed in the sending-at-scale article" },
+      latest_message: { message_locator: "slack://workspace/analytics/100.1" },
+      disposition: { reason: "Addressed in the sending-at-scale article" },
     });
 
-    const ownReply = planScan(projection, 3, "scan-3", message({
-      messageLocator: "slack://workspace/analytics/101.1",
-      occurredAt: "2026-07-14T10:30:00.000Z",
-      authorId: "operator-1",
-      authorName: "Kam",
-      preview: "I followed this up",
-    }));
-    projection = fold(projection, 3, 4, [eventRecord(4, ownReply.event)]);
-    expect(projection.items[0].status).toBe("resolved");
-
-    const newerExternal = planScan(projection, 4, "scan-4", message({
+    const newer = actionFrom(planAction(oldHistory, 3, message({
       messageLocator: "slack://workspace/analytics/102.1",
       occurredAt: "2026-07-14T09:30:00.000Z",
       authorId: "nick",
       authorName: "Nick",
-      preview: "An unseen follow-up arrived before the disposition",
-    }));
-    projection = fold(projection, 4, 5, [eventRecord(5, newerExternal.event)]);
-    expect(projection.items[0]).toMatchObject({
+      preview: "A newer unseen follow-up",
+    })));
+    expect(newer).toMatchObject({
       status: "open",
       requester: { external_id: "george", display_name: "George" },
-      latest_message: {
-        message_locator: "slack://workspace/analytics/102.1",
-        preview: "An unseen follow-up arrived before the disposition",
-      },
-      disposition: {
-        status: "resolved",
-        actor: "Kam",
-        covered_occurrence_at: "2026-07-14T09:00:00.000Z",
-      },
+      latest_message: { preview: "A newer unseen follow-up" },
     });
+    expect(newer).not.toHaveProperty("disposition");
   });
 
-  it("rejects non-contiguous pages and unbounded observations", () => {
-    const event = planScan(emptyProjection(), 0, "scan-bounds", message({
-      messageLocator: "slack://workspace/analytics/100.1",
-      occurredAt: "2026-07-14T09:00:00.000Z",
-      authorId: "george",
-      preview: "Bounded",
-    })).event;
-
-    const gap = runStageRaw(REDUCE_RUNNER, {
-      projection: emptyProjection(),
-      after_version: 0,
-      stream_version: 2,
-      events: [eventRecord(2, event)],
+  it("records resumable bounded scan checkpoints", () => {
+    const transition = plan({
+      operation: "scan_page",
+      expected_version: 3,
+      observed_at: "2026-07-14T09:05:00.000Z",
+      scan: {
+        scan_id: "scan-1",
+        provider: "slack",
+        query_digest: QUERY_DIGEST,
+        page_index: 4,
+        status: "truncated",
+        next_cursor: "next-page",
+        started_at: "2026-07-14T09:00:00.000Z",
+      },
+      messages: [message({
+        messageLocator: "slack://workspace/analytics/100.1",
+        occurredAt: "2026-07-14T09:00:00.000Z",
+        authorId: "george",
+        preview: "Bounded",
+      })],
     });
-    expect(gap.status).not.toBe(0);
-    expect(gap.stderr).toContain("not contiguous at version 1");
+    expect(transition).toMatchObject({
+      expected_version: 3,
+      event: {
+        type: "operator_inbox.scan.truncated",
+        payload: {
+          scan: { page_index: 4, next_cursor: "next-page", status: "truncated" },
+          messages: [expect.objectContaining({ preview: "Bounded" })],
+        },
+      },
+    });
 
     const tooMany = runStageRaw(PLAN_RUNNER, {
       operation: "scan_page",
       expected_version: 0,
-      projection: emptyProjection(),
       observed_at: "2026-07-14T09:05:00.000Z",
-      scan: scan("scan-too-many", 1, "complete"),
+      scan: {
+        scan_id: "scan-too-many",
+        provider: "slack",
+        query_digest: QUERY_DIGEST,
+        page_index: 1,
+        status: "complete",
+      },
       messages: Array.from({ length: 21 }, (_, index) => message({
         messageLocator: `slack://workspace/analytics/${index}`,
         occurredAt: "2026-07-14T09:00:00.000Z",
@@ -133,6 +127,23 @@ describe("operator-inbox skill", () => {
     });
     expect(tooMany.status).not.toBe(0);
     expect(tooMany.stderr).toContain("at most 20");
+  });
+
+  it("rejects operator-authored action observations", () => {
+    const result = runStageRaw(PLAN_RUNNER, {
+      operation: "action_observation",
+      expected_version: 0,
+      observed_at: "2026-07-14T09:05:00.000Z",
+      triage: triage(),
+      message: message({
+        messageLocator: "slack://workspace/analytics/100.1",
+        occurredAt: "2026-07-14T09:00:00.000Z",
+        authorId: "operator-1",
+        preview: "I handled this",
+      }),
+    });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("operator-authored messages");
   });
 
   it("composes graph writes through the default local SQLite data source", () => {
@@ -151,7 +162,6 @@ describe("operator-inbox skill", () => {
       });
       expect(result.status, result.stderr).toBe(0);
       expect(JSON.parse(result.stdout)).toMatchObject({ status: "passed", case_count: 1 });
-
       const dataDir = path.join(workspace, ".runx", "data", "local-sources");
       expect(readdirSync(dataDir).some((entry) => entry.endsWith(".sqlite"))).toBe(true);
     } finally {
@@ -160,33 +170,27 @@ describe("operator-inbox skill", () => {
   });
 });
 
-function planScan(projection: Projection, expectedVersion: number, scanId: string, observedMessage: Message) {
+function planAction(currentAction: Record<string, unknown> | undefined, expectedVersion: number, observedMessage: Message) {
   return plan({
-    operation: "scan_page",
+    operation: "action_observation",
     expected_version: expectedVersion,
-    projection,
+    ...(currentAction ? { current_action: currentAction } : {}),
     observed_at: "2026-07-14T11:00:00.000Z",
-    scan: scan(scanId, 1, "complete"),
-    messages: [observedMessage],
+    message: observedMessage,
+    triage: triage(),
   });
+}
+
+function triage() {
+  return { kind: "direct_mention", reason: "The connected operator was directly mentioned." };
 }
 
 function plan(inputs: Record<string, unknown>): Transition {
   return (runStage(PLAN_RUNNER, inputs) as { transition: Transition }).transition;
 }
 
-function fold(
-  projection: Projection,
-  afterVersion: number,
-  streamVersion: number,
-  events: readonly Record<string, unknown>[],
-): Projection {
-  return (runStage(REDUCE_RUNNER, {
-    projection,
-    after_version: afterVersion,
-    stream_version: streamVersion,
-    events,
-  }) as { projection: Projection }).projection;
+function actionFrom(transition: Transition): Record<string, unknown> {
+  return ((transition.event.payload as { action: Record<string, unknown> }).action);
 }
 
 function runStage(stage: string, inputs: Record<string, unknown>): unknown {
@@ -200,20 +204,6 @@ function runStageRaw(stage: string, inputs: Record<string, unknown>) {
     encoding: "utf8",
     env: { ...process.env, RUNX_INPUTS_JSON: JSON.stringify(inputs) },
   });
-}
-
-function eventRecord(version: number, event: Record<string, unknown>) {
-  return { version, event };
-}
-
-function scan(scanId: string, pageIndex: number, status: string) {
-  return {
-    scan_id: scanId,
-    provider: "slack",
-    query_digest: QUERY_DIGEST,
-    page_index: pageIndex,
-    status,
-  };
 }
 
 function message({
@@ -244,10 +234,6 @@ function message({
   };
 }
 
-function emptyProjection(): Projection {
-  return { schema: "runx.operator_inbox.projection.v1", version: 0, items: [], scans: [] };
-}
-
 function nativeRunxBinaryForTest(): string {
   const configured = process.env.RUNX_DEV_RUST_CLI_BIN;
   if (configured) return configured;
@@ -255,20 +241,9 @@ function nativeRunxBinaryForTest(): string {
   return existsSync(candidate) ? candidate : "runx";
 }
 
-type Projection = {
-  readonly schema: string;
-  readonly version: number;
-  readonly items: readonly InboxItem[];
-  readonly scans: readonly Record<string, unknown>[];
-  readonly page?: Record<string, unknown>;
-};
-
-type InboxItem = Record<string, unknown> & {
-  readonly status: string;
-};
-
 type Message = Record<string, unknown>;
 
 type Transition = {
-  readonly event: Record<string, unknown>;
+  readonly idempotency_key: string;
+  readonly event: Record<string, unknown> & { readonly payload: unknown };
 };
