@@ -43,6 +43,7 @@ packages/cli/tools/
 
 # local runx state
 .runx/
+.runx-local/
 /knowledge/
 /runx-receipts/
 /runx-output/

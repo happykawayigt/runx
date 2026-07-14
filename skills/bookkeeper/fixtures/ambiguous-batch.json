@@ -1,0 +1,28 @@
+{
+  "transactions": [
+    {
+      "id": "txn-ambiguous",
+      "date": "2026-06-07",
+      "description": "Monthly transfer",
+      "amount": -500,
+      "currency": "USD"
+    }
+  ],
+  "chart_of_accounts": [
+    {
+      "id": "6000",
+      "name": "General expense",
+      "type": "expense",
+      "keywords": ["monthly"]
+    },
+    {
+      "id": "6200",
+      "name": "Office expense",
+      "type": "expense",
+      "keywords": ["monthly"]
+    }
+  ],
+  "prior_period": {
+    "transactions": []
+  }
+}

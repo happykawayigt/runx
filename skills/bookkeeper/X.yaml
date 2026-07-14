@@ -1,0 +1,127 @@
+skill: bookkeeper
+version: "0.1.0"
+
+catalog:
+  kind: skill
+  audience: public
+  visibility: public
+  role: canonical
+
+runx:
+  mutating: false
+  policy:
+    data_classification: user_supplied_financial_records
+    network:
+      allowed: []
+      forbidden:
+        - live ledgers
+        - banking APIs
+        - payment rails
+  artifacts:
+    emits:
+      - categorized
+      - anomalies
+      - reconciliation
+    wrap_as: bookkeeper_packet
+
+harness:
+  cases:
+    - name: clean-transactions-categorized
+      runner: default
+      inputs:
+        transactions:
+          - id: txn-001
+            date: 2026-06-01
+            description: ACME client invoice payment
+            amount: 300
+            currency: USD
+          - id: txn-002
+            date: 2026-06-03
+            description: AWS cloud hosting
+            amount: -140
+            currency: USD
+          - id: txn-003
+            date: 2026-06-04
+            description: Office Depot supplies
+            amount: -45
+            currency: USD
+        chart_of_accounts:
+          - id: "4000"
+            name: Service revenue
+            type: revenue
+            keywords: [client, invoice, payment]
+          - id: "6100"
+            name: Cloud hosting expense
+            type: expense
+            keywords: [aws, cloud, hosting]
+          - id: "6200"
+            name: Office supplies expense
+            type: expense
+            keywords: [office depot, supplies]
+        prior_period:
+          transactions:
+            - id: prior-001
+              description: AWS cloud hosting
+              amount: -130
+              account_id: "6100"
+      expect:
+        status: sealed
+        receipt:
+          schema: runx.receipt.v1
+          state: sealed
+          disposition: closed
+          reason_code: process_closed
+    - name: ambiguous-transaction-needs-review
+      runner: default
+      inputs:
+        transactions:
+          - id: txn-ambiguous
+            date: 2026-06-07
+            description: Monthly transfer
+            amount: -500
+            currency: USD
+        chart_of_accounts:
+          - id: "6000"
+            name: General expense
+            type: expense
+            keywords: [monthly]
+          - id: "6200"
+            name: Office expense
+            type: expense
+            keywords: [monthly]
+        prior_period:
+          transactions: []
+      expect:
+        status: failure
+        receipt:
+          schema: runx.receipt.v1
+          state: sealed
+          disposition: failed
+          reason_code: process_failed
+
+runners:
+  default:
+    default: true
+    type: cli-tool
+    command: node
+    args:
+      - run.mjs
+    inputs:
+      transactions:
+        type: json
+        required: true
+        description: Transaction lines to categorize; each line includes description and amount.
+      chart_of_accounts:
+        type: json
+        required: true
+        description: Allowed GL accounts. The skill never creates an account outside this list.
+      prior_period:
+        type: json
+        required: true
+        description: Prior-period transaction evidence used for repeat matches and anomaly baselines.
+    outputs:
+      decision: string
+      categorized: array
+      anomalies: array
+      reconciliation: object
+      needs_review: array

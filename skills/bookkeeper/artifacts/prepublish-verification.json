@@ -1,0 +1,59 @@
+{
+  "schema": "runx.bookkeeper.prepublish_verification.v1",
+  "verified_at": "2026-07-14T11:47:57Z",
+  "scope": "Pre-publish implementation and harness verification only. This is not the required post-publish dogfood receipt.",
+  "source": {
+    "repository": "https://github.com/happykawayigt/runx",
+    "branch": "codex/frantic-bookkeeper",
+    "commit": "8fca659d17308e25910af1d8b07522d79e075b27",
+    "workflow_run": "https://github.com/happykawayigt/runx/actions/runs/29330147014",
+    "workflow_job": "https://github.com/happykawayigt/runx/actions/runs/29330147014/job/87075879372"
+  },
+  "environment": {
+    "os": "Ubuntu 24.04.4 LTS",
+    "node": "v24.18.0",
+    "runx_install": "npm install --global @runxhq/cli@0.7.1",
+    "runx_version": "runx-cli 0.7.1"
+  },
+  "checks": {
+    "deterministic_fixture_tests": {
+      "command": "node skills/bookkeeper/test.mjs",
+      "status": "passed",
+      "output": "bookkeeper fixture tests passed"
+    },
+    "skill_inspect": {
+      "command": "runx skill inspect skills/bookkeeper --json",
+      "status": "ok",
+      "name": "bookkeeper",
+      "version": "0.1.0",
+      "runner": "default"
+    },
+    "official_harness": {
+      "command": "runx harness skills/bookkeeper --json --receipt-dir <runner-temp>/bookkeeper-receipts",
+      "status": "passed",
+      "case_count": 2,
+      "assertion_error_count": 0,
+      "cases": [
+        {
+          "name": "clean-transactions-categorized",
+          "expected_disposition": "sealed",
+          "receipt_id": "sha256:fe780271cd8fa5b8471b32b3a2e5d5df805d0083bb31b1f84773d7f6fbe6ce80"
+        },
+        {
+          "name": "ambiguous-transaction-needs-review",
+          "expected_disposition": "refused",
+          "runx_status": "failure",
+          "runx_reason_code": "process_failed",
+          "receipt_id": "sha256:a3cb81d52548ddad196214b0aa3cd38c47339d84dc7a8911d590bcdd0b962c27"
+        }
+      ]
+    }
+  },
+  "required_follow_up": [
+    "Publish the exact package to the hosted runx registry.",
+    "Confirm the hosted registry harness is green.",
+    "Clean-install the published registry ref.",
+    "Run the published registry ref against artifacts/dogfood-input.json.",
+    "Verify the distinct post-publish dogfood receipt with plain runx verify --receipt <receipt.json> --json."
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "transactions": [
+    {
+      "id": "txn-001",
+      "date": "2026-06-01",
+      "description": "ACME client invoice payment",
+      "amount": 300,
+      "currency": "USD"
+    },
+    {
+      "id": "txn-002",
+      "date": "2026-06-03",
+      "description": "AWS cloud hosting",
+      "amount": -140,
+      "currency": "USD"
+    },
+    {
+      "id": "txn-003",
+      "date": "2026-06-04",
+      "description": "Office Depot supplies",
+      "amount": -45,
+      "currency": "USD"
+    }
+  ],
+  "chart_of_accounts": [
+    {
+      "id": "4000",
+      "name": "Service revenue",
+      "type": "revenue",
+      "keywords": ["client", "invoice", "payment"]
+    },
+    {
+      "id": "6100",
+      "name": "Cloud hosting expense",
+      "type": "expense",
+      "keywords": ["aws", "cloud", "hosting"]
+    },
+    {
+      "id": "6200",
+      "name": "Office supplies expense",
+      "type": "expense",
+      "keywords": ["office depot", "supplies"]
+    }
+  ],
+  "prior_period": {
+    "transactions": [
+      {
+        "id": "prior-001",
+        "description": "AWS cloud hosting",
+        "amount": -130,
+        "account_id": "6100"
+      }
+    ]
+  }
+}
